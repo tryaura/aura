@@ -1,9 +1,11 @@
-import { lstat } from "node:fs/promises";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { isAbsolute, resolve } from "node:path";
 
 import type { FileOperation, FixPlan, WorkspaceModel } from "@tryaura/aura-sdk";
 
-import { FixPlanError } from "./types.js";
+import { claimPath, createClaimIndex, detectCaseInsensitive } from "./claims.js";
+import { runProbes, type AncestorProbe } from "./probe.js";
+import { describeRoots, matchRoot, resolveAllowedRoots, type AllowedRoot } from "./roots.js";
+import { operationError } from "./types.js";
 
 export interface ValidatedOperation {
   readonly index: number;
@@ -11,62 +13,87 @@ export interface ValidatedOperation {
   readonly paths: readonly string[];
 }
 
-interface ClaimedPath {
-  readonly index: number;
-  readonly path: string;
+/** Everything path validation needs that is worth resolving once per plan. */
+export interface PathPolicy {
+  /** Whether path comparison must ignore case. See {@link detectCaseInsensitive}. */
+  readonly caseInsensitive: boolean;
+  readonly roots: readonly AllowedRoot[];
+}
+
+/** Resolves the roots and filesystem traits a plan is validated against. */
+export async function createPathPolicy(
+  model: WorkspaceModel,
+  managedHomeRoots: readonly string[] | undefined,
+): Promise<PathPolicy> {
+  const workspaceRoot = resolve(model.projectRoot ?? model.cwd);
+  return {
+    caseInsensitive: await detectCaseInsensitive(workspaceRoot),
+    roots: resolveAllowedRoots(model, managedHomeRoots),
+  };
 }
 
 /** Validates every path before the executor reads operation state or performs a mutation. */
 export async function validatePlanPaths(
   plan: FixPlan,
-  model: WorkspaceModel,
+  policy: PathPolicy,
 ): Promise<readonly ValidatedOperation[]> {
-  const roots = allowedRoots(model);
-  const claimed: ClaimedPath[] = [];
+  const claims = createClaimIndex();
   const operations: ValidatedOperation[] = [];
+  const probes: AncestorProbe[] = [];
 
+  // The synchronous checks run first and in plan order, so the operation a caller is told about is
+  // always the earliest offending one.
   for (const [index, operation] of plan.operations.entries()) {
     const paths = mutationPaths(operation);
 
     for (const path of paths) {
-      await validatePath(path, roots, index, false);
-      assertUnclaimed(path, index, claimed);
-      claimed.push({ index, path: resolve(path) });
+      assertPathShape(path, policy, index);
+      claimPath(claims, path, index, policy.caseInsensitive);
+      probes.push({ includeFinalPath: false, operationIndex: index, path });
     }
 
     if (operation.type === "symlink") {
-      await validatePath(operation.target, roots, index, true);
+      assertPathShape(operation.target, policy, index);
+      probes.push({ includeFinalPath: true, operationIndex: index, path: operation.target });
     }
 
     operations.push({ index, operation, paths: Object.freeze(paths) });
   }
 
+  await runProbes(probes, policy.roots, policy.caseInsensitive);
   return Object.freeze(operations);
 }
 
 /** Rechecks ancestors immediately before a mutation to narrow symlink race windows. */
 export async function revalidateMutationPath(
   path: string,
-  model: WorkspaceModel,
+  policy: PathPolicy,
   operationIndex: number,
 ): Promise<void> {
-  await validatePath(path, allowedRoots(model), operationIndex, false);
+  assertPathShape(path, policy, operationIndex);
+  await runProbes(
+    [{ includeFinalPath: false, operationIndex, path }],
+    policy.roots,
+    policy.caseInsensitive,
+  );
 }
 
 /** Rechecks the complete target path because a symlink target is followed when the link is used. */
 export async function revalidateSymlinkTarget(
   path: string,
-  model: WorkspaceModel,
+  policy: PathPolicy,
   operationIndex: number,
 ): Promise<void> {
-  await validatePath(path, allowedRoots(model), operationIndex, true);
+  assertPathShape(path, policy, operationIndex);
+  await runProbes(
+    [{ includeFinalPath: true, operationIndex, path }],
+    policy.roots,
+    policy.caseInsensitive,
+  );
 }
 
-function allowedRoots(model: WorkspaceModel): readonly string[] {
-  return Object.freeze([resolve(model.projectRoot ?? model.cwd), resolve(model.homeDir, "agents")]);
-}
-
-function mutationPaths(operation: FileOperation): string[] {
+/** Every path an operation mutates, in source-plan order. */
+export function mutationPaths(operation: FileOperation): string[] {
   switch (operation.type) {
     case "move": {
       return [operation.sourcePath, operation.destinationPath];
@@ -79,175 +106,28 @@ function mutationPaths(operation: FileOperation): string[] {
   }
 }
 
-async function validatePath(
-  path: string,
-  roots: readonly string[],
-  operationIndex: number,
-  includeFinalPath: boolean,
-): Promise<void> {
+function assertPathShape(path: string, policy: PathPolicy, operationIndex: number): void {
   if (!isAbsolute(path)) {
-    throw new FixPlanError("invalid-path", `path must be absolute: ${path}`, operationIndex, path);
+    throw operationError("invalid-path", operationIndex, `path must be absolute: ${path}`, {
+      path,
+    });
   }
 
   if (path.split(/[\\/]/u).includes("..")) {
-    throw new FixPlanError(
+    throw operationError(
       "invalid-path",
+      operationIndex,
       `path must not contain a parent traversal: ${path}`,
-      operationIndex,
-      path,
+      { path },
     );
   }
 
-  const resolvedPath = resolve(path);
-  const root = roots
-    .filter((candidate) => isDescendant(candidate, resolvedPath))
-    .sort((left, right) => right.length - left.length)[0];
-
-  if (root === undefined) {
-    throw new FixPlanError(
+  if (matchRoot(path, policy.roots, policy.caseInsensitive) === undefined) {
+    throw operationError(
       "invalid-path",
-      `path is outside the workspace and managed home roots: ${path}`,
       operationIndex,
-      path,
+      `path is outside every allowed root: ${path}. Allowed roots: ${describeRoots(policy.roots)}`,
+      { path },
     );
   }
-
-  await assertNoIntermediateSymlink(
-    root,
-    includeFinalPath ? resolvedPath : dirname(resolvedPath),
-    operationIndex,
-    includeFinalPath,
-  );
-}
-
-function isDescendant(root: string, candidate: string): boolean {
-  const difference = relative(root, candidate);
-  return (
-    difference.length > 0 &&
-    difference !== ".." &&
-    !difference.startsWith(`..${sep}`) &&
-    !isAbsolute(difference)
-  );
-}
-
-async function assertNoIntermediateSymlink(
-  root: string,
-  destination: string,
-  operationIndex: number,
-  finalMayBeNonDirectory: boolean,
-): Promise<void> {
-  if (!(await assertUsableRoot(root, operationIndex))) {
-    return;
-  }
-
-  const difference = relative(root, destination);
-  if (difference.length === 0) {
-    return;
-  }
-
-  const parts = difference.split(sep);
-  let current = root;
-
-  for (const [partIndex, part] of parts.entries()) {
-    current = join(current, part);
-    const kind = await readPathKind(current, operationIndex);
-    if (kind === "missing") {
-      return;
-    }
-    if (kind === "symlink") {
-      throw new FixPlanError(
-        "invalid-path",
-        `path traverses a symbolic link: ${current}`,
-        operationIndex,
-        current,
-      );
-    }
-
-    const isFinal = partIndex === parts.length - 1;
-    if ((!isFinal || !finalMayBeNonDirectory) && kind !== "directory") {
-      throw new FixPlanError(
-        "path-conflict",
-        `path ancestor is not a directory: ${current}`,
-        operationIndex,
-        current,
-      );
-    }
-  }
-}
-
-/** Returns false when the managed root does not exist yet and may safely be created. */
-async function assertUsableRoot(root: string, operationIndex: number): Promise<boolean> {
-  const rootKind = await readPathKind(root, operationIndex);
-  if (rootKind === "missing") {
-    return false;
-  }
-  if (rootKind === "symlink") {
-    throw new FixPlanError(
-      "invalid-path",
-      `allowed root is a symbolic link: ${root}`,
-      operationIndex,
-      root,
-    );
-  }
-  if (rootKind !== "directory") {
-    throw new FixPlanError(
-      "path-conflict",
-      `allowed root is not a directory: ${root}`,
-      operationIndex,
-      root,
-    );
-  }
-  return true;
-}
-
-async function readPathKind(
-  path: string,
-  operationIndex: number,
-): Promise<"directory" | "missing" | "other" | "symlink"> {
-  try {
-    const stats = await lstat(path);
-    if (stats.isSymbolicLink()) {
-      return "symlink";
-    }
-    return stats.isDirectory() ? "directory" : "other";
-  } catch (error) {
-    if (errorCode(error) === "ENOENT") {
-      return "missing";
-    }
-    throw new FixPlanError(
-      "filesystem-error",
-      `could not inspect path ancestor ${path}: ${errorMessage(error)}`,
-      operationIndex,
-      path,
-    );
-  }
-}
-
-function assertUnclaimed(path: string, index: number, claimed: readonly ClaimedPath[]): void {
-  const resolvedPath = resolve(path);
-  const conflict = claimed.find(
-    (entry) =>
-      entry.path === resolvedPath ||
-      isDescendant(entry.path, resolvedPath) ||
-      isDescendant(resolvedPath, entry.path),
-  );
-
-  if (conflict !== undefined) {
-    throw new FixPlanError(
-      "path-conflict",
-      `path overlaps operation ${conflict.index}: ${path}`,
-      index,
-      path,
-    );
-  }
-}
-
-function errorCode(error: unknown): string | undefined {
-  return error instanceof Error && "code" in error && typeof error.code === "string"
-    ? error.code
-    : undefined;
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

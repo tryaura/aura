@@ -4,94 +4,76 @@ import type {
   MovePathOperation,
   RemovePathOperation,
   SymlinkOperation,
-  WorkspaceModel,
   WriteFileOperation,
 } from "@tryaura/aura-sdk";
 
+import { captureBefore, findUnwritablePath, spendBudget, type RetentionBudget } from "./capture.js";
 import { renderMoveDiff, renderRemoveDiff, renderSymlinkDiff, renderWriteDiff } from "./diff.js";
-import { validatePlanPaths, type ValidatedOperation } from "./path-policy.js";
-import { inspectPath, type PathState } from "./state.js";
+import { MAX_MUTABLE_FILE_BYTES, MAX_RETAINED_PLAN_BYTES } from "./limits.js";
+import { createPathPolicy, validatePlanPaths, type ValidatedOperation } from "./path-policy.js";
 import {
-  FixPlanError,
-  type FixOperationEffect,
-  type FixOperationPreview,
-  type FixPlanPreview,
-  type FixPlanPreviewOptions,
-} from "./types.js";
+  conflict,
+  createPreview,
+  noop,
+  type PreparedOperation,
+  type PreparedPlanState,
+} from "./prepared.js";
+import { inspectPath, isCapturedFile } from "./state.js";
+import type { FixPlanPreview, FixPlanPreviewOptions } from "./types.js";
 
-interface PreparedBase {
-  readonly preview: FixOperationPreview;
-}
-
-interface PreparedWriteOperation extends PreparedBase {
-  readonly before: PathState;
-  readonly operation: WriteFileOperation;
-  readonly type: "write";
-}
-
-interface PreparedRemoveOperation extends PreparedBase {
-  readonly before: PathState;
-  readonly operation: RemovePathOperation;
-  readonly type: "remove";
-}
-
-interface PreparedMoveOperation extends PreparedBase {
-  readonly destinationBefore: PathState;
-  readonly operation: MovePathOperation;
-  readonly sourceBefore: PathState;
-  readonly type: "move";
-}
-
-interface PreparedSymlinkOperation extends PreparedBase {
-  readonly before: PathState;
-  readonly operation: SymlinkOperation;
-  readonly type: "symlink";
-}
-
-export type PreparedOperation =
-  | PreparedMoveOperation
-  | PreparedRemoveOperation
-  | PreparedSymlinkOperation
-  | PreparedWriteOperation;
-
-export interface PreparedFixPlan {
-  readonly model: WorkspaceModel;
-  readonly operations: readonly PreparedOperation[];
-  readonly preview: FixPlanPreview;
-}
-
-export async function prepareFixPlan(options: FixPlanPreviewOptions): Promise<PreparedFixPlan> {
-  const validated = await validatePlanPaths(options.plan, options.model);
+export async function prepareOperations(
+  options: FixPlanPreviewOptions,
+): Promise<{ readonly preview: FixPlanPreview; readonly state: PreparedPlanState }> {
+  const policy = await createPathPolicy(options.model, options.managedHomeRoots);
+  const validated = await validatePlanPaths(options.plan, policy);
+  const budget: RetentionBudget = { remaining: MAX_RETAINED_PLAN_BYTES };
   const operations: PreparedOperation[] = [];
 
+  // Sequential on purpose: the retention budget is spent in plan order, so what a plan costs in
+  // memory does not depend on how its reads happen to interleave.
   for (const operation of validated) {
-    operations.push(await prepareOperation(operation));
+    operations.push(await prepareOperation(operation, budget));
   }
 
   const previews = Object.freeze(operations.map((operation) => operation.preview));
   const preview: FixPlanPreview = Object.freeze({
-    changedOperationCount: previews.filter((operation) => operation.effect !== "noop").length,
+    changedOperationCount: previews.filter(
+      (operation) => operation.effect !== "noop" && operation.effect !== "conflict",
+    ).length,
+    conflictedOperationCount: previews.filter((operation) => operation.effect === "conflict")
+      .length,
     manualSteps: Object.freeze([...(options.plan.manualSteps ?? [])]),
     operations: previews,
     summary: options.plan.summary,
   });
 
-  return Object.freeze({ model: options.model, operations: Object.freeze(operations), preview });
+  return {
+    preview,
+    state: Object.freeze({ model: options.model, operations: Object.freeze(operations), policy }),
+  };
 }
 
-async function prepareOperation(operation: ValidatedOperation): Promise<PreparedOperation> {
+async function prepareOperation(
+  operation: ValidatedOperation,
+  budget: RetentionBudget,
+): Promise<PreparedOperation> {
+  const blocked = await findUnwritablePath(operation);
+  if (blocked !== undefined) {
+    return conflict(operation, blocked);
+  }
+
   switch (operation.operation.type) {
     case "move": {
       return prepareMove(operation.operation, operation);
     }
     case "remove": {
-      return prepareRemove(operation.operation, operation);
+      return prepareRemove(operation.operation, operation, budget);
     }
     case "symlink": {
-      return prepareSymlink(operation.operation, operation);
+      return prepareSymlink(operation.operation, operation, budget);
     }
     case "write": {
-      return prepareWrite(operation.operation, operation);
+      return prepareWrite(operation.operation, operation, budget);
     }
   }
 }
@@ -99,27 +81,37 @@ async function prepareOperation(operation: ValidatedOperation): Promise<Prepared
 async function prepareWrite(
   operation: WriteFileOperation,
   validated: ValidatedOperation,
-): Promise<PreparedWriteOperation> {
-  const before = await inspectPath(operation.path, validated.index);
-  if (before.kind === "directory") {
-    throw conflict(validated, operation.path, "cannot replace a directory with a file");
+  budget: RetentionBudget,
+): Promise<PreparedOperation> {
+  const content = Buffer.from(operation.content, "utf8");
+  if (content.byteLength > MAX_MUTABLE_FILE_BYTES) {
+    return conflict(
+      validated,
+      `content is ${content.byteLength} bytes, above the ${MAX_MUTABLE_FILE_BYTES} byte limit for one operation`,
+    );
   }
 
-  const content = Buffer.from(operation.content, "utf8");
-  const unchanged = before.kind === "file" && before.content?.equals(content) === true;
-  const effect: FixOperationEffect = unchanged
-    ? "noop"
-    : before.kind === "missing"
-      ? "create"
-      : "update";
+  const captured = await captureBefore(validated, operation.path, budget, "written over");
+  if ("conflict" in captured) {
+    return conflict(validated, captured.conflict);
+  }
 
+  const before = captured.state;
+  if (before.kind === "directory") {
+    return conflict(validated, "cannot replace a directory with a file");
+  }
+  if (isCapturedFile(before) && before.content.equals(content)) {
+    return noop(validated);
+  }
+
+  spendBudget(budget, before);
   return {
     before,
     operation,
     preview: createPreview(
       validated,
-      effect,
-      effect === "noop" ? "" : renderWriteDiff(operation.path, before, operation.content),
+      before.kind === "missing" ? "create" : "update",
+      renderWriteDiff(operation.path, before, operation.content, operation.mode),
     ),
     type: "write",
   };
@@ -128,21 +120,26 @@ async function prepareWrite(
 async function prepareRemove(
   operation: RemovePathOperation,
   validated: ValidatedOperation,
-): Promise<PreparedRemoveOperation> {
-  const before = await inspectPath(operation.path, validated.index);
-  if (before.kind === "directory" && !before.empty) {
-    throw conflict(validated, operation.path, "remove accepts only an empty directory");
+  budget: RetentionBudget,
+): Promise<PreparedOperation> {
+  const captured = await captureBefore(validated, operation.path, budget, "removed");
+  if ("conflict" in captured) {
+    return conflict(validated, captured.conflict);
   }
 
-  const effect: FixOperationEffect = before.kind === "missing" ? "noop" : "remove";
+  const before = captured.state;
+  if (before.kind === "missing") {
+    return noop(validated);
+  }
+  if (before.kind === "directory" && !before.empty) {
+    return conflict(validated, "remove accepts only an empty directory");
+  }
+
+  spendBudget(budget, before);
   return {
     before,
     operation,
-    preview: createPreview(
-      validated,
-      effect,
-      effect === "noop" ? "" : renderRemoveDiff(operation.path, before),
-    ),
+    preview: createPreview(validated, "remove", renderRemoveDiff(operation.path, before)),
     type: "remove",
   };
 }
@@ -150,37 +147,21 @@ async function prepareRemove(
 async function prepareMove(
   operation: MovePathOperation,
   validated: ValidatedOperation,
-): Promise<PreparedMoveOperation> {
-  const sourceBefore = await inspectPath(operation.sourcePath, validated.index);
-  const destinationBefore = await inspectPath(operation.destinationPath, validated.index);
+): Promise<PreparedOperation> {
+  // A rename neither shows contents nor restores them, so neither end is read.
+  const sourceBefore = await inspectPath(operation.sourcePath, validated.index, 0);
+  const destinationBefore = await inspectPath(operation.destinationPath, validated.index, 0);
 
   if (sourceBefore.kind === "missing") {
-    if (destinationBefore.kind === "missing") {
-      throw conflict(
-        validated,
-        operation.sourcePath,
-        "move source and destination are both missing",
-      );
-    }
-    return {
-      destinationBefore,
-      operation,
-      preview: createPreview(validated, "noop", ""),
-      sourceBefore,
-      type: "move",
-    };
+    return destinationBefore.kind === "missing"
+      ? conflict(validated, "move source and destination are both missing")
+      : noop(validated);
   }
-
-  if (sourceBefore.kind === "symlink") {
-    throw new FixPlanError(
-      "unsupported-path",
-      `move source must be a file or directory: ${operation.sourcePath}`,
-      validated.index,
-      operation.sourcePath,
-    );
+  if (sourceBefore.kind === "symlink" || sourceBefore.kind === "unsupported") {
+    return conflict(validated, "move source must be a file or directory");
   }
   if (destinationBefore.kind !== "missing") {
-    throw conflict(validated, operation.destinationPath, "move destination already exists");
+    return conflict(validated, "move destination already exists");
   }
 
   return {
@@ -199,39 +180,35 @@ async function prepareMove(
 async function prepareSymlink(
   operation: SymlinkOperation,
   validated: ValidatedOperation,
-): Promise<PreparedSymlinkOperation> {
-  const before = await inspectPath(operation.path, validated.index);
-  if (before.kind === "directory") {
-    throw conflict(validated, operation.path, "cannot replace a directory with a symbolic link");
+  budget: RetentionBudget,
+): Promise<PreparedOperation> {
+  const captured = await captureBefore(
+    validated,
+    operation.path,
+    budget,
+    "replaced with a symbolic link",
+  );
+  if ("conflict" in captured) {
+    return conflict(validated, captured.conflict);
   }
 
-  const unchanged = before.kind === "symlink" && before.target === operation.target;
+  const before = captured.state;
+  if (before.kind === "directory") {
+    return conflict(validated, "cannot replace a directory with a symbolic link");
+  }
+  if (before.kind === "symlink" && before.target === operation.target) {
+    return noop(validated);
+  }
+
+  spendBudget(budget, before);
   return {
     before,
     operation,
     preview: createPreview(
       validated,
-      unchanged ? "noop" : "symlink",
-      unchanged ? "" : renderSymlinkDiff(operation.path, before, operation.target),
+      "symlink",
+      renderSymlinkDiff(operation.path, before, operation.target),
     ),
     type: "symlink",
   };
-}
-
-function createPreview(
-  operation: ValidatedOperation,
-  effect: FixOperationEffect,
-  diff: string,
-): FixOperationPreview {
-  return Object.freeze({
-    diff,
-    effect,
-    index: operation.index,
-    operation: operation.operation,
-    paths: operation.paths,
-  });
-}
-
-function conflict(operation: ValidatedOperation, path: string, message: string): FixPlanError {
-  return new FixPlanError("path-conflict", `${message}: ${path}`, operation.index, path);
 }

@@ -5,6 +5,7 @@ import type { FixPlan } from "@tryaura/aura-sdk";
 import { afterEach, describe, expect, expectTypeOf, it } from "vitest";
 
 import {
+  applyFixPlan,
   executeFixPlan,
   type FixOperationEffect,
   type FixOperationPreview,
@@ -13,6 +14,8 @@ import {
   type FixPlanExecutionResult,
   type FixPlanPreview,
   type FixPlanPreviewOptions,
+  prepareFixPlan,
+  type PreparedFixPlan,
   previewFixPlan,
 } from "../index.js";
 import { createFixPlanFixture, type FixPlanFixture } from "./testing.js";
@@ -29,13 +32,16 @@ afterEach(async () => {
 
 describe("fix-plan execution", () => {
   it("exports the typed preview and execution contract", () => {
-    expectTypeOf<"create" | "noop" | "update">().toMatchTypeOf<FixOperationEffect>();
+    expectTypeOf<"conflict" | "create" | "noop" | "update">().toMatchTypeOf<FixOperationEffect>();
     expectTypeOf<FixOperationPreview["diff"]>().toEqualTypeOf<string>();
     expectTypeOf<"invalid-path" | "path-conflict">().toMatchTypeOf<FixPlanErrorCode>();
     expectTypeOf<FixPlanPreviewOptions["plan"]>().toEqualTypeOf<FixPlan>();
     expectTypeOf<FixPlanExecutionOptions["dryRun"]>().toEqualTypeOf<boolean | undefined>();
     expectTypeOf(previewFixPlan).returns.resolves.toEqualTypeOf<FixPlanPreview>();
     expectTypeOf(executeFixPlan).returns.resolves.toEqualTypeOf<FixPlanExecutionResult>();
+    expectTypeOf(prepareFixPlan).returns.resolves.toEqualTypeOf<PreparedFixPlan>();
+    expectTypeOf(applyFixPlan).returns.resolves.toEqualTypeOf<FixPlanExecutionResult>();
+    expectTypeOf<PreparedFixPlan["preview"]>().toEqualTypeOf<FixPlanPreview>();
   });
 
   it("previews and applies every operation through one deterministic result", async () => {

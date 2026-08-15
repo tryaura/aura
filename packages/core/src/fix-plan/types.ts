@@ -1,10 +1,24 @@
 import type { FileOperation, FixPlan, WorkspaceModel } from "@tryaura/aura-sdk";
 
-/** The filesystem effect represented by one operation preview. */
-export type FixOperationEffect = "create" | "move" | "noop" | "remove" | "symlink" | "update";
+/**
+ * The filesystem effect represented by one operation preview.
+ *
+ * `conflict` means the operation cannot run against the current filesystem. It is reported rather
+ * than thrown so a preview can still show every other operation in the plan.
+ */
+export type FixOperationEffect =
+  | "conflict"
+  | "create"
+  | "move"
+  | "noop"
+  | "remove"
+  | "symlink"
+  | "update";
 
 /** A rendered, structured preview of one operation in a fix plan. */
 export interface FixOperationPreview {
+  /** Why the operation cannot run, when `effect` is `conflict`. */
+  readonly conflict?: string | undefined;
   /** Deterministic unified diff or metadata-oriented change description. */
   readonly diff: string;
   /** What applying the operation would do against the current filesystem. */
@@ -19,11 +33,13 @@ export interface FixOperationPreview {
 
 /** A complete fix plan rendered against the current filesystem. */
 export interface FixPlanPreview {
-  /** Operations that would change the filesystem. */
+  /** Operations that would change the filesystem. Excludes no-ops and conflicts. */
   readonly changedOperationCount: number;
+  /** Operations blocked by the current filesystem state. A plan with any of these cannot be applied. */
+  readonly conflictedOperationCount: number;
   /** Steps that remain for the user after automated operations finish. */
   readonly manualSteps: readonly string[];
-  /** One preview per source operation, including no-ops. */
+  /** One preview per source operation, including no-ops and conflicts. */
   readonly operations: readonly FixOperationPreview[];
   /** The plugin-authored plan summary. */
   readonly summary: string;
@@ -31,6 +47,14 @@ export interface FixPlanPreview {
 
 /** Inputs required to render a fix plan. */
 export interface FixPlanPreviewOptions {
+  /**
+   * Absolute directories under the home directory a plan may write to.
+   *
+   * Defaults to the directories the detected adapters declared as global-scope configuration, so
+   * the writable surface tracks the applications actually installed. Every entry must sit strictly
+   * inside {@link WorkspaceModel.homeDir}; the home directory itself is never an allowed root.
+   */
+  readonly managedHomeRoots?: readonly string[] | undefined;
   readonly model: WorkspaceModel;
   readonly plan: FixPlan;
 }
@@ -55,26 +79,112 @@ export interface FixPlanExecutionResult {
 export type FixPlanErrorCode =
   | "filesystem-changed"
   | "filesystem-error"
+  | "invalid-options"
   | "invalid-path"
   | "path-conflict"
-  | "unsupported-path";
+  | "plan-blocked";
 
-/** A validation or execution failure tied to a particular plan operation. */
+/** Extra context attached to a {@link FixPlanError}. */
+export interface FixPlanErrorDetails {
+  /** The underlying failure, when one exists. Carries the original `errno` code for I/O errors. */
+  readonly cause?: unknown;
+  /** The operation the failure belongs to, when it belongs to one. */
+  readonly operationIndex?: number | undefined;
+  /** The path the failure concerns. */
+  readonly path?: string | undefined;
+}
+
+/** A validation or execution failure, usually tied to a particular plan operation. */
 export class FixPlanError extends Error {
   readonly code: FixPlanErrorCode;
-  readonly operationIndex: number;
+  readonly operationIndex?: number | undefined;
   readonly path?: string | undefined;
+  /** The `errno` code of the underlying I/O failure, when the cause was one. */
+  readonly systemErrorCode?: string | undefined;
 
-  constructor(
-    code: FixPlanErrorCode,
-    message: string,
-    operationIndex: number,
-    path?: string | undefined,
-  ) {
-    super(`Fix operation ${operationIndex}: ${message}`);
+  constructor(code: FixPlanErrorCode, message: string, details: FixPlanErrorDetails = {}) {
+    super(message, { cause: details.cause });
     this.name = "FixPlanError";
     this.code = code;
-    this.operationIndex = operationIndex;
-    this.path = path;
+    this.operationIndex = details.operationIndex;
+    this.path = details.path;
+    this.systemErrorCode = errorCode(details.cause);
   }
+}
+
+/** Whether a partially applied plan was successfully unwound. */
+export type FixPlanRollbackStatus = "complete" | "failed" | "not-required";
+
+/**
+ * A failure raised after execution began.
+ *
+ * Separate from {@link FixPlanError} because the question a caller has at this point is not "what
+ * went wrong" but "what is on disk now".
+ */
+export class FixPlanApplyError extends FixPlanError {
+  /** Operations still applied once rollback finished. Zero unless `rollback` is `failed`. */
+  readonly appliedOperationCount: number;
+  /** Whether the operations applied before the failure were unwound. */
+  readonly rollback: FixPlanRollbackStatus;
+  /** One message per operation that could not be unwound, in the order rollback attempted them. */
+  readonly rollbackFailures: readonly string[];
+
+  constructor(
+    failure: FixPlanError,
+    rollback: FixPlanRollbackStatus,
+    appliedOperationCount: number,
+    rollbackFailures: readonly string[],
+  ) {
+    super(
+      failure.code,
+      `${failure.message} (${rollbackSummary(rollback, appliedOperationCount)})`,
+      {
+        cause: failure,
+        operationIndex: failure.operationIndex,
+        path: failure.path,
+      },
+    );
+    this.name = "FixPlanApplyError";
+    this.appliedOperationCount = appliedOperationCount;
+    this.rollback = rollback;
+    this.rollbackFailures = Object.freeze([...rollbackFailures]);
+  }
+}
+
+/** Builds an error attributed to one operation, with the operation named in the message. */
+export function operationError(
+  code: FixPlanErrorCode,
+  operationIndex: number,
+  message: string,
+  details: Omit<FixPlanErrorDetails, "operationIndex"> = {},
+): FixPlanError {
+  return new FixPlanError(code, `Fix operation ${operationIndex}: ${message}`, {
+    ...details,
+    operationIndex,
+  });
+}
+
+function rollbackSummary(rollback: FixPlanRollbackStatus, appliedOperationCount: number): string {
+  switch (rollback) {
+    case "complete": {
+      return "earlier operations were rolled back";
+    }
+    case "failed": {
+      return `rollback failed; ${appliedOperationCount} operation(s) remain applied`;
+    }
+    case "not-required": {
+      return "nothing had been applied";
+    }
+  }
+}
+
+/** The `errno` code of a Node filesystem failure, when the value is one. */
+export function errorCode(error: unknown): string | undefined {
+  return error instanceof Error && "code" in error && typeof error.code === "string"
+    ? error.code
+    : undefined;
+}
+
+export function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
