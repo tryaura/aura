@@ -12,11 +12,6 @@
 #   AURA_INSTALL_DIR   where to install (default: $HOME/.aura/bin)
 #   AURA_VERSION       release tag to install (default: latest)
 
-set -eu
-
-REPO="tryaura/aura"
-INSTALL_DIR="${AURA_INSTALL_DIR:-$HOME/.aura/bin}"
-
 abort() {
   printf 'aura: %s\n' "$1" >&2
   exit 1
@@ -26,114 +21,126 @@ require() {
   command -v "$1" >/dev/null 2>&1 || abort "'$1' is required but was not found on PATH."
 }
 
-require curl
-require tar
+main() {
+  set -eu
 
-# ----- platform -------------------------------------------------------------
+  REPO="tryaura/aura"
+  INSTALL_DIR="${AURA_INSTALL_DIR:-$HOME/.aura/bin}"
 
-os=$(uname -s)
-case "$os" in
-  Darwin) os="darwin" ;;
-  Linux) os="linux" ;;
-  *) abort "unsupported operating system '$os'. Aura ships macOS and Linux binaries; see https://github.com/$REPO/releases" ;;
-esac
+  require curl
+  require tar
 
-arch=$(uname -m)
-case "$arch" in
-  x86_64 | amd64) arch="x64" ;;
-  arm64 | aarch64) arch="arm64" ;;
-  *) abort "unsupported architecture '$arch'." ;;
-esac
+  # ----- platform -----------------------------------------------------------
 
-target="${os}-${arch}"
+  os=$(uname -s)
+  case "$os" in
+    Darwin) os="darwin" ;;
+    Linux) os="linux" ;;
+    *) abort "unsupported operating system '$os'. Aura ships macOS and Linux binaries; see https://github.com/$REPO/releases" ;;
+  esac
 
-# ----- version --------------------------------------------------------------
+  arch=$(uname -m)
+  case "$arch" in
+    x86_64 | amd64) arch="x64" ;;
+    arm64 | aarch64) arch="arm64" ;;
+    *) abort "unsupported architecture '$arch'." ;;
+  esac
 
-version="${AURA_VERSION:-}"
+  target="${os}-${arch}"
 
-if [ -z "$version" ]; then
-  # Resolve the latest tag from the release redirect rather than the API, which is rate limited
-  # for unauthenticated callers.
-  resolved=$(curl -fsSLI -o /dev/null -w '%{url_effective}' "https://github.com/$REPO/releases/latest" 2>/dev/null) ||
-    abort "could not reach GitHub to resolve the latest release."
-  version="${resolved##*/}"
-fi
+  # ----- version ------------------------------------------------------------
 
-case "$version" in
-  v*) ;;
-  '') abort "could not determine a release version to install." ;;
-  *) version="v$version" ;;
-esac
+  version="${AURA_VERSION:-}"
 
-archive="aura-${target}.tar.gz"
-base="https://github.com/$REPO/releases/download/$version"
+  if [ -z "$version" ]; then
+    # Resolve the latest tag from the release redirect rather than the API, which is rate limited
+    # for unauthenticated callers.
+    resolved=$(curl -fsSLI -o /dev/null -w '%{url_effective}' "https://github.com/$REPO/releases/latest" 2>/dev/null) ||
+      abort "could not reach GitHub to resolve the latest release."
+    version="${resolved##*/}"
+  fi
 
-# ----- download and verify --------------------------------------------------
+  case "$version" in
+    v*) ;;
+    '') abort "could not determine a release version to install." ;;
+    *) version="v$version" ;;
+  esac
 
-tmp=$(mktemp -d)
-trap 'rm -rf "$tmp"' EXIT INT TERM
+  archive="aura-${target}.tar.gz"
+  base="https://github.com/$REPO/releases/download/$version"
 
-printf 'aura: downloading %s %s\n' "$version" "$target"
+  # ----- download and verify ------------------------------------------------
 
-curl -fsSL "$base/$archive" -o "$tmp/$archive" ||
-  abort "no release asset '$archive' for $version. See https://github.com/$REPO/releases"
-curl -fsSL "$base/SHA256SUMS" -o "$tmp/SHA256SUMS" ||
-  abort "could not download SHA256SUMS for $version. Refusing to install unverified binary."
+  tmp=$(mktemp -d)
+  trap 'rm -rf "$tmp"' EXIT INT TERM
 
-if command -v sha256sum >/dev/null 2>&1; then
-  checksum=$(sha256sum "$tmp/$archive" | cut -d' ' -f1)
-elif command -v shasum >/dev/null 2>&1; then
-  checksum=$(shasum -a 256 "$tmp/$archive" | cut -d' ' -f1)
-else
-  abort "neither 'sha256sum' nor 'shasum' is available; cannot verify the download."
-fi
+  printf 'aura: downloading %s %s\n' "$version" "$target"
 
-# Exact filename match. A grep pattern would treat the dots in the archive name as wildcards.
-expected=$(awk -v want="$archive" '{ name = $2; sub(/^\*/, "", name); if (name == want) { print $1; exit } }' "$tmp/SHA256SUMS")
+  curl -fsSL "$base/$archive" -o "$tmp/$archive" ||
+    abort "could not download release asset '$archive' for $version. See https://github.com/$REPO/releases"
+  curl -fsSL "$base/SHA256SUMS" -o "$tmp/SHA256SUMS" ||
+    abort "could not download SHA256SUMS for $version. Refusing to install unverified binary."
 
-[ -n "$expected" ] || abort "'$archive' is not listed in SHA256SUMS for $version."
+  if command -v sha256sum >/dev/null 2>&1; then
+    checksum=$(sha256sum "$tmp/$archive" | cut -d' ' -f1)
+  elif command -v shasum >/dev/null 2>&1; then
+    checksum=$(shasum -a 256 "$tmp/$archive" | cut -d' ' -f1)
+  else
+    abort "neither 'sha256sum' nor 'shasum' is available; cannot verify the download."
+  fi
 
-if [ "$checksum" != "$expected" ]; then
-  abort "checksum mismatch for $archive.
+  # Exact filename match. A grep pattern would treat the dots in the archive name as wildcards.
+  expected=$(awk -v want="$archive" '{ name = $2; sub(/^\*/, "", name); if (name == want) { print $1; exit } }' "$tmp/SHA256SUMS")
+
+  [ -n "$expected" ] || abort "'$archive' is not listed in SHA256SUMS for $version."
+
+  if [ "$checksum" != "$expected" ]; then
+    abort "checksum mismatch for $archive.
   expected: $expected
   actual:   $checksum
 Do not use this download."
-fi
+  fi
 
-printf 'aura: checksum verified\n'
+  printf 'aura: checksum verified\n'
 
-# ----- install --------------------------------------------------------------
+  # ----- install ------------------------------------------------------------
 
-tar -xzf "$tmp/$archive" -C "$tmp"
+  tar -xzf "$tmp/$archive" -C "$tmp"
 
-[ -f "$tmp/aura" ] || abort "archive did not contain an 'aura' binary."
+  [ -f "$tmp/aura" ] || abort "archive did not contain an 'aura' binary."
 
-mkdir -p "$INSTALL_DIR"
-mv "$tmp/aura" "$INSTALL_DIR/aura"
-chmod 755 "$INSTALL_DIR/aura"
+  mkdir -p "$INSTALL_DIR"
+  mv "$tmp/aura" "$INSTALL_DIR/aura"
+  chmod 755 "$INSTALL_DIR/aura"
 
-printf 'aura: installed to %s/aura\n' "$INSTALL_DIR"
+  printf 'aura: installed to %s/aura\n' "$INSTALL_DIR"
 
-# ----- PATH -----------------------------------------------------------------
+  # ----- PATH ---------------------------------------------------------------
 
-case ":${PATH}:" in
-  *":$INSTALL_DIR:"*)
-    printf 'aura: run `aura --version` to get started.\n'
-    ;;
-  *)
-    case "${SHELL##*/}" in
-      zsh) profile="~/.zshrc" ;;
-      bash) profile="~/.bashrc" ;;
-      fish) profile="~/.config/fish/config.fish" ;;
-      *) profile="your shell profile" ;;
-    esac
+  case ":${PATH}:" in
+    *":$INSTALL_DIR:"*)
+      printf 'aura: run `aura --version` to get started.\n'
+      ;;
+    *)
+      shell_name="${SHELL:-}"
+      shell_name="${shell_name##*/}"
 
-    printf '\naura: %s is not on your PATH. Add this line to %s:\n\n' "$INSTALL_DIR" "$profile"
+      case "$shell_name" in
+        zsh) profile="~/.zshrc" ;;
+        bash) profile="~/.bashrc" ;;
+        fish) profile="~/.config/fish/config.fish" ;;
+        *) profile="your shell profile" ;;
+      esac
 
-    if [ "${SHELL##*/}" = "fish" ]; then
-      printf '  fish_add_path %s\n\n' "$INSTALL_DIR"
-    else
-      printf '  export PATH="%s:$PATH"\n\n' "$INSTALL_DIR"
-    fi
-    ;;
-esac
+      printf '\naura: %s is not on your PATH. Add this line to %s:\n\n' "$INSTALL_DIR" "$profile"
+
+      if [ "$shell_name" = "fish" ]; then
+        printf '  fish_add_path %s\n\n' "$INSTALL_DIR"
+      else
+        printf '  export PATH="%s:$PATH"\n\n' "$INSTALL_DIR"
+      fi
+      ;;
+  esac
+}
+
+main "$@"
