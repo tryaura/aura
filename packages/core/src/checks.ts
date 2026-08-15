@@ -42,16 +42,19 @@ export function runChecks(checks: readonly Check[], model: WorkspaceModel): Chec
   const findings: Finding[] = [];
 
   for (const check of checks) {
-    let detected: readonly DetectedFinding[];
+    const detectedFindings: Finding[] = [];
     try {
-      detected = check.detect(model);
+      const detected = check.detect(model);
+      for (const finding of detected) {
+        detectedFindings.push(toFinding(check, finding));
+      }
     } catch (error) {
       diagnostics.push(failure(check, error));
       continue;
     }
 
-    for (const finding of detected) {
-      findings.push(toFinding(check, finding));
+    for (const finding of detectedFindings) {
+      findings.push(finding);
     }
   }
 

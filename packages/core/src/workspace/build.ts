@@ -182,10 +182,10 @@ async function scanAdapter(adapter: Adapter, context: ScanContext): Promise<Adap
   try {
     const parsed = adapter.parse({ detection, files });
     snapshot = {
-      instructionFiles: parsed.instructionFiles,
-      mcpServers: parsed.mcpServers,
+      instructionFiles: await context.links.resolve(parsed.instructionFiles),
+      mcpServers: [...parsed.mcpServers],
       metadata: parsed.metadata,
-      skills: parsed.skills,
+      skills: [...parsed.skills],
     };
   } catch (error) {
     diagnostics.push(failure(adapter, "parse", error));
@@ -204,7 +204,7 @@ async function scanAdapter(adapter: Adapter, context: ScanContext): Promise<Adap
       adapterId: adapter.id,
       detection,
       displayName: adapter.displayName,
-      instructionFiles: await context.links.resolve(snapshot.instructionFiles),
+      instructionFiles: snapshot.instructionFiles,
       mcpServers: snapshot.mcpServers,
       metadata: snapshot.metadata,
       skills: snapshot.skills,
