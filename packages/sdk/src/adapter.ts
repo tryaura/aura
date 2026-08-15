@@ -108,7 +108,13 @@ export interface Adapter {
     environment: Environment,
     detection: AdapterDetection,
   ) => readonly AdapterFileSpec[];
-  /** Stable adapter identifier, unique across all loaded plugins. */
+  /**
+   * Stable adapter identifier, unique across all loaded plugins.
+   *
+   * Unlike every other contribution id, this one is deliberately not namespaced by the owning
+   * {@link AuraPlugin.id}: it names the application itself, such as `"claude-code"`. Two plugins
+   * teaching Aura to read the same application must collide rather than coexist.
+   */
   readonly id: string;
   /**
    * Normalizes the supplied file contents.
