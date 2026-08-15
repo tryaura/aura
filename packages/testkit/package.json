@@ -47,6 +47,7 @@
     "diff": "^9.0.0"
   },
   "devDependencies": {
+    "@tryaura/adapter-claude-code": "workspace:*",
     "@tryaura/core": "workspace:*",
     "@types/node": "24.13.3",
     "vitest": "4.1.10"
