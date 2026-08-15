@@ -1,8 +1,6 @@
 import type {
   Adapter,
   AdapterDetection,
-  AdapterFileMap,
-  AdapterFileSpec,
   AdapterFileStatus,
   AdapterSnapshot,
   AdapterSourceFile,
@@ -12,10 +10,10 @@ import type {
 } from "@tryaura/aura-sdk";
 
 import { describeFailure, type ScanDiagnostic, type ScanPhase } from "./diagnostics.js";
+import { type AdapterFileDiscovery, discoverAdapterFiles } from "./discovery.js";
 import { createLinkResolver, type LinkResolver } from "./links.js";
 import { findProjectRoot } from "./project-root.js";
 import { createCachingReader, createFileReader, type FileReader } from "./reader.js";
-import { readSpec } from "./specs.js";
 import { evaluateSupport, isComparableRange } from "./support.js";
 
 /** Everything {@link buildWorkspaceModel} needs. */
@@ -165,7 +163,12 @@ async function scanAdapter(adapter: Adapter, context: ScanContext): Promise<Adap
 
   let discovery: AdapterFileDiscovery;
   try {
-    discovery = await discoverAdapterFiles(adapter, detection, context);
+    discovery = await discoverAdapterFiles(adapter, {
+      detection,
+      environment: context.environment,
+      projectBoundary: await context.projectBoundary,
+      reader: context.reader,
+    });
   } catch (error) {
     return { diagnostics: [failure(adapter, "files", error)] };
   }
@@ -214,92 +217,6 @@ async function scanAdapter(adapter: Adapter, context: ScanContext): Promise<Adap
     },
     diagnostics,
   };
-}
-
-/** The most times core asks one adapter to expand its file declarations. */
-const MAX_ADAPTER_FILE_ROUNDS = 16;
-
-/** The most paths one adapter may ask core to inspect in a scan. */
-const MAX_ADAPTER_FILES = 10_000;
-
-interface AdapterFileDiscovery {
-  readonly diagnostics: readonly ScanDiagnostic[];
-  readonly files: AdapterFileMap;
-}
-
-/**
- * Calls an adapter until its file declarations reach a fixed point, reading each spec exactly once.
- *
- * A fresh map snapshot is passed on every call so a plugin cannot mutate core's accumulated state.
- * Adapters may return their complete declaration set or only newly discovered specs. Repeated ids
- * must describe the same slot; declaration order is the order retained in the resulting map.
- */
-async function discoverAdapterFiles(
-  adapter: Adapter,
-  detection: AdapterDetection,
-  context: ScanContext,
-): Promise<AdapterFileDiscovery> {
-  const diagnostics: ScanDiagnostic[] = [];
-  const files = new Map<string, AdapterSourceFile>();
-  const specs = new Map<string, AdapterFileSpec>();
-  const projectBoundary = await context.projectBoundary;
-
-  for (let round = 0; round < MAX_ADAPTER_FILE_ROUNDS; round += 1) {
-    const declared = adapter.files(context.environment, detection, new Map(files));
-    const returnedIds = new Set<string>();
-    const newSpecs: AdapterFileSpec[] = [];
-
-    for (const spec of declared) {
-      if (returnedIds.has(spec.id)) {
-        throw new Error(`declared duplicate file spec id "${spec.id}" in one discovery round`);
-      }
-      returnedIds.add(spec.id);
-
-      const previous = specs.get(spec.id);
-      if (previous !== undefined) {
-        if (!sameSpec(previous, spec)) {
-          throw new Error(`redeclared file spec id "${spec.id}" with a different definition`);
-        }
-        continue;
-      }
-
-      newSpecs.push(spec);
-    }
-
-    if (newSpecs.length === 0) {
-      return { diagnostics, files };
-    }
-    if (round === MAX_ADAPTER_FILE_ROUNDS - 1) {
-      throw new Error(`file discovery did not stabilize within ${MAX_ADAPTER_FILE_ROUNDS} rounds`);
-    }
-    if (specs.size + newSpecs.length > MAX_ADAPTER_FILES) {
-      throw new Error(`declared more than ${MAX_ADAPTER_FILES} file specs`);
-    }
-
-    for (const spec of newSpecs) {
-      specs.set(spec.id, spec);
-    }
-
-    const reads = await Promise.all(
-      newSpecs.map((spec) => readSpec(spec, { adapter, projectBoundary, reader: context.reader })),
-    );
-    for (const read of reads) {
-      files.set(read.file.spec.id, read.file);
-      diagnostics.push(...read.diagnostics);
-    }
-  }
-
-  throw new Error(`file discovery did not stabilize within ${MAX_ADAPTER_FILE_ROUNDS} rounds`);
-}
-
-function sameSpec(left: AdapterFileSpec, right: AdapterFileSpec): boolean {
-  return (
-    left.id === right.id &&
-    left.kind === right.kind &&
-    left.optional === right.optional &&
-    left.path === right.path &&
-    left.scope === right.scope
-  );
 }
 
 /** What an application contributes when its adapter failed to parse anything. */

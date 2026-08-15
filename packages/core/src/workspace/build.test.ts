@@ -107,7 +107,7 @@ describe("buildWorkspaceModel", () => {
     ]);
   });
 
-  it("hands parse one entry per declared spec, in order, with directories listed", async () => {
+  it("hands parse spec-keyed files, resolution context, and directory listings", async () => {
     let received: AdapterParseInput | undefined;
     const adapter = createTestAdapter({
       files: () => [SKILLS, INSTRUCTIONS],
@@ -129,22 +129,32 @@ describe("buildWorkspaceModel", () => {
     });
 
     expect(received?.detection).toEqual({ installed: true, version: "1.0.0" });
-    expect(received?.files).toStrictEqual([
-      {
-        content: undefined,
-        entries: ["review", "summarize"],
-        exists: true,
-        problem: undefined,
-        spec: SKILLS,
-      },
-      {
-        content: "# instructions",
-        entries: undefined,
-        exists: true,
-        problem: undefined,
-        spec: INSTRUCTIONS,
-      },
-    ]);
+    expect(received?.cwd).toBe("/workspace");
+    expect(received?.homeDir).toBe("/home/dev");
+    expect(received?.files).toStrictEqual(
+      new Map([
+        [
+          "skills",
+          {
+            content: undefined,
+            entries: ["review", "summarize"],
+            exists: true,
+            problem: undefined,
+            spec: SKILLS,
+          },
+        ],
+        [
+          "instructions",
+          {
+            content: "# instructions",
+            entries: undefined,
+            exists: true,
+            problem: undefined,
+            spec: INSTRUCTIONS,
+          },
+        ],
+      ]),
+    );
   });
 
   it("lets an adapter turn a listed skills directory into installed skills", async () => {
@@ -153,7 +163,7 @@ describe("buildWorkspaceModel", () => {
       id: "alpha",
       parse: (input) =>
         createSnapshot({
-          skills: (input.files[0]?.entries ?? []).map((name) => ({
+          skills: (input.files.get("skills")?.entries ?? []).map((name) => ({
             appId: "alpha",
             id: `alpha/${name}`,
             name,
