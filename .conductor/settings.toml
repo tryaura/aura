@@ -1,0 +1,27 @@
+"$schema" = "https://conductor.build/schemas/settings.repo.schema.json"
+
+[scripts]
+setup = ". .conductor/scripts/toolchain.sh && pnpm install"
+# Every Conductor workspace serves on its own allocated port and shares no database or container,
+# so workspaces can run side by side.
+run_mode = "concurrent"
+
+# The marketing page and the docs are one Astro app: `/` is the landing page and `/docs/*` is
+# Starlight. A single dev server serves both, so there is deliberately not a separate docs script.
+[scripts.run.web]
+# CONDUCTOR_PORT is only set in local workspaces, so this script is hidden in cloud ones.
+available_in = ["local"]
+command = ". .conductor/scripts/toolchain.sh && pnpm --filter @tryaura/web exec astro dev --port $CONDUCTOR_PORT"
+default = true
+icon = "globe"
+
+# Production-like check: builds the static site and serves it through the local Workers runtime,
+# so custom 404 handling and asset headers behave the way they will on tryaura.sh.
+[scripts.run.preview]
+available_in = ["local"]
+command = ". .conductor/scripts/toolchain.sh && pnpm --filter @tryaura/web build && pnpm --filter @tryaura/web exec wrangler dev --port $((CONDUCTOR_PORT + 1))"
+icon = "cloud"
+
+[scripts.run.verify]
+command = ". .conductor/scripts/toolchain.sh && pnpm verify"
+icon = "circle-check"

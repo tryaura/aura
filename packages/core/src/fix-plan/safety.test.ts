@@ -13,6 +13,7 @@ import { createFixPlanFixture, type FixPlanFixture } from "./testing.js";
 
 const temporaryDirectories: string[] = [];
 const restoreModes: string[] = [];
+const now = (): Date => new Date("2026-08-15T00:00:00.000Z");
 
 afterEach(async () => {
   // A directory stripped of write permission has to get it back before it can be removed.
@@ -134,7 +135,7 @@ describe("fix-plan path safety", () => {
       summary: "Reject before writes.",
     };
 
-    await expect(executeFixPlan({ model: fixture.model, plan })).rejects.toBeInstanceOf(
+    await expect(executeFixPlan({ model: fixture.model, now, plan })).rejects.toBeInstanceOf(
       FixPlanError,
     );
     await expect(lstat(validPath)).rejects.toHaveProperty("code", "ENOENT");
@@ -173,7 +174,7 @@ describe("fix-plan path safety", () => {
     expect(preview.operations[2]?.conflict).toContain("destination already exists");
 
     // A blocked plan is refused whole, so the one good operation does not land on its own.
-    await expect(executeFixPlan({ model: fixture.model, plan })).rejects.toMatchObject({
+    await expect(executeFixPlan({ model: fixture.model, now, plan })).rejects.toMatchObject({
       code: "plan-blocked",
       operationIndex: 1,
     });

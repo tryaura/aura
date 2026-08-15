@@ -6,9 +6,14 @@ export {
   prepareFixPlan,
   previewFixPlan,
 } from "./fix-plan/execute.js";
+export { listFixPlanBackups, undoFixPlan } from "./fix-plan/undo.js";
 export type { PreparedFixPlan } from "./fix-plan/execute.js";
-export { FixPlanApplyError, FixPlanError } from "./fix-plan/types.js";
+export { FixPlanApplyError, FixPlanError, FixPlanUndoError } from "./fix-plan/types.js";
 export type {
+  FixPlanApplyOptions,
+  FixPlanBackup,
+  FixPlanBackupListOptions,
+  FixPlanBackupStatus,
   FixOperationEffect,
   FixOperationPreview,
   FixPlanErrorCode,
@@ -17,6 +22,8 @@ export type {
   FixPlanPreview,
   FixPlanPreviewOptions,
   FixPlanRollbackStatus,
+  FixPlanUndoOptions,
+  FixPlanUndoResult,
 } from "./fix-plan/types.js";
 export {
   AURA_MANAGED_BLOCK_BEGIN,
