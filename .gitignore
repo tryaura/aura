@@ -10,3 +10,7 @@ coverage/
 
 # TypeScript
 *.tsbuildinfo
+
+# Astro generated types and Wrangler local state
+.astro/
+.wrangler/

@@ -3,6 +3,7 @@
   "categories": {
     "correctness": "error"
   },
+  "ignorePatterns": ["**/.astro/**", "**/dist/**"],
   "options": {
     "denyWarnings": true,
     "reportUnusedDisableDirectives": "error"

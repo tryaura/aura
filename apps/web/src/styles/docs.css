@@ -1,0 +1,6 @@
+/* Starlight theme overrides. Keep this file limited to tokens so the docs stay close to
+   upstream defaults and pick up Starlight changes without manual reconciliation. */
+:root {
+  --sl-font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --sl-font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+}

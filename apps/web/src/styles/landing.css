@@ -1,0 +1,218 @@
+/* Landing page only. The docs at /docs are styled by Starlight; see docs.css for those tokens. */
+
+:root {
+  --ink: #17171b;
+  --ink-muted: #55555e;
+  --rule: #e7e7ec;
+  --surface: #ffffff;
+  --surface-sunken: #fafafb;
+  --accent: oklch(0.45 0.09 265);
+  --measure: 34rem;
+  --frame: 66rem;
+  --gutter: clamp(1.25rem, 5vw, 4rem);
+  --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: 1rem;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 3px;
+}
+
+.site-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 2rem;
+  max-width: var(--frame);
+  margin-inline: auto;
+  padding: 2.25rem var(--gutter);
+}
+
+.wordmark {
+  font-family: var(--font-mono);
+  font-size: 1.0625rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.site-nav {
+  display: flex;
+  gap: 2rem;
+  font-size: 0.9375rem;
+}
+
+.quiet-link {
+  color: var(--ink-muted);
+  text-decoration: none;
+}
+
+.quiet-link:hover {
+  color: var(--ink);
+}
+
+main {
+  max-width: var(--frame);
+  margin-inline: auto;
+  padding-inline: var(--gutter);
+}
+
+.hero {
+  max-width: var(--measure);
+  margin: clamp(5rem, 16vh, 10rem) auto clamp(7rem, 18vh, 12rem);
+  text-align: center;
+}
+
+.hero-title {
+  margin: 0;
+  font-size: clamp(2.125rem, 5.5vw, 3.25rem);
+  font-weight: 500;
+  line-height: 1.12;
+  letter-spacing: -0.022em;
+  text-wrap: balance;
+}
+
+.lede {
+  margin: 2rem 0 0;
+  color: var(--ink-muted);
+  font-size: 1.0625rem;
+  line-height: 1.65;
+  text-wrap: pretty;
+}
+
+.install {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 3.5rem;
+  padding: 1rem 1rem 1rem 1.25rem;
+  border: 1px solid var(--rule);
+  border-radius: 0.5rem;
+  background: var(--surface-sunken);
+}
+
+.install-command {
+  flex: 1;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.copy-button {
+  flex-shrink: 0;
+  padding: 0.4375rem 0.875rem;
+  border: 1px solid var(--rule);
+  border-radius: 0.375rem;
+  background: var(--surface);
+  color: var(--ink-muted);
+  font: inherit;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.copy-button:hover {
+  color: var(--ink);
+  border-color: var(--ink-muted);
+}
+
+.install-note {
+  margin: 1.125rem 0 0;
+  color: var(--ink-muted);
+  font-size: 0.875rem;
+}
+
+.features {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: clamp(3rem, 8vw, 7rem);
+  row-gap: clamp(4rem, 10vh, 6rem);
+  margin-bottom: clamp(7rem, 18vh, 12rem);
+}
+
+.feature {
+  max-width: 26rem;
+}
+
+.feature:nth-child(even) {
+  margin-top: 4.5rem;
+}
+
+.feature-index {
+  margin: 0 0 1rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  color: var(--ink-muted);
+}
+
+.feature-title {
+  margin: 0 0 0.75rem;
+  font-size: 1.0625rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.feature-body {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: 0.9375rem;
+  line-height: 1.65;
+  text-wrap: pretty;
+}
+
+.site-footer {
+  border-top: 1px solid var(--rule);
+}
+
+.footer-nav {
+  display: flex;
+  gap: 2rem;
+  max-width: var(--frame);
+  margin-inline: auto;
+  padding: 2.5rem var(--gutter);
+  font-size: 0.875rem;
+}
+
+@media (max-width: 44rem) {
+  .features {
+    grid-template-columns: 1fr;
+    row-gap: 4rem;
+  }
+
+  .feature:nth-child(even) {
+    margin-top: 0;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .quiet-link,
+  .copy-button {
+    transition:
+      color 120ms ease,
+      border-color 120ms ease;
+  }
+}
