@@ -2,11 +2,18 @@
   "name": "@tryaura/aura",
   "version": "0.0.0",
   "private": true,
+  "bin": {
+    "aura": "./dist/main.js"
+  },
   "type": "module",
   "scripts": {
+    "build": "tsc",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@tryaura/aura-cli": "workspace:*"
+  },
+  "engines": {
+    "node": ">=24"
   }
 }

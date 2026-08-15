@@ -10,7 +10,7 @@ import type {
   WorkspaceModel,
 } from "@tryaura/aura-sdk";
 
-import type { ScanDiagnostic, ScanPhase } from "./diagnostics.js";
+import { describeFailure, type ScanDiagnostic, type ScanPhase } from "./diagnostics.js";
 import { createLinkResolver, type LinkResolver } from "./links.js";
 import { findProjectRoot } from "./project-root.js";
 import { createCachingReader, createFileReader, type FileReader } from "./reader.js";
@@ -228,23 +228,11 @@ function toStatus(file: AdapterSourceFile): AdapterFileStatus {
   return { exists: file.exists, problem: file.problem, spec: file.spec };
 }
 
-/** How much of a plugin's error text is kept, before it stops being a diagnostic and starts being a dump. */
-const MAX_DETAIL_CHARACTERS = 500;
-
-/**
- * Records a plugin failure without repeating what the plugin said.
- *
- * The thrown message goes to `detail` rather than into `message`, because it is untrusted content:
- * `JSON.parse` quotes the bytes it choked on, and the files Aura reads are the ones that hold API
- * tokens. Interpolating it here would print a secret in the default report.
- */
+/** Records a plugin failure without repeating what the plugin said. */
 function failure(adapter: Adapter, phase: ScanPhase, error: unknown): ScanDiagnostic {
-  const reason = error instanceof Error ? error.message : String(error);
-
   return {
     adapterId: adapter.id,
-    detail:
-      reason.length > MAX_DETAIL_CHARACTERS ? `${reason.slice(0, MAX_DETAIL_CHARACTERS)}…` : reason,
+    detail: describeFailure(error),
     message: `${adapter.displayName} failed during ${phase}. This is a bug in the ${adapter.id} adapter; report it to whoever ships the plugin.`,
     phase,
   };

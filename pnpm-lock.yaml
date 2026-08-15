@@ -57,27 +57,25 @@ importers:
 
   packages/cli:
     dependencies:
-      '@tryaura/adapter-claude-code':
-        specifier: workspace:*
-        version: link:../../plugins/adapter-claude-code
-      '@tryaura/adapter-codex':
-        specifier: workspace:*
-        version: link:../../plugins/adapter-codex
-      '@tryaura/adapter-cursor':
-        specifier: workspace:*
-        version: link:../../plugins/adapter-cursor
       '@tryaura/aura-sdk':
         specifier: workspace:*
         version: link:../sdk
-      '@tryaura/checks-core':
-        specifier: workspace:*
-        version: link:../../plugins/checks-core
-      '@tryaura/content-official':
-        specifier: workspace:*
-        version: link:../../plugins/content-official
       '@tryaura/core':
         specifier: workspace:*
         version: link:../core
+      clipanion:
+        specifier: 3.2.1
+        version: 3.2.1(typanion@3.14.0)
+      typanion:
+        specifier: 3.14.0
+        version: 3.14.0
+    devDependencies:
+      '@types/node':
+        specifier: 24.13.3
+        version: 24.13.3
+      vitest:
+        specifier: 4.1.10
+        version: 4.1.10(@types/node@24.13.3)(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0))
 
   packages/core:
     dependencies:
@@ -2190,6 +2188,11 @@ packages:
     resolution: {integrity: sha512-77PSwercCZU2Fc4sX94eF8k8Pxte6JAwL4/ICZLFjJLqegs7kCuAsqqj/70NQF6TvDpgFjkubQB2FW2ZZddvQg==}
     engines: {node: '>=8'}
 
+  clipanion@3.2.1:
+    resolution: {integrity: sha512-dYFdjLb7y1ajfxQopN05mylEpK9ZX0sO1/RfMXdfmwjlIsPkbh4p7A682x++zFPLDCo1x3p82dtljHf5cW2LKA==}
+    peerDependencies:
+      typanion: '*'
+
   cliui@8.0.1:
     resolution: {integrity: sha512-BSeNnyus75C4//NQ9gQt1/csTXyo/8Sb+afLAkzAptFuMsod9HFokGNudZpi/oQV73hnVK+sR+5PVRMd+Dr7YQ==}
     engines: {node: '>=12'}
@@ -3311,6 +3314,9 @@ packages:
 
   tslib@2.8.1:
     resolution: {integrity: sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w==}
+
+  typanion@3.14.0:
+    resolution: {integrity: sha512-ZW/lVMRabETuYCd9O9ZvMhAh8GslSqaUjxmK/JLPCh6l73CvLBiuXswj/+7LdnWOgYsQ130FqLzFz5aGT4I3Ug==}
 
   typesafe-path@0.2.2:
     resolution: {integrity: sha512-OJabfkAg1WLZSqJAJ0Z6Sdt3utnbzr/jh+NAHoyWHJe8CMSy79Gm085094M9nvTPy22KzTVn5Zq5mbapCI/hPA==}
@@ -5349,6 +5355,10 @@ snapshots:
 
   ci-info@4.4.0: {}
 
+  clipanion@3.2.1(typanion@3.14.0):
+    dependencies:
+      typanion: 3.14.0
+
   cliui@8.0.1:
     dependencies:
       string-width: 4.2.3
@@ -7094,6 +7104,8 @@ snapshots:
 
   tslib@2.8.1:
     optional: true
+
+  typanion@3.14.0: {}
 
   typesafe-path@0.2.2: {}
 

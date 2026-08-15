@@ -10,7 +10,7 @@
   },
   "overrides": [
     {
-      "files": ["packages/core/src/environment.ts"],
+      "files": ["packages/cli/src/run.ts", "packages/core/src/environment.ts"],
       "rules": {
         "no-restricted-imports": "off",
         "no-restricted-properties": "off",

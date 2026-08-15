@@ -26,3 +26,21 @@ export interface ScanDiagnostic {
   /** Where in the scan it happened. */
   readonly phase: ScanPhase;
 }
+
+/** How much of a plugin's error text is kept, before it stops being a diagnostic and starts being a dump. */
+const MAX_DETAIL_CHARACTERS = 500;
+
+/**
+ * Reduces a thrown value to the `detail` of a diagnostic.
+ *
+ * The text stays out of the diagnostic's `message` because it is untrusted: `JSON.parse` quotes the
+ * bytes it choked on, and the files Aura reads are the ones that hold API tokens. Interpolating it
+ * into a message would print a secret in the default report.
+ */
+export function describeFailure(error: unknown): string {
+  const reason = error instanceof Error ? error.message : String(error);
+
+  return reason.length > MAX_DETAIL_CHARACTERS
+    ? `${reason.slice(0, MAX_DETAIL_CHARACTERS)}…`
+    : reason;
+}
