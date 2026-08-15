@@ -15,6 +15,7 @@
     "verify:binary": "pnpm build:binary && pnpm test:binary"
   },
   "dependencies": {
+    "@tryaura/adapter-claude-code": "workspace:*",
     "@tryaura/aura-cli": "workspace:*"
   },
   "devDependencies": {
