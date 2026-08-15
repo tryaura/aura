@@ -144,6 +144,39 @@ describe("buildWorkspaceModel guards", () => {
     ]);
   });
 
+  it("keeps scanning when an adapter returns a document without links", async () => {
+    const document = createDocument("/home/dev/BROKEN.md");
+    Reflect.deleteProperty(document, "links");
+    const broken = createTestAdapter({
+      id: "broken",
+      parse: () => createSnapshot({ instructionFiles: [document] }),
+    });
+
+    const { diagnostics, model } = await buildWorkspaceModel({
+      adapters: [broken, working],
+      environment: createTestEnvironment(),
+      reader: createMemoryReader(),
+    });
+
+    expect(model.apps.map((app) => app.adapterId)).toEqual(["broken", "working"]);
+    expect(model.apps[0]).toMatchObject({
+      instructionFiles: [],
+      mcpServers: [],
+      skills: [],
+    });
+    expect(model.instructionFiles.map((instruction) => instruction.path)).toEqual([
+      "/home/dev/AGENTS.md",
+    ]);
+    expect(diagnostics).toMatchObject([
+      {
+        adapterId: "broken",
+        message:
+          "Fake broken failed during parse. This is a bug in the broken adapter; report it to whoever ships the plugin.",
+        phase: "parse",
+      },
+    ]);
+  });
+
   it("records an application that was looked for and not found", async () => {
     const absent = createTestAdapter({
       detect: () => Promise.resolve({ installed: false }),
