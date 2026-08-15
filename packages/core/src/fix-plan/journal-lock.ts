@@ -79,40 +79,49 @@ async function acquire(directory: string, now: () => Date): Promise<HeldLock> {
  */
 async function ensureLockDirectory(directory: string, now: () => Date): Promise<void> {
   while (true) {
-    try {
-      await mkdir(directory, { mode: 0o700 });
-      return;
-    } catch (error) {
-      if (errorCode(error) !== "EEXIST") {
-        throw error;
-      }
-    }
-
-    let state;
-    try {
-      state = await lstat(directory);
-    } catch (error) {
-      if (errorCode(error) === "ENOENT") {
-        continue;
-      }
-      throw error;
-    }
-    if (state.isDirectory()) {
+    const state = await lockDirectoryState(directory);
+    if (state === "ready") {
       return;
     }
-
+    if (state === "retry") {
+      continue;
+    }
     // Migrate a singleton lock created by an older Aura build. A competing migrator can replace the
     // file with the directory between these calls; rm without `recursive` cannot delete that directory.
     const observed = await inspectLock(directory, now);
     if (observed.kind !== "stale") {
       throw lockedError(directory);
     }
-    try {
-      await rm(directory);
-    } catch (error) {
-      if (errorCode(error) !== "ENOENT" && errorCode(error) !== "EISDIR") {
-        throw error;
-      }
+    await removeLegacyLock(directory);
+  }
+}
+
+async function lockDirectoryState(directory: string): Promise<"legacy" | "ready" | "retry"> {
+  try {
+    await mkdir(directory, { mode: 0o700 });
+    return "ready";
+  } catch (error) {
+    if (errorCode(error) !== "EEXIST") {
+      throw error;
+    }
+  }
+
+  try {
+    return (await lstat(directory)).isDirectory() ? "ready" : "legacy";
+  } catch (error) {
+    if (errorCode(error) === "ENOENT") {
+      return "retry";
+    }
+    throw error;
+  }
+}
+
+async function removeLegacyLock(path: string): Promise<void> {
+  try {
+    await rm(path);
+  } catch (error) {
+    if (errorCode(error) !== "ENOENT" && errorCode(error) !== "EISDIR") {
+      throw error;
     }
   }
 }
@@ -210,27 +219,44 @@ function parseOwner(text: string): LockOwner | undefined {
   } catch {
     return undefined;
   }
-  if (
-    typeof parsed !== "object" ||
-    parsed === null ||
-    !("acquiredAt" in parsed) ||
-    typeof parsed.acquiredAt !== "string" ||
-    !("acquiredAtMs" in parsed) ||
-    typeof parsed.acquiredAtMs !== "number" ||
-    !Number.isFinite(parsed.acquiredAtMs) ||
-    !("pid" in parsed) ||
-    typeof parsed.pid !== "number" ||
-    !Number.isInteger(parsed.pid) ||
-    parsed.pid <= 0
-  ) {
+  if (typeof parsed !== "object" || parsed === null) {
+    return undefined;
+  }
+  const acquiredAt = lockAcquiredAt(parsed);
+  const acquiredAtMs = lockAcquiredAtMs(parsed);
+  const pid = lockPid(parsed);
+  if (acquiredAt === undefined || acquiredAtMs === undefined || pid === undefined) {
     return undefined;
   }
   return {
-    acquiredAt: parsed.acquiredAt,
-    acquiredAtMs: parsed.acquiredAtMs,
+    acquiredAt,
+    acquiredAtMs,
     ownerId: "ownerId" in parsed && typeof parsed.ownerId === "string" ? parsed.ownerId : undefined,
-    pid: parsed.pid,
+    pid,
   };
+}
+
+function lockAcquiredAt(parsed: object): string | undefined {
+  return "acquiredAt" in parsed && typeof parsed.acquiredAt === "string"
+    ? parsed.acquiredAt
+    : undefined;
+}
+
+function lockAcquiredAtMs(parsed: object): number | undefined {
+  return "acquiredAtMs" in parsed &&
+    typeof parsed.acquiredAtMs === "number" &&
+    Number.isFinite(parsed.acquiredAtMs)
+    ? parsed.acquiredAtMs
+    : undefined;
+}
+
+function lockPid(parsed: object): number | undefined {
+  return "pid" in parsed &&
+    typeof parsed.pid === "number" &&
+    Number.isInteger(parsed.pid) &&
+    parsed.pid > 0
+    ? parsed.pid
+    : undefined;
 }
 
 function processIsAlive(pid: number): boolean {
