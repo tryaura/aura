@@ -1,17 +1,14 @@
-import { dirname, isAbsolute, join } from "node:path";
+import { dirname, join } from "node:path";
 
 import {
   defineAdapter,
-  type AdapterDetection,
+  detectExecutable,
   type AdapterFileSpec,
   type Environment,
-  type ExecResult,
 } from "@tryaura/aura-sdk";
 
 import { parseInstructionFile } from "./instructions.js";
 import { parseMcpServers } from "./mcp.js";
-
-const VERSION_PATTERN = /(?:^|\s|v)(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)/u;
 
 /** Path segments {@link globalFiles} appends to the home directory for the instruction file. */
 const GLOBAL_INSTRUCTIONS_SEGMENTS = Object.freeze([".claude", "CLAUDE.md"]);
@@ -22,7 +19,8 @@ const SOURCE_IDS = Object.freeze({
 });
 
 export const claudeCodeAdapter = defineAdapter({
-  detect: detectClaudeCode,
+  detect: (environment) =>
+    detectExecutable(environment, { authenticationArgs: ["auth", "status"], binaryName: "claude" }),
   displayName: "Claude Code",
   files: globalFiles,
   id: "claude-code",
@@ -41,60 +39,6 @@ export const claudeCodeAdapter = defineAdapter({
   },
   supportedRange: ">=2.1.0 <3.0.0",
 });
-
-/**
- * Walks the search path for an executable that identifies itself as Claude Code.
- *
- * A candidate is accepted only once `--version` reports a version Aura can parse. Treating any
- * exit code other than "missing" as success meant an unrelated `claude` on the path — or one that
- * hung until the timeout killed it — ended the walk and was reported as an installation, with
- * `auth status` already run against it.
- *
- * Duplicate path entries are skipped. Nothing here touches the filesystem: an adapter has no
- * reader, so probing an entry means running it, and running it once each is the floor.
- */
-async function detectClaudeCode(environment: Environment): Promise<AdapterDetection> {
-  const probed = new Set<string>();
-
-  for (const pathEntry of environment.pathEntries) {
-    if (!isAbsolute(pathEntry) || probed.has(pathEntry)) {
-      continue;
-    }
-    probed.add(pathEntry);
-
-    const executablePath = join(
-      pathEntry,
-      environment.platform === "win32" ? "claude.exe" : "claude",
-    );
-    const version = parseVersion(
-      await environment.exec({
-        args: ["--version"],
-        command: executablePath,
-        timeoutMs: 5_000,
-      }),
-    );
-
-    if (version === undefined) {
-      continue;
-    }
-
-    const authentication = await environment.exec({
-      args: ["auth", "status"],
-      command: executablePath,
-      timeoutMs: 5_000,
-    });
-    const authenticated = authenticationStatus(authentication.exitCode);
-
-    return {
-      executablePath,
-      installed: true,
-      version,
-      ...(authenticated === undefined ? {} : { authenticated }),
-    };
-  }
-
-  return { installed: false };
-}
 
 /**
  * Declares the global configuration Claude Code keeps under the home directory.
@@ -134,21 +78,4 @@ function globalFiles(environment: Environment): readonly AdapterFileSpec[] {
  */
 function homeDirOf(instructionsPath: string): string {
   return GLOBAL_INSTRUCTIONS_SEGMENTS.reduce((path) => dirname(path), instructionsPath);
-}
-
-function authenticationStatus(exitCode: number): boolean | undefined {
-  if (exitCode === 0) {
-    return true;
-  }
-  if (exitCode === 1) {
-    return false;
-  }
-  return undefined;
-}
-
-function parseVersion(result: ExecResult): string | undefined {
-  if (result.exitCode !== 0) {
-    return undefined;
-  }
-  return VERSION_PATTERN.exec(result.stdout)?.[1];
 }
