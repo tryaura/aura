@@ -1,136 +1,153 @@
-import type { Adapter, AuraPlugin, Check, SkillPack, Snippet } from "@tryaura/aura-sdk";
+import type {
+  Adapter,
+  AuraPlugin,
+  Check,
+  McpServerDef,
+  Preset,
+  SkillPack,
+  SkillSource,
+  Snippet,
+} from "@tryaura/aura-sdk";
 
-/** The plugin contract supported by this Aura core build. */
-export const SUPPORTED_PLUGIN_API_VERSION = 1;
-
-/**
- * A plugin presented to the runtime registry.
- *
- * `definePlugin` keeps `apiVersion` narrowed to the supported SDK literal for authors, while the
- * registry accepts a number so a plugin compiled against another SDK version can fail clearly at
- * startup.
- */
-export type PluginCandidate = Omit<AuraPlugin, "apiVersion"> & {
-  readonly apiVersion: number;
-};
+import {
+  claimId,
+  collectChecks,
+  collectIdentityViolations,
+  collectNamespaced,
+  collectUnknownBareCheckIdPlugins,
+  collectUnnamespaced,
+  type ContributionKind,
+  createRegistryState,
+  formatApiVersionViolation,
+  formatViolations,
+  isSupportedPlugin,
+  type PluginCandidate,
+  type RegistryState,
+} from "./plugin-validation.js";
 
 /** Options controlling distribution-owned plugin registry policy. */
 export interface PluginRegistryOptions {
-  /** Plugins allowed to contribute bare official check ids such as `INS-001`. */
-  readonly officialPluginIds?: readonly string[] | undefined;
+  /**
+   * Plugins allowed to contribute bare, un-namespaced check ids such as `INS-001`.
+   *
+   * The grant is matched against the self-declared {@link AuraPlugin.id}, which is only meaningful
+   * because `candidates` is a build-time list the distribution controls. An id named here that no
+   * candidate declares is rejected, so a stale or misspelled grant fails at startup rather than
+   * silently withdrawing the privilege.
+   */
+  readonly bareCheckIdPlugins?: readonly string[] | undefined;
 }
 
 /** Validated plugin contributions available to Aura core. */
 export interface PluginRegistry {
   readonly adapters: readonly Adapter[];
   readonly checks: readonly Check[];
+  readonly mcpServers: readonly McpServerDef[];
+  /**
+   * Resolves the plugin that contributed `id`, or `undefined` when nothing claims it.
+   *
+   * Findings and diagnostics are reported with the contributing plugin's name and version, and a
+   * bare check id carries no namespace to recover that from, so ownership is looked up rather than
+   * parsed back out of the id.
+   */
+  readonly ownerOf: (kind: ContributionKind, id: string) => AuraPlugin | undefined;
   readonly plugins: readonly AuraPlugin[];
+  readonly presets: readonly Preset[];
   readonly skills: readonly SkillPack[];
+  readonly skillSources: readonly SkillSource[];
   readonly snippets: readonly Snippet[];
 }
 
-interface PluginOwner {
-  readonly id: string;
-  readonly name: string;
+/** Everything accepted so far, one list per contribution kind. */
+interface CollectedContributions {
+  readonly adapters: Adapter[];
+  readonly checks: Check[];
+  readonly mcpServers: McpServerDef[];
+  readonly plugins: AuraPlugin[];
+  readonly presets: Preset[];
+  readonly skills: SkillPack[];
+  readonly skillSources: SkillSource[];
+  readonly snippets: Snippet[];
 }
 
-/** Validates and flattens the build-time plugin list for a distribution. */
+/**
+ * Validates and flattens the build-time plugin list for a distribution.
+ *
+ * Every problem across every plugin is collected and reported in one error, so a distribution with
+ * several mistakes is fixed in one pass rather than one rebuild per mistake.
+ */
 export function createPluginRegistry(
   candidates: readonly PluginCandidate[],
   options: PluginRegistryOptions = {},
 ): PluginRegistry {
-  const officialPluginIds = new Set(options.officialPluginIds ?? []);
-  const pluginOwners = new Map<string, PluginOwner>();
-  const adapterOwners = new Map<string, PluginOwner>();
-  const checkOwners = new Map<string, PluginOwner>();
-  const snippetOwners = new Map<string, PluginOwner>();
-  const skillOwners = new Map<string, PluginOwner>();
-  const plugins: AuraPlugin[] = [];
-  const adapters: Adapter[] = [];
-  const checks: Check[] = [];
-  const snippets: Snippet[] = [];
-  const skills: SkillPack[] = [];
+  const state = createRegistryState();
+  const bareCheckIdPlugins = new Set(options.bareCheckIdPlugins ?? []);
+  const collected: CollectedContributions = {
+    adapters: [],
+    checks: [],
+    mcpServers: [],
+    plugins: [],
+    presets: [],
+    skills: [],
+    skillSources: [],
+    snippets: [],
+  };
+
+  collectUnknownBareCheckIdPlugins(state, bareCheckIdPlugins, candidates);
 
   for (const candidate of candidates) {
-    assertSupportedPlugin(candidate);
-    const plugin = candidate;
-
-    registerId(pluginOwners, "plugin", plugin.id, plugin);
-    plugins.push(plugin);
-
-    for (const adapter of plugin.adapters ?? []) {
-      registerId(adapterOwners, "adapter", adapter.id, plugin);
-      adapters.push(adapter);
-    }
-
-    for (const check of plugin.checks ?? []) {
-      validateCheckId(check.id, plugin, officialPluginIds.has(plugin.id));
-      registerId(checkOwners, "check", check.id, plugin);
-      checks.push(check);
-    }
-
-    for (const snippet of plugin.snippets ?? []) {
-      validateNamespacedId("snippet", snippet.id, plugin);
-      registerId(snippetOwners, "snippet", snippet.id, plugin);
-      snippets.push(snippet);
-    }
-
-    for (const skill of plugin.skills ?? []) {
-      validateNamespacedId("skill", skill.id, plugin);
-      registerId(skillOwners, "skill", skill.id, plugin);
-      skills.push(skill);
-    }
+    collectCandidate(state, candidate, bareCheckIdPlugins, collected);
   }
 
-  return { adapters, checks, plugins, skills, snippets };
-}
-
-function assertSupportedPlugin(candidate: PluginCandidate): asserts candidate is AuraPlugin {
-  if (candidate.apiVersion !== SUPPORTED_PLUGIN_API_VERSION) {
-    throw new Error(
-      `${formatPlugin(candidate)} uses unsupported apiVersion ${candidate.apiVersion}; ` +
-        `this Aura build supports apiVersion ${SUPPORTED_PLUGIN_API_VERSION}.`,
-    );
+  if (state.violations.length > 0) {
+    throw new Error(formatViolations(state.violations));
   }
+
+  // `readonly` is erased at runtime, and plugin code runs in this process, so the validated result
+  // is frozen rather than left mutable behind a compile-time-only guarantee.
+  return Object.freeze({
+    adapters: Object.freeze(collected.adapters),
+    checks: Object.freeze(collected.checks),
+    mcpServers: Object.freeze(collected.mcpServers),
+    ownerOf: (kind: ContributionKind, id: string) => state.owners.get(kind)?.get(id),
+    plugins: Object.freeze(collected.plugins),
+    presets: Object.freeze(collected.presets),
+    skills: Object.freeze(collected.skills),
+    skillSources: Object.freeze(collected.skillSources),
+    snippets: Object.freeze(collected.snippets),
+  });
 }
 
-function registerId(
-  owners: Map<string, PluginOwner>,
-  contribution: string,
-  id: string,
-  plugin: AuraPlugin,
+/** Accepts one candidate's contributions, or records why none of them can be trusted. */
+function collectCandidate(
+  state: RegistryState,
+  candidate: PluginCandidate,
+  bareCheckIdPlugins: ReadonlySet<string>,
+  collected: CollectedContributions,
 ): void {
-  const existingOwner = owners.get(id);
-  if (existingOwner) {
-    throw new Error(
-      `${formatPlugin(plugin)} contributes duplicate ${contribution} ID "${id}"; ` +
-        `already registered by ${formatPlugin(existingOwner)}.`,
-    );
-  }
-
-  owners.set(id, plugin);
-}
-
-function validateCheckId(id: string, plugin: AuraPlugin, allowsBareId: boolean): void {
-  if (allowsBareId && id.length > 0 && !id.includes("/")) {
+  if (!isSupportedPlugin(candidate)) {
+    state.violations.push(formatApiVersionViolation(candidate));
     return;
   }
 
-  validateNamespacedId("check", id, plugin);
-}
-
-function validateNamespacedId(contribution: string, id: string, plugin: AuraPlugin): void {
-  const namespace = `${plugin.id}/`;
-  if (id.startsWith(namespace) && id.length > namespace.length) {
+  const plugin = candidate;
+  // A plugin whose own identity is unusable would cascade a namespace error into every
+  // contribution it declares, so only the root cause is reported.
+  if (!collectIdentityViolations(state, plugin) || !claimId(state, "plugin", plugin.id, plugin)) {
     return;
   }
 
-  throw new Error(
-    `${formatPlugin(plugin)} contributes ${contribution} ID "${id}"; ` +
-      `expected the "${namespace}<id>" namespace.`,
-  );
-}
+  collected.plugins.push(plugin);
 
-function formatPlugin(plugin: PluginOwner): string {
-  return `Plugin "${plugin.name}" (${plugin.id})`;
+  // Adapter ids name the application itself (`claude-code`, `cursor`) rather than the plugin, so
+  // they are deliberately global: two plugins teaching Aura the same app must collide, not coexist
+  // under separate namespaces.
+  collectUnnamespaced(state, "adapter", plugin.adapters, plugin, collected.adapters);
+  const allowsBareCheckIds = bareCheckIdPlugins.has(plugin.id);
+  collectChecks(state, plugin.checks, plugin, allowsBareCheckIds, collected.checks);
+  collectNamespaced(state, "mcp-server", plugin.mcpCatalog, plugin, collected.mcpServers);
+  collectNamespaced(state, "preset", plugin.presets, plugin, collected.presets);
+  collectNamespaced(state, "skill-pack", plugin.skills, plugin, collected.skills);
+  collectNamespaced(state, "skill-source", plugin.skillSources, plugin, collected.skillSources);
+  collectNamespaced(state, "snippet", plugin.snippets, plugin, collected.snippets);
 }

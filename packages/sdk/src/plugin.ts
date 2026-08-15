@@ -28,7 +28,9 @@ export interface AuraPlugin {
   /**
    * Stable plugin identifier, unique across a distribution.
    *
-   * Every contribution id must be namespaced under it, such as `"acme/rules"` for plugin `"acme"`.
+   * Lowercase letters, digits, `.`, `-`, and `_`, starting with a letter or digit. Every check,
+   * snippet, skill, MCP server, preset, and skill source id must be namespaced under it, such as
+   * `"acme/rules"` for plugin `"acme"`. {@link Adapter.id} is the one exception — see there.
    */
   readonly id: string;
   /** MCP server definitions this plugin offers for installation. */
