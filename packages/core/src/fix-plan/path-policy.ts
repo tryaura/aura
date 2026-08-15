@@ -1,8 +1,9 @@
-import { isAbsolute, join, resolve, sep } from "node:path";
+import { isAbsolute, resolve, sep } from "node:path";
 
 import type { FileOperation, FixPlan, WorkspaceModel } from "@tryaura/aura-sdk";
 
 import { claimPath, comparablePath, createClaimIndex, detectCaseInsensitive } from "./claims.js";
+import { backupRoot } from "./journal-paths.js";
 import { runProbes, type AncestorProbe } from "./probe.js";
 import { describeRoots, matchRoot, resolveAllowedRoots, type AllowedRoot } from "./roots.js";
 import { operationError } from "./types.js";
@@ -30,7 +31,7 @@ export async function createPathPolicy(
   const workspaceRoot = resolve(model.projectRoot ?? model.cwd);
   return {
     caseInsensitive: await detectCaseInsensitive(workspaceRoot),
-    reservedRoots: Object.freeze([resolve(model.homeDir, join("agents", ".backups"))]),
+    reservedRoots: Object.freeze([backupRoot(model.homeDir)]),
     roots: resolveAllowedRoots(model, managedHomeRoots),
   };
 }

@@ -161,7 +161,7 @@ describe("fix-plan execution", () => {
     };
     const before = await snapshotFixture(fixture.root);
 
-    const result = await executeFixPlan({ dryRun: true, model: fixture.model, plan });
+    const result = await executeFixPlan({ dryRun: true, model: fixture.model, now, plan });
 
     expect(result).toMatchObject({ appliedOperationCount: 0, dryRun: true });
     expect(result.preview.changedOperationCount).toBe(4);

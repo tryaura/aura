@@ -197,7 +197,7 @@ function parseState(value: unknown, path: string): StoredPathState {
       const state: StoredDirectoryState = {
         empty: requiredBoolean(value, "empty", path),
         kind: "directory",
-        mode: requiredNumber(value, "mode", path),
+        mode: requiredMode(value, path),
         modifiedTimeMs: requiredNumber(value, "modifiedTimeMs", path),
       };
       return state;
@@ -209,13 +209,32 @@ function parseState(value: unknown, path: string): StoredPathState {
 }
 
 function parseFileState(value: Record<string, unknown>, path: string): StoredFileState {
+  const payload = optionalString(value, "payload", path);
+  if (payload !== undefined && !/^files\/[0-9]+-(?:after|before)\.bin$/u.test(payload)) {
+    throw corrupt(path, `invalid file payload path: ${payload}`);
+  }
   return {
     kind: "file",
-    mode: requiredNumber(value, "mode", path),
+    mode: requiredMode(value, path),
     modifiedTimeMs: requiredNumber(value, "modifiedTimeMs", path),
-    payload: optionalString(value, "payload", path),
+    payload,
     size: requiredNumber(value, "size", path),
   };
+}
+
+/**
+ * A permission mode, masked to the bits a capture can produce.
+ *
+ * The value goes straight to `chmod` during a restore, and everything above `0o777` — setuid,
+ * setgid, sticky — is a privilege the file never had when Aura read it. Capture masks on the way in;
+ * masking again on the way out means a manifest cannot grant what a capture could not.
+ */
+function requiredMode(value: Record<string, unknown>, path: string): number {
+  const mode = requiredNumber(value, "mode", path);
+  if (!Number.isInteger(mode) || mode < 0) {
+    throw corrupt(path, "mode must be a non-negative integer");
+  }
+  return mode & 0o777;
 }
 
 function parseStatus(value: unknown, path: string): JournalStatus {

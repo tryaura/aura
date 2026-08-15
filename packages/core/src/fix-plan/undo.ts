@@ -1,46 +1,81 @@
-import { chmod, mkdir, rename, rm, rmdir, unlink, utimes } from "node:fs/promises";
-import { dirname } from "node:path";
-
-import { removeCreatedDirectories, replaceFile, replaceLink } from "./filesystem.js";
-import { listJournal, readPayload, setJournalStatus, type JournalHandle } from "./journal.js";
-import type {
-  StoredOperation,
-  StoredPathState,
-  StoredSymlinkOperation,
-  StoredWriteOperation,
-} from "./journal-schema.js";
-import { preflightUndo, primaryPath, type SelectedOperation } from "./undo-preflight.js";
+import { withJournalLock } from "./journal-lock.js";
+import { readJournal, type JournalEntry, type JournalHandle } from "./journal-read.js";
+import type { JournalStatus } from "./journal-schema.js";
+import { openBackupRoot, setJournalStatus } from "./journal.js";
+import { createPathPolicy, type PathPolicy } from "./path-policy.js";
+import { preflightUndo } from "./undo-preflight.js";
+import { restoreOperations, rollForward } from "./undo-restore.js";
 import {
   errorMessage,
   FixPlanError,
   FixPlanUndoError,
-  type FixPlanRollbackStatus,
+  type FixPlanBackup,
+  type FixPlanBackupListOptions,
   type FixPlanUndoOptions,
   type FixPlanUndoResult,
 } from "./types.js";
 
-type UndoAction = () => Promise<void>;
-
-interface AppliedUndo {
-  readonly cleanup?: UndoAction | undefined;
-  readonly index: number;
-  readonly redo: UndoAction;
+interface Selection {
+  readonly entry: JournalHandle;
+  /** Entries newer than the selected one that could not be read. */
+  readonly skipped: readonly string[];
 }
 
-export async function undoLastFixPlan(options: FixPlanUndoOptions): Promise<FixPlanUndoResult> {
-  const entries = await listJournal(options.homeDir);
-  const entry = entries.find(
-    ({ manifest }) => manifest.status === "applied" || manifest.status === "pending",
-  );
-  if (entry === undefined) {
+/**
+ * Everything the store holds, newest first.
+ *
+ * Reports entries it could not read rather than omitting them, so a caller offering an undo can say
+ * why an entry is missing from the list instead of quietly showing a shorter one.
+ */
+export async function listFixPlanBackups(
+  options: FixPlanBackupListOptions,
+): Promise<readonly FixPlanBackup[]> {
+  const root = await openBackupRoot(options.model.homeDir);
+  if (root === undefined) {
+    return Object.freeze([]);
+  }
+
+  const backups: FixPlanBackup[] = [];
+  for await (const entry of readJournal(root, options.model.homeDir)) {
+    backups.push(describe(entry));
+  }
+  return Object.freeze(backups);
+}
+
+/**
+ * Puts back what a fix plan changed.
+ *
+ * Undoes the most recent entry that is still on disk, or the one named by
+ * {@link FixPlanUndoOptions.backupId}. The whole entry is restored or none of it is: if any path it
+ * touched has changed since, the undo is refused before anything is written.
+ */
+export async function undoFixPlan(options: FixPlanUndoOptions): Promise<FixPlanUndoResult> {
+  const root = await openBackupRoot(options.model.homeDir);
+  if (root === undefined) {
     return Object.freeze({ status: "nothing-to-undo" });
   }
 
+  const policy = await createPathPolicy(options.model, options.managedHomeRoots);
+  return withJournalLock(root, options.now, async () => {
+    const selection = await select(root, options);
+    if (selection === undefined) {
+      return Object.freeze({ status: "nothing-to-undo" });
+    }
+    return restore(selection, policy, options.now);
+  });
+}
+
+async function restore(
+  selection: Selection,
+  policy: PathPolicy,
+  now: () => Date,
+): Promise<FixPlanUndoResult> {
+  const { entry, skipped } = selection;
   try {
-    const selected = await preflightUndo(entry, options.homeDir);
+    const selected = await preflightUndo(entry, policy);
     const restored = await restoreOperations(entry, selected);
     try {
-      await setJournalStatus(entry, "undone", options.now().toISOString());
+      await setJournalStatus(entry, "undone", now().toISOString());
     } catch (error) {
       const rollback = await rollForward(restored);
       const failure = new FixPlanError(
@@ -53,6 +88,7 @@ export async function undoLastFixPlan(options: FixPlanUndoOptions): Promise<FixP
     return Object.freeze({
       backupId: entry.manifest.id,
       restoredOperationCount: restored.length,
+      skippedBackupIds: skipped,
       status: "undone",
     });
   } catch (error) {
@@ -69,147 +105,82 @@ export async function undoLastFixPlan(options: FixPlanUndoOptions): Promise<FixP
   }
 }
 
-async function restoreOperations(
-  entry: JournalHandle,
-  selected: readonly SelectedOperation[],
-): Promise<readonly AppliedUndo[]> {
-  const applied: AppliedUndo[] = [];
-  for (let position = selected.length - 1; position >= 0; position -= 1) {
-    const item = selected[position];
-    if (item === undefined || !item.shouldRestore) {
+async function select(root: string, options: FixPlanUndoOptions): Promise<Selection | undefined> {
+  const { backupId, model } = options;
+  return backupId === undefined
+    ? selectLatest(root, model.homeDir)
+    : selectNamed(root, model.homeDir, backupId);
+}
+
+/**
+ * The most recent entry still on disk, stepping over entries that cannot be read.
+ *
+ * Stepping over one is safe because every restore is gated on the paths still holding what its entry
+ * left there: if an unreadable entry did change those paths, the older entry is refused rather than
+ * applied over it. Doing so silently would not be safe, so what was stepped over is carried out.
+ */
+async function selectLatest(root: string, homeDir: string): Promise<Selection | undefined> {
+  const skipped: string[] = [];
+  for await (const entry of readJournal(root, homeDir)) {
+    if (entry.kind === "unreadable") {
+      skipped.push(entry.id);
       continue;
     }
-    try {
-      const step = await restoreOperation(entry, item.operation);
-      applied.push(step);
-      if (step.cleanup !== undefined) {
-        await step.cleanup();
-      }
-    } catch (error) {
-      const rollback = await rollForward(applied);
-      const failure = new FixPlanError(
-        "filesystem-error",
-        `could not restore operation ${String(item.operation.index)}: ${errorMessage(error)}`,
-        { cause: error, operationIndex: item.operation.index, path: primaryPath(item.operation) },
-      );
-      throw new FixPlanUndoError(failure, rollback.status, rollback.failures);
+    if (isUndoable(entry.handle.manifest.status)) {
+      return { entry: entry.handle, skipped: Object.freeze(skipped) };
     }
   }
-  return Object.freeze(applied);
-}
 
-async function restoreOperation(
-  entry: JournalHandle,
-  operation: StoredOperation,
-): Promise<AppliedUndo> {
-  switch (operation.type) {
-    case "move": {
-      await rename(operation.destinationPath, operation.sourcePath);
-      return {
-        cleanup: cleanupAction(operation.createdDirectory, dirname(operation.destinationPath)),
-        index: operation.index,
-        redo: async () => {
-          await mkdir(dirname(operation.destinationPath), { recursive: true });
-          await rename(operation.sourcePath, operation.destinationPath);
-        },
-      };
-    }
-    case "remove": {
-      await restoreState(entry, operation.path, operation.before);
-      return {
-        index: operation.index,
-        redo: async () => removeState(operation.path, operation.before),
-      };
-    }
-    case "symlink": {
-      return restoreReplacement(entry, operation, async () =>
-        replaceLink(operation.path, operation.target),
-      );
-    }
-    case "write": {
-      return restoreReplacement(entry, operation, async () => {
-        const content = await readPayload(entry.directory, operation.after);
-        await replaceFile(operation.path, content, operation.after.mode);
-      });
-    }
+  if (skipped.length > 0) {
+    throw new FixPlanError(
+      "journal-corrupt",
+      `no undoable backup remains; ${String(skipped.length)} unreadable entry(s): ${skipped.join(", ")}`,
+    );
   }
+  return undefined;
 }
 
-async function restoreReplacement(
-  entry: JournalHandle,
-  operation: StoredSymlinkOperation | StoredWriteOperation,
-  applyAfter: UndoAction,
-): Promise<AppliedUndo> {
-  await restoreState(entry, operation.path, operation.before);
-  return {
-    cleanup: cleanupAction(operation.createdDirectory, dirname(operation.path)),
-    index: operation.index,
-    redo: async () => {
-      await mkdir(dirname(operation.path), { recursive: true });
-      await applyAfter();
-    },
-  };
-}
-
-async function restoreState(
-  entry: JournalHandle,
-  path: string,
-  state: StoredPathState,
-): Promise<void> {
-  switch (state.kind) {
-    case "missing": {
-      await rm(path, { force: true });
-      return;
-    }
-    case "file": {
-      const content = await readPayload(entry.directory, state);
-      await replaceFile(path, content, state.mode);
-      await utimes(path, state.modifiedTimeMs / 1000, state.modifiedTimeMs / 1000);
-      return;
-    }
-    case "directory": {
-      await mkdir(path);
-      await chmod(path, state.mode);
-      await utimes(path, state.modifiedTimeMs / 1000, state.modifiedTimeMs / 1000);
-      return;
-    }
-    case "symlink": {
-      await replaceLink(path, state.target);
-    }
-  }
-}
-
-async function removeState(path: string, state: StoredPathState): Promise<void> {
-  if (state.kind === "directory") {
-    await rmdir(path);
-  } else {
-    await unlink(path);
-  }
-}
-
-function cleanupAction(created: string | undefined, deepest: string): UndoAction | undefined {
-  return created === undefined ? undefined : async () => removeCreatedDirectories(created, deepest);
-}
-
-async function rollForward(
-  applied: readonly AppliedUndo[],
-): Promise<{ readonly failures: readonly string[]; readonly status: FixPlanRollbackStatus }> {
-  for (let position = applied.length - 1; position >= 0; position -= 1) {
-    const step = applied[position];
-    if (step === undefined) {
+async function selectNamed(root: string, homeDir: string, backupId: string): Promise<Selection> {
+  for await (const entry of readJournal(root, homeDir)) {
+    if (entry.id !== backupId) {
       continue;
     }
-    try {
-      await step.redo();
-    } catch (error) {
-      return {
-        failures: Object.freeze([`operation ${String(step.index)}: ${errorMessage(error)}`]),
-        status: "failed",
-      };
+    if (entry.kind === "unreadable") {
+      throw new FixPlanError("journal-corrupt", `backup ${entry.id} is ${entry.reason}`);
     }
+    const { status } = entry.handle.manifest;
+    if (!isUndoable(status)) {
+      throw new FixPlanError(
+        "backup-error",
+        `backup ${entry.id} is already ${status} and cannot be undone`,
+      );
+    }
+    return { entry: entry.handle, skipped: Object.freeze([]) };
   }
-  return {
-    failures: Object.freeze([]),
-    status: applied.length === 0 ? "not-required" : "complete",
-  };
+
+  throw new FixPlanError("backup-error", `no undo journal entry named ${backupId}`);
+}
+
+/** Whether an entry describes work that is still on disk. */
+function isUndoable(status: JournalStatus): boolean {
+  return status === "applied" || status === "pending";
+}
+
+function describe(entry: JournalEntry): FixPlanBackup {
+  if (entry.kind === "unreadable") {
+    return Object.freeze({
+      id: entry.id,
+      reason: entry.reason,
+      status: "unreadable",
+      undoable: false,
+    });
+  }
+  const { manifest } = entry.handle;
+  return Object.freeze({
+    createdAt: manifest.createdAt,
+    id: manifest.id,
+    operationCount: manifest.operations.length,
+    status: manifest.status,
+    undoable: isUndoable(manifest.status),
+  });
 }

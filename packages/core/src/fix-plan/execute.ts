@@ -1,5 +1,7 @@
 import { applyPreparedOperation, type UndoStep } from "./apply.js";
-import { setJournalStatus, stageJournal } from "./journal.js";
+import { withJournalLock } from "./journal-lock.js";
+import type { JournalHandle } from "./journal-read.js";
+import { ensureBackupRoot, setJournalStatus, stageJournal } from "./journal.js";
 import { prepareOperations } from "./prepare.js";
 import {
   blockedPlanError,
@@ -92,15 +94,30 @@ async function applyOperations(
   preview: FixPlanPreview,
   now: () => Date,
 ): Promise<FixPlanExecutionResult> {
-  const applied: UndoStep[] = [];
-  const journal = await stageJournal(plan, now);
+  const operations = plan.operations.filter(isApplicable);
+  if (operations.length === 0) {
+    return Object.freeze({ appliedOperationCount: 0, dryRun: false, preview });
+  }
 
-  for (const operation of plan.operations.filter(isApplicable)) {
+  const root = await ensureBackupRoot(plan.model.homeDir);
+  return withJournalLock(root, now, async () => applyJournaled(plan, operations, preview, now));
+}
+
+async function applyJournaled(
+  plan: PreparedPlanState,
+  operations: readonly ApplicableOperation[],
+  preview: FixPlanPreview,
+  now: () => Date,
+): Promise<FixPlanExecutionResult> {
+  const applied: UndoStep[] = [];
+  const journal = await stageJournal(plan, operations, now);
+
+  for (const operation of operations) {
     try {
       applied.push(await applyPreparedOperation(operation, plan));
     } catch (error) {
       const outcome = await rollback(applied);
-      if (journal !== undefined && outcome.remaining === 0) {
+      if (outcome.remaining === 0) {
         await markAborted(journal);
       }
       throw new FixPlanApplyError(
@@ -110,10 +127,6 @@ async function applyOperations(
         outcome.failures,
       );
     }
-  }
-
-  if (journal === undefined) {
-    return Object.freeze({ appliedOperationCount: applied.length, dryRun: false, preview });
   }
 
   try {
@@ -149,7 +162,7 @@ async function applyOperations(
   });
 }
 
-async function markAborted(journal: Parameters<typeof setJournalStatus>[0]): Promise<void> {
+async function markAborted(journal: JournalHandle): Promise<void> {
   try {
     await setJournalStatus(journal, "aborted");
   } catch {

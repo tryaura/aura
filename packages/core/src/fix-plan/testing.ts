@@ -2,13 +2,34 @@ import { mkdir, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { AdapterFileStatus, WorkspaceModel } from "@tryaura/aura-sdk";
+import type { AdapterFileStatus, FixPlan, WorkspaceModel } from "@tryaura/aura-sdk";
+
+import { backupRoot } from "./journal-paths.js";
 
 export interface FixPlanFixture {
   readonly home: string;
   readonly model: WorkspaceModel;
   readonly root: string;
   readonly workspace: string;
+}
+
+/** The one-operation plan most journal behaviour is easiest to observe through. */
+export function writeFixPlan(path: string, content: string): FixPlan {
+  return {
+    operations: [{ content, path, type: "write" }],
+    summary: `Write ${path}.`,
+  };
+}
+
+export function backupEntryPath(fixture: FixPlanFixture, backupId: string | undefined): string {
+  if (backupId === undefined) {
+    throw new Error("expected a durable backup ID");
+  }
+  return join(backupRoot(fixture.home), backupId);
+}
+
+export function backupManifestPath(fixture: FixPlanFixture, backupId: string | undefined): string {
+  return join(backupEntryPath(fixture, backupId), "manifest.json");
 }
 
 /**

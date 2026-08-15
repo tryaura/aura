@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { WorkspaceModel } from "@tryaura/aura-sdk";
-import { executeFixPlan, undoLastFixPlan } from "@tryaura/core";
+import { executeFixPlan, undoFixPlan } from "@tryaura/core";
 import { afterEach, describe, expect, it } from "vitest";
 
 const temporaryDirectories: string[] = [];
@@ -53,7 +53,7 @@ describe("persistent undo integration", () => {
       },
     });
 
-    const result = await undoLastFixPlan({ homeDir: home, now });
+    const result = await undoFixPlan({ model, now });
 
     expect(result).toMatchObject({ restoredOperationCount: 4, status: "undone" });
     await expect(readFile(updated, "utf8")).resolves.toBe("before\n");

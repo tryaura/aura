@@ -171,14 +171,7 @@ async function applyWrite(
   });
 }
 
-/**
- * Replaces a path with new contents, atomically and without following a link.
- *
- * Writing in place would do neither: it follows a symbolic link that took the path's place after
- * the check, and it truncates before it writes, so an interrupted write leaves a half-written file.
- * Building the replacement beside the target and renaming it over avoids both — `rename` replaces
- * the link itself, and is either fully done or not done at all.
- */
+/** Puts a captured file back exactly as it was read, timestamp included. */
 async function restoreFile(path: string, state: CapturedFileState): Promise<void> {
   await replaceFile(path, state.content, state.mode);
   await utimes(path, state.modifiedTimeMs / 1000, state.modifiedTimeMs / 1000);

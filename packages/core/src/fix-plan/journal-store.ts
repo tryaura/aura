@@ -18,8 +18,11 @@ import { errorCode, FixPlanError } from "./types.js";
 export async function storeOperation(
   operation: ApplicableOperation,
   directory: string,
+  virtualDirectories: Set<string>,
 ): Promise<StoredOperation> {
-  const createdDirectory = await firstMissingDirectory(parentCreatedBy(operation));
+  const parent = parentCreatedBy(operation);
+  const createdDirectory = await firstMissingDirectory(parent, virtualDirectories);
+  recordCreatedDirectories(createdDirectory, parent, virtualDirectories);
   switch (operation.type) {
     case "move": {
       return {
@@ -97,13 +100,19 @@ function parentCreatedBy(operation: ApplicableOperation): string | undefined {
   }
 }
 
-async function firstMissingDirectory(path: string | undefined): Promise<string | undefined> {
+async function firstMissingDirectory(
+  path: string | undefined,
+  virtualDirectories: ReadonlySet<string>,
+): Promise<string | undefined> {
   if (path === undefined) {
     return undefined;
   }
   let current = path;
   let first: string | undefined;
   while (true) {
+    if (virtualDirectories.has(current)) {
+      return first;
+    }
     try {
       await lstat(current);
       return first;
@@ -118,6 +127,24 @@ async function firstMissingDirectory(path: string | undefined): Promise<string |
       }
       current = parent;
     }
+  }
+}
+
+function recordCreatedDirectories(
+  created: string | undefined,
+  deepest: string | undefined,
+  virtualDirectories: Set<string>,
+): void {
+  if (created === undefined || deepest === undefined) {
+    return;
+  }
+  let current = deepest;
+  while (true) {
+    virtualDirectories.add(current);
+    if (current === created) {
+      return;
+    }
+    current = dirname(current);
   }
 }
 

@@ -1,5 +1,7 @@
 import type { FileOperation, FixPlan, WorkspaceModel } from "@tryaura/aura-sdk";
 
+import type { JournalStatus } from "./journal-schema.js";
+
 /**
  * The filesystem effect represented by one operation preview.
  *
@@ -60,16 +62,17 @@ export interface FixPlanPreviewOptions {
 }
 
 /** Inputs required to execute or dry-run a fix plan. */
-export type FixPlanExecutionOptions =
-  | (FixPlanPreviewOptions & {
-      /** Perform validation and preview reads without mutating the filesystem. */
-      readonly dryRun: true;
-    })
-  | (FixPlanPreviewOptions & {
-      readonly dryRun?: false | undefined;
-      /** Injected clock used to identify the durable backup entry. */
-      readonly now: () => Date;
-    });
+export type FixPlanExecutionOptions = FixPlanPreviewOptions & {
+  /** Perform validation and preview reads without mutating the filesystem. */
+  readonly dryRun?: boolean | undefined;
+  /**
+   * Injected clock used to identify the durable backup entry.
+   *
+   * Required whether or not `dryRun` is set, so that a caller passing a flag it read at runtime does
+   * not have to satisfy a different shape depending on the flag's value.
+   */
+  readonly now: () => Date;
+};
 
 export interface FixPlanApplyOptions {
   /** Injected clock used to identify the durable backup entry. */
@@ -89,16 +92,51 @@ export interface FixPlanExecutionResult {
 }
 
 export interface FixPlanUndoOptions {
-  readonly homeDir: string;
+  /**
+   * Undo this entry instead of the most recent one still on disk.
+   *
+   * Accepts the `backupId` an execution returned, or an ID from {@link FixPlanBackup}.
+   */
+  readonly backupId?: string | undefined;
+  /** Restricts the restore the same way it restricts a plan. See {@link FixPlanPreviewOptions}. */
+  readonly managedHomeRoots?: readonly string[] | undefined;
+  readonly model: WorkspaceModel;
   /** Injected clock recorded when the journal entry is completed. */
   readonly now: () => Date;
 }
+
+export interface FixPlanBackupListOptions {
+  readonly model: WorkspaceModel;
+}
+
+/** One entry in the durable backup store. */
+export type FixPlanBackup =
+  | {
+      readonly createdAt: string;
+      readonly id: string;
+      readonly operationCount: number;
+      readonly status: JournalStatus;
+      /** Whether {@link FixPlanUndoOptions.backupId} accepts this ID. */
+      readonly undoable: boolean;
+    }
+  | {
+      readonly id: string;
+      /** Why the entry could not be read. */
+      readonly reason: string;
+      readonly status: "unreadable";
+      readonly undoable: false;
+    };
+
+/** `unreadable` covers an entry left half-written by a killed run, or one this build cannot parse. */
+export type FixPlanBackupStatus = FixPlanBackup["status"];
 
 export type FixPlanUndoResult =
   | { readonly status: "nothing-to-undo" }
   | {
       readonly backupId: string;
       readonly restoredOperationCount: number;
+      /** Unreadable entries newer than the one undone. Empty in the ordinary case. */
+      readonly skippedBackupIds: readonly string[];
       readonly status: "undone";
     };
 

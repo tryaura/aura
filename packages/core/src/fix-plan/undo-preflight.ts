@@ -1,38 +1,47 @@
 import type { Buffer } from "node:buffer";
 
-import { backupRoot, readPayload, type JournalHandle } from "./journal.js";
+import { readPayload, type JournalHandle } from "./journal-read.js";
 import type { StoredOperation, StoredPathState } from "./journal-schema.js";
 import { revalidateMutationPath, type PathPolicy } from "./path-policy.js";
+import { matchRoot } from "./roots.js";
 import { inspectPath, statesEqual, type PathState } from "./state.js";
-import { FixPlanError, FixPlanUndoError } from "./types.js";
+import { FixPlanError, FixPlanUndoError, operationError } from "./types.js";
 
 export interface SelectedOperation {
   readonly operation: StoredOperation;
   readonly shouldRestore: boolean;
 }
 
+/**
+ * Decides what the entry may put back, and refuses the whole undo if anything else moved.
+ *
+ * `policy` is built from the caller's current workspace, not from the entry. The entry is a file in
+ * the home directory, so what it claims about where it may write is not evidence: a restore is
+ * authorized by the roots the caller can grant right now, narrowed by the roots the plan recorded.
+ */
 export async function preflightUndo(
   entry: JournalHandle,
-  homeDir: string,
+  policy: PathPolicy,
 ): Promise<readonly SelectedOperation[]> {
+  const pending = entry.manifest.status === "pending";
   const selected: SelectedOperation[] = [];
   for (const operation of entry.manifest.operations) {
-    const before = await matchesBefore(entry, operation);
     const after = await matchesAfter(entry, operation);
-    const pending = entry.manifest.status === "pending";
-    if (!after && !(pending && before)) {
+    // Only a pending entry can have operations that never reached the disk, and only then is the
+    // previous state worth the reads it takes to compare.
+    if (!after && !(pending && (await matchesBefore(entry, operation)))) {
       throw conflict(operation.index, primaryPath(operation));
     }
     selected.push({ operation, shouldRestore: after });
   }
 
-  const policy = policyFor(entry, homeDir);
   for (const { operation, shouldRestore } of selected) {
     if (!shouldRestore) {
       continue;
     }
     for (const path of mutationPaths(operation)) {
       await revalidateMutationPath(path, policy, operation.index);
+      assertRecordedRoot(path, entry, operation.index);
     }
   }
   return Object.freeze(selected);
@@ -40,6 +49,19 @@ export async function preflightUndo(
 
 export function primaryPath(operation: StoredOperation): string {
   return operation.type === "move" ? operation.sourcePath : operation.path;
+}
+
+/** Narrows an authorized path to one the plan being undone was itself allowed to write. */
+function assertRecordedRoot(path: string, entry: JournalHandle, operationIndex: number): void {
+  const { caseInsensitive, roots } = entry.manifest;
+  if (matchRoot(path, roots, caseInsensitive) === undefined) {
+    throw operationError(
+      "undo-conflict",
+      operationIndex,
+      `path is outside the roots the plan recorded: ${path}`,
+      { path },
+    );
+  }
 }
 
 async function matchesBefore(entry: JournalHandle, operation: StoredOperation): Promise<boolean> {
@@ -93,14 +115,6 @@ async function matches(
 
 function toPathState(expected: StoredPathState, content: Buffer | undefined): PathState {
   return expected.kind === "file" ? { ...expected, content } : expected;
-}
-
-function policyFor(entry: JournalHandle, homeDir: string): PathPolicy {
-  return {
-    caseInsensitive: entry.manifest.caseInsensitive,
-    reservedRoots: Object.freeze([backupRoot(homeDir)]),
-    roots: entry.manifest.roots,
-  };
 }
 
 function mutationPaths(operation: StoredOperation): readonly string[] {

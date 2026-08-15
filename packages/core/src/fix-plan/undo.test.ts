@@ -9,9 +9,14 @@ import {
   FixPlanUndoError,
   type FixPlanUndoOptions,
   type FixPlanUndoResult,
-  undoLastFixPlan,
+  undoFixPlan,
 } from "../index.js";
-import { createFixPlanFixture, type FixPlanFixture } from "./testing.js";
+import {
+  backupManifestPath,
+  createFixPlanFixture,
+  writeFixPlan,
+  type FixPlanFixture,
+} from "./testing.js";
 
 const temporaryDirectories: string[] = [];
 const now = (): Date => new Date("2026-08-15T00:00:00.000Z");
@@ -52,7 +57,7 @@ describe("durable fix-plan undo", () => {
     const result = await executeFixPlan({ model: fixture.model, now, plan });
 
     expect(result.backupId).toBe("2026-08-15T00-00-00-000Z");
-    const undone = await undoLastFixPlan({ homeDir: fixture.home, now });
+    const undone = await undoFixPlan({ model: fixture.model, now });
 
     expect(undone).toMatchObject({ restoredOperationCount: 4, status: "undone" });
     await expect(readFile(updated, "utf8")).resolves.toBe("before\n");
@@ -73,23 +78,45 @@ describe("durable fix-plan undo", () => {
     const first = await executeFixPlan({
       model: fixture.model,
       now,
-      plan: writePlan(path, "one\n"),
+      plan: writeFixPlan(path, "one\n"),
     });
     const second = await executeFixPlan({
       model: fixture.model,
       now,
-      plan: writePlan(path, "two\n"),
+      plan: writeFixPlan(path, "two\n"),
     });
 
     expect(first.backupId).toBe("2026-08-15T00-00-00-000Z");
     expect(second.backupId).toBe("2026-08-15T00-00-00-000Z-0001");
-    await undoLastFixPlan({ homeDir: fixture.home, now });
+    await undoFixPlan({ model: fixture.model, now });
     await expect(readFile(path, "utf8")).resolves.toBe("one\n");
-    await undoLastFixPlan({ homeDir: fixture.home, now });
+    await undoFixPlan({ model: fixture.model, now });
     await expect(readFile(path, "utf8")).resolves.toBe("zero\n");
-    await expect(undoLastFixPlan({ homeDir: fixture.home, now })).resolves.toEqual({
+    await expect(undoFixPlan({ model: fixture.model, now })).resolves.toEqual({
       status: "nothing-to-undo",
     });
+  });
+
+  it("removes shared parent directories only after their final restored child", async () => {
+    const fixture = await createFixture();
+    const root = join(fixture.workspace, "generated");
+    await executeFixPlan({
+      model: fixture.model,
+      now,
+      plan: {
+        operations: [
+          { content: "a\n", path: join(root, "a", "config.md"), type: "write" },
+          { content: "b\n", path: join(root, "b", "config.md"), type: "write" },
+        ],
+        summary: "Create sibling trees.",
+      },
+    });
+
+    await expect(undoFixPlan({ model: fixture.model, now })).resolves.toMatchObject({
+      restoredOperationCount: 2,
+      status: "undone",
+    });
+    await expect(lstat(root)).rejects.toHaveProperty("code", "ENOENT");
   });
 
   it("refuses the complete undo when any path changed after application", async () => {
@@ -111,7 +138,7 @@ describe("durable fix-plan undo", () => {
     });
     await writeFile(second, "user edit\n", "utf8");
 
-    await expect(undoLastFixPlan({ homeDir: fixture.home, now })).rejects.toMatchObject({
+    await expect(undoFixPlan({ model: fixture.model, now })).rejects.toMatchObject({
       code: "undo-conflict",
       rollback: "not-required",
     });
@@ -119,53 +146,94 @@ describe("durable fix-plan undo", () => {
     await expect(readFile(second, "utf8")).resolves.toBe("user edit\n");
   });
 
-  it("does not journal no-op or dry-run plans", async () => {
+  it("rolls restored paths forward when directory cleanup fails", async () => {
     const fixture = await createFixture();
-    const path = join(fixture.workspace, "config.md");
-    await writeFile(path, "same\n", "utf8");
+    const directory = join(fixture.workspace, "generated");
+    const path = join(directory, "config.md");
+    await executeFixPlan({ model: fixture.model, now, plan: writeFixPlan(path, "generated\n") });
+    await writeFile(join(directory, "user.md"), "user content\n", "utf8");
 
-    const noop = await executeFixPlan({
-      model: fixture.model,
-      now,
-      plan: writePlan(path, "same\n"),
+    await expect(undoFixPlan({ model: fixture.model, now })).rejects.toMatchObject({
+      code: "filesystem-error",
+      rollback: "complete",
+      rollbackFailures: [],
     });
-    const dryRun = await executeFixPlan({
-      dryRun: true,
-      model: fixture.model,
-      plan: writePlan(path, "different\n"),
-    });
-
-    expect(noop.backupId).toBeUndefined();
-    expect(dryRun.backupId).toBeUndefined();
-    await expect(undoLastFixPlan({ homeDir: fixture.home, now })).resolves.toEqual({
-      status: "nothing-to-undo",
-    });
+    await expect(readFile(path, "utf8")).resolves.toBe("generated\n");
+    await expect(readFile(join(directory, "user.md"), "utf8")).resolves.toBe("user content\n");
   });
 
-  it("reserves the backup store from plugin-authored plans", async () => {
+  it("recovers an applied plan whose journal still says pending", async () => {
     const fixture = await createFixture();
-    await expect(
-      executeFixPlan({
-        model: fixture.model,
-        now,
-        plan: writePlan(join(fixture.home, "agents", ".backups", "journal.json"), "bad\n"),
-      }),
-    ).rejects.toMatchObject({ code: "invalid-path" });
+    const path = join(fixture.workspace, "config.md");
+    await writeFile(path, "before\n", "utf8");
+    const result = await executeFixPlan({
+      model: fixture.model,
+      now,
+      plan: writeFixPlan(path, "after\n"),
+    });
+    const manifest = backupManifestPath(fixture, result.backupId);
+    const contents = await readFile(manifest, "utf8");
+    await writeFile(manifest, contents.replace('"status": "applied"', '"status": "pending"'));
+
+    await expect(undoFixPlan({ model: fixture.model, now })).resolves.toMatchObject({
+      restoredOperationCount: 1,
+      status: "undone",
+    });
+    await expect(readFile(path, "utf8")).resolves.toBe("before\n");
+  });
+
+  it("restores a directory mode without the bits a capture cannot produce", async () => {
+    const fixture = await createFixture();
+    const path = join(fixture.workspace, "config.md");
+    await writeFile(path, "before\n", "utf8");
+    await chmod(path, 0o600);
+    const result = await executeFixPlan({
+      model: fixture.model,
+      now,
+      plan: writeFixPlan(path, "after\n"),
+    });
+    const manifest = backupManifestPath(fixture, result.backupId);
+    const tampered = (await readFile(manifest, "utf8")).replace(
+      `"mode": ${String(0o600)}`,
+      `"mode": ${String(0o4600)}`,
+    );
+    await writeFile(manifest, tampered, "utf8");
+
+    await expect(undoFixPlan({ model: fixture.model, now })).resolves.toMatchObject({
+      status: "undone",
+    });
+    expect((await lstat(path)).mode & 0o7777).toBe(0o600);
+  });
+
+  it("refuses to restore outside the roots the plan recorded", async () => {
+    const fixture = await createFixture();
+    const path = join(fixture.workspace, "config.md");
+    await writeFile(path, "before\n", "utf8");
+    const result = await executeFixPlan({
+      model: fixture.model,
+      now,
+      plan: writeFixPlan(path, "after\n"),
+    });
+    const manifest = backupManifestPath(fixture, result.backupId);
+    const parsed: unknown = JSON.parse(await readFile(manifest, "utf8"));
+    await writeFile(
+      manifest,
+      JSON.stringify({ ...(parsed as object), roots: [{ exact: true, path: "/nowhere" }] }),
+      "utf8",
+    );
+
+    await expect(undoFixPlan({ model: fixture.model, now })).rejects.toMatchObject({
+      code: "undo-conflict",
+    });
+    await expect(readFile(path, "utf8")).resolves.toBe("after\n");
   });
 
   it("exports the typed undo failure", () => {
     expect(FixPlanUndoError.prototype).toBeInstanceOf(Error);
     expectTypeOf<FixPlanUndoOptions["now"]>().toEqualTypeOf<() => Date>();
-    expectTypeOf(undoLastFixPlan).returns.resolves.toEqualTypeOf<FixPlanUndoResult>();
+    expectTypeOf(undoFixPlan).returns.resolves.toEqualTypeOf<FixPlanUndoResult>();
   });
 });
-
-function writePlan(path: string, content: string): FixPlan {
-  return {
-    operations: [{ content, path, type: "write" }],
-    summary: `Write ${path}.`,
-  };
-}
 
 async function createFixture(): Promise<FixPlanFixture> {
   const fixture = await createFixPlanFixture();
