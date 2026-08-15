@@ -11,11 +11,19 @@ const PROBE_TIMEOUT_MS = 5_000;
 export interface DetectExecutableOptions {
   /**
    * Arguments whose exit code reports authentication state: `0` is authenticated, `1` is not, and
-   * anything else leaves {@link AdapterDetection.authenticated} unset.
+   * anything else leaves {@link AdapterDetection.authenticated} unset. Omitted when the
+   * application exposes no such command, in which case nothing runs after `--version`.
    */
-  readonly authenticationArgs: readonly string[];
+  readonly authenticationArgs?: readonly string[];
   /** Executable name without extension; `.exe` is appended on Windows. */
   readonly binaryName: string;
+  /**
+   * Full executable name to probe on Windows, replacing the default `.exe`.
+   *
+   * A Windows CLI is routinely a `.cmd` shim rather than an `.exe` — Cursor's search-path entry
+   * is `cursor.cmd`, with no `cursor.exe` beside it.
+   */
+  readonly windowsBinaryName?: string;
 }
 
 /**
@@ -34,7 +42,9 @@ export async function detectExecutable(
   options: DetectExecutableOptions,
 ): Promise<AdapterDetection> {
   const executableName =
-    environment.platform === "win32" ? `${options.binaryName}.exe` : options.binaryName;
+    environment.platform === "win32"
+      ? (options.windowsBinaryName ?? `${options.binaryName}.exe`)
+      : options.binaryName;
   const probed = new Set<string>();
 
   for (const pathEntry of environment.pathEntries) {
@@ -56,12 +66,11 @@ export async function detectExecutable(
       continue;
     }
 
-    const authentication = await environment.exec({
-      args: options.authenticationArgs,
-      command: executablePath,
-      timeoutMs: PROBE_TIMEOUT_MS,
-    });
-    const authenticated = authenticationStatus(authentication.exitCode);
+    const authenticated = await probeAuthentication(
+      environment,
+      executablePath,
+      options.authenticationArgs,
+    );
 
     return {
       executablePath,
@@ -72,6 +81,23 @@ export async function detectExecutable(
   }
 
   return { installed: false };
+}
+
+async function probeAuthentication(
+  environment: Environment,
+  executablePath: string,
+  authenticationArgs: readonly string[] | undefined,
+): Promise<boolean | undefined> {
+  if (authenticationArgs === undefined) {
+    return undefined;
+  }
+
+  const authentication = await environment.exec({
+    args: authenticationArgs,
+    command: executablePath,
+    timeoutMs: PROBE_TIMEOUT_MS,
+  });
+  return authenticationStatus(authentication.exitCode);
 }
 
 function authenticationStatus(exitCode: number): boolean | undefined {

@@ -47,6 +47,10 @@ export function redactMcpArguments(args: readonly string[]): readonly string[] {
 /**
  * Removes credentials from an MCP endpoint while preserving its origin, path, and query names.
  *
+ * Path segments identify the endpoint and are kept, except ones that announce themselves as
+ * credentials — some servers embed the token in the path itself. A token the pattern does not
+ * recognize still passes through, so the path is a weaker guarantee than userinfo and query.
+ *
  * The query is rebuilt by hand: `URLSearchParams` serializes with the form encoding, which would
  * turn the placeholder into `%5Bredacted%5D`.
  */
@@ -61,6 +65,10 @@ export function sanitizeMcpUrl(raw: string): string | undefined {
   url.username = "";
   url.password = "";
   url.hash = "";
+  url.pathname = url.pathname
+    .split("/")
+    .map((segment) => (SECRET_VALUE_PATTERN.test(segment) ? REDACTED : segment))
+    .join("/");
   const names = [...new Set(url.searchParams.keys())];
   url.search = names.map((name) => `${name}=${REDACTED}`).join("&");
   return url.toString();

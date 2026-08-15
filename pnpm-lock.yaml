@@ -57,6 +57,9 @@ importers:
       '@tryaura/adapter-codex':
         specifier: workspace:*
         version: link:../../plugins/adapter-codex
+      '@tryaura/adapter-cursor':
+        specifier: workspace:*
+        version: link:../../plugins/adapter-cursor
       '@tryaura/aura-cli':
         specifier: workspace:*
         version: link:../../packages/cli
@@ -139,6 +142,9 @@ importers:
       '@tryaura/adapter-codex':
         specifier: workspace:*
         version: link:../../plugins/adapter-codex
+      '@tryaura/adapter-cursor':
+        specifier: workspace:*
+        version: link:../../plugins/adapter-cursor
       '@tryaura/core':
         specifier: workspace:*
         version: link:../core
@@ -183,18 +189,17 @@ importers:
       '@tryaura/aura-sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+    devDependencies:
+      '@types/node':
+        specifier: 24.13.3
+        version: 24.13.3
+      vitest:
+        specifier: 4.1.10
+        version: 4.1.10(@types/node@24.13.3)(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0))
 
-  plugins/checks-core:
-    dependencies:
-      '@tryaura/aura-sdk':
-        specifier: workspace:*
-        version: link:../../packages/sdk
+  plugins/checks-core: {}
 
-  plugins/content-official:
-    dependencies:
-      '@tryaura/aura-sdk':
-        specifier: workspace:*
-        version: link:../../packages/sdk
+  plugins/content-official: {}
 
 packages:
 

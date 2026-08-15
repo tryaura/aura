@@ -49,6 +49,7 @@
   "devDependencies": {
     "@tryaura/adapter-claude-code": "workspace:*",
     "@tryaura/adapter-codex": "workspace:*",
+    "@tryaura/adapter-cursor": "workspace:*",
     "@tryaura/core": "workspace:*",
     "@types/node": "24.13.3",
     "vitest": "4.1.10"

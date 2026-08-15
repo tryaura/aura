@@ -62,7 +62,7 @@ await expect(seed.invocations("fixture-agent")).resolves.toEqual([["--version"]]
 Versioned official-app fixtures are also exported for adapter and binary integration tests:
 
 ```ts
-import { createClaudeCodeSeed, createCodexSeed } from "@tryaura/aura-testkit";
+import { createClaudeCodeSeed, createCodexSeed, createCursorSeed } from "@tryaura/aura-testkit";
 
 await using seed = await createClaudeCodeSeed({
   authenticated: true,
@@ -72,6 +72,11 @@ await using seed = await createClaudeCodeSeed({
 await using codexSeed = await createCodexSeed({
   authenticated: true,
   version: "0.147.0",
+});
+
+await using cursorSeed = await createCursorSeed({
+  rules: "legacy",
+  version: "3.11.0",
 });
 ```
 
