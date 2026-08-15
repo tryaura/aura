@@ -24,7 +24,7 @@ jobs:
           - target: darwin-arm64
             runner: macos-latest
           - target: darwin-x64
-            runner: macos-13
+            runner: macos-15-intel
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -37,18 +37,31 @@ jobs:
           cache: pnpm
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Compile binary
-        run: bun build --compile --minify --outfile aura distros/aura/src/main.ts
-      # Placeholder canary. The full compiled-binary smoke suite against testkit seeds
-      # lands with AURA-12; this only proves the artifact is executable on its target.
-      - name: Smoke test
+      # Read back on purpose: `pnpm --filter` exits 0 when it matches no project, so a renamed
+      # package would leave the manifest at its repo version and ship a tarball whose binary reports
+      # something other than the tag it is named after.
+      - name: Stamp release version
+        env:
+          AURA_TAG: ${{ github.ref_name }}
         run: |
-          chmod +x ./aura
-          ./aura --version || test $? -ne 126
+          version="${AURA_TAG#v}"
+          pnpm --filter @tryaura/aura pkg set "version=${version}"
+          stamped="$(node -p "require('./distros/aura/package.json').version")"
+          if [ "${stamped}" != "${version}" ]; then
+            echo "::error::Version stamp did not apply: expected ${version}, manifest reports ${stamped}"
+            exit 1
+          fi
+          echo "AURA_EXPECTED_VERSION=${version}" >> "${GITHUB_ENV}"
+      # The smoke suite compares the binary against AURA_EXPECTED_VERSION rather than the manifest it
+      # was compiled from, so the tag is what the artifact is held to.
+      - name: Compile and smoke test binary
+        run: pnpm run verify:binary
       - name: Package
-        run: tar -czf "aura-${{ matrix.target }}.tar.gz" aura
+        run: tar -czf "aura-${{ matrix.target }}.tar.gz" -C distros/aura/dist aura
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
