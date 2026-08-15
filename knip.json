@@ -1,0 +1,20 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "rules": {
+    "binaries": "warn",
+    "dependencies": "warn",
+    "devDependencies": "warn",
+    "optionalPeerDependencies": "warn"
+  },
+  "workspaces": {
+    "distros/*": {
+      "includeEntryExports": true
+    },
+    "packages/core": {
+      "includeEntryExports": true
+    },
+    "plugins/*": {
+      "includeEntryExports": true
+    }
+  }
+}
