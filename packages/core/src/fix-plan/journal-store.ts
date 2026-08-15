@@ -66,13 +66,7 @@ export async function storeOperation(
           ? operation.before.mode
           : (operation.operation.mode ?? DEFAULT_FILE_MODE);
       return {
-        after: await storeFile(
-          content,
-          mode,
-          directory,
-          operation.preview.index,
-          "after",
-        ),
+        after: await storeFile(content, mode, directory, operation.preview.index, "after"),
         before: await storedStateWithPayload(
           operation.before,
           directory,

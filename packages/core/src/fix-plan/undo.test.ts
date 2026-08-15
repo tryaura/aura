@@ -1,10 +1,16 @@
-import { chmod, lstat, mkdir, readFile, readlink, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, readFile, readlink, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { FixPlan } from "@tryaura/aura-sdk";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, expectTypeOf, it } from "vitest";
 
-import { executeFixPlan, FixPlanUndoError, undoLastFixPlan } from "../index.js";
+import {
+  executeFixPlan,
+  FixPlanUndoError,
+  type FixPlanUndoOptions,
+  type FixPlanUndoResult,
+  undoLastFixPlan,
+} from "../index.js";
 import { createFixPlanFixture, type FixPlanFixture } from "./testing.js";
 
 const temporaryDirectories: string[] = [];
@@ -118,7 +124,11 @@ describe("durable fix-plan undo", () => {
     const path = join(fixture.workspace, "config.md");
     await writeFile(path, "same\n", "utf8");
 
-    const noop = await executeFixPlan({ model: fixture.model, now, plan: writePlan(path, "same\n") });
+    const noop = await executeFixPlan({
+      model: fixture.model,
+      now,
+      plan: writePlan(path, "same\n"),
+    });
     const dryRun = await executeFixPlan({
       dryRun: true,
       model: fixture.model,
@@ -145,6 +155,8 @@ describe("durable fix-plan undo", () => {
 
   it("exports the typed undo failure", () => {
     expect(FixPlanUndoError.prototype).toBeInstanceOf(Error);
+    expectTypeOf<FixPlanUndoOptions["now"]>().toEqualTypeOf<() => Date>();
+    expectTypeOf(undoLastFixPlan).returns.resolves.toEqualTypeOf<FixPlanUndoResult>();
   });
 });
 

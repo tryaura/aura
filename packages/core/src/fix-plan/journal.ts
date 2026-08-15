@@ -60,10 +60,14 @@ export async function stageJournal(
     if (error instanceof FixPlanError) {
       throw error;
     }
-    throw new FixPlanError("backup-error", `could not stage fix-plan backup: ${errorMessage(error)}`, {
-      cause: error,
-      path: root,
-    });
+    throw new FixPlanError(
+      "backup-error",
+      `could not stage fix-plan backup: ${errorMessage(error)}`,
+      {
+        cause: error,
+        path: root,
+      },
+    );
   }
 }
 
@@ -103,10 +107,14 @@ export async function listJournal(homeDir: string): Promise<readonly JournalHand
     try {
       stats = await lstat(directory);
     } catch (error) {
-      throw new FixPlanError("backup-error", `could not inspect undo entry: ${errorMessage(error)}`, {
-        cause: error,
-        path: directory,
-      });
+      throw new FixPlanError(
+        "backup-error",
+        `could not inspect undo entry: ${errorMessage(error)}`,
+        {
+          cause: error,
+          path: directory,
+        },
+      );
     }
     if (!stats.isDirectory()) {
       continue;
@@ -116,16 +124,24 @@ export async function listJournal(homeDir: string): Promise<readonly JournalHand
     try {
       text = await readFile(path, "utf8");
     } catch (error) {
-      throw new FixPlanError("journal-corrupt", `could not read journal manifest: ${errorMessage(error)}`, {
-        cause: error,
-        path,
-      });
+      throw new FixPlanError(
+        "journal-corrupt",
+        `could not read journal manifest: ${errorMessage(error)}`,
+        {
+          cause: error,
+          path,
+        },
+      );
     }
     const manifest = parseManifest(text, path);
     if (manifest.id !== name || resolve(manifest.homeDir) !== resolve(homeDir)) {
-      throw new FixPlanError("journal-corrupt", `journal identity does not match its location: ${path}`, {
-        path,
-      });
+      throw new FixPlanError(
+        "journal-corrupt",
+        `journal identity does not match its location: ${path}`,
+        {
+          path,
+        },
+      );
     }
     handles.push({ directory, manifest });
   }
@@ -142,10 +158,14 @@ export async function readPayload(directory: string, state: StoredPathState): Pr
   try {
     return await readFile(path);
   } catch (error) {
-    throw new FixPlanError("journal-corrupt", `could not read backup payload: ${errorMessage(error)}`, {
-      cause: error,
-      path,
-    });
+    throw new FixPlanError(
+      "journal-corrupt",
+      `could not read backup payload: ${errorMessage(error)}`,
+      {
+        cause: error,
+        path,
+      },
+    );
   }
 }
 

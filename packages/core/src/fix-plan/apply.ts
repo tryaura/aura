@@ -1,4 +1,14 @@
-import { chmod, mkdir, rename, rm, rmdir, symlink, unlink, utimes, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  rename,
+  rm,
+  rmdir,
+  symlink,
+  unlink,
+  utimes,
+  writeFile,
+} from "node:fs/promises";
 import { dirname } from "node:path";
 
 import { removeCreatedDirectories, replaceFile, replaceLink } from "./filesystem.js";
@@ -155,11 +165,7 @@ async function applyWrite(
     });
   }
 
-  await replaceFile(
-    path,
-    prepared.operation.content,
-    prepared.operation.mode ?? DEFAULT_FILE_MODE,
-  );
+  await replaceFile(path, prepared.operation.content, prepared.operation.mode ?? DEFAULT_FILE_MODE);
   return undoStep(index, undoDirectory, async () => {
     await replaceLink(path, before.target);
   });

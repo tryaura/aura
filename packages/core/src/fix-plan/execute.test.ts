@@ -7,6 +7,7 @@ import { afterEach, describe, expect, expectTypeOf, it } from "vitest";
 import {
   applyFixPlan,
   executeFixPlan,
+  type FixPlanApplyOptions,
   type FixOperationEffect,
   type FixOperationPreview,
   type FixPlanErrorCode,
@@ -38,6 +39,7 @@ describe("fix-plan execution", () => {
     expectTypeOf<"invalid-path" | "path-conflict">().toMatchTypeOf<FixPlanErrorCode>();
     expectTypeOf<FixPlanPreviewOptions["plan"]>().toEqualTypeOf<FixPlan>();
     expectTypeOf<FixPlanExecutionOptions["dryRun"]>().toEqualTypeOf<boolean | undefined>();
+    expectTypeOf<FixPlanApplyOptions["now"]>().toEqualTypeOf<() => Date>();
     expectTypeOf(previewFixPlan).returns.resolves.toEqualTypeOf<FixPlanPreview>();
     expectTypeOf(executeFixPlan).returns.resolves.toEqualTypeOf<FixPlanExecutionResult>();
     expectTypeOf(prepareFixPlan).returns.resolves.toEqualTypeOf<PreparedFixPlan>();

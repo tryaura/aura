@@ -148,6 +148,7 @@ function isWithin(root: string, candidate: string, caseInsensitive: boolean): bo
   const comparableRoot = comparablePath(resolve(root), caseInsensitive);
   const comparableCandidate = comparablePath(resolve(candidate), caseInsensitive);
   return (
-    comparableCandidate === comparableRoot || comparableCandidate.startsWith(`${comparableRoot}${sep}`)
+    comparableCandidate === comparableRoot ||
+    comparableCandidate.startsWith(`${comparableRoot}${sep}`)
   );
 }

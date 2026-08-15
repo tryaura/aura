@@ -5,7 +5,11 @@ import { basename, dirname, join } from "node:path";
 let temporarySequence = 0;
 
 /** Atomically replaces a path without following a final symbolic link. */
-export async function replaceFile(path: string, content: Buffer | string, mode: number): Promise<void> {
+export async function replaceFile(
+  path: string,
+  content: Buffer | string,
+  mode: number,
+): Promise<void> {
   const temporary = temporaryPathFor(path);
   await writeFile(temporary, content, { flag: "wx", mode: 0o600 });
 

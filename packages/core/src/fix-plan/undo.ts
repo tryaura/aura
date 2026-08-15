@@ -2,10 +2,9 @@ import { chmod, mkdir, rename, rm, rmdir, unlink, utimes } from "node:fs/promise
 import { dirname } from "node:path";
 
 import { removeCreatedDirectories, replaceFile, replaceLink } from "./filesystem.js";
-import { backupRoot, listJournal, readPayload, setJournalStatus, type JournalHandle } from "./journal.js";
+import { listJournal, readPayload, setJournalStatus, type JournalHandle } from "./journal.js";
 import type { StoredOperation, StoredPathState } from "./journal-schema.js";
-import { revalidateMutationPath, type PathPolicy } from "./path-policy.js";
-import { inspectPath, statesEqual, type PathState } from "./state.js";
+import { preflightUndo, primaryPath, type SelectedOperation } from "./undo-preflight.js";
 import {
   errorMessage,
   FixPlanError,
@@ -17,12 +16,8 @@ import {
 
 type UndoAction = () => Promise<void>;
 
-interface SelectedOperation {
-  readonly operation: StoredOperation;
-  readonly shouldRestore: boolean;
-}
-
 interface AppliedUndo {
+  readonly cleanup?: UndoAction | undefined;
   readonly index: number;
   readonly redo: UndoAction;
 }
@@ -37,12 +32,22 @@ export async function undoLastFixPlan(options: FixPlanUndoOptions): Promise<FixP
   }
 
   try {
-    const selected = await preflight(entry, options.homeDir);
+    const selected = await preflightUndo(entry, options.homeDir);
     const restored = await restoreOperations(entry, selected);
-    await setJournalStatus(entry, "undone", options.now().toISOString());
+    try {
+      await setJournalStatus(entry, "undone", options.now().toISOString());
+    } catch (error) {
+      const rollback = await rollForward(restored);
+      const failure = new FixPlanError(
+        "backup-error",
+        `could not finalize undo journal: ${errorMessage(error)}`,
+        { cause: error },
+      );
+      throw new FixPlanUndoError(failure, rollback.status, rollback.failures);
+    }
     return Object.freeze({
       backupId: entry.manifest.id,
-      restoredOperationCount: restored,
+      restoredOperationCount: restored.length,
       status: "undone",
     });
   } catch (error) {
@@ -59,37 +64,10 @@ export async function undoLastFixPlan(options: FixPlanUndoOptions): Promise<FixP
   }
 }
 
-async function preflight(
-  entry: JournalHandle,
-  homeDir: string,
-): Promise<readonly SelectedOperation[]> {
-  const selected: SelectedOperation[] = [];
-  for (const operation of entry.manifest.operations) {
-    const before = await matchesBefore(entry, operation);
-    const after = await matchesAfter(entry, operation);
-    const pending = entry.manifest.status === "pending";
-    if (!after && !(pending && before)) {
-      throw conflict(operation.index, primaryPath(operation));
-    }
-    selected.push({ operation, shouldRestore: after });
-  }
-
-  const policy = policyFor(entry, homeDir);
-  for (const { operation, shouldRestore } of selected) {
-    if (!shouldRestore) {
-      continue;
-    }
-    for (const path of mutationPaths(operation)) {
-      await revalidateMutationPath(path, policy, operation.index);
-    }
-  }
-  return Object.freeze(selected);
-}
-
 async function restoreOperations(
   entry: JournalHandle,
   selected: readonly SelectedOperation[],
-): Promise<number> {
+): Promise<readonly AppliedUndo[]> {
   const applied: AppliedUndo[] = [];
   for (let position = selected.length - 1; position >= 0; position -= 1) {
     const item = selected[position];
@@ -97,7 +75,11 @@ async function restoreOperations(
       continue;
     }
     try {
-      applied.push(await restoreOperation(entry, item.operation));
+      const step = await restoreOperation(entry, item.operation);
+      applied.push(step);
+      if (step.cleanup !== undefined) {
+        await step.cleanup();
+      }
     } catch (error) {
       const rollback = await rollForward(applied);
       const failure = new FixPlanError(
@@ -108,7 +90,7 @@ async function restoreOperations(
       throw new FixPlanUndoError(failure, rollback.status, rollback.failures);
     }
   }
-  return applied.length;
+  return Object.freeze(applied);
 }
 
 async function restoreOperation(
@@ -118,8 +100,8 @@ async function restoreOperation(
   switch (operation.type) {
     case "move": {
       await rename(operation.destinationPath, operation.sourcePath);
-      await cleanup(operation.createdDirectory, dirname(operation.destinationPath));
       return {
+        cleanup: cleanupAction(operation.createdDirectory, dirname(operation.destinationPath)),
         index: operation.index,
         redo: async () => {
           await mkdir(dirname(operation.destinationPath), { recursive: true });
@@ -136,8 +118,8 @@ async function restoreOperation(
     }
     case "symlink": {
       await restoreState(entry, operation.path, operation.before);
-      await cleanup(operation.createdDirectory, dirname(operation.path));
       return {
+        cleanup: cleanupAction(operation.createdDirectory, dirname(operation.path)),
         index: operation.index,
         redo: async () => {
           await mkdir(dirname(operation.path), { recursive: true });
@@ -147,8 +129,8 @@ async function restoreOperation(
     }
     case "write": {
       await restoreState(entry, operation.path, operation.before);
-      await cleanup(operation.createdDirectory, dirname(operation.path));
       return {
+        cleanup: cleanupAction(operation.createdDirectory, dirname(operation.path)),
         index: operation.index,
         redo: async () => {
           await mkdir(dirname(operation.path), { recursive: true });
@@ -196,62 +178,8 @@ async function removeState(path: string, state: StoredPathState): Promise<void> 
   }
 }
 
-async function cleanup(created: string | undefined, deepest: string): Promise<void> {
-  if (created !== undefined) {
-    await removeCreatedDirectories(created, deepest);
-  }
-}
-
-async function matchesBefore(entry: JournalHandle, operation: StoredOperation): Promise<boolean> {
-  switch (operation.type) {
-    case "move": {
-      return (
-        (await matches(entry, operation.sourcePath, operation.sourceBefore)) &&
-        (await matches(entry, operation.destinationPath, { kind: "missing" }))
-      );
-    }
-    case "remove":
-    case "symlink":
-    case "write": {
-      return matches(entry, operation.path, operation.before);
-    }
-  }
-}
-
-async function matchesAfter(entry: JournalHandle, operation: StoredOperation): Promise<boolean> {
-  switch (operation.type) {
-    case "move": {
-      return (
-        (await matches(entry, operation.sourcePath, { kind: "missing" })) &&
-        (await matches(entry, operation.destinationPath, operation.sourceBefore))
-      );
-    }
-    case "remove": {
-      return matches(entry, operation.path, { kind: "missing" });
-    }
-    case "symlink": {
-      return matches(entry, operation.path, { kind: "symlink", target: operation.target });
-    }
-    case "write": {
-      return matches(entry, operation.path, operation.after);
-    }
-  }
-}
-
-async function matches(
-  entry: JournalHandle,
-  path: string,
-  expected: StoredPathState,
-): Promise<boolean> {
-  const content = expected.kind === "file" && expected.payload !== undefined
-    ? await readPayload(entry.directory, expected)
-    : undefined;
-  const current = await inspectPath(path, 0, content?.byteLength ?? 0);
-  return statesEqual(toPathState(expected, content), current);
-}
-
-function toPathState(expected: StoredPathState, content: Buffer | undefined): PathState {
-  return expected.kind === "file" ? { ...expected, content } : expected;
+function cleanupAction(created: string | undefined, deepest: string): UndoAction | undefined {
+  return created === undefined ? undefined : async () => removeCreatedDirectories(created, deepest);
 }
 
 async function rollForward(
@@ -271,32 +199,8 @@ async function rollForward(
       };
     }
   }
-  return { failures: Object.freeze([]), status: applied.length === 0 ? "not-required" : "complete" };
-}
-
-function policyFor(entry: JournalHandle, homeDir: string): PathPolicy {
   return {
-    caseInsensitive: entry.manifest.caseInsensitive,
-    reservedRoots: Object.freeze([backupRoot(homeDir)]),
-    roots: entry.manifest.roots,
+    failures: Object.freeze([]),
+    status: applied.length === 0 ? "not-required" : "complete",
   };
-}
-
-function mutationPaths(operation: StoredOperation): readonly string[] {
-  return operation.type === "move"
-    ? [operation.sourcePath, operation.destinationPath]
-    : [operation.path];
-}
-
-function primaryPath(operation: StoredOperation): string {
-  return operation.type === "move" ? operation.sourcePath : operation.path;
-}
-
-function conflict(index: number, path: string): FixPlanUndoError {
-  return new FixPlanUndoError(
-    new FixPlanError("undo-conflict", `path changed after fix operation ${String(index)}: ${path}`, {
-      operationIndex: index,
-      path,
-    }),
-  );
 }

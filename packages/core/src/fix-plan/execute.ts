@@ -126,9 +126,13 @@ async function applyOperations(
     const failure =
       error instanceof FixPlanError
         ? error
-        : new FixPlanError("backup-error", `could not finalize fix-plan backup: ${messageOf(error)}`, {
-            cause: error,
-          });
+        : new FixPlanError(
+            "backup-error",
+            `could not finalize fix-plan backup: ${messageOf(error)}`,
+            {
+              cause: error,
+            },
+          );
     throw new FixPlanApplyError(
       failure,
       rollbackStatus(applied.length, outcome),
