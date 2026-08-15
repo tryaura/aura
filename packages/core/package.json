@@ -15,10 +15,12 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@tryaura/aura-sdk": "workspace:*"
+    "@tryaura/aura-sdk": "workspace:*",
+    "semver": "^7.8.5"
   },
   "devDependencies": {
     "@types/node": "24.13.3",
+    "@types/semver": "^7.8.0",
     "vitest": "4.1.10"
   },
   "engines": {
