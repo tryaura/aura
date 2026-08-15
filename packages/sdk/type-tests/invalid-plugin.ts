@@ -3,6 +3,7 @@
 import {
   defineCheck,
   definePlugin,
+  type Check,
   type DetectedFinding,
   type DirectoryContentSource,
   type FixPlan,
@@ -34,6 +35,15 @@ const directorySource: DirectoryContentSource = {
   url: "file:///example-plugin/content/example-skill/",
 };
 
+const commonCheckFields = {
+  defaultSeverity: "warn",
+  detect: () => [],
+  explain: "Invalid fixability shape.",
+  id: "example/INVALID-FIXABILITY",
+  scope: "global",
+  title: "Invalid fixability",
+} satisfies Pick<Check, "defaultSeverity" | "detect" | "explain" | "id" | "scope" | "title">;
+
 definePlugin({
   // @ts-expect-error API v1 plugins must use the literal version 1.
   apiVersion: 2,
@@ -54,6 +64,25 @@ defineCheck({
   id: "example/INVALID",
   scope: "global",
   title: "Invalid check",
+});
+
+// @ts-expect-error Manual checks cannot provide an executable fix.
+defineCheck({
+  ...commonCheckFields,
+  fix: () => undefined,
+  fixability: "manual",
+});
+
+// @ts-expect-error Automatically fixable checks must provide a fix callback.
+defineCheck({
+  ...commonCheckFields,
+  fixability: "auto",
+});
+
+// @ts-expect-error Guided checks must provide a fix callback.
+defineCheck({
+  ...commonCheckFields,
+  fixability: "guided",
 });
 
 const contradictoryFinding: DetectedFinding = {
