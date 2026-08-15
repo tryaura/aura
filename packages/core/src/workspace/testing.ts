@@ -1,7 +1,6 @@
 import type {
   Adapter,
   AdapterDetection,
-  AdapterFileSpec,
   AdapterParseInput,
   AdapterSnapshot,
   Environment,
@@ -100,7 +99,7 @@ export function createTestEnvironment(options: TestEnvironmentOptions = {}): Env
 /** Overridable parts of {@link createTestAdapter}. Every default describes a working adapter. */
 export interface TestAdapterOptions {
   readonly detect?: (() => Promise<AdapterDetection>) | undefined;
-  readonly files?: (() => readonly AdapterFileSpec[]) | undefined;
+  readonly files?: Adapter["files"] | undefined;
   readonly id?: string | undefined;
   readonly parse?: ((input: AdapterParseInput) => AdapterSnapshot) | undefined;
   readonly supportedRange?: string | undefined;

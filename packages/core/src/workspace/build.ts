@@ -1,7 +1,6 @@
 import type {
   Adapter,
   AdapterDetection,
-  AdapterFileSpec,
   AdapterFileStatus,
   AdapterSnapshot,
   AdapterSourceFile,
@@ -11,10 +10,10 @@ import type {
 } from "@tryaura/aura-sdk";
 
 import { describeFailure, type ScanDiagnostic, type ScanPhase } from "./diagnostics.js";
+import { type AdapterFileDiscovery, discoverAdapterFiles } from "./discovery.js";
 import { createLinkResolver, type LinkResolver } from "./links.js";
 import { findProjectRoot } from "./project-root.js";
 import { createCachingReader, createFileReader, type FileReader } from "./reader.js";
-import { readSpec } from "./specs.js";
 import { evaluateSupport, isComparableRange } from "./support.js";
 
 /** Everything {@link buildWorkspaceModel} needs. */
@@ -162,25 +161,28 @@ async function scanAdapter(adapter: Adapter, context: ScanContext): Promise<Adap
     };
   }
 
-  let specs: readonly AdapterFileSpec[];
+  let discovery: AdapterFileDiscovery;
   try {
-    specs = adapter.files(context.environment, detection);
+    discovery = await discoverAdapterFiles(adapter, {
+      detection,
+      environment: context.environment,
+      projectBoundary: await context.projectBoundary,
+      reader: context.reader,
+    });
   } catch (error) {
     return { diagnostics: [failure(adapter, "files", error)] };
   }
 
-  const projectBoundary = await context.projectBoundary;
-  const reads = await Promise.all(
-    specs.map((spec) => readSpec(spec, { adapter, projectBoundary, reader: context.reader })),
-  );
-  const files = reads.map((read) => read.file);
-  for (const read of reads) {
-    diagnostics.push(...read.diagnostics);
-  }
+  diagnostics.push(...discovery.diagnostics);
 
   let snapshot = EMPTY_SNAPSHOT;
   try {
-    const parsed = adapter.parse({ detection, files });
+    const parsed = adapter.parse({
+      cwd: context.environment.cwd,
+      detection,
+      files: discovery.files,
+      homeDir: context.environment.homeDir,
+    });
     snapshot = {
       instructionFiles: await context.links.resolve(parsed.instructionFiles),
       mcpServers: [...parsed.mcpServers],
@@ -210,7 +212,7 @@ async function scanAdapter(adapter: Adapter, context: ScanContext): Promise<Adap
       skills: snapshot.skills,
       // Contents are dropped here: they were consumed by parse and are not retained beside the
       // documents parsed out of them.
-      sourceFiles: files.map(toStatus),
+      sourceFiles: [...discovery.files.values()].map(toStatus),
       support: evaluateSupport(adapter.supportedRange, detection.version),
     },
     diagnostics,

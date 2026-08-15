@@ -147,7 +147,7 @@ function fixturePlugin(observe: (environment: Environment, childEnvironment: str
     ],
     id: "fixture-agent",
     parse: ({ files }): AdapterSnapshot => {
-      const config = files[0];
+      const config = files.get("config");
       return {
         instructionFiles: [],
         mcpServers: [],

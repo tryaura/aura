@@ -1,3 +1,5 @@
+import { join } from "node:path";
+
 import {
   defineAdapter,
   defineCheck,
@@ -133,7 +135,7 @@ const adapter = defineAdapter({
   },
   id: "example-agent",
   parse(input) {
-    const instructions = input.files.find((file) => file.spec.kind === "instructions");
+    const instructions = input.files.get("example.instructions.global");
 
     return {
       instructionFiles: instructions?.content
@@ -143,7 +145,7 @@ const adapter = defineAdapter({
               links: [
                 {
                   kind: "import",
-                  targetPath: "~/agents/AGENTS.md",
+                  targetPath: join(input.homeDir, "agents", "AGENTS.md"),
                   valid: true,
                 },
               ],
