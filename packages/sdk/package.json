@@ -10,7 +10,7 @@
   ],
   "homepage": "https://github.com/tryaura/aura/tree/main/packages/sdk#readme",
   "bugs": "https://github.com/tryaura/aura/issues",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/tryaura/aura.git",
