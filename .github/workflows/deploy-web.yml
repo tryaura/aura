@@ -47,27 +47,11 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Build site
         run: pnpm --filter @tryaura/web build
-      # A pull request preview uploads a version of an existing Worker; it cannot create one.
-      # Until the first deploy has happened, previews are skipped rather than failed.
-      - name: Check whether the Worker exists
-        id: worker
-        if: env.CLOUDFLARE_API_TOKEN != '' && github.event_name == 'pull_request'
-        run: |
-          status=$(curl -sS -o /dev/null -w '%{http_code}' \
-            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/aura-web")
-          case "$status" in
-            200) echo "exists=true" >> "$GITHUB_OUTPUT" ;;
-            404) echo "exists=false" >> "$GITHUB_OUTPUT" ;;
-            # Anything else (401/403 on a mis-scoped token) must not masquerade as "not deployed
-            # yet", or previews would silently never run again.
-            *) echo "::error::Unexpected HTTP $status from the Workers API while looking up aura-web."; exit 1 ;;
-          esac
       # `versions upload` publishes to a preview URL without touching production.
       # Skipped when the credentials are absent — on fork pull requests, and on any repository
       # where the secrets are unset. The build above still gates every pull request.
       - name: Deploy to Cloudflare
-        if: env.CLOUDFLARE_API_TOKEN != '' && (github.event_name != 'pull_request' || steps.worker.outputs.exists == 'true')
+        if: env.CLOUDFLARE_API_TOKEN != ''
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -77,6 +61,3 @@ jobs:
       - name: Report skipped deploy
         if: env.CLOUDFLARE_API_TOKEN == ''
         run: echo "::notice::Cloudflare deploy skipped — CLOUDFLARE_API_TOKEN is not set for this repository."
-      - name: Report skipped preview
-        if: env.CLOUDFLARE_API_TOKEN != '' && steps.worker.outputs.exists == 'false'
-        run: echo "::notice::Preview skipped — the aura-web Worker does not exist yet. Run this workflow via workflow_dispatch to create it, after which previews run automatically."
