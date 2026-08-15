@@ -10,7 +10,13 @@ export type FileMode = 0o600 | 0o644 | 0o700 | 0o755;
 export interface WriteFileOperation {
   /** Full file contents. */
   readonly content: string;
-  /** Permissions for a newly created file. Defaults to `0o644`. */
+  /**
+   * Permissions for a newly created file. Defaults to `0o644`.
+   *
+   * A file that already exists keeps the mode it has — a user who tightened permissions on their
+   * own config should not have a fix loosen them again. The preview says so when the two differ,
+   * so the outcome is visible rather than silent.
+   */
   readonly mode?: FileMode | undefined;
   /** Absolute path to write. */
   readonly path: string;
@@ -61,12 +67,17 @@ export type FileOperation =
  * The remediation for one {@link Finding}, expressed as data.
  *
  * A plan describes changes; it never applies them. Aura core owns diff previews, dry runs,
- * backups, execution, and undo.
+ * execution, and rollback. A plan is applied whole or not at all: an operation that fails partway
+ * through unwinds the ones before it.
  *
  * Every path in `operations` — including {@link SymlinkOperation.target} — must resolve inside the
- * workspace or the Aura-managed portion of the home directory. Aura core rejects a plan that
- * escapes those roots via `..`, an absolute path elsewhere, or an intermediate symlink, so a fix
- * cannot reach `~/.ssh` or a shell profile.
+ * workspace or a directory a detected adapter declared as global-scope configuration, such as
+ * `~/.claude`. Aura core rejects a plan that escapes those roots via `..`, an absolute path
+ * elsewhere, or an intermediate symlink, and it replaces a symbolic link at a target path rather
+ * than writing through it — so a fix cannot reach `~/.ssh` or a shell profile.
+ *
+ * An operation the filesystem does not currently permit is reported in the preview as a conflict
+ * rather than raised as an error, so a partially applicable plan can still be shown in full.
  */
 export interface FixPlan {
   /** Steps a user must perform themselves, for a `guided` {@link Fixability}. */
