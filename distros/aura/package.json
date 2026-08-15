@@ -3,10 +3,17 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "bin": {
+    "aura": "./dist/main.js"
+  },
   "scripts": {
+    "build": "tsc",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@tryaura/aura-cli": "workspace:*"
+  },
+  "engines": {
+    "node": ">=24"
   }
 }

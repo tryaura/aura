@@ -1,20 +1,40 @@
 {
   "name": "@tryaura/aura-cli",
   "version": "0.0.0",
+  "files": [
+    "dist",
+    "src"
+  ],
   "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "development": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
   "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    },
     "access": "public"
   },
   "scripts": {
+    "build": "tsc --project tsconfig.build.json",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@tryaura/adapter-claude-code": "workspace:*",
-    "@tryaura/adapter-codex": "workspace:*",
-    "@tryaura/adapter-cursor": "workspace:*",
     "@tryaura/aura-sdk": "workspace:*",
-    "@tryaura/checks-core": "workspace:*",
-    "@tryaura/content-official": "workspace:*",
-    "@tryaura/core": "workspace:*"
+    "@tryaura/core": "workspace:*",
+    "clipanion": "3.2.1",
+    "typanion": "3.14.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "vitest": "4.1.10"
   }
 }

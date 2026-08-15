@@ -1,5 +1,6 @@
 export { createEnvironment } from "./environment.js";
 export type { EnvironmentBootOptions } from "./environment.js";
+export { runChecks } from "./checks.js";
 export {
   applyFixPlan,
   executeFixPlan,
