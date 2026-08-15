@@ -1,7 +1,9 @@
 export { runBinaryCheck } from "./binary-runner.js";
 export { runCheck } from "./runner.js";
 export { createSeedBuilder } from "./seed.js";
+export { createClaudeCodeSeed } from "./fixtures/claude-code.js";
 export { ANY_ARGUMENT } from "./types.js";
+export type { ClaudeCodeFixtureVersion, ClaudeCodeSeedOptions } from "./fixtures/claude-code.js";
 export type {
   RunBinaryCheckOptions,
   RunCheckOptions,
