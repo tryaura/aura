@@ -224,7 +224,7 @@ const check = defineCheck({
       summary: "Create and link the shared instruction file.",
     };
   },
-  fixability: "auto",
+  fixability: "guided",
   id: "example/INS-001",
   scope: "global",
   title: "Shared instructions exist",
