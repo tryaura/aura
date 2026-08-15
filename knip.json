@@ -11,7 +11,7 @@
       "includeEntryExports": true
     },
     "packages/sdk": {
-      "entry": ["type-tests/sample-plugin.ts"]
+      "entry": ["type-tests/*.ts"]
     },
     "packages/core": {
       "includeEntryExports": true

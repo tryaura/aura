@@ -2,10 +2,9 @@ import {
   defineAdapter,
   defineCheck,
   definePlugin,
+  DEFAULT_EXEC_TIMEOUT_MS,
   type DirectoryContentSource,
-  type Environment,
   type FileContentSource,
-  type FixPlan,
   type McpServerDef,
   type Preset,
   type SkillPack,
@@ -26,6 +25,7 @@ const directorySource: DirectoryContentSource = {
 const snippet: Snippet = {
   description: "Adds the sample project's coding rules.",
   id: "example/rules",
+  kind: "snippet",
   name: "Example rules",
   source: snippetSource,
   version: "1.0.0",
@@ -34,6 +34,7 @@ const snippet: Snippet = {
 const skill: SkillPack = {
   description: "Demonstrates a bundled skill.",
   id: "example/review",
+  kind: "skill-pack",
   name: "Example review",
   source: directorySource,
   version: "1.0.0",
@@ -42,6 +43,7 @@ const skill: SkillPack = {
 const mcpServer: McpServerDef = {
   description: "Demonstrates an MCP catalog entry.",
   id: "example/server",
+  kind: "mcp-server",
   name: "Example server",
   source: {
     type: "file",
@@ -53,6 +55,7 @@ const mcpServer: McpServerDef = {
 const preset: Preset = {
   description: "Selects all example contributions.",
   id: "example/default",
+  kind: "preset",
   name: "Example default",
   source: {
     type: "file",
@@ -76,23 +79,24 @@ const skillSource: SkillSource = {
     ];
   },
   name: "Example source",
-  async resolve(environment, skillId) {
-    await environment.exec({ command: "example-skills", args: ["get", skillId] });
-    return skillId === skill.id ? skill : undefined;
+  async resolve(environment, skillIds) {
+    await environment.exec({ args: ["get", ...skillIds], command: "example-skills" });
+    return new Map(skillIds.filter((id) => id === skill.id).map((id) => [id, skill]));
   },
 };
 
 const adapter = defineAdapter({
-  async detect(environment: Environment) {
+  async detect(environment) {
     const result = await environment.exec({
-      command: "example-agent",
       args: ["--version"],
+      command: "example-agent",
       cwd: environment.cwd,
-      timeoutMs: 1_000,
+      timeoutMs: DEFAULT_EXEC_TIMEOUT_MS,
     });
 
     return {
       authenticated: result.exitCode === 0,
+      executablePath: `${environment.pathEntries[0] ?? ""}/example-agent`,
       installed: result.exitCode === 0,
       version: result.stdout.trim(),
     };
@@ -189,19 +193,21 @@ const check = defineCheck({
 
     return [
       {
-        checkId: "example/INS-001",
         id: "example/INS-001:global",
         locations: [{ path: `${model.homeDir}/agents/AGENTS.md` }],
         message: "The shared instruction file is missing.",
         metadata: { expectedPath: `${model.homeDir}/agents/AGENTS.md` },
-        scope: "global",
-        severity: "warn",
+        severity: "error",
       },
     ];
   },
   explain: "A shared instruction file keeps agent behavior consistent across applications.",
   fix(finding, model) {
     const sharedPath = `${model.homeDir}/agents/AGENTS.md`;
+
+    if (finding.checkId !== "example/INS-001") {
+      return undefined;
+    }
 
     return {
       manualSteps: [`Review ${finding.message}`],
@@ -228,49 +234,35 @@ export const samplePlugin = definePlugin({
   adapters: [adapter],
   apiVersion: 1,
   checks: [check],
+  id: "example",
   mcpCatalog: [mcpServer],
-  name: "example",
+  name: "Example",
   presets: [preset],
   skills: [skill],
   skillSources: [skillSource],
   snippets: [snippet],
-});
-
-definePlugin({
-  // @ts-expect-error API v1 plugins must use the literal version 1.
-  apiVersion: 2,
-  name: "invalid-version",
-});
-
-defineCheck({
-  defaultSeverity: "warn",
-  // @ts-expect-error Check detection must return complete Finding values.
-  detect: () => [{ message: "Missing finding identity and scope." }],
-  explain: "Invalid check shape.",
-  fixability: "manual",
-  id: "example/INVALID",
-  scope: "global",
-  title: "Invalid check",
-});
-
-const invalidSnippet: Snippet = {
-  description: "Invalid source shape.",
-  id: "example/invalid",
-  name: "Invalid snippet",
-  // @ts-expect-error Snippets must reference a file, not a directory.
-  source: directorySource,
   version: "1.0.0",
-};
+});
 
-const invalidFixPlan: FixPlan = {
-  operations: [
-    {
-      // @ts-expect-error Fix plans accept only the closed file-operation union.
-      type: "execute",
-    },
-  ],
-  summary: "Invalid fix",
-};
+// Optional properties accept an explicitly computed `undefined` under
+// `exactOptionalPropertyTypes`, so adapters need no conditional spreads.
+function optionalVersion(output: string): string | undefined {
+  return output === "" ? undefined : output;
+}
 
-void invalidSnippet;
-void invalidFixPlan;
+export const detectionWithComputedOptional = defineAdapter({
+  async detect(environment) {
+    const result = await environment.exec({ command: "example-agent" });
+
+    return {
+      installed: result.exitCode === 0,
+      metadata: undefined,
+      version: optionalVersion(result.stdout.trim()),
+    };
+  },
+  displayName: "Optional Example",
+  files: () => [],
+  id: "optional-example",
+  parse: () => ({ instructionFiles: [], mcpServers: [], skills: [] }),
+  supportedRange: ">=1",
+});

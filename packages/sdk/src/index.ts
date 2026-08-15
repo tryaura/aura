@@ -1,5 +1,15 @@
-export type { Adapter, AdapterParseInput } from "./adapter.js";
-export type { Check, Finding, FindingLocation } from "./check.js";
+export type {
+  Adapter,
+  AdapterDetection,
+  AdapterFileKind,
+  AdapterFileSpec,
+  AdapterFileStatus,
+  AdapterParseInput,
+  AdapterSourceFile,
+  AdapterSupport,
+  AdapterSupportStatus,
+} from "./adapter.js";
+export type { Check, DetectedFinding, Finding, FindingLocation } from "./check.js";
 export type {
   Fixability,
   JsonObject,
@@ -9,6 +19,7 @@ export type {
   Severity,
 } from "./common.js";
 export type {
+  ContentContribution,
   DirectoryContentSource,
   FileContentSource,
   McpServerDef,
@@ -19,8 +30,10 @@ export type {
   Snippet,
 } from "./content.js";
 export { defineAdapter, defineCheck, definePlugin } from "./define.js";
+export { DEFAULT_EXEC_TIMEOUT_MS, MAX_EXEC_TIMEOUT_MS } from "./environment.js";
 export type { Environment, EnvironmentPlatform, ExecRequest, ExecResult } from "./environment.js";
 export type {
+  FileMode,
   FileOperation,
   FixPlan,
   MovePathOperation,
@@ -29,13 +42,7 @@ export type {
   WriteFileOperation,
 } from "./fix.js";
 export type {
-  AdapterDetection,
-  AdapterFileKind,
-  AdapterFileSpec,
   AdapterSnapshot,
-  AdapterSourceFile,
-  AdapterSupport,
-  AdapterSupportStatus,
   AppModel,
   HttpMcpTransport,
   InstalledSkill,

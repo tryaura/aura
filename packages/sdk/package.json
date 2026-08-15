@@ -1,7 +1,27 @@
 {
   "name": "@tryaura/aura-sdk",
   "version": "0.0.0",
+  "description": "The public plugin API for Aura distributions.",
+  "keywords": [
+    "agent",
+    "aura",
+    "plugin",
+    "sdk"
+  ],
+  "homepage": "https://github.com/tryaura/aura/tree/main/packages/sdk#readme",
+  "bugs": "https://github.com/tryaura/aura/issues",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tryaura/aura.git",
+    "directory": "packages/sdk"
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
   "type": "module",
+  "sideEffects": false,
   "exports": {
     ".": {
       "types": "./src/index.ts",
@@ -9,9 +29,22 @@
     }
   },
   "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    },
     "access": "public"
   },
   "scripts": {
+    "build": "tsc",
     "typecheck": "tsc --noEmit && tsc --project tsconfig.type-tests.json"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3"
+  },
+  "engines": {
+    "node": ">=24"
   }
 }

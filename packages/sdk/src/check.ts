@@ -2,30 +2,84 @@ import type { Fixability, JsonObject, Scope, Severity } from "./common.js";
 import type { FixPlan } from "./fix.js";
 import type { WorkspaceModel } from "./model.js";
 
+/** Where in a file a finding applies. */
 export interface FindingLocation {
-  readonly column?: number;
-  readonly line?: number;
+  /** 1-based column. */
+  readonly column?: number | undefined;
+  /** 1-based line. */
+  readonly line?: number | undefined;
+  /** Absolute path. */
   readonly path: string;
 }
 
-export interface Finding {
-  readonly checkId: string;
-  readonly details?: string;
+/**
+ * What a {@link Check} emits for one problem it found.
+ *
+ * The check's own `id`, `scope`, and `defaultSeverity` are stamped on by Aura core, so a finding
+ * cannot contradict the check that produced it.
+ */
+export interface DetectedFinding {
+  /** Extra explanation for this occurrence, beyond the check's static {@link Check.explain}. */
+  readonly details?: string | undefined;
+  /**
+   * Stable identifier for this occurrence, unique across runs.
+   *
+   * Derive it from what the finding is about — a path, an app id — never from array position, so
+   * that suppressions survive unrelated changes.
+   */
   readonly id: string;
-  readonly locations?: readonly FindingLocation[];
+  /** Where the problem is, when it maps to specific files. */
+  readonly locations?: readonly FindingLocation[] | undefined;
+  /** One sentence naming the problem, in terms the user can act on. */
   readonly message: string;
-  readonly metadata?: JsonObject;
+  /**
+   * Structured detail for machine-readable output.
+   *
+   * Rendered in user-visible output. Never place credentials or file contents here.
+   */
+  readonly metadata?: JsonObject | undefined;
+  /** Overrides {@link Check.defaultSeverity} for this occurrence only. */
+  readonly severity?: Severity | undefined;
+}
+
+/** A {@link DetectedFinding} after Aura core has stamped on its check's identity. */
+export interface Finding extends DetectedFinding {
+  /** The {@link Check.id} that produced this finding. */
+  readonly checkId: string;
+  /** The producing check's {@link Check.scope}. */
   readonly scope: Scope;
+  /** The resolved severity: the finding's own, or the check's {@link Check.defaultSeverity}. */
   readonly severity: Severity;
 }
 
+/**
+ * One rule evaluated against the normalized workspace.
+ *
+ * Checks are synchronous and pure. They receive the whole {@link WorkspaceModel} and must not read
+ * the filesystem, spawn processes, inspect `process.env`, or make network requests — everything
+ * Aura knows is already in the model. This is what makes a run reproducible and lets Aura report
+ * every check from a single scan.
+ */
 export interface Check {
+  /** Severity for findings that do not override it. */
   readonly defaultSeverity: Severity;
-  readonly detect: (model: WorkspaceModel) => readonly Finding[];
+  /** Returns one finding per problem, or an empty array when the rule is satisfied. */
+  readonly detect: (model: WorkspaceModel) => readonly DetectedFinding[];
+  /** Why the rule exists, in one or two sentences. Shown when a user asks about a finding. */
   readonly explain: string;
-  readonly fix?: (finding: Finding, model: WorkspaceModel) => FixPlan | null;
+  /**
+   * Builds the remediation for one finding.
+   *
+   * Returns data only; Aura core applies it. Return `undefined` when this particular finding
+   * cannot be fixed automatically, even though the check declares itself fixable.
+   */
+  readonly fix?: ((finding: Finding, model: WorkspaceModel) => FixPlan | undefined) | undefined;
+  /** How much of the remediation is automated. Declare `manual` when `fix` is omitted. */
   readonly fixability: Fixability;
+  /** Stable check identifier, namespaced by the owning {@link AuraPlugin.id}. */
   readonly id: string;
+  /** Whether the rule is about user-level or workspace-level state. */
   readonly scope: Scope;
+  /** Short imperative statement of the desired state, such as `"Shared instructions exist"`. */
   readonly title: string;
 }
