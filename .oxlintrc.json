@@ -18,6 +18,12 @@
       }
     },
     {
+      "files": ["packages/testkit/src/seed.ts"],
+      "rules": {
+        "no-restricted-imports": "off"
+      }
+    },
+    {
       "files": ["**/*.test.ts", "packages/*/src/**/testing.ts"],
       "rules": {
         "no-restricted-imports": "off",

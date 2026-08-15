@@ -1,21 +1,57 @@
 {
   "name": "@tryaura/aura-testkit",
   "version": "0.0.0",
+  "description": "Deterministic filesystem seeds and CLI harnesses for Aura plugins and distributions.",
+  "keywords": [
+    "aura",
+    "fixtures",
+    "testing"
+  ],
+  "homepage": "https://github.com/tryaura/aura/tree/main/packages/testkit#readme",
+  "bugs": "https://github.com/tryaura/aura/issues",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tryaura/aura.git",
+    "directory": "packages/testkit"
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
   "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "development": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
   "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    },
     "access": "public"
   },
   "scripts": {
+    "build": "tsc --project tsconfig.build.json",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@tryaura/aura-cli": "workspace:*",
     "@tryaura/aura-sdk": "workspace:*",
-    "@tryaura/core": "workspace:*"
+    "diff": "^9.0.0"
   },
   "devDependencies": {
+    "@tryaura/core": "workspace:*",
     "@types/node": "24.13.3",
     "vitest": "4.1.10"
+  },
+  "engines": {
+    "node": ">=24"
   }
 }
