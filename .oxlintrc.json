@@ -17,7 +17,7 @@
       }
     },
     {
-      "files": ["**/*.test.ts", "**/testing.ts"],
+      "files": ["**/*.test.ts", "packages/*/src/**/testing.ts"],
       "rules": {
         "no-restricted-imports": "off",
         "no-restricted-properties": "off",

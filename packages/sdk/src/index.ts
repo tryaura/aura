@@ -8,6 +8,7 @@ export type {
   AdapterSourceFile,
   AdapterSupport,
   AdapterSupportStatus,
+  FileProblem,
 } from "./adapter.js";
 export type { Check, DetectedFinding, Finding, FindingLocation } from "./check.js";
 export type {

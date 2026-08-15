@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createLinkResolver } from "./links.js";
+import { createCachingReader } from "./reader.js";
 import { createDocument, createLink, createMemoryReader } from "./testing.js";
 
 describe("createLinkResolver", () => {
@@ -23,7 +24,7 @@ describe("createLinkResolver", () => {
 
   it("reads each target once, however many documents and apps point at it", async () => {
     const reader = createMemoryReader({ "/home/dev/shared.md": "# shared" });
-    const resolver = createLinkResolver(reader);
+    const resolver = createLinkResolver(createCachingReader(reader));
     const link = createLink("/home/dev/shared.md");
 
     await resolver.resolve([

@@ -1,7 +1,12 @@
 import type { AdapterFileSpec } from "@tryaura/aura-sdk";
 import { describe, expect, it } from "vitest";
 
-import { buildWorkspaceModel, type ScanDiagnostic, type ScanPhase } from "../index.js";
+import {
+  buildWorkspaceModel,
+  type ScanDiagnostic,
+  type ScanPhase,
+  type SkippedApp,
+} from "../index.js";
 import {
   createDocument,
   createMemoryReader,
@@ -16,8 +21,6 @@ const REQUIRED: AdapterFileSpec = {
   path: "/home/dev/.codex/config.toml",
   scope: "global",
 };
-
-const OPTIONAL: AdapterFileSpec = { ...REQUIRED, id: "project", optional: true, scope: "project" };
 
 const working = createTestAdapter({
   id: "working",
@@ -39,13 +42,52 @@ describe("buildWorkspaceModel guards", () => {
 
     const expected: ScanDiagnostic = {
       adapterId: "broken",
-      message: "Fake broken failed during detect: spawn ENOENT",
+      detail: "spawn ENOENT",
+      message:
+        "Fake broken failed during detect. This is a bug in the broken adapter; report it to whoever ships the plugin.",
       phase: "detect",
     };
 
     expect(model.apps.map((app) => app.adapterId)).toEqual(["working"]);
     expect(model.instructionFiles).toHaveLength(1);
     expect(diagnostics).toEqual([expected]);
+  });
+
+  it("keeps a plugin's error text out of the message it shows by default", async () => {
+    const broken = createTestAdapter({
+      files: () => [REQUIRED],
+      id: "broken",
+      // What JSON.parse throws when a config file turns out to hold a credential.
+      parse: () => {
+        throw new Error(`Unexpected token 'A', "AKIAIOSFODNN7EXAMPLE" is not valid JSON`);
+      },
+    });
+
+    const { diagnostics } = await buildWorkspaceModel({
+      adapters: [broken],
+      environment: createTestEnvironment(),
+      reader: createMemoryReader({ "/home/dev/.codex/config.toml": "AKIAIOSFODNN7EXAMPLE" }),
+    });
+
+    expect(diagnostics[0]?.message).not.toContain("AKIAIOSFODNN7EXAMPLE");
+    expect(diagnostics[0]?.detail).toContain("AKIAIOSFODNN7EXAMPLE");
+  });
+
+  it("caps a plugin error long enough to be a dump rather than a diagnostic", async () => {
+    const broken = createTestAdapter({
+      id: "broken",
+      parse: () => {
+        throw new Error("x".repeat(5_000));
+      },
+    });
+
+    const { diagnostics } = await buildWorkspaceModel({
+      adapters: [broken],
+      environment: createTestEnvironment(),
+      reader: createMemoryReader(),
+    });
+
+    expect(diagnostics[0]?.detail).toHaveLength(501);
   });
 
   it("drops an adapter whose file declaration throws", async () => {
@@ -94,33 +136,30 @@ describe("buildWorkspaceModel guards", () => {
     expect(diagnostics).toEqual([
       {
         adapterId: "broken",
-        message: "Fake broken failed during parse: unexpected TOML",
+        detail: "unexpected TOML",
+        message:
+          "Fake broken failed during parse. This is a bug in the broken adapter; report it to whoever ships the plugin.",
         phase: "parse",
       },
     ]);
   });
 
-  it("reports a missing required path but not a missing optional one", async () => {
-    const adapter = createTestAdapter({ files: () => [REQUIRED, OPTIONAL] });
+  it("records an application that was looked for and not found", async () => {
+    const absent = createTestAdapter({
+      detect: () => Promise.resolve({ installed: false }),
+      id: "absent",
+    });
 
-    const { diagnostics, model } = await buildWorkspaceModel({
-      adapters: [adapter],
+    const { diagnostics, skipped } = await buildWorkspaceModel({
+      adapters: [absent, working],
       environment: createTestEnvironment(),
       reader: createMemoryReader(),
     });
 
-    expect(diagnostics).toEqual([
-      {
-        adapterId: "fake",
-        message: "Fake fake expects config at this path, but it does not exist.",
-        path: REQUIRED.path,
-        phase: "read",
-      },
-    ]);
-    expect(model.apps[0]?.sourceFiles).toStrictEqual([
-      { exists: false, spec: REQUIRED },
-      { exists: false, spec: OPTIONAL },
-    ]);
+    const expected: readonly SkippedApp[] = [{ adapterId: "absent", displayName: "Fake absent" }];
+
+    expect(skipped).toEqual(expected);
+    expect(diagnostics).toEqual([]);
   });
 
   it("reports an adapter whose supported range does not parse", async () => {

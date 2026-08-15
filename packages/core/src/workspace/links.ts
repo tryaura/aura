@@ -14,40 +14,27 @@ export interface LinkResolver {
  * Creates a resolver shared across every adapter in one scan.
  *
  * {@link Adapter.parse} is pure and cannot inspect the filesystem, so whatever it reports in
- * {@link InstructionLink.valid} is a placeholder that core overwrites here. Applications import
- * the same shared instruction files, so lookups are memoized across apps: a target that ten
- * documents point at costs one read.
+ * {@link InstructionLink.valid} is a placeholder that core overwrites here.
+ *
+ * Pass the scan's caching reader. Applications import the same shared instruction files, and
+ * deduplicating those lookups belongs to the reader, where it also covers the paths adapters
+ * declared — a target that ten documents point at is usually a file some adapter already read.
  */
 export function createLinkResolver(reader: FileReader): LinkResolver {
-  const lookups = new Map<string, Promise<boolean>>();
-
-  const exists = (path: string): Promise<boolean> => {
-    const pending = lookups.get(path);
-    if (pending !== undefined) {
-      return pending;
-    }
-
-    const lookup = reader.read(path).then((contents) => contents.exists);
-    lookups.set(path, lookup);
-    return lookup;
-  };
-
   const resolve = async (
     documents: readonly InstructionDocument[],
   ): Promise<readonly InstructionDocument[]> =>
     Promise.all(
       documents.map(async (document) => ({
         ...document,
-        links: await Promise.all(document.links.map((link) => resolveLink(link, exists))),
+        links: await Promise.all(document.links.map((link) => resolveLink(link, reader))),
       })),
     );
 
   return Object.freeze({ resolve });
 }
 
-async function resolveLink(
-  link: InstructionLink,
-  exists: (path: string) => Promise<boolean>,
-): Promise<InstructionLink> {
-  return { ...link, valid: await exists(link.targetPath) };
+async function resolveLink(link: InstructionLink, reader: FileReader): Promise<InstructionLink> {
+  const contents = await reader.read(link.targetPath);
+  return { ...link, valid: contents.exists };
 }

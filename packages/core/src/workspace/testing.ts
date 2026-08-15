@@ -5,6 +5,7 @@ import type {
   AdapterParseInput,
   AdapterSnapshot,
   Environment,
+  FileProblem,
   InstructionDocument,
   InstructionLink,
 } from "@tryaura/aura-sdk";
@@ -14,37 +15,68 @@ import type { FileReader, PathContents } from "./reader.js";
 /** Marks an entry of {@link createMemoryReader} as a directory rather than a file. */
 export const DIRECTORY = null;
 
+/** The literal filesystem {@link createMemoryReader} serves: absolute path to contents. */
+export type MemoryEntries = Readonly<Record<string, string | typeof DIRECTORY>>;
+
+/** The parts of a filesystem that are not contents. */
+export interface MemoryReaderOptions {
+  /** Absolute path to the canonical path it resolves to, for symlink tests. */
+  readonly links?: Readonly<Record<string, string>> | undefined;
+  /** Paths that exist but cannot be read, and why. */
+  readonly problems?: Readonly<Record<string, FileProblem>> | undefined;
+}
+
 /** A {@link FileReader} over a literal filesystem, recording every path it was asked for. */
 export interface MemoryReader extends FileReader {
   /** Paths passed to `read`, in call order. */
   readonly reads: readonly string[];
 }
 
-/** Creates a reader over an in-memory filesystem: absolute path to contents, or {@link DIRECTORY}. */
+/** Creates a reader over an in-memory filesystem. Directory entries are derived from the paths. */
 export function createMemoryReader(
-  entries: Readonly<Record<string, string | typeof DIRECTORY>> = {},
+  entries: MemoryEntries = {},
+  options: MemoryReaderOptions = {},
 ): MemoryReader {
   const reads: string[] = [];
 
   return {
     read: (path) => {
       reads.push(path);
-      return Promise.resolve(toContents(entries[path]));
+      const problem = options.problems?.[path];
+      if (problem !== undefined) {
+        return Promise.resolve({ exists: true, isDirectory: false, problem });
+      }
+
+      return Promise.resolve(toContents(path, entries));
     },
+    // A memory filesystem has no reason to fail resolution, so an unlinked path is its own target.
+    realPath: (path) => Promise.resolve(options.links?.[path] ?? path),
     reads,
   };
 }
 
-function toContents(entry: string | typeof DIRECTORY | undefined): PathContents {
+function toContents(path: string, entries: MemoryEntries): PathContents {
+  const entry = entries[path];
+
   if (entry === undefined) {
     return { exists: false, isDirectory: false };
   }
 
   if (entry === DIRECTORY) {
-    return { exists: true, isDirectory: true };
+    return { entries: childrenOf(path, entries), exists: true, isDirectory: true };
   }
 
   return { content: entry, exists: true, isDirectory: false };
+}
+
+/** Immediate children of a directory, taken from the paths the filesystem declares. */
+function childrenOf(directory: string, entries: MemoryEntries): readonly string[] {
+  const prefix = directory.endsWith("/") ? directory : `${directory}/`;
+
+  return Object.keys(entries)
+    .filter((path) => path.startsWith(prefix) && !path.slice(prefix.length).includes("/"))
+    .map((path) => path.slice(prefix.length))
+    .sort();
 }
 
 /** Overridable parts of {@link createTestEnvironment}. */

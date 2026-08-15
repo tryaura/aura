@@ -13,7 +13,8 @@ import type {
 import type { ScanDiagnostic, ScanPhase } from "./diagnostics.js";
 import { createLinkResolver, type LinkResolver } from "./links.js";
 import { findProjectRoot } from "./project-root.js";
-import { createFileReader, type FileReader } from "./reader.js";
+import { createCachingReader, createFileReader, type FileReader } from "./reader.js";
+import { readSpec } from "./specs.js";
 import { evaluateSupport, isComparableRange } from "./support.js";
 
 /** Everything {@link buildWorkspaceModel} needs. */
@@ -31,12 +32,28 @@ export interface WorkspaceScanOptions {
   readonly reader?: FileReader | undefined;
 }
 
+/** An application whose adapter ran and reported it absent. */
+export interface SkippedApp {
+  /** The {@link Adapter.id} that reported the application absent. */
+  readonly adapterId: string;
+  /** Human-readable application name. */
+  readonly displayName: string;
+}
+
 /** The outcome of one scan: what the machine looks like, and what went wrong while looking. */
 export interface WorkspaceScan {
   /** Problems with the scan itself. Empty on a clean run. */
   readonly diagnostics: readonly ScanDiagnostic[];
   /** The normalized machine state every check runs against. */
   readonly model: WorkspaceModel;
+  /**
+   * Applications that were looked for and not found.
+   *
+   * Not a problem, and not worth reporting by default — most machines have most applications
+   * missing. Recording it anyway is what lets a report answer "why didn't you check X?", which it
+   * cannot do if an absent application leaves no trace at all.
+   */
+  readonly skipped: readonly SkippedApp[];
 }
 
 /**
@@ -50,23 +67,29 @@ export interface WorkspaceScan {
  * unchanged machine produce identical output.
  */
 export async function buildWorkspaceModel(options: WorkspaceScanOptions): Promise<WorkspaceScan> {
-  const reader = options.reader ?? createFileReader();
+  const reader = createCachingReader(options.reader ?? createFileReader());
+  const projectRoot = findProjectRoot(options.environment.cwd, reader);
   const context: ScanContext = {
     environment: options.environment,
     links: createLinkResolver(reader),
+    projectBoundary: resolveProjectBoundary(projectRoot, options.environment.cwd, reader),
     reader,
   };
 
-  const [scans, projectRoot] = await Promise.all([
+  const [scans, root] = await Promise.all([
     Promise.all(options.adapters.map((adapter) => scanAdapter(adapter, context))),
-    findProjectRoot(options.environment.cwd, reader),
+    projectRoot,
   ]);
 
   const apps: AppModel[] = [];
   const diagnostics: ScanDiagnostic[] = [];
+  const skipped: SkippedApp[] = [];
   for (const scan of scans) {
     if (scan.app !== undefined) {
       apps.push(scan.app);
+    }
+    if (scan.skipped !== undefined) {
+      skipped.push(scan.skipped);
     }
     diagnostics.push(...scan.diagnostics);
   }
@@ -79,15 +102,18 @@ export async function buildWorkspaceModel(options: WorkspaceScanOptions): Promis
       homeDir: options.environment.homeDir,
       instructionFiles: apps.flatMap((app) => app.instructionFiles),
       mcpServers: apps.flatMap((app) => app.mcpServers),
-      projectRoot,
+      projectRoot: root,
       skills: apps.flatMap((app) => app.skills),
     },
+    skipped,
   };
 }
 
 interface ScanContext {
   readonly environment: Environment;
   readonly links: LinkResolver;
+  /** Canonical directory project-scoped paths must stay inside. Awaited once per adapter. */
+  readonly projectBoundary: Promise<string | undefined>;
   readonly reader: FileReader;
 }
 
@@ -95,6 +121,21 @@ interface ScanContext {
 interface AdapterScan {
   readonly app?: AppModel | undefined;
   readonly diagnostics: readonly ScanDiagnostic[];
+  readonly skipped?: SkippedApp | undefined;
+}
+
+/**
+ * Canonicalizes the directory project-scoped paths are confined to.
+ *
+ * Resolved through symlinks so the comparison is like-for-like: on macOS a repository under
+ * `/tmp` really lives in `/private/tmp`, and every path inside it would otherwise look external.
+ */
+async function resolveProjectBoundary(
+  projectRoot: Promise<string | undefined>,
+  cwd: string,
+  reader: FileReader,
+): Promise<string | undefined> {
+  return reader.realPath((await projectRoot) ?? cwd);
 }
 
 /**
@@ -114,9 +155,11 @@ async function scanAdapter(adapter: Adapter, context: ScanContext): Promise<Adap
     return { diagnostics: [failure(adapter, "detect", error)] };
   }
 
-  // A missing application is the normal case on most machines, not something to report.
   if (!detection.installed) {
-    return { diagnostics: [] };
+    return {
+      diagnostics: [],
+      skipped: { adapterId: adapter.id, displayName: adapter.displayName },
+    };
   }
 
   let specs: readonly AdapterFileSpec[];
@@ -126,8 +169,14 @@ async function scanAdapter(adapter: Adapter, context: ScanContext): Promise<Adap
     return { diagnostics: [failure(adapter, "files", error)] };
   }
 
-  const files = await Promise.all(specs.map((spec) => readSpec(spec, context.reader)));
-  diagnostics.push(...reportMissing(adapter, files));
+  const projectBoundary = await context.projectBoundary;
+  const reads = await Promise.all(
+    specs.map((spec) => readSpec(spec, { adapter, projectBoundary, reader: context.reader })),
+  );
+  const files = reads.map((read) => read.file);
+  for (const read of reads) {
+    diagnostics.push(...read.diagnostics);
+  }
 
   let snapshot = EMPTY_SNAPSHOT;
   try {
@@ -175,40 +224,28 @@ const EMPTY_SNAPSHOT: AdapterSnapshot = Object.freeze({
   skills: [],
 });
 
-async function readSpec(spec: AdapterFileSpec, reader: FileReader): Promise<AdapterSourceFile> {
-  const contents = await reader.read(spec.path);
-  return { content: contents.content, exists: contents.exists, spec };
+function toStatus(file: AdapterSourceFile): AdapterFileStatus {
+  return { exists: file.exists, problem: file.problem, spec: file.spec };
 }
+
+/** How much of a plugin's error text is kept, before it stops being a diagnostic and starts being a dump. */
+const MAX_DETAIL_CHARACTERS = 500;
 
 /**
- * Reports declared paths that were required and absent.
+ * Records a plugin failure without repeating what the plugin said.
  *
- * Optional paths are the common case — most applications only write config once the user has
- * configured something — so only a required path going missing is worth the user's attention.
+ * The thrown message goes to `detail` rather than into `message`, because it is untrusted content:
+ * `JSON.parse` quotes the bytes it choked on, and the files Aura reads are the ones that hold API
+ * tokens. Interpolating it here would print a secret in the default report.
  */
-function reportMissing(
-  adapter: Adapter,
-  files: readonly AdapterSourceFile[],
-): readonly ScanDiagnostic[] {
-  return files
-    .filter((file) => !file.exists && file.spec.optional !== true)
-    .map((file) => ({
-      adapterId: adapter.id,
-      message: `${adapter.displayName} expects ${file.spec.kind} at this path, but it does not exist.`,
-      path: file.spec.path,
-      phase: "read" as const,
-    }));
-}
-
-function toStatus(file: AdapterSourceFile): AdapterFileStatus {
-  return { exists: file.exists, spec: file.spec };
-}
-
 function failure(adapter: Adapter, phase: ScanPhase, error: unknown): ScanDiagnostic {
   const reason = error instanceof Error ? error.message : String(error);
+
   return {
     adapterId: adapter.id,
-    message: `${adapter.displayName} failed during ${phase}: ${reason}`,
+    detail:
+      reason.length > MAX_DETAIL_CHARACTERS ? `${reason.slice(0, MAX_DETAIL_CHARACTERS)}…` : reason,
+    message: `${adapter.displayName} failed during ${phase}. This is a bug in the ${adapter.id} adapter; report it to whoever ships the plugin.`,
     phase,
   };
 }

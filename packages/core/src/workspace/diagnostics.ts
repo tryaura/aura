@@ -11,6 +11,14 @@ export type ScanPhase = "detect" | "files" | "parse" | "read" | "support";
 export interface ScanDiagnostic {
   /** The {@link Adapter.id} whose scan produced this. */
   readonly adapterId: string;
+  /**
+   * Verbatim text from the plugin that failed, when there is any.
+   *
+   * Untrusted, and potentially secret. Plugin errors quote the input that broke them — `JSON.parse`
+   * echoes the bytes it choked on — and the files Aura reads are the ones holding API tokens. This
+   * is for opt-in debug output; never render it in the default report.
+   */
+  readonly detail?: string | undefined;
   /** One sentence naming the problem, in terms the user can act on. */
   readonly message: string;
   /** The path involved, when the problem is about one. */

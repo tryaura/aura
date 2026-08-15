@@ -102,12 +102,12 @@ describe("buildWorkspaceModel", () => {
     });
 
     expect(model.apps[0]?.sourceFiles).toStrictEqual([
-      { exists: true, spec: INSTRUCTIONS },
-      { exists: true, spec: SKILLS },
+      { exists: true, problem: undefined, spec: INSTRUCTIONS },
+      { exists: true, problem: undefined, spec: SKILLS },
     ]);
   });
 
-  it("hands parse one entry per declared spec, in order, with directories left unread", async () => {
+  it("hands parse one entry per declared spec, in order, with directories listed", async () => {
     let received: AdapterParseInput | undefined;
     const adapter = createTestAdapter({
       files: () => [SKILLS, INSTRUCTIONS],
@@ -122,15 +122,78 @@ describe("buildWorkspaceModel", () => {
       environment: createTestEnvironment(),
       reader: createMemoryReader({
         "/home/dev/.claude/skills": DIRECTORY,
+        "/home/dev/.claude/skills/review": DIRECTORY,
+        "/home/dev/.claude/skills/summarize": DIRECTORY,
         "/home/dev/CLAUDE.md": "# instructions",
       }),
     });
 
     expect(received?.detection).toEqual({ installed: true, version: "1.0.0" });
     expect(received?.files).toStrictEqual([
-      { content: undefined, exists: true, spec: SKILLS },
-      { content: "# instructions", exists: true, spec: INSTRUCTIONS },
+      {
+        content: undefined,
+        entries: ["review", "summarize"],
+        exists: true,
+        problem: undefined,
+        spec: SKILLS,
+      },
+      {
+        content: "# instructions",
+        entries: undefined,
+        exists: true,
+        problem: undefined,
+        spec: INSTRUCTIONS,
+      },
     ]);
+  });
+
+  it("lets an adapter turn a listed skills directory into installed skills", async () => {
+    const adapter = createTestAdapter({
+      files: () => [SKILLS],
+      id: "alpha",
+      parse: (input) =>
+        createSnapshot({
+          skills: (input.files[0]?.entries ?? []).map((name) => ({
+            appId: "alpha",
+            id: `alpha/${name}`,
+            name,
+            path: `${SKILLS.path}/${name}`,
+            scope: "global" as const,
+          })),
+        }),
+    });
+
+    const { model } = await buildWorkspaceModel({
+      adapters: [adapter],
+      environment: createTestEnvironment(),
+      reader: createMemoryReader({
+        "/home/dev/.claude/skills": DIRECTORY,
+        "/home/dev/.claude/skills/audit": DIRECTORY,
+        "/home/dev/.claude/skills/review": DIRECTORY,
+      }),
+    });
+
+    expect(model.skills.map((skill) => skill.id)).toEqual(["alpha/audit", "alpha/review"]);
+  });
+
+  it("reads a path once however many adapters and links point at it", async () => {
+    const shared = "/home/dev/AGENTS.md";
+    const declare = (id: string) =>
+      createTestAdapter({
+        files: () => [{ id: "instructions", kind: "instructions", path: shared, scope: "global" }],
+        id,
+        parse: () =>
+          createSnapshot({ instructionFiles: [createDocument(shared, [createLink(shared)])] }),
+      });
+
+    const reader = createMemoryReader({ [shared]: "# shared" });
+    await buildWorkspaceModel({
+      adapters: [declare("alpha"), declare("beta")],
+      environment: createTestEnvironment(),
+      reader,
+    });
+
+    expect(reader.reads.filter((path) => path === shared)).toHaveLength(1);
   });
 
   it("resolves instruction links against the filesystem, overriding what parse claimed", async () => {
