@@ -83,13 +83,8 @@ function createChildEnvironment(
 ): Record<string, string> {
   const childEnvironment: Record<string, string> = { ...environmentVariables };
 
-  for (const name of STRIPPED_VARIABLES) {
-    deleteVariable(childEnvironment, name, options.platform);
-  }
-
-  const homeVariables =
-    options.platform === "win32" ? ["HOME", "HOMEDRIVE", "HOMEPATH", "USERPROFILE"] : ["HOME"];
-  for (const name of [...homeVariables, "PATH"]) {
+  const managed = options.platform === "win32" ? WINDOWS_MANAGED : POSIX_MANAGED;
+  for (const name of [...STRIPPED_VARIABLES, ...managed]) {
     deleteVariable(childEnvironment, name, options.platform);
   }
 
@@ -97,18 +92,29 @@ function createChildEnvironment(
   childEnvironment["PATH"] = options.path;
 
   if (options.platform === "win32") {
-    // Windows tools read USERPROFILE, not HOME, so --home would otherwise not reach them.
-    childEnvironment["USERPROFILE"] = options.homeDir;
-    const drive = /^([A-Za-z]:)(.*)$/.exec(options.homeDir);
-    const root = drive?.[1];
-    const rest = drive?.[2];
-    if (root !== undefined) {
-      childEnvironment["HOMEDRIVE"] = root;
-      childEnvironment["HOMEPATH"] = rest === undefined || rest === "" ? "\\" : rest;
-    }
+    applyWindowsHome(childEnvironment, options.homeDir);
   }
 
   return childEnvironment;
+}
+
+/** Variables Aura owns rather than inherits, cleared before the canonical values are written. */
+const POSIX_MANAGED: readonly string[] = ["HOME", "PATH"];
+const WINDOWS_MANAGED: readonly string[] = ["HOME", "HOMEDRIVE", "HOMEPATH", "PATH", "USERPROFILE"];
+
+/** Windows tools read USERPROFILE and HOMEDRIVE/HOMEPATH, so `--home` has to reach those too. */
+function applyWindowsHome(childEnvironment: Record<string, string>, homeDir: string): void {
+  childEnvironment["USERPROFILE"] = homeDir;
+
+  const drive = /^([A-Za-z]:)(.*)$/.exec(homeDir);
+  const root = drive?.[1];
+  if (root === undefined) {
+    return;
+  }
+
+  const rest = drive?.[2];
+  childEnvironment["HOMEDRIVE"] = root;
+  childEnvironment["HOMEPATH"] = rest === undefined || rest === "" ? "\\" : rest;
 }
 
 /**
