@@ -222,11 +222,12 @@ describe("durable fix-plan backup store", () => {
     const path = join(fixture.workspace, "config.md");
     await writeFile(path, "before\n", "utf8");
     await executeFixPlan({ model: fixture.model, now, plan: writeFixPlan(path, "after\n") });
-    await writeFile(
-      join(backupRoot(fixture.home), ".lock"),
-      `${JSON.stringify({ acquiredAtMs: now().getTime(), pid: 1 })}\n`,
-      "utf8",
-    );
+    await writeLock(fixture, {
+      acquiredAt: now().toISOString(),
+      acquiredAtMs: now().getTime(),
+      ownerId: "active-owner",
+      pid: process.pid,
+    });
 
     await expect(undoFixPlan({ model: fixture.model, now })).rejects.toMatchObject({
       code: "backup-error",
@@ -239,11 +240,13 @@ describe("durable fix-plan backup store", () => {
     const path = join(fixture.workspace, "config.md");
     await writeFile(path, "before\n", "utf8");
     await executeFixPlan({ model: fixture.model, now, plan: writeFixPlan(path, "after\n") });
-    await writeFile(
-      join(backupRoot(fixture.home), ".lock"),
-      `${JSON.stringify({ acquiredAtMs: new Date("2026-08-14T00:00:00.000Z").getTime(), pid: 1 })}\n`,
-      "utf8",
-    );
+    const acquiredAt = new Date("2026-08-14T00:00:00.000Z");
+    await writeLock(fixture, {
+      acquiredAt: acquiredAt.toISOString(),
+      acquiredAtMs: acquiredAt.getTime(),
+      ownerId: "stale-owner",
+      pid: 2_147_483_647,
+    });
 
     await expect(undoFixPlan({ model: fixture.model, now })).resolves.toMatchObject({
       status: "undone",
@@ -264,4 +267,10 @@ async function createFixture(): Promise<FixPlanFixture> {
   const fixture = await createFixPlanFixture();
   temporaryDirectories.push(fixture.root);
   return fixture;
+}
+
+async function writeLock(fixture: FixPlanFixture, owner: object): Promise<void> {
+  const directory = join(backupRoot(fixture.home), ".lock");
+  await mkdir(directory, { recursive: true });
+  await writeFile(join(directory, "fixture.json"), `${JSON.stringify(owner)}\n`, "utf8");
 }
