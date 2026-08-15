@@ -1,0 +1,271 @@
+import type { Buffer } from "node:buffer";
+import { chmod, mkdir, rename, rm, rmdir, symlink, unlink, writeFile } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
+
+import { DEFAULT_FILE_MODE } from "./limits.js";
+import { revalidateMutationPath, revalidateSymlinkTarget } from "./path-policy.js";
+import type {
+  ApplicableOperation,
+  PreparedMoveOperation,
+  PreparedPlanState,
+  PreparedRemoveOperation,
+  PreparedSymlinkOperation,
+  PreparedWriteOperation,
+} from "./prepared.js";
+import { inspectPath, statesEqual, type CapturedFileState, type PathState } from "./state.js";
+import { operationError } from "./types.js";
+
+type UndoAction = () => Promise<void>;
+
+/** An applied operation together with the single action that puts it back. */
+export interface UndoStep {
+  readonly index: number;
+  readonly undo: UndoAction;
+}
+
+let temporarySequence = 0;
+
+/** The only function in the kernel that turns a prepared fix operation into filesystem writes. */
+export async function applyPreparedOperation(
+  prepared: ApplicableOperation,
+  plan: PreparedPlanState,
+): Promise<UndoStep> {
+  switch (prepared.type) {
+    case "move": {
+      return applyMove(prepared, plan);
+    }
+    case "remove": {
+      return applyRemove(prepared, plan);
+    }
+    case "symlink": {
+      return applySymlink(prepared, plan);
+    }
+    case "write": {
+      return applyWrite(prepared, plan);
+    }
+  }
+}
+
+async function applyMove(
+  prepared: PreparedMoveOperation,
+  plan: PreparedPlanState,
+): Promise<UndoStep> {
+  const { destinationPath, sourcePath } = prepared.operation;
+  const index = prepared.preview.index;
+
+  await verifyPath(sourcePath, prepared.sourceBefore, index, plan);
+  await verifyPath(destinationPath, prepared.destinationBefore, index, plan);
+  const undoDirectory = await ensureDirectory(dirname(destinationPath));
+  await rename(sourcePath, destinationPath);
+
+  return undoStep(index, undoDirectory, async () => {
+    await rename(destinationPath, sourcePath);
+  });
+}
+
+async function applyRemove(
+  prepared: PreparedRemoveOperation,
+  plan: PreparedPlanState,
+): Promise<UndoStep> {
+  const path = prepared.operation.path;
+  const index = prepared.preview.index;
+  const before = prepared.before;
+
+  await verifyPath(path, before, index, plan);
+
+  if (before.kind === "directory") {
+    await rmdir(path);
+    return undoStep(index, undefined, async () => {
+      await mkdir(path);
+      await chmod(path, before.mode);
+    });
+  }
+
+  await unlink(path);
+
+  if (before.kind === "file") {
+    return undoStep(index, undefined, async () => {
+      await restoreFile(path, before);
+    });
+  }
+
+  return undoStep(index, undefined, async () => {
+    await symlink(before.target, path);
+  });
+}
+
+async function applySymlink(
+  prepared: PreparedSymlinkOperation,
+  plan: PreparedPlanState,
+): Promise<UndoStep> {
+  const { path, target } = prepared.operation;
+  const index = prepared.preview.index;
+  const before = prepared.before;
+
+  await verifyPath(path, before, index, plan);
+  await revalidateSymlinkTarget(target, plan.policy, index);
+  const undoDirectory = await ensureDirectory(dirname(path));
+  await replaceWithLink(path, target);
+
+  if (before.kind === "missing") {
+    return undoStep(index, undoDirectory, async () => {
+      await rm(path, { force: true });
+    });
+  }
+  if (before.kind === "file") {
+    return undoStep(index, undoDirectory, async () => {
+      await restoreFile(path, before);
+    });
+  }
+
+  return undoStep(index, undoDirectory, async () => {
+    await replaceWithLink(path, before.target);
+  });
+}
+
+async function applyWrite(
+  prepared: PreparedWriteOperation,
+  plan: PreparedPlanState,
+): Promise<UndoStep> {
+  const path = prepared.operation.path;
+  const index = prepared.preview.index;
+  const before = prepared.before;
+
+  await verifyPath(path, before, index, plan);
+  const undoDirectory = await ensureDirectory(dirname(path));
+
+  if (before.kind === "missing") {
+    // `wx` is O_CREAT|O_EXCL: it neither follows a symbolic link that appeared since the check nor
+    // clobbers a file that did.
+    const mode = prepared.operation.mode ?? DEFAULT_FILE_MODE;
+    await writeFile(path, prepared.operation.content, { encoding: "utf8", flag: "wx", mode });
+    // `mode` on create is masked by the process umask, and the modes a plan may ask for are a
+    // closed, deliberate set. Set it exactly.
+    await chmod(path, mode);
+    return undoStep(index, undoDirectory, async () => {
+      await rm(path, { force: true });
+    });
+  }
+
+  if (before.kind === "file") {
+    // The existing file keeps its own mode; `operation.mode` describes a file Aura creates, and the
+    // preview says so when the two differ.
+    await replaceAtomically(path, prepared.operation.content, before.mode);
+    return undoStep(index, undoDirectory, async () => {
+      await restoreFile(path, before);
+    });
+  }
+
+  await replaceAtomically(
+    path,
+    prepared.operation.content,
+    prepared.operation.mode ?? DEFAULT_FILE_MODE,
+  );
+  return undoStep(index, undoDirectory, async () => {
+    await replaceWithLink(path, before.target);
+  });
+}
+
+/**
+ * Replaces a path with new contents, atomically and without following a link.
+ *
+ * Writing in place would do neither: it follows a symbolic link that took the path's place after
+ * the check, and it truncates before it writes, so an interrupted write leaves a half-written file.
+ * Building the replacement beside the target and renaming it over avoids both — `rename` replaces
+ * the link itself, and is either fully done or not done at all.
+ */
+async function replaceAtomically(
+  path: string,
+  content: Buffer | string,
+  mode: number,
+): Promise<void> {
+  const temporary = temporaryPathFor(path);
+  await writeFile(temporary, content, { flag: "wx", mode: 0o600 });
+
+  try {
+    await chmod(temporary, mode);
+    await rename(temporary, path);
+  } catch (error) {
+    await rm(temporary, { force: true });
+    throw error;
+  }
+}
+
+/** Puts a symbolic link at `path` the same way, for the same reasons. */
+async function replaceWithLink(path: string, target: string): Promise<void> {
+  const temporary = temporaryPathFor(path);
+  await symlink(target, temporary);
+
+  try {
+    await rename(temporary, path);
+  } catch (error) {
+    await rm(temporary, { force: true });
+    throw error;
+  }
+}
+
+async function restoreFile(path: string, state: CapturedFileState): Promise<void> {
+  await replaceAtomically(path, state.content, state.mode);
+}
+
+/** Creates missing parents, returning an undo for whatever it had to create. */
+async function ensureDirectory(path: string): Promise<UndoAction | undefined> {
+  const created = await mkdir(path, { recursive: true });
+  if (created === undefined) {
+    return undefined;
+  }
+
+  return async () => {
+    await rm(created, { force: true, recursive: true });
+  };
+}
+
+function undoStep(
+  index: number,
+  undoDirectory: UndoAction | undefined,
+  undo: UndoAction,
+): UndoStep {
+  return {
+    index,
+    undo: async () => {
+      await undo();
+      if (undoDirectory !== undefined) {
+        await undoDirectory();
+      }
+    },
+  };
+}
+
+function temporaryPathFor(target: string): string {
+  temporarySequence += 1;
+  return join(
+    dirname(target),
+    `.${basename(target)}.aura-${String(process.pid)}-${String(temporarySequence)}.tmp`,
+  );
+}
+
+async function verifyPath(
+  path: string,
+  expected: PathState,
+  operationIndex: number,
+  plan: PreparedPlanState,
+): Promise<void> {
+  await revalidateMutationPath(path, plan.policy, operationIndex);
+
+  const current = await inspectPath(path, operationIndex, contentBudgetFor(expected));
+  if (!statesEqual(expected, current)) {
+    throw operationError(
+      "filesystem-changed",
+      operationIndex,
+      `path changed after its preview was prepared: ${path}`,
+      { path },
+    );
+  }
+}
+
+/** Re-reads contents only when the captured state has contents to compare against. */
+function contentBudgetFor(expected: PathState): number {
+  return expected.kind === "file" && expected.content !== undefined
+    ? expected.content.byteLength
+    : 0;
+}
