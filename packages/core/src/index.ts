@@ -18,6 +18,19 @@ export type {
   FixPlanPreviewOptions,
   FixPlanRollbackStatus,
 } from "./fix-plan/types.js";
+export {
+  AURA_MANAGED_BLOCK_BEGIN,
+  AURA_MANAGED_BLOCK_END,
+  AURA_MANAGED_BLOCK_NOTICE,
+  hashManagedSnippet,
+} from "./managed-block/protocol.js";
+export { readManagedBlock } from "./managed-block/read.js";
+export { reconcileManagedBlock } from "./managed-block/reconcile.js";
+export type {
+  DesiredManagedSnippet,
+  ManagedBlockReadResult,
+  ManagedBlockWriteResult,
+} from "./managed-block/types.js";
 export { createPluginRegistry } from "./plugin-registry.js";
 export type { PluginRegistry, PluginRegistryOptions } from "./plugin-registry.js";
 export { SUPPORTED_PLUGIN_API_VERSION } from "./plugin-validation.js";
