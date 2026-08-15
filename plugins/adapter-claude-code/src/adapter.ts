@@ -27,8 +27,8 @@ export const claudeCodeAdapter = defineAdapter({
   files: globalFiles,
   id: "claude-code",
   parse: ({ files }) => {
-    const instructions = files.find((file) => file.spec.id === SOURCE_IDS.instructions);
-    const mcp = files.find((file) => file.spec.id === SOURCE_IDS.mcp);
+    const instructions = files.get(SOURCE_IDS.instructions);
+    const mcp = files.get(SOURCE_IDS.mcp);
 
     return {
       instructionFiles:

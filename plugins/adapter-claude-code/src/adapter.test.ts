@@ -119,19 +119,24 @@ describe("Claude Code file specifications", () => {
 describe("Claude Code parsing", () => {
   it("resolves home-relative imports against the home directory the spec was built from", () => {
     const snapshot = claudeCodeAdapter.parse({
+      cwd: "/workspace",
       detection: { installed: true },
-      files: [
-        {
-          content: "@~/agents/AGENTS.md\n",
-          exists: true,
-          spec: {
-            id: "claude-code.instructions.global",
-            kind: "instructions",
-            path: "/home/dev/.claude/CLAUDE.md",
-            scope: "global",
+      files: new Map([
+        [
+          "claude-code.instructions.global",
+          {
+            content: "@~/agents/AGENTS.md\n",
+            exists: true,
+            spec: {
+              id: "claude-code.instructions.global",
+              kind: "instructions",
+              path: "/home/dev/.claude/CLAUDE.md",
+              scope: "global",
+            },
           },
-        },
-      ],
+        ],
+      ]),
+      homeDir: "/home/dev",
     });
 
     expect(snapshot.instructionFiles[0]?.links).toEqual([
