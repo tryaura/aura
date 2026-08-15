@@ -60,6 +60,22 @@ export interface RunCheckOptions {
   readonly seed: TestSeed;
 }
 
+/** Options for running a compiled Aura distribution against a deterministic seed. */
+export interface RunBinaryCheckOptions {
+  /** Check-command flags other than `--json`, `--home`, and `--path`, which the runner rejects. */
+  readonly args?: readonly string[] | undefined;
+  /** Absolute path to the compiled distribution executable. */
+  readonly binaryPath: string;
+  readonly seed: TestSeed;
+  /**
+   * How long the compiled run may take before it is killed. Defaults to 30 seconds.
+   *
+   * A run that outlives this fails with the output it had produced by then, which is the only thing
+   * that distinguishes a binary that hung from a test runner that gave up on it.
+   */
+  readonly timeoutMs?: number | undefined;
+}
+
 export type TestFileDiffStatus = "added" | "modified" | "removed";
 
 /**

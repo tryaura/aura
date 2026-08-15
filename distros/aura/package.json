@@ -8,12 +8,20 @@
   },
   "type": "module",
   "scripts": {
-    "build": "tsc",
-    "typecheck": "tsc --noEmit"
+    "build": "tsc --project tsconfig.build.json",
+    "build:binary": "bun build src/main.ts --compile --minify --no-compile-autoload-dotenv --no-compile-autoload-bunfig --outfile dist/aura",
+    "test:binary": "vitest run --config vitest.binary.config.ts",
+    "typecheck": "tsc --noEmit",
+    "verify:binary": "pnpm build:binary && pnpm test:binary"
   },
   "dependencies": {
     "@tryaura/adapter-claude-code": "workspace:*",
     "@tryaura/aura-cli": "workspace:*"
+  },
+  "devDependencies": {
+    "@tryaura/aura-testkit": "workspace:*",
+    "@types/node": "24.13.3",
+    "vitest": "4.1.10"
   },
   "engines": {
     "node": ">=24"

@@ -13,7 +13,8 @@
     "lint": "oxlint .",
     "test": "vitest run --passWithNoTests",
     "typecheck": "pnpm -r typecheck",
-    "verify": "pnpm typecheck && pnpm build && pnpm lint && pnpm format:check && pnpm knip && pnpm fallow && pnpm test"
+    "verify": "pnpm typecheck && pnpm build && pnpm lint && pnpm format:check && pnpm knip && pnpm fallow && pnpm test",
+    "verify:binary": "pnpm --filter @tryaura/aura verify:binary"
   },
   "devDependencies": {
     "@types/node": "24.13.3",

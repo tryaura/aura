@@ -87,3 +87,30 @@ await using seed = await createClaudeCodeSeed({
 
 When a run produces no readable report, the failure carries the exit code and the CLI's own stderr,
 which is where the actual explanation lives.
+
+## Running a compiled distribution
+
+`runBinaryCheck` applies the same seed and returns the same result shape while launching a compiled
+Aura executable instead of calling `runCli` in process:
+
+```ts
+import { runBinaryCheck } from "@tryaura/aura-testkit";
+
+const result = await runBinaryCheck({
+  binaryPath: "/absolute/path/to/aura",
+  seed,
+});
+```
+
+The runner invokes `check --json` from the seeded workspace, supplies the seed's HOME and PATH, and
+passes no ambient environment variables to the child. The binary path must be absolute, and `args`
+may not repeat `--json`, `--home`, or `--path` — the runner supplies those and rejects a second one
+rather than letting it parse as a duplicate.
+
+Launch failures, signals, unsupported exit codes, and invalid reports reject with a captured
+transcript. So does a run that hangs: `timeoutMs` (30 seconds by default) bounds how long the child
+may take, after which it is killed and the failure carries whatever it had printed by then.
+
+```ts
+const result = await runBinaryCheck({ binaryPath, seed, timeoutMs: 5_000 });
+```

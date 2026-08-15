@@ -60,22 +60,13 @@ export interface Finding extends DetectedFinding {
  * Aura knows is already in the model. This is what makes a run reproducible and lets Aura report
  * every check from a single scan.
  */
-export interface Check {
+interface CheckDefinition {
   /** Severity for findings that do not override it. */
   readonly defaultSeverity: Severity;
   /** Returns one finding per problem, or an empty array when the rule is satisfied. */
   readonly detect: (model: WorkspaceModel) => readonly DetectedFinding[];
   /** Why the rule exists, in one or two sentences. Shown when a user asks about a finding. */
   readonly explain: string;
-  /**
-   * Builds the remediation for one finding.
-   *
-   * Returns data only; Aura core applies it. Return `undefined` when this particular finding
-   * cannot be fixed automatically, even though the check declares itself fixable.
-   */
-  readonly fix?: ((finding: Finding, model: WorkspaceModel) => FixPlan | undefined) | undefined;
-  /** How much of the remediation is automated. Declare `manual` when `fix` is omitted. */
-  readonly fixability: Fixability;
   /** Stable check identifier, namespaced by the owning {@link AuraPlugin.id}. */
   readonly id: string;
   /** Whether the rule is about user-level or workspace-level state. */
@@ -83,3 +74,25 @@ export interface Check {
   /** Short imperative statement of the desired state, such as `"Shared instructions exist"`. */
   readonly title: string;
 }
+
+interface FixableCheck extends CheckDefinition {
+  /**
+   * Builds the remediation for one finding.
+   *
+   * Returns data only; Aura core applies it. Return `undefined` when this particular finding
+   * cannot be fixed automatically, even though the check declares itself fixable.
+   */
+  readonly fix: (finding: Finding, model: WorkspaceModel) => FixPlan | undefined;
+  /** Whether the returned remediation is complete or includes manual steps. */
+  readonly fixability: Exclude<Fixability, "manual">;
+}
+
+interface ManualCheck extends CheckDefinition {
+  /** Manual checks cannot provide an executable remediation. */
+  readonly fix?: undefined;
+  /** The remediation must be completed manually. */
+  readonly fixability: "manual";
+}
+
+/** One rule evaluated against the normalized workspace, with its remediation contract enforced. */
+export type Check = FixableCheck | ManualCheck;
