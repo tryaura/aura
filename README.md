@@ -94,7 +94,8 @@ pnpm verify:binary
 scripts are also available — `pnpm typecheck`, `pnpm build`, `pnpm lint`, `pnpm format` (`oxfmt`),
 `pnpm knip`, `pnpm fallow`, `pnpm test`. `pnpm verify:binary` compiles the current-platform
 executable and runs the seed-backed smoke suite against it; it is separate because it is the one
-step that needs Bun. CI runs both, and runs `verify:binary` on every platform the release ships to.
+step that needs Bun. PR CI runs `verify`; the release workflow runs `verify:binary` on every
+platform it ships to.
 
 ### A note on the compiled executable
 
