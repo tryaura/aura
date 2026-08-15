@@ -1,95 +1,170 @@
-import { open, readFile, rm } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { link, lstat, mkdir, open, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 
+import { inspectLock, removeObservedLock, type LockOwner } from "./journal-lock-record.js";
 import { errorCode, errorMessage, FixPlanError } from "./types.js";
 
 const LOCK_NAME = ".lock";
+const LOCK_SUFFIX = ".json";
 
-/** How long a lock may sit untouched before a later run treats the process that took it as gone. */
-const LOCK_STALE_MS = 5 * 60 * 1000;
+interface HeldLock {
+  readonly owner: LockOwner;
+  readonly path: string;
+}
 
-/** One retry is enough: the only reason to try again is having just cleared a stale lock. */
-const LOCK_ATTEMPTS = 2;
-
-/**
- * Serializes everything that reads or writes the journal.
- *
- * Applying and undoing both decide what to do from the state of the store and the filesystem, then
- * act on that decision. Without a lock two runs can make the same decision — two undos selecting one
- * entry, or an undo restoring paths an apply is still mutating — and the per-path preconditions only
- * catch some of the ways that goes wrong.
- */
+/** Serializes every decision and mutation involving the undo journal. */
 export async function withJournalLock<Result>(
   root: string,
   now: () => Date,
   action: () => Promise<Result>,
 ): Promise<Result> {
-  const path = join(root, LOCK_NAME);
-  await acquire(path, now);
+  const lock = await acquire(join(root, LOCK_NAME), now);
   try {
     return await action();
   } finally {
-    await rm(path, { force: true }).catch(() => undefined);
+    await release(lock);
   }
 }
 
-async function acquire(path: string, now: () => Date): Promise<void> {
-  for (let attempt = 0; attempt < LOCK_ATTEMPTS; attempt += 1) {
+async function acquire(directory: string, now: () => Date): Promise<HeldLock> {
+  try {
+    await ensureLockDirectory(directory, now);
+    const lock = await publishLock(directory, now());
     try {
-      const handle = await open(path, "wx", 0o600);
-      try {
-        const taken = now();
-        // The readable form is for whoever inspects a stuck lock; the epoch form is what staleness
-        // is measured against, so deciding it never reaches for the system clock.
-        await handle.writeFile(
-          `${JSON.stringify({
-            acquiredAt: taken.toISOString(),
-            acquiredAtMs: taken.getTime(),
-            pid: process.pid,
-          })}\n`,
-          "utf8",
-        );
-      } finally {
-        await handle.close();
+      const contenders = await activeContenders(directory, now, lock.path);
+      if (contenders.length > 0) {
+        throw lockedError(directory);
       }
-      return;
+      return lock;
     } catch (error) {
-      if (errorCode(error) !== "EEXIST") {
-        throw new FixPlanError(
-          "backup-error",
-          `could not lock the undo journal: ${errorMessage(error)}`,
-          { cause: error, path },
-        );
-      }
-      if (!(await isStale(path, now))) {
-        throw new FixPlanError(
-          "backup-error",
-          `another Aura run is using the undo journal. Wait for it to finish, or delete ${path} if no Aura process is running.`,
-          { path },
-        );
-      }
-      await rm(path, { force: true });
+      await removeOwnedLock(lock);
+      throw error;
+    }
+  } catch (error) {
+    if (error instanceof FixPlanError) {
+      throw error;
+    }
+    throw new FixPlanError(
+      "backup-error",
+      `could not lock the undo journal: ${errorMessage(error)}`,
+      { cause: error, path: directory },
+    );
+  }
+}
+
+/** Unique entries in a permanent directory make stale cleanup ownership-safe. */
+async function ensureLockDirectory(directory: string, now: () => Date): Promise<void> {
+  while (true) {
+    const state = await lockDirectoryState(directory);
+    if (state === "ready") {
+      return;
+    }
+    if (state === "retry") {
+      continue;
+    }
+    // A non-recursive rm cannot delete a directory installed by a competing legacy-lock migrator.
+    const observed = await inspectLock(directory, now);
+    if (observed.kind !== "stale") {
+      throw lockedError(directory);
+    }
+    await removeLegacyLock(directory);
+  }
+}
+
+async function lockDirectoryState(directory: string): Promise<"legacy" | "ready" | "retry"> {
+  try {
+    await mkdir(directory, { mode: 0o700 });
+    return "ready";
+  } catch (error) {
+    if (errorCode(error) !== "EEXIST") {
+      throw error;
     }
   }
 
-  throw new FixPlanError("backup-error", `could not lock the undo journal: ${path}`, { path });
+  try {
+    return (await lstat(directory)).isDirectory() ? "ready" : "legacy";
+  } catch (error) {
+    if (errorCode(error) === "ENOENT") {
+      return "retry";
+    }
+    throw error;
+  }
 }
 
-/** A lock whose holder left it behind. An unreadable one counts as stale rather than as a wall. */
-async function isStale(path: string, now: () => Date): Promise<boolean> {
-  let acquiredAtMs: unknown;
+async function removeLegacyLock(path: string): Promise<void> {
   try {
-    const parsed: unknown = JSON.parse(await readFile(path, "utf8"));
-    acquiredAtMs =
-      typeof parsed === "object" && parsed !== null && "acquiredAtMs" in parsed
-        ? parsed.acquiredAtMs
-        : undefined;
-  } catch {
-    return true;
+    await rm(path);
+  } catch (error) {
+    if (errorCode(error) !== "ENOENT" && errorCode(error) !== "EISDIR") {
+      throw error;
+    }
+  }
+}
+
+async function publishLock(directory: string, taken: Date): Promise<HeldLock> {
+  const ownerId = randomUUID();
+  const owner: LockOwner = {
+    acquiredAt: taken.toISOString(),
+    acquiredAtMs: taken.getTime(),
+    ownerId,
+    pid: process.pid,
+  };
+  const path = join(directory, `${ownerId}${LOCK_SUFFIX}`);
+  const temporaryPath = join(directory, `.${ownerId}.tmp`);
+  const handle = await open(temporaryPath, "wx", 0o600);
+  try {
+    await handle.writeFile(`${JSON.stringify(owner)}\n`, "utf8");
+  } finally {
+    await handle.close();
   }
 
-  if (typeof acquiredAtMs !== "number" || !Number.isFinite(acquiredAtMs)) {
-    return true;
+  try {
+    // Publish the completed record exclusively so readers never observe an empty lock.
+    await link(temporaryPath, path);
+  } finally {
+    await rm(temporaryPath, { force: true }).catch(() => undefined);
   }
-  return now().getTime() - acquiredAtMs > LOCK_STALE_MS;
+  return { owner, path };
+}
+
+async function activeContenders(
+  directory: string,
+  now: () => Date,
+  ownPath: string,
+): Promise<readonly string[]> {
+  const contenders: string[] = [];
+  for (const name of await readdir(directory)) {
+    const path = join(directory, name);
+    if (path === ownPath || !name.endsWith(LOCK_SUFFIX)) {
+      continue;
+    }
+
+    const inspected = await inspectLock(path, now);
+    if (inspected.kind === "missing") {
+      continue;
+    }
+    if (inspected.kind === "stale") {
+      await removeObservedLock(path, inspected.owner);
+      continue;
+    }
+    contenders.push(path);
+  }
+  return contenders;
+}
+
+async function release(lock: HeldLock): Promise<void> {
+  await removeOwnedLock(lock).catch(() => undefined);
+}
+
+async function removeOwnedLock(lock: HeldLock): Promise<void> {
+  await removeObservedLock(lock.path, lock.owner);
+}
+
+function lockedError(path: string): FixPlanError {
+  return new FixPlanError(
+    "backup-error",
+    `another Aura run is using the undo journal. Wait for it to finish, or delete ${path} if no Aura process is running.`,
+    { path },
+  );
 }
