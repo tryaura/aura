@@ -67,10 +67,14 @@ export interface AdapterSourceFile extends AdapterFileStatus {
    * Names of the directory's immediate children, sorted, when the path is a directory.
    *
    * One level only, and names rather than paths. A `skills` spec is how an adapter discovers what
-   * is installed; to look inside a child, declare its path as its own spec on the next scan.
+   * is installed; to look inside a child, return a spec for its path from a later
+   * {@link Adapter.files} call.
    */
   readonly entries?: readonly string[] | undefined;
 }
+
+/** Files core has read for an adapter, keyed by {@link AdapterFileSpec.id}. */
+export type AdapterFileMap = ReadonlyMap<string, AdapterSourceFile>;
 
 /** What {@link Adapter.detect} learned about an installed application. */
 export interface AdapterDetection {
@@ -105,10 +109,14 @@ export interface AdapterSupport {
 
 /** Everything {@link Adapter.parse} is given. */
 export interface AdapterParseInput {
+  /** Directory Aura was invoked from. */
+  readonly cwd: string;
   /** What detection found. */
   readonly detection: AdapterDetection;
-  /** One entry per spec returned by {@link Adapter.files}, in the same order. */
-  readonly files: readonly AdapterSourceFile[];
+  /** Every source file core discovered, keyed by its stable spec id. */
+  readonly files: AdapterFileMap;
+  /** The current user's home directory. */
+  readonly homeDir: string;
 }
 
 /**
@@ -130,12 +138,16 @@ export interface Adapter {
   /**
    * Declares which paths Aura core should read.
    *
-   * Called only when {@link AdapterDetection.installed} is `true`. Must not touch the filesystem:
-   * return specs unconditionally and let `exists` report the outcome.
+   * Called only when {@link AdapterDetection.installed} is `true`. The first call receives an empty
+   * file map. Core reads new specs, adds their results to the map, and calls this function again
+   * until it returns no new spec ids. Returning a previously declared id is allowed only when the
+   * spec is unchanged. Must not touch the filesystem: use the supplied results to discover child
+   * paths and let `exists` report read outcomes.
    */
   readonly files: (
     environment: Environment,
     detection: AdapterDetection,
+    files: AdapterFileMap,
   ) => readonly AdapterFileSpec[];
   /**
    * Stable adapter identifier, unique across all loaded plugins.

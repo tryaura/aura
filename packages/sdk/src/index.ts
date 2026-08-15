@@ -2,6 +2,7 @@ export type {
   Adapter,
   AdapterDetection,
   AdapterFileKind,
+  AdapterFileMap,
   AdapterFileSpec,
   AdapterFileStatus,
   AdapterParseInput,

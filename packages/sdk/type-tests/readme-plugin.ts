@@ -42,7 +42,7 @@ const adapter = defineAdapter({
   },
   id: "acme-agent",
   parse({ files }) {
-    const instructions = files[0];
+    const instructions = files.get("acme.instructions.global");
 
     if (!instructions?.content) {
       return { instructionFiles: [], mcpServers: [], skills: [] };

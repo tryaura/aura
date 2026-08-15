@@ -33,8 +33,8 @@ export interface SpecReadOptions {
  * home directory: `.mcp.json` symlinked at `~/.ssh/id_rsa` is read, parsed, and quoted back in
  * whatever the adapter throws.
  *
- * Every outcome still yields exactly one {@link AdapterSourceFile}, because `parse` is promised one
- * entry per spec in declaration order.
+ * Every outcome still yields exactly one {@link AdapterSourceFile}, keyed by its spec id when core
+ * hands the completed discovery map to `parse`.
  */
 export async function readSpec(spec: AdapterFileSpec, options: SpecReadOptions): Promise<SpecRead> {
   const { adapter } = options;

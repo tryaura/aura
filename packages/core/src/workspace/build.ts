@@ -1,6 +1,7 @@
 import type {
   Adapter,
   AdapterDetection,
+  AdapterFileMap,
   AdapterFileSpec,
   AdapterFileStatus,
   AdapterSnapshot,
@@ -162,25 +163,23 @@ async function scanAdapter(adapter: Adapter, context: ScanContext): Promise<Adap
     };
   }
 
-  let specs: readonly AdapterFileSpec[];
+  let discovery: AdapterFileDiscovery;
   try {
-    specs = adapter.files(context.environment, detection);
+    discovery = await discoverAdapterFiles(adapter, detection, context);
   } catch (error) {
     return { diagnostics: [failure(adapter, "files", error)] };
   }
 
-  const projectBoundary = await context.projectBoundary;
-  const reads = await Promise.all(
-    specs.map((spec) => readSpec(spec, { adapter, projectBoundary, reader: context.reader })),
-  );
-  const files = reads.map((read) => read.file);
-  for (const read of reads) {
-    diagnostics.push(...read.diagnostics);
-  }
+  diagnostics.push(...discovery.diagnostics);
 
   let snapshot = EMPTY_SNAPSHOT;
   try {
-    const parsed = adapter.parse({ detection, files });
+    const parsed = adapter.parse({
+      cwd: context.environment.cwd,
+      detection,
+      files: discovery.files,
+      homeDir: context.environment.homeDir,
+    });
     snapshot = {
       instructionFiles: await context.links.resolve(parsed.instructionFiles),
       mcpServers: [...parsed.mcpServers],
@@ -210,11 +209,97 @@ async function scanAdapter(adapter: Adapter, context: ScanContext): Promise<Adap
       skills: snapshot.skills,
       // Contents are dropped here: they were consumed by parse and are not retained beside the
       // documents parsed out of them.
-      sourceFiles: files.map(toStatus),
+      sourceFiles: [...discovery.files.values()].map(toStatus),
       support: evaluateSupport(adapter.supportedRange, detection.version),
     },
     diagnostics,
   };
+}
+
+/** The most times core asks one adapter to expand its file declarations. */
+const MAX_ADAPTER_FILE_ROUNDS = 16;
+
+/** The most paths one adapter may ask core to inspect in a scan. */
+const MAX_ADAPTER_FILES = 10_000;
+
+interface AdapterFileDiscovery {
+  readonly diagnostics: readonly ScanDiagnostic[];
+  readonly files: AdapterFileMap;
+}
+
+/**
+ * Calls an adapter until its file declarations reach a fixed point, reading each spec exactly once.
+ *
+ * A fresh map snapshot is passed on every call so a plugin cannot mutate core's accumulated state.
+ * Adapters may return their complete declaration set or only newly discovered specs. Repeated ids
+ * must describe the same slot; declaration order is the order retained in the resulting map.
+ */
+async function discoverAdapterFiles(
+  adapter: Adapter,
+  detection: AdapterDetection,
+  context: ScanContext,
+): Promise<AdapterFileDiscovery> {
+  const diagnostics: ScanDiagnostic[] = [];
+  const files = new Map<string, AdapterSourceFile>();
+  const specs = new Map<string, AdapterFileSpec>();
+  const projectBoundary = await context.projectBoundary;
+
+  for (let round = 0; round < MAX_ADAPTER_FILE_ROUNDS; round += 1) {
+    const declared = adapter.files(context.environment, detection, new Map(files));
+    const returnedIds = new Set<string>();
+    const newSpecs: AdapterFileSpec[] = [];
+
+    for (const spec of declared) {
+      if (returnedIds.has(spec.id)) {
+        throw new Error(`declared duplicate file spec id "${spec.id}" in one discovery round`);
+      }
+      returnedIds.add(spec.id);
+
+      const previous = specs.get(spec.id);
+      if (previous !== undefined) {
+        if (!sameSpec(previous, spec)) {
+          throw new Error(`redeclared file spec id "${spec.id}" with a different definition`);
+        }
+        continue;
+      }
+
+      newSpecs.push(spec);
+    }
+
+    if (newSpecs.length === 0) {
+      return { diagnostics, files };
+    }
+    if (round === MAX_ADAPTER_FILE_ROUNDS - 1) {
+      throw new Error(`file discovery did not stabilize within ${MAX_ADAPTER_FILE_ROUNDS} rounds`);
+    }
+    if (specs.size + newSpecs.length > MAX_ADAPTER_FILES) {
+      throw new Error(`declared more than ${MAX_ADAPTER_FILES} file specs`);
+    }
+
+    for (const spec of newSpecs) {
+      specs.set(spec.id, spec);
+    }
+
+    const reads = await Promise.all(
+      newSpecs.map((spec) => readSpec(spec, { adapter, projectBoundary, reader: context.reader })),
+    );
+    for (const read of reads) {
+      files.set(read.file.spec.id, read.file);
+      diagnostics.push(...read.diagnostics);
+    }
+  }
+
+  throw new Error(`file discovery did not stabilize within ${MAX_ADAPTER_FILE_ROUNDS} rounds`);
+}
+
+function sameSpec(left: AdapterFileSpec, right: AdapterFileSpec): boolean {
+  return (
+    left.id === right.id &&
+    left.kind === right.kind &&
+    left.optional === right.optional &&
+    left.path === right.path &&
+    left.scope === right.scope
+  );
 }
 
 /** What an application contributes when its adapter failed to parse anything. */
