@@ -2,6 +2,7 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "aura-web",
   "compatibility_date": "2026-08-15",
+  "workers_dev": true,
   // No `main`: this is an assets-only deployment, so no Worker script runs.
   "assets": {
     "directory": "./dist",
@@ -10,4 +11,10 @@
   "observability": {
     "enabled": true,
   },
+  "routes": [
+    {
+      "pattern": "tryaura.sh",
+      "custom_domain": true,
+    },
+  ],
 }
