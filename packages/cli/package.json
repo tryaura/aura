@@ -2,8 +2,7 @@
   "name": "@tryaura/aura-cli",
   "version": "0.0.0",
   "files": [
-    "dist",
-    "src"
+    "dist"
   ],
   "type": "module",
   "sideEffects": false,

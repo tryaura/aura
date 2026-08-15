@@ -34,13 +34,15 @@ describe("createCheckReport", () => {
     ]);
   });
 
-  it("treats a check that could not run as an error", () => {
+  it("treats a check that could not run as an error without reporting it as passed", () => {
     const result = report({ checkDiagnostics: [checkDiagnostic()] });
 
     expect(result.exitCode).toBe(2);
     expect(result.diagnostics).toEqual([
       { id: "fixture/CHECK", message: "Fixture check failed and was skipped.", phase: "check" },
     ]);
+    expect(result.passedChecks).toEqual([]);
+    expect(result.summary.passed).toBe(0);
   });
 
   it("carries untrusted detail only when it was asked for", () => {

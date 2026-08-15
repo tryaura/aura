@@ -69,8 +69,13 @@ export interface CheckReportInput {
 
 export function createCheckReport(input: CheckReportInput): CheckReport {
   const checkIdsWithFindings = new Set(input.findings.map((finding) => finding.checkId));
+  const checkIdsWithDiagnostics = new Set(
+    input.checkDiagnostics.map((diagnostic) => diagnostic.checkId),
+  );
   const passedChecks = input.checks
-    .filter((check) => !checkIdsWithFindings.has(check.id))
+    .filter(
+      (check) => !checkIdsWithFindings.has(check.id) && !checkIdsWithDiagnostics.has(check.id),
+    )
     .map((check) => Object.freeze({ id: check.id, title: check.title }));
   const summary: CheckSummary = Object.freeze({
     errors: countSeverity(input.findings, "error"),

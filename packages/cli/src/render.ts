@@ -5,6 +5,9 @@ import type { Finding } from "@tryaura/aura-sdk";
 import type { CheckReport } from "./report.js";
 import type { CliBranding } from "./types.js";
 
+const MAX_FINDING_TEXT_CHARACTERS = 500;
+const UNICODE_FORMAT_CHARACTER = /\p{Cf}/u;
+
 export function renderJson(report: CheckReport, output: Writable): void {
   output.write(`${JSON.stringify(report)}\n`);
 }
@@ -39,7 +42,7 @@ export function renderHuman(report: CheckReport, branding: CliBranding, output: 
   if (report.diagnostics.length > 0) {
     renderGroup(
       "✗",
-      `Scan errors (${String(report.diagnostics.length)})`,
+      `Run errors (${String(report.diagnostics.length)})`,
       report.diagnostics.flatMap((diagnostic) => [
         `[${safe(diagnostic.id)}:${diagnostic.phase}] ${safe(diagnostic.message)}`,
         ...(diagnostic.detail === undefined ? [] : [`  ${safe(diagnostic.detail)}`]),
@@ -80,8 +83,8 @@ function renderFindingGroup(
     symbol,
     `${label} (${String(findings.length)})`,
     findings.flatMap((finding) => [
-      `[${safe(finding.checkId)}] ${safe(finding.message)}`,
-      ...(finding.details === undefined ? [] : [`  ${safe(finding.details)}`]),
+      `[${safe(finding.checkId)}] ${safeFindingText(finding.message)}`,
+      ...(finding.details === undefined ? [] : [`  ${safeFindingText(finding.details)}`]),
     ]),
     output,
   );
@@ -105,20 +108,33 @@ function summaryMessage(report: CheckReport): string {
 }
 
 /**
- * Neutralizes control characters in text Aura did not write itself.
+ * Neutralizes control and Unicode format characters in text Aura did not write itself.
  *
  * Findings and diagnostics quote what was read out of third-party agent configuration, so their
  * text is attacker-influenced in the same way a filename is. An escape sequence reaching the
  * terminal can repaint the report — turning an error line into a passing one — or drive the
- * terminal itself, so every byte below `space` is replaced before it is written.
+ * terminal itself. Unicode format characters can similarly reorder or conceal text, so both kinds
+ * are replaced before they are written.
  */
 export function safe(value: string): string {
   let result = "";
 
   for (const character of value) {
     const code = character.codePointAt(0) ?? 0;
-    result += code < 0x20 || (code >= 0x7f && code <= 0x9f) ? " " : character;
+    result +=
+      code < 0x20 || (code >= 0x7f && code <= 0x9f) || UNICODE_FORMAT_CHARACTER.test(character)
+        ? " "
+        : character;
   }
 
   return result;
+}
+
+function safeFindingText(value: string): string {
+  const truncated =
+    value.length > MAX_FINDING_TEXT_CHARACTERS
+      ? `${value.slice(0, MAX_FINDING_TEXT_CHARACTERS)}…`
+      : value;
+
+  return safe(truncated);
 }

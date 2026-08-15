@@ -12,6 +12,8 @@ import {
 } from "./testing.js";
 
 const ESCAPE = String.fromCharCode(27);
+const RIGHT_TO_LEFT_OVERRIDE = "\u202e";
+const ZERO_WIDTH_SPACE = "\u200b";
 
 describe("runCli", () => {
   it("refuses to call a run with no checks clean", async () => {
@@ -178,7 +180,10 @@ describe("runCli", () => {
 
     expect(exitCode).toBe(2);
     expect(capture.stdout.text).toContain("! Warnings (1)");
+    expect(capture.stdout.text).toContain("Run errors (1)");
     expect(capture.stdout.text).toContain("[throwing/CHECK:check]");
+    expect(capture.stdout.text).not.toContain("✓ Passed");
+    expect(capture.stdout.text).toContain("0 passed, 0 informational, 1 warnings, 0 errors");
     expect(capture.stdout.text).not.toContain("secret source contents");
     expect(capture.stderr.text).toBe("");
   });
@@ -191,16 +196,35 @@ describe("runCli", () => {
     expect(capture.stdout.text).toContain("secret source contents");
   });
 
-  it("strips control characters out of text a plugin supplied", async () => {
+  it("strips control and Unicode format characters out of text a plugin supplied", async () => {
     const capture = createCapture(["check"]);
     const plugin = findingPlugin("warn", [
-      { id: "escaped", message: `before${ESCAPE}[2K${ESCAPE}[1Gafter` },
+      {
+        id: "escaped",
+        message: `before${ESCAPE}[2K${ESCAPE}[1G${RIGHT_TO_LEFT_OVERRIDE}middle${ZERO_WIDTH_SPACE}after`,
+      },
     ]);
 
     await runCli(distro([plugin]), capture.runtime);
 
     expect(capture.stdout.text).not.toContain(ESCAPE);
-    expect(capture.stdout.text).toContain("before [2K [1Gafter");
+    expect(capture.stdout.text).not.toContain(RIGHT_TO_LEFT_OVERRIDE);
+    expect(capture.stdout.text).not.toContain(ZERO_WIDTH_SPACE);
+    expect(capture.stdout.text).toContain("before [2K [1G middle after");
+  });
+
+  it("truncates finding messages and details in human output", async () => {
+    const capture = createCapture(["check"]);
+    const message = "m".repeat(501);
+    const details = "d".repeat(501);
+    const plugin = findingPlugin("warn", [{ details, id: "long", message }]);
+
+    await runCli(distro([plugin]), capture.runtime);
+
+    expect(capture.stdout.text).toContain(`${"m".repeat(500)}…`);
+    expect(capture.stdout.text).toContain(`${"d".repeat(500)}…`);
+    expect(capture.stdout.text).not.toContain(message);
+    expect(capture.stdout.text).not.toContain(details);
   });
 
   it("grants bare check ids only where the distribution said so", async () => {
