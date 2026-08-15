@@ -2,16 +2,9 @@ import { dirname } from "node:path";
 import { PassThrough, Readable } from "node:stream";
 
 import { runCli } from "@tryaura/aura-cli";
-import type {
-  Finding,
-  FindingLocation,
-  JsonObject,
-  JsonValue,
-  Scope,
-  Severity,
-} from "@tryaura/aura-sdk";
 
 import { captureFilesystem, diffFilesystem } from "./filesystem.js";
+import { parseReport } from "./report.js";
 import type { RunCheckOptions, TestRunResult, TestSeed } from "./types.js";
 
 interface TextCapture {
@@ -39,22 +32,65 @@ export async function runCheck(options: RunCheckOptions): Promise<TestRunResult>
     stdin: Readable.from([]),
     stdout: stdout.stream,
   });
-  if (capturedExitCode !== exitCode) {
-    throw new Error("CLI returned an exit code different from the captured process exit code.");
-  }
 
   const normalize = createNormalizer(options.seed);
   const normalizedStdout = normalize(stdout.read());
   const normalizedStderr = normalize(stderr.read());
+  const transcript: RunTranscript = {
+    exitCode,
+    stderr: normalizedStderr,
+    stdout: normalizedStdout,
+  };
+  if (capturedExitCode !== exitCode) {
+    throw runError("Check runner saw two disagreeing exit codes for one run.", transcript);
+  }
+
+  const report = parseReport(normalizedStdout, (message) => runError(message, transcript));
   const after = await captureFilesystem(options.seed);
 
   return Object.freeze({
     diffs: diffFilesystem(before, after, normalize),
     exitCode,
-    findings: parseFindings(normalizedStdout),
+    findings: report.findings,
+    report,
     stderr: normalizedStderr,
     stdout: normalizedStdout,
   });
+}
+
+interface RunTranscript {
+  readonly exitCode: number;
+  readonly stderr: string;
+  readonly stdout: string;
+}
+
+const TRANSCRIPT_LIMIT = 2000;
+
+/**
+ * Builds a failure that carries the run it is about.
+ *
+ * Everything that explains a failed run — the exit code, and the stderr the CLI writes its own
+ * errors to — is already captured by the time parsing can fail. Reporting the failure without them
+ * is what turns a mistyped flag into an unexplained "expected one JSON report".
+ */
+function runError(message: string, transcript: RunTranscript): Error {
+  return new Error(
+    [
+      message,
+      `  exit code: ${String(transcript.exitCode)}`,
+      `  stdout: ${describeStream(transcript.stdout)}`,
+      `  stderr: ${describeStream(transcript.stderr)}`,
+    ].join("\n"),
+  );
+}
+
+function describeStream(value: string): string {
+  if (value === "") {
+    return "<empty>";
+  }
+  const trimmed = value.length > TRANSCRIPT_LIMIT ? value.slice(0, TRANSCRIPT_LIMIT) : value;
+  const suffix = value.length > TRANSCRIPT_LIMIT ? "… (truncated)" : "";
+  return `${trimmed.replaceAll("\n", "\n    ")}${suffix}`;
 }
 
 function createTextCapture(): TextCapture {
@@ -83,147 +119,4 @@ function createNormalizer(seed: TestSeed): (value: string) => string {
     }
     return normalized;
   };
-}
-
-function parseFindings(stdout: string): readonly Finding[] {
-  let document: unknown;
-  try {
-    document = JSON.parse(stdout);
-  } catch {
-    throw new Error("Check runner expected one JSON report on stdout.");
-  }
-  if (!isRecord(document) || !Array.isArray(document["findings"])) {
-    throw new Error("Check runner received a JSON report without a findings array.");
-  }
-
-  const findings: Finding[] = [];
-  for (const value of document["findings"]) {
-    const finding = parseFinding(value);
-    if (finding === undefined) {
-      throw new Error("Check runner received an invalid finding in its JSON report.");
-    }
-    findings.push(Object.freeze(finding));
-  }
-  return Object.freeze(findings);
-}
-
-function parseFinding(value: unknown): Finding | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-
-  const required = parseRequiredFinding(value);
-  const optional = parseOptionalFinding(value);
-  if (required === undefined || optional === false) {
-    return undefined;
-  }
-
-  return { ...required, ...optional };
-}
-
-type RequiredFinding = Pick<Finding, "checkId" | "id" | "message" | "scope" | "severity">;
-
-function parseRequiredFinding(value: Record<string, unknown>): RequiredFinding | undefined {
-  const checkId = value["checkId"];
-  const id = value["id"];
-  const message = value["message"];
-  const scope = value["scope"];
-  const severity = value["severity"];
-  if (
-    typeof checkId !== "string" ||
-    typeof id !== "string" ||
-    typeof message !== "string" ||
-    !isScope(scope) ||
-    !isSeverity(severity)
-  ) {
-    return undefined;
-  }
-
-  return { checkId, id, message, scope, severity };
-}
-
-type OptionalFinding = Partial<Pick<Finding, "details" | "locations" | "metadata">>;
-
-function parseOptionalFinding(value: Record<string, unknown>): OptionalFinding | false {
-  const details = optionalString(value["details"]);
-  const locations = optionalLocations(value["locations"]);
-  const metadata = optionalJsonObject(value["metadata"]);
-  if (details === false || locations === false || metadata === false) {
-    return false;
-  }
-
-  return {
-    ...(details === undefined ? {} : { details }),
-    ...(locations === undefined ? {} : { locations }),
-    ...(metadata === undefined ? {} : { metadata }),
-  };
-}
-
-function optionalString(value: unknown): string | undefined | false {
-  return value === undefined || typeof value === "string" ? value : false;
-}
-
-function optionalLocations(value: unknown): readonly FindingLocation[] | undefined | false {
-  if (value === undefined) {
-    return undefined;
-  }
-  if (!Array.isArray(value) || !value.every(isFindingLocation)) {
-    return false;
-  }
-  return value.map((location) => Object.freeze(copyLocation(location)));
-}
-
-function copyLocation(location: FindingLocation): FindingLocation {
-  return {
-    path: location.path,
-    ...(location.column === undefined ? {} : { column: location.column }),
-    ...(location.line === undefined ? {} : { line: location.line }),
-  };
-}
-
-function isFindingLocation(value: unknown): value is FindingLocation {
-  return (
-    isRecord(value) &&
-    typeof value["path"] === "string" &&
-    isOptionalPositiveInteger(value["column"]) &&
-    isOptionalPositiveInteger(value["line"])
-  );
-}
-
-function optionalJsonObject(value: unknown): JsonObject | undefined | false {
-  if (value === undefined) {
-    return undefined;
-  }
-  return isJsonObject(value) ? value : false;
-}
-
-function isJsonObject(value: unknown): value is JsonObject {
-  return isRecord(value) && Object.values(value).every(isJsonValue);
-}
-
-function isJsonValue(value: unknown): value is JsonValue {
-  return (
-    value === null ||
-    typeof value === "boolean" ||
-    typeof value === "number" ||
-    typeof value === "string" ||
-    (Array.isArray(value) && value.every(isJsonValue)) ||
-    isJsonObject(value)
-  );
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isOptionalPositiveInteger(value: unknown): boolean {
-  return value === undefined || (typeof value === "number" && Number.isInteger(value) && value > 0);
-}
-
-function isScope(value: unknown): value is Scope {
-  return value === "global" || value === "project";
-}
-
-function isSeverity(value: unknown): value is Severity {
-  return value === "error" || value === "info" || value === "warn";
 }

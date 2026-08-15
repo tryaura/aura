@@ -1,8 +1,8 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, normalize, relative, sep } from "node:path";
 
-import { validateShim, writeShim } from "./shims.js";
+import { readInvocations, validateShim, writeShim } from "./shims.js";
 import type { ShimResponse, TestSeed, TestSeedBuilder } from "./types.js";
 
 interface SeedFile {
@@ -43,21 +43,32 @@ class SeedBuilder implements TestSeedBuilder {
   }
 
   async build(): Promise<TestSeed> {
-    const root = await mkdtemp(join(tmpdir(), "aura-testkit-"));
+    // Canonicalized on purpose. `mkdtemp` hands back the uncanonicalized name — `/var/…` on macOS,
+    // where the real path is `/private/var/…` — and any tool the run shells out to that resolves a
+    // path reports the other spelling, which then survives normalization and lands a machine-local
+    // absolute path in a committed snapshot.
+    const root = await realpath(await mkdtemp(join(tmpdir(), "aura-testkit-")));
     const homeDir = join(root, "home");
+    const logDir = join(root, "invocations");
     const pathDir = join(root, "bin");
     const workspaceDir = join(root, "workspace");
+    const commands = new Set(this.#shims.keys());
 
     try {
       await Promise.all([
         mkdir(homeDir, { recursive: true }),
+        mkdir(logDir, { recursive: true }),
         mkdir(pathDir, { recursive: true }),
         mkdir(workspaceDir, { recursive: true }),
       ]);
-      await writeFiles(homeDir, this.#homeFiles.values());
-      await writeFiles(workspaceDir, this.#workspaceFiles.values());
+      await Promise.all([
+        writeFiles(homeDir, this.#homeFiles.values()),
+        writeFiles(workspaceDir, this.#workspaceFiles.values()),
+      ]);
       await Promise.all(
-        [...this.#shims.values()].map((shim) => writeShim(pathDir, shim.command, shim.responses)),
+        [...this.#shims.values()].map((shim) =>
+          writeShim({ command: shim.command, logDir, pathDir, responses: shim.responses }),
+        ),
       );
     } catch (error) {
       await rm(root, { force: true, recursive: true });
@@ -65,14 +76,18 @@ class SeedBuilder implements TestSeedBuilder {
     }
 
     let cleanupPromise: Promise<void> | undefined;
+    const cleanup = (): Promise<void> => {
+      cleanupPromise ??= rm(root, { force: true, recursive: true });
+      return cleanupPromise;
+    };
     return Object.freeze({
-      cleanup: () => {
-        cleanupPromise ??= rm(root, { force: true, recursive: true });
-        return cleanupPromise;
-      },
+      cleanup,
       homeDir,
+      invocations: (command: string) =>
+        commands.has(command) ? readInvocations(logDir, command) : Promise.resolve([]),
       pathDir,
       workspaceDir,
+      [Symbol.asyncDispose]: cleanup,
     });
   }
 }
@@ -102,6 +117,12 @@ function normalizeSeedPath(path: string): string {
   return normalized;
 }
 
+/**
+ * Materializes one root's files.
+ *
+ * Sequential on purpose: two declared paths can disagree about whether a name is a file or a
+ * directory, and writing them in declaration order makes which one fails deterministic.
+ */
 async function writeFiles(root: string, files: Iterable<SeedFile>): Promise<void> {
   for (const file of files) {
     const destination = join(root, file.path);

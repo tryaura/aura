@@ -3,12 +3,12 @@ import type { CheckDiagnostic, ScanDiagnostic, ScanPhase, SkippedApp } from "@tr
 
 import type { CliExitCode } from "./types.js";
 
-interface PassedCheck {
+export interface PassedCheck {
   readonly id: string;
   readonly title: string;
 }
 
-interface CheckSummary {
+export interface CheckSummary {
   readonly errors: number;
   readonly informational: number;
   readonly passed: number;
@@ -16,7 +16,7 @@ interface CheckSummary {
 }
 
 /** A problem with the run itself, as the report carries it. */
-interface ReportDiagnostic {
+export interface ReportDiagnostic {
   /**
    * Verbatim text from the plugin that failed.
    *
@@ -40,7 +40,7 @@ interface ReportDiagnostic {
  * `empty` is deliberately not `clean`: a run that had nothing to check has not established that
  * anything is fine, and reporting it as clean is the one failure mode a setup doctor cannot have.
  */
-type ReportStatus = "clean" | "empty" | "error" | "warning";
+export type ReportStatus = "clean" | "empty" | "error" | "warning";
 
 export interface CheckReport {
   readonly diagnostics: readonly ReportDiagnostic[];

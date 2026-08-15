@@ -15,7 +15,7 @@ const AMBIENT_SECRET = "AURA_TESTKIT_AMBIENT_SECRET";
 
 describe("seeded check integration", () => {
   it("snapshots findings without consulting the real HOME or PATH", async () => {
-    const seed = await createSeedBuilder()
+    await using seed = await createSeedBuilder()
       .homeFile(".fixture/config.txt", "legacy=true\n")
       .shim("fixture-agent", [{ args: ["--version"], stdout: "fixture-agent 1.2.3\n" }])
       .build();
@@ -61,6 +61,17 @@ describe("seeded check integration", () => {
             ],
           }
         `);
+      expect(result.report.diagnostics).toEqual([]);
+      expect(result.report.status).toBe("warning");
+      expect(result.report.summary).toEqual({
+        errors: 0,
+        informational: 0,
+        passed: 0,
+        warnings: 1,
+      });
+      expect(result.report.skipped).toEqual([]);
+      expect(result.findings).toBe(result.report.findings);
+      await expect(seed.invocations("fixture-agent")).resolves.toEqual([["--version"]]);
       expect(observed?.homeDir).toBe(seed.homeDir);
       expect(observed?.cwd).toBe(seed.workspaceDir);
       expect(observed?.pathEntries).toEqual([seed.pathDir]);
@@ -77,8 +88,26 @@ describe("seeded check integration", () => {
       } else {
         process.env[AMBIENT_SECRET] = originalSecret;
       }
-      await seed.cleanup();
     }
+  });
+
+  it("reports what the CLI actually said when no report reaches stdout", async () => {
+    await using seed = await createSeedBuilder().homeFile(".fixture/config.txt", "").build();
+
+    const run = runCheck({
+      args: ["--no-such-flag"],
+      distro: {
+        branding: { command: "fixture", displayName: "Fixture Doctor" },
+        plugins: [fixturePlugin(() => undefined)],
+      },
+      seed,
+    });
+
+    // The diagnosis is on stderr and the exit code, which is precisely what a bare "expected one
+    // JSON report" would throw away.
+    await expect(run).rejects.toThrow("Check runner expected one JSON report on stdout.");
+    await expect(run).rejects.toThrow("exit code: 2");
+    await expect(run).rejects.toThrow("--no-such-flag");
   });
 });
 
