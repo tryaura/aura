@@ -1,5 +1,16 @@
 export { createEnvironment } from "./environment.js";
 export type { EnvironmentBootOptions } from "./environment.js";
+export { executeFixPlan, previewFixPlan } from "./fix-plan/execute.js";
+export { FixPlanError } from "./fix-plan/types.js";
+export type {
+  FixOperationEffect,
+  FixOperationPreview,
+  FixPlanErrorCode,
+  FixPlanExecutionOptions,
+  FixPlanExecutionResult,
+  FixPlanPreview,
+  FixPlanPreviewOptions,
+} from "./fix-plan/types.js";
 export { createPluginRegistry } from "./plugin-registry.js";
 export type { PluginRegistry, PluginRegistryOptions } from "./plugin-registry.js";
 export { SUPPORTED_PLUGIN_API_VERSION } from "./plugin-validation.js";
