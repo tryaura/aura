@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import claudeCode from "@tryaura/adapter-claude-code";
 import { runCli } from "@tryaura/aura-cli";
 
 import packageManifest from "../package.json" with { type: "json" };
@@ -10,5 +11,5 @@ await runCli({
     displayName: "Aura",
     version: packageManifest.version,
   },
-  plugins: [],
+  plugins: [claudeCode],
 });

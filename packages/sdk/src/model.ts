@@ -35,7 +35,14 @@ export interface InstructionDocument {
 
 /** An MCP server Aura launches as a child process. */
 export interface StdioMcpTransport {
-  /** Arguments passed to the command verbatim. */
+  /**
+   * Arguments passed to the command, with credential-bearing values replaced.
+   *
+   * A server is routinely launched with its token on the command line — `--api-key=…`, `-e
+   * API_TOKEN=…` — so an adapter redacts those values for the same reason it records only the
+   * names of {@link StdioMcpTransport.environmentVariables}. What identifies the server, such as
+   * the package name and the flag names, is kept.
+   */
   readonly args?: readonly string[] | undefined;
   /** Executable to run. */
   readonly command: string;
@@ -58,9 +65,20 @@ export interface HttpMcpTransport {
    * Names only — never the values. See {@link StdioMcpTransport.environmentVariables}.
    */
   readonly headerEnvironmentVariables?: readonly string[] | undefined;
-  /** Discriminant. */
-  readonly type: "http";
-  /** Server endpoint. */
+  /**
+   * Discriminant. `sse` is the Server-Sent Events transport MCP has since superseded.
+   *
+   * Both reach the server over HTTP. They stay distinguishable so a check can say that a server is
+   * still on the older one.
+   */
+  readonly type: "http" | "sse";
+  /**
+   * Server endpoint, with credentials removed.
+   *
+   * Userinfo (`https://user:token@host`) and query parameter values are both ordinary places for a
+   * token to sit, so an adapter strips them before the URL reaches the model. Origin, path, and
+   * parameter names survive, which is what identifying the server needs.
+   */
   readonly url: string;
 }
 

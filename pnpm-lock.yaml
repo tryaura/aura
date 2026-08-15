@@ -51,6 +51,9 @@ importers:
 
   distros/aura:
     dependencies:
+      '@tryaura/adapter-claude-code':
+        specifier: workspace:*
+        version: link:../../plugins/adapter-claude-code
       '@tryaura/aura-cli':
         specifier: workspace:*
         version: link:../../packages/cli
@@ -117,6 +120,9 @@ importers:
         specifier: ^9.0.0
         version: 9.0.0
     devDependencies:
+      '@tryaura/adapter-claude-code':
+        specifier: workspace:*
+        version: link:../../plugins/adapter-claude-code
       '@tryaura/core':
         specifier: workspace:*
         version: link:../core
@@ -132,6 +138,13 @@ importers:
       '@tryaura/aura-sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+    devDependencies:
+      '@types/node':
+        specifier: 24.13.3
+        version: 24.13.3
+      vitest:
+        specifier: 4.1.10
+        version: 4.1.10(@types/node@24.13.3)(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0))
 
   plugins/adapter-codex:
     dependencies:

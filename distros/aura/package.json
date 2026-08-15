@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@tryaura/adapter-claude-code": "workspace:*",
     "@tryaura/aura-cli": "workspace:*"
   },
   "engines": {
