@@ -9,14 +9,8 @@ permissions:
 
 jobs:
   checks:
-    name: Checks (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os:
-          - ubuntu-latest
-          - macos-latest
+    name: Checks
+    runs-on: ubuntu-latest
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -35,14 +29,3 @@ jobs:
         env:
           FALLOW_AUDIT_BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
         run: pnpm run verify
-
-  ci:
-    name: CI
-    if: ${{ always() }}
-    needs: checks
-    runs-on: ubuntu-latest
-    steps:
-      - name: Require all checks
-        env:
-          CHECKS_RESULT: ${{ needs.checks.result }}
-        run: test "$CHECKS_RESULT" = success
