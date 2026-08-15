@@ -1,7 +1,8 @@
 import { spawn } from "node:child_process";
-import { lstat, readFile, readdir } from "node:fs/promises";
+import { lstat, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import process from "node:process";
 
 import { describe, expect, it } from "vitest";
 
@@ -129,7 +130,10 @@ describe("createSeedBuilder", () => {
   });
 
   it("removes a partial seed when materialization fails", async () => {
-    const before = new Set((await readdir(tmpdir())).filter(isTestkitDirectory));
+    // Pointed at a private temporary root on purpose. The claim is "this build left nothing behind",
+    // and reading the shared one would also see seeds other test files are holding open, which
+    // reports a leak or not depending on which worker happened to be mid-run.
+    await using tempRoot = await createPrivateTempRoot();
     const build = createSeedBuilder()
       .homeFile("blocked", "file\n")
       .homeFile("blocked/nested", "cannot be written\n")
@@ -137,10 +141,32 @@ describe("createSeedBuilder", () => {
 
     await expect(build).rejects.toBeDefined();
 
-    const after = (await readdir(tmpdir())).filter(isTestkitDirectory);
-    expect(after.filter((entry) => !before.has(entry))).toEqual([]);
+    await expect(readdir(tempRoot.path)).resolves.toEqual([]);
   });
 });
+
+interface PrivateTempRoot extends AsyncDisposable {
+  readonly path: string;
+}
+
+/** Redirects `os.tmpdir()`, which is what the seed builder resolves its root against. */
+async function createPrivateTempRoot(): Promise<PrivateTempRoot> {
+  const previous = process.env["TMPDIR"];
+  const path = await mkdtemp(join(tmpdir(), "aura-leakcheck-"));
+  process.env["TMPDIR"] = path;
+
+  return {
+    path,
+    [Symbol.asyncDispose]: async () => {
+      if (previous === undefined) {
+        delete process.env["TMPDIR"];
+      } else {
+        process.env["TMPDIR"] = previous;
+      }
+      await rm(path, { force: true, recursive: true });
+    },
+  };
+}
 
 interface ProcessResult {
   readonly exitCode: number;
@@ -185,8 +211,4 @@ async function realpathOf(path: string): Promise<string> {
     });
   });
   return stdout.trim();
-}
-
-function isTestkitDirectory(entry: string): boolean {
-  return entry.startsWith("aura-testkit-");
 }

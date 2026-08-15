@@ -81,16 +81,31 @@ calls `runCli`. Everything else is a library.
 
 ## Development
 
-Requires Node.js 24 (see `.nvmrc`) and pnpm.
+Requires Node.js 24 (see `.nvmrc`) and pnpm. Building the standalone executable also requires the
+Bun version pinned in `.bun-version`.
 
 ```sh
 pnpm install
 pnpm verify
+pnpm verify:binary
 ```
 
-`verify` is what CI runs: typecheck, build, lint, format check, knip, fallow, and tests. The
-individual scripts are also available — `pnpm typecheck`, `pnpm build`, `pnpm lint`,
-`pnpm format` (`oxfmt`), `pnpm knip`, `pnpm fallow`, `pnpm test`.
+`verify` covers typecheck, build, lint, format check, knip, fallow, and tests. The individual
+scripts are also available — `pnpm typecheck`, `pnpm build`, `pnpm lint`, `pnpm format` (`oxfmt`),
+`pnpm knip`, `pnpm fallow`, `pnpm test`. `pnpm verify:binary` compiles the current-platform
+executable and runs the seed-backed smoke suite against it; it is separate because it is the one
+step that needs Bun. CI runs both, and runs `verify:binary` on every platform the release ships to.
+
+### A note on the compiled executable
+
+Setting `BUN_BE_BUN=1` in the environment of a compiled Bun executable makes it behave as the Bun
+CLI rather than as the program it was built from, which means anyone who can set environment
+variables on an `aura` invocation can run arbitrary code through it. Compilation disables the
+`.env` and `bunfig.toml` autoloading that would let a checked-in file reach that switch, but the
+ambient variable is read before any Aura code runs and Bun offers no way to compile it out. Treat
+the executable as trusted only as far as its environment is: do not rely on it as a boundary in a
+context where an untrusted party controls the environment. `binary.smoke.ts` pins the behaviour so
+that a future Bun release offering an opt-out is noticed.
 
 ## Writing a plugin
 
