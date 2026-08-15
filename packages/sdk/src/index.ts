@@ -65,3 +65,8 @@ export type {
   WorkspaceModel,
 } from "./model.js";
 export type { AuraPlugin } from "./plugin.js";
+export { findVersionedExecutable } from "./detection.js";
+export type { VersionedExecutable } from "./detection.js";
+export { maskMarkdownCode } from "./markdown.js";
+export { parseJsonMcpServers } from "./mcp-config.js";
+export type { JsonMcpConfigOptions } from "./mcp-config.js";

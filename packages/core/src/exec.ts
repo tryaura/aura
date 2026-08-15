@@ -15,6 +15,8 @@ import {
   type ExecResult,
 } from "@tryaura/aura-sdk";
 
+import { planSpawn } from "./spawn-plan.js";
+
 interface ExecOptions {
   readonly cwd: string;
   readonly environmentVariables: Readonly<Record<string, string>>;
@@ -31,7 +33,8 @@ function execute(request: ExecRequest, options: ExecOptions): Promise<ExecResult
   const timeoutMs = normalizeTimeout(request.timeoutMs);
 
   return new Promise((resolve) => {
-    const child = spawn(request.command, [...(request.args ?? [])], {
+    const plan = planSpawn(request.command, request.args ?? [], options.platform);
+    const child = spawn(plan.command, [...plan.args], {
       cwd: request.cwd ?? options.cwd,
       // Its own process group, so a timeout can kill grandchildren too. Windows has no process
       // groups; terminate() shells out to taskkill there instead.
@@ -39,6 +42,7 @@ function execute(request: ExecRequest, options: ExecOptions): Promise<ExecResult
       env: options.environmentVariables,
       shell: false,
       stdio: "pipe",
+      windowsVerbatimArguments: plan.windowsVerbatimArguments,
     });
     let settled = false;
     let stderr = "";

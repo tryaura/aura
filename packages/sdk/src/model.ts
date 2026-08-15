@@ -25,6 +25,13 @@ export interface InstructionDocument {
   readonly content: string;
   /** References this document makes to other instruction files. */
   readonly links: readonly InstructionLink[];
+  /**
+   * Adapter-defined detail about the document, such as the activation conditions Cursor keeps in
+   * `.mdc` frontmatter.
+   *
+   * Rendered in user-visible output. Never place credentials or file contents here.
+   */
+  readonly metadata?: JsonObject | undefined;
   /** Absolute path the document was read from. */
   readonly path: string;
   /** Whether this is user-level or workspace-level state. */

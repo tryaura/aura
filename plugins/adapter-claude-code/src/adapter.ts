@@ -1,17 +1,15 @@
-import { dirname, isAbsolute, join } from "node:path";
+import { dirname, join } from "node:path";
 
 import {
   defineAdapter,
+  findVersionedExecutable,
   type AdapterDetection,
   type AdapterFileSpec,
   type Environment,
-  type ExecResult,
 } from "@tryaura/aura-sdk";
 
 import { parseInstructionFile } from "./instructions.js";
 import { parseMcpServers } from "./mcp.js";
-
-const VERSION_PATTERN = /(?:^|\s|v)(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)/u;
 
 /** Path segments {@link globalFiles} appends to the home directory for the instruction file. */
 const GLOBAL_INSTRUCTIONS_SEGMENTS = Object.freeze([".claude", "CLAUDE.md"]);
@@ -43,57 +41,33 @@ export const claudeCodeAdapter = defineAdapter({
 });
 
 /**
- * Walks the search path for an executable that identifies itself as Claude Code.
+ * Finds a Claude Code installation on the search path and asks it about its credentials.
  *
- * A candidate is accepted only once `--version` reports a version Aura can parse. Treating any
- * exit code other than "missing" as success meant an unrelated `claude` on the path — or one that
- * hung until the timeout killed it — ended the walk and was reported as an installation, with
- * `auth status` already run against it.
- *
- * Duplicate path entries are skipped. Nothing here touches the filesystem: an adapter has no
- * reader, so probing an entry means running it, and running it once each is the floor.
+ * The walk itself — accept a candidate only once `--version` reports a parseable version, skip
+ * duplicate and relative entries — is {@link findVersionedExecutable}, so `auth status` never
+ * runs against an unrelated `claude` that happened to sit on the path.
  */
 async function detectClaudeCode(environment: Environment): Promise<AdapterDetection> {
-  const probed = new Set<string>();
-
-  for (const pathEntry of environment.pathEntries) {
-    if (!isAbsolute(pathEntry) || probed.has(pathEntry)) {
-      continue;
-    }
-    probed.add(pathEntry);
-
-    const executablePath = join(
-      pathEntry,
-      environment.platform === "win32" ? "claude.exe" : "claude",
-    );
-    const version = parseVersion(
-      await environment.exec({
-        args: ["--version"],
-        command: executablePath,
-        timeoutMs: 5_000,
-      }),
-    );
-
-    if (version === undefined) {
-      continue;
-    }
-
-    const authentication = await environment.exec({
-      args: ["auth", "status"],
-      command: executablePath,
-      timeoutMs: 5_000,
-    });
-    const authenticated = authenticationStatus(authentication.exitCode);
-
-    return {
-      executablePath,
-      installed: true,
-      version,
-      ...(authenticated === undefined ? {} : { authenticated }),
-    };
+  const found = await findVersionedExecutable(
+    environment,
+    environment.platform === "win32" ? "claude.exe" : "claude",
+  );
+  if (found === undefined) {
+    return { installed: false };
   }
 
-  return { installed: false };
+  const authentication = await environment.exec({
+    args: ["auth", "status"],
+    command: found.executablePath,
+    timeoutMs: 5_000,
+  });
+  const authenticated = authenticationStatus(authentication.exitCode);
+
+  return {
+    ...found,
+    installed: true,
+    ...(authenticated === undefined ? {} : { authenticated }),
+  };
 }
 
 /**
@@ -144,11 +118,4 @@ function authenticationStatus(exitCode: number): boolean | undefined {
     return false;
   }
   return undefined;
-}
-
-function parseVersion(result: ExecResult): string | undefined {
-  if (result.exitCode !== 0) {
-    return undefined;
-  }
-  return VERSION_PATTERN.exec(result.stdout)?.[1];
 }

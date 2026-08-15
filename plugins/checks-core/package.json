@@ -6,8 +6,5 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit"
-  },
-  "dependencies": {
-    "@tryaura/aura-sdk": "workspace:*"
   }
 }
