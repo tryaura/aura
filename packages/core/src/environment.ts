@@ -87,7 +87,9 @@ function createChildEnvironment(
     deleteVariable(childEnvironment, name, options.platform);
   }
 
-  for (const name of ["HOME", "HOMEDRIVE", "HOMEPATH", "PATH", "USERPROFILE"]) {
+  const homeVariables =
+    options.platform === "win32" ? ["HOME", "HOMEDRIVE", "HOMEPATH", "USERPROFILE"] : ["HOME"];
+  for (const name of [...homeVariables, "PATH"]) {
     deleteVariable(childEnvironment, name, options.platform);
   }
 

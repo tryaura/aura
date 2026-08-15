@@ -165,7 +165,8 @@ describe("Environment.exec", () => {
   }, 10_000);
 
   it("kills the whole process group so a timeout leaves no orphans behind", async () => {
-    const marker = "aura-orphan-probe";
+    // Unique per run: a stray from an earlier run would otherwise be counted as this run's orphan.
+    const marker = `aura-orphan-probe-${process.pid}`;
     const environment = createTestEnvironment();
 
     await environment.exec({
