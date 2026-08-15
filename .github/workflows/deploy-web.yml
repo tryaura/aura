@@ -1,0 +1,63 @@
+name: Deploy web
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/web/**"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/deploy-web.yml"
+  pull_request:
+    paths:
+      - "apps/web/**"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/deploy-web.yml"
+  # `versions upload` cannot create a Worker, so `aura-web` has to exist before pull request
+  # previews work at all. Running this workflow by hand performs that first real deploy.
+  workflow_dispatch:
+
+# Never let two deploys race; the newer commit wins.
+concurrency:
+  group: deploy-web-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: ${{ github.event_name == 'pull_request' && 'Preview' || 'Deploy' }}
+    runs-on: ubuntu-latest
+    # Lifted to the job env so the deploy step can test whether the credentials exist: the
+    # `secrets` context is not available in `if:` conditions, but `env` is.
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build site
+        run: pnpm --filter @tryaura/web build
+      # `versions upload` publishes to a preview URL without touching production.
+      # Skipped when the credentials are absent — on fork pull requests, and on any repository
+      # where the secrets are unset. The build above still gates every pull request.
+      - name: Deploy to Cloudflare
+        if: env.CLOUDFLARE_API_TOKEN != ''
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: apps/web
+          command: ${{ github.event_name == 'pull_request' && 'versions upload' || 'deploy' }}
+      - name: Report skipped deploy
+        if: env.CLOUDFLARE_API_TOKEN == ''
+        run: echo "::notice::Cloudflare deploy skipped — CLOUDFLARE_API_TOKEN is not set for this repository."

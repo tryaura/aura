@@ -1,0 +1,124 @@
+---
+import "../styles/landing.css";
+
+const installCommand = "curl -fsSL https://tryaura.sh/install | sh";
+
+const features = [
+  {
+    title: "One model, every agent",
+    body:
+      "Adapters for Claude Code, Codex, and Cursor normalize instruction files, MCP servers, and installed skills into a single workspace model.",
+  },
+  {
+    title: "Checks are pure",
+    body:
+      "A check is synchronous and reads only the normalized model. It cannot touch the filesystem or run a command, so one scan evaluates every rule reproducibly.",
+  },
+  {
+    title: "Fixes you can read first",
+    body:
+      "A fix returns a plan of write, remove, move, and symlink operations — never actions. Aura owns the diff, the dry run, the backup, and the undo.",
+  },
+  {
+    title: "Scoped to your workspace",
+    body:
+      "Every path in a plan, including symlink targets, must resolve inside the workspace or the Aura-managed part of your home directory. Plans that escape are rejected.",
+  },
+  {
+    title: "Extensible by design",
+    body:
+      "Adapters, checks, snippets, skills, MCP catalog entries, and presets are all contribution slots on a plugin, namespaced under the plugin's own ID.",
+  },
+  {
+    title: "Built for CI",
+    body:
+      "Run the same scan locally and on every pull request. Findings carry stable IDs and resolved severities, so a gate means the same thing in both places.",
+  },
+];
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Aura — keep every coding agent working from the same rules</title>
+    <meta
+      name="description"
+      content="Aura reads the configuration of every coding agent in your repo, normalizes it into one model, and reports where they have drifted apart."
+    />
+    <link rel="canonical" href="https://tryaura.sh/" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="wordmark" href="/">aura</a>
+      <nav class="site-nav" aria-label="Site">
+        <a class="quiet-link" href="/docs/introduction">Docs</a>
+        <a class="quiet-link" href="https://github.com/tryaura/aura">GitHub</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <h1 class="hero-title">Every coding agent in your repo, working from the same rules.</h1>
+        <p class="lede">
+          Claude Code, Codex, and Cursor each keep their own instructions, MCP servers, and skills.
+          Aura reads all of them, normalizes what it finds, and shows you where they disagree.
+        </p>
+
+        <div class="install">
+          <code class="install-command" id="install-command">{installCommand}</code>
+          <button
+            class="copy-button"
+            type="button"
+            data-copy={installCommand}
+            aria-label="Copy install command"
+          >
+            Copy
+          </button>
+        </div>
+        <p class="install-note">
+          Or <a href="/docs/installation">install with npm</a>, or read the script before running it.
+        </p>
+      </section>
+
+      <section class="features" aria-label="Features">
+        {
+          features.map((feature, index) => (
+            <article class="feature">
+              <p class="feature-index">{String(index + 1).padStart(2, "0")}</p>
+              <h2 class="feature-title">{feature.title}</h2>
+              <p class="feature-body">{feature.body}</p>
+            </article>
+          ))
+        }
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <nav class="footer-nav" aria-label="Footer">
+        <a class="quiet-link" href="/docs/introduction">Documentation</a>
+        <a class="quiet-link" href="https://github.com/tryaura/aura">Source</a>
+        <a class="quiet-link" href="https://github.com/tryaura/aura/releases">Releases</a>
+      </nav>
+    </footer>
+
+    <script>
+      const button = document.querySelector<HTMLButtonElement>("button[data-copy]");
+
+      button?.addEventListener("click", async () => {
+        const command = button.dataset["copy"];
+
+        if (command === undefined) {
+          return;
+        }
+
+        await navigator.clipboard.writeText(command);
+        const original = button.textContent;
+        button.textContent = "Copied";
+        globalThis.setTimeout(() => {
+          button.textContent = original;
+        }, 2_000);
+      });
+    </script>
+  </body>
+</html>

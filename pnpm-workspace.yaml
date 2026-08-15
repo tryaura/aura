@@ -1,4 +1,11 @@
 packages:
+  - apps/*
   - packages/*
   - plugins/*
   - distros/*
+# Build scripts for the web app's toolchain: esbuild backs the Astro build, sharp backs
+# image optimization, and workerd is the local Workers runtime used by `wrangler dev`.
+allowBuilds:
+  esbuild: true
+  sharp: true
+  workerd: true

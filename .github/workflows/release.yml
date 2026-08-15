@@ -1,0 +1,82 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  # Each target builds on its own runner rather than cross-compiling, so the smoke suite
+  # exercises the binary on the platform it ships to. See AURA-12.
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x64
+            runner: ubuntu-latest
+          - target: linux-arm64
+            runner: ubuntu-24.04-arm
+          - target: darwin-arm64
+            runner: macos-latest
+          - target: darwin-x64
+            runner: macos-13
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Compile binary
+        run: bun build --compile --minify --outfile aura distros/aura/src/main.ts
+      # Placeholder canary. The full compiled-binary smoke suite against testkit seeds
+      # lands with AURA-12; this only proves the artifact is executable on its target.
+      - name: Smoke test
+        run: |
+          chmod +x ./aura
+          ./aura --version || test $? -ne 126
+      - name: Package
+        run: tar -czf "aura-${{ matrix.target }}.tar.gz" aura
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: aura-${{ matrix.target }}
+          path: aura-${{ matrix.target }}.tar.gz
+          if-no-files-found: error
+
+  publish:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      # The install script refuses to install anything absent from this file.
+      - name: Generate checksums
+        working-directory: artifacts
+        run: sha256sum aura-*.tar.gz > SHA256SUMS
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/aura-*.tar.gz
+            artifacts/SHA256SUMS
+          generate_release_notes: true
+          fail_on_unmatched_files: true
