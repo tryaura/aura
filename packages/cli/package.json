@@ -1,0 +1,20 @@
+{
+  "name": "@tryaura/aura-cli",
+  "version": "0.0.0",
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@tryaura/adapter-claude-code": "workspace:*",
+    "@tryaura/adapter-codex": "workspace:*",
+    "@tryaura/adapter-cursor": "workspace:*",
+    "@tryaura/aura-sdk": "workspace:*",
+    "@tryaura/checks-core": "workspace:*",
+    "@tryaura/content-official": "workspace:*",
+    "@tryaura/core": "workspace:*"
+  }
+}

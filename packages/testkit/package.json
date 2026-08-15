@@ -1,0 +1,16 @@
+{
+  "name": "@tryaura/aura-testkit",
+  "version": "0.0.0",
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@tryaura/aura-cli": "workspace:*",
+    "@tryaura/aura-sdk": "workspace:*",
+    "@tryaura/core": "workspace:*"
+  }
+}

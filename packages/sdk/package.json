@@ -1,0 +1,11 @@
+{
+  "name": "@tryaura/aura-sdk",
+  "version": "0.0.0",
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  }
+}

@@ -1,0 +1,12 @@
+# Conductor workspace scratch directory
+.context/
+
+# Dependencies
+node_modules/
+
+# Build and test output
+dist/
+coverage/
+
+# TypeScript
+*.tsbuildinfo
