@@ -30,7 +30,15 @@ export type {
   Snippet,
 } from "./content.js";
 export { defineAdapter, defineCheck, definePlugin } from "./define.js";
-export { DEFAULT_EXEC_TIMEOUT_MS, MAX_EXEC_TIMEOUT_MS } from "./environment.js";
+export {
+  COMMAND_NOT_FOUND_EXIT_CODE,
+  DEFAULT_EXEC_TIMEOUT_MS,
+  MAX_EXEC_OUTPUT_CHARACTERS,
+  MAX_EXEC_TIMEOUT_MS,
+  NOT_EXECUTABLE_EXIT_CODE,
+  OUTPUT_LIMIT_EXIT_CODE,
+  TIMEOUT_EXIT_CODE,
+} from "./environment.js";
 export type { Environment, EnvironmentPlatform, ExecRequest, ExecResult } from "./environment.js";
 export type {
   FileMode,

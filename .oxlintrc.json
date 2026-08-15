@@ -7,6 +7,24 @@
     "denyWarnings": true,
     "reportUnusedDisableDirectives": "error"
   },
+  "overrides": [
+    {
+      "files": ["packages/core/src/environment.ts"],
+      "rules": {
+        "no-restricted-imports": "off",
+        "no-restricted-properties": "off",
+        "no-restricted-globals": "off"
+      }
+    },
+    {
+      "files": ["**/*.test.ts"],
+      "rules": {
+        "no-restricted-imports": "off",
+        "no-restricted-properties": "off",
+        "no-restricted-globals": "off"
+      }
+    }
+  ],
   "rules": {
     "max-lines": [
       "error",
@@ -14,6 +32,62 @@
         "max": 300,
         "skipBlankLines": false,
         "skipComments": false
+      }
+    ],
+    "no-restricted-imports": [
+      "error",
+      {
+        "paths": [
+          {
+            "name": "node:os",
+            "importNames": ["homedir", "hostname", "tmpdir", "userInfo"],
+            "message": "Use the Environment injected at boot instead of reading ambient operating-system state."
+          },
+          {
+            "name": "os",
+            "importNames": ["homedir", "hostname", "tmpdir", "userInfo"],
+            "message": "Use the Environment injected at boot instead of reading ambient operating-system state."
+          }
+        ]
+      }
+    ],
+    "no-restricted-properties": [
+      "error",
+      {
+        "object": "process",
+        "property": "env",
+        "message": "Use the Environment injected at boot instead of process.env."
+      },
+      {
+        "object": "process",
+        "property": "cwd",
+        "message": "Use Environment.cwd instead of reading the ambient working directory."
+      },
+      {
+        "object": "process",
+        "property": "platform",
+        "message": "Use Environment.platform instead of reading the ambient platform."
+      },
+      {
+        "object": "process",
+        "property": "argv",
+        "message": "Use the parsed CLI options passed into createEnvironment instead of process.argv."
+      },
+      {
+        "object": "Date",
+        "property": "now",
+        "message": "Use Environment.now instead of reading the system clock."
+      },
+      {
+        "property": "homedir",
+        "message": "Use Environment.homeDir instead of reading the ambient home directory."
+      }
+    ],
+    "no-restricted-globals": [
+      "error",
+      {
+        "name": "Date",
+        "message": "Use Environment.now instead of reading the system clock. Parse an explicit timestamp with new Date(value) only where the value comes from data."
       }
     ]
   }
