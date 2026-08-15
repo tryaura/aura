@@ -75,6 +75,39 @@ describe("runChecks", () => {
     ]);
   });
 
+  it("skips a check that returns a non-iterable value and keeps the rest", () => {
+    const broken = createCheck("alpha/BROKEN", []);
+    Object.defineProperty(broken, "detect", { value: () => undefined });
+    const working = createCheck("alpha/WORKING", [{ id: "one", message: "One" }]);
+
+    const run = runChecks([broken, working], MODEL);
+
+    expect(run.findings.map((finding) => finding.id)).toEqual(["one"]);
+    expect(run.diagnostics).toMatchObject([
+      {
+        checkId: "alpha/BROKEN",
+        message:
+          "Check alpha/BROKEN failed and was skipped. This is a bug in the check; report it to whoever ships the plugin.",
+      },
+    ]);
+  });
+
+  it("discards findings staged before a check result fails during iteration", () => {
+    const detected: DetectedFinding[] = [{ id: "partial", message: "Partial" }];
+    Object.defineProperty(detected, 1, {
+      get: () => {
+        throw new Error("invalid second finding");
+      },
+    });
+    const broken = createCheck("alpha/BROKEN", detected);
+    const working = createCheck("alpha/WORKING", [{ id: "one", message: "One" }]);
+
+    const run = runChecks([broken, working], MODEL);
+
+    expect(run.findings.map((finding) => finding.id)).toEqual(["one"]);
+    expect(run.diagnostics).toHaveLength(1);
+  });
+
   it("preserves check and finding declaration order", () => {
     const first = createCheck("alpha/FIRST", [
       { id: "one", message: "One" },
