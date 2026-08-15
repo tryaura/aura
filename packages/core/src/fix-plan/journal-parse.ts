@@ -72,68 +72,100 @@ function parseOperation(value: unknown, path: string): StoredOperation {
   if (!isRecord(value)) {
     throw corrupt(path, "journal operation must be an object");
   }
-  const common = {
+  const common: OperationCommon = {
     createdDirectory: optionalString(value, "createdDirectory", path),
     index: requiredNumber(value, "index", path),
   };
 
   switch (value["type"]) {
     case "move": {
-      const sourceBefore = parseState(value["sourceBefore"], path);
-      if (sourceBefore.kind !== "directory" && sourceBefore.kind !== "file") {
-        throw corrupt(path, "move source state must be a file or directory");
-      }
-      const operation: StoredMoveOperation = {
-        ...common,
-        destinationPath: requiredString(value, "destinationPath", path),
-        sourceBefore,
-        sourcePath: requiredString(value, "sourcePath", path),
-        type: "move",
-      };
-      return operation;
+      return parseMove(value, common, path);
     }
     case "remove": {
-      const before = parseState(value["before"], path);
-      if (before.kind === "missing") {
-        throw corrupt(path, "remove before state cannot be missing");
-      }
-      const operation: StoredRemoveOperation = {
-        ...common,
-        before,
-        path: requiredString(value, "path", path),
-        type: "remove",
-      };
-      return operation;
+      return parseRemove(value, common, path);
     }
     case "symlink": {
-      const before = parseReplaceableState(value["before"], path);
-      const operation: StoredSymlinkOperation = {
-        ...common,
-        before,
-        path: requiredString(value, "path", path),
-        target: requiredString(value, "target", path),
-        type: "symlink",
-      };
-      return operation;
+      return parseSymlink(value, common, path);
     }
     case "write": {
-      const after = parseState(value["after"], path);
-      if (after.kind !== "file" || after.payload === undefined) {
-        throw corrupt(path, "write after state must contain a file payload");
-      }
-      const operation: StoredWriteOperation = {
-        ...common,
-        after,
-        before: parseReplaceableState(value["before"], path),
-        path: requiredString(value, "path", path),
-        type: "write",
-      };
-      return operation;
+      return parseWrite(value, common, path);
     }
     default: {
       throw corrupt(path, `unsupported journal operation: ${String(value["type"])}`);
     }
   }
+}
+
+interface OperationCommon {
+  readonly createdDirectory?: string | undefined;
+  readonly index: number;
+}
+
+function parseMove(
+  value: Record<string, unknown>,
+  common: OperationCommon,
+  path: string,
+): StoredMoveOperation {
+  const sourceBefore = parseState(value["sourceBefore"], path);
+  if (sourceBefore.kind !== "directory" && sourceBefore.kind !== "file") {
+    throw corrupt(path, "move source state must be a file or directory");
+  }
+  return {
+    ...common,
+    destinationPath: requiredString(value, "destinationPath", path),
+    sourceBefore,
+    sourcePath: requiredString(value, "sourcePath", path),
+    type: "move",
+  };
+}
+
+function parseRemove(
+  value: Record<string, unknown>,
+  common: OperationCommon,
+  path: string,
+): StoredRemoveOperation {
+  const before = parseState(value["before"], path);
+  if (before.kind === "missing") {
+    throw corrupt(path, "remove before state cannot be missing");
+  }
+  return {
+    ...common,
+    before,
+    path: requiredString(value, "path", path),
+    type: "remove",
+  };
+}
+
+function parseSymlink(
+  value: Record<string, unknown>,
+  common: OperationCommon,
+  path: string,
+): StoredSymlinkOperation {
+  return {
+    ...common,
+    before: parseReplaceableState(value["before"], path),
+    path: requiredString(value, "path", path),
+    target: requiredString(value, "target", path),
+    type: "symlink",
+  };
+}
+
+function parseWrite(
+  value: Record<string, unknown>,
+  common: OperationCommon,
+  path: string,
+): StoredWriteOperation {
+  const after = parseState(value["after"], path);
+  if (after.kind !== "file" || after.payload === undefined) {
+    throw corrupt(path, "write after state must contain a file payload");
+  }
+  return {
+    ...common,
+    after,
+    before: parseReplaceableState(value["before"], path),
+    path: requiredString(value, "path", path),
+    type: "write",
+  };
 }
 
 function parseReplaceableState(

@@ -3,7 +3,12 @@ import { dirname } from "node:path";
 
 import { removeCreatedDirectories, replaceFile, replaceLink } from "./filesystem.js";
 import { listJournal, readPayload, setJournalStatus, type JournalHandle } from "./journal.js";
-import type { StoredOperation, StoredPathState } from "./journal-schema.js";
+import type {
+  StoredOperation,
+  StoredPathState,
+  StoredSymlinkOperation,
+  StoredWriteOperation,
+} from "./journal-schema.js";
 import { preflightUndo, primaryPath, type SelectedOperation } from "./undo-preflight.js";
 import {
   errorMessage,
@@ -117,29 +122,33 @@ async function restoreOperation(
       };
     }
     case "symlink": {
-      await restoreState(entry, operation.path, operation.before);
-      return {
-        cleanup: cleanupAction(operation.createdDirectory, dirname(operation.path)),
-        index: operation.index,
-        redo: async () => {
-          await mkdir(dirname(operation.path), { recursive: true });
-          await replaceLink(operation.path, operation.target);
-        },
-      };
+      return restoreReplacement(entry, operation, async () =>
+        replaceLink(operation.path, operation.target),
+      );
     }
     case "write": {
-      await restoreState(entry, operation.path, operation.before);
-      return {
-        cleanup: cleanupAction(operation.createdDirectory, dirname(operation.path)),
-        index: operation.index,
-        redo: async () => {
-          await mkdir(dirname(operation.path), { recursive: true });
-          const content = await readPayload(entry.directory, operation.after);
-          await replaceFile(operation.path, content, operation.after.mode);
-        },
-      };
+      return restoreReplacement(entry, operation, async () => {
+        const content = await readPayload(entry.directory, operation.after);
+        await replaceFile(operation.path, content, operation.after.mode);
+      });
     }
   }
+}
+
+async function restoreReplacement(
+  entry: JournalHandle,
+  operation: StoredSymlinkOperation | StoredWriteOperation,
+  applyAfter: UndoAction,
+): Promise<AppliedUndo> {
+  await restoreState(entry, operation.path, operation.before);
+  return {
+    cleanup: cleanupAction(operation.createdDirectory, dirname(operation.path)),
+    index: operation.index,
+    redo: async () => {
+      await mkdir(dirname(operation.path), { recursive: true });
+      await applyAfter();
+    },
+  };
 }
 
 async function restoreState(
