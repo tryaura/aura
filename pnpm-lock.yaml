@@ -54,6 +54,9 @@ importers:
       '@tryaura/adapter-claude-code':
         specifier: workspace:*
         version: link:../../plugins/adapter-claude-code
+      '@tryaura/adapter-codex':
+        specifier: workspace:*
+        version: link:../../plugins/adapter-codex
       '@tryaura/adapter-cursor':
         specifier: workspace:*
         version: link:../../plugins/adapter-cursor
@@ -136,6 +139,9 @@ importers:
       '@tryaura/adapter-claude-code':
         specifier: workspace:*
         version: link:../../plugins/adapter-claude-code
+      '@tryaura/adapter-codex':
+        specifier: workspace:*
+        version: link:../../plugins/adapter-codex
       '@tryaura/adapter-cursor':
         specifier: workspace:*
         version: link:../../plugins/adapter-cursor
@@ -162,7 +168,21 @@ importers:
         specifier: 4.1.10
         version: 4.1.10(@types/node@24.13.3)(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0))
 
-  plugins/adapter-codex: {}
+  plugins/adapter-codex:
+    dependencies:
+      '@tryaura/aura-sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+      smol-toml:
+        specifier: ^1.8.0
+        version: 1.8.0
+    devDependencies:
+      '@types/node':
+        specifier: 24.13.3
+        version: 24.13.3
+      vitest:
+        specifier: 4.1.10
+        version: 4.1.10(@types/node@24.13.3)(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0))
 
   plugins/adapter-cursor:
     dependencies:

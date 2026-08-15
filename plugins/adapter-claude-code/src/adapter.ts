@@ -2,8 +2,7 @@ import { dirname, join } from "node:path";
 
 import {
   defineAdapter,
-  findVersionedExecutable,
-  type AdapterDetection,
+  detectExecutable,
   type AdapterFileSpec,
   type Environment,
 } from "@tryaura/aura-sdk";
@@ -20,7 +19,8 @@ const SOURCE_IDS = Object.freeze({
 });
 
 export const claudeCodeAdapter = defineAdapter({
-  detect: detectClaudeCode,
+  detect: (environment) =>
+    detectExecutable(environment, { authenticationArgs: ["auth", "status"], binaryName: "claude" }),
   displayName: "Claude Code",
   files: globalFiles,
   id: "claude-code",
@@ -39,36 +39,6 @@ export const claudeCodeAdapter = defineAdapter({
   },
   supportedRange: ">=2.1.0 <3.0.0",
 });
-
-/**
- * Finds a Claude Code installation on the search path and asks it about its credentials.
- *
- * The walk itself — accept a candidate only once `--version` reports a parseable version, skip
- * duplicate and relative entries — is {@link findVersionedExecutable}, so `auth status` never
- * runs against an unrelated `claude` that happened to sit on the path.
- */
-async function detectClaudeCode(environment: Environment): Promise<AdapterDetection> {
-  const found = await findVersionedExecutable(
-    environment,
-    environment.platform === "win32" ? "claude.exe" : "claude",
-  );
-  if (found === undefined) {
-    return { installed: false };
-  }
-
-  const authentication = await environment.exec({
-    args: ["auth", "status"],
-    command: found.executablePath,
-    timeoutMs: 5_000,
-  });
-  const authenticated = authenticationStatus(authentication.exitCode);
-
-  return {
-    ...found,
-    installed: true,
-    ...(authenticated === undefined ? {} : { authenticated }),
-  };
-}
 
 /**
  * Declares the global configuration Claude Code keeps under the home directory.
@@ -108,14 +78,4 @@ function globalFiles(environment: Environment): readonly AdapterFileSpec[] {
  */
 function homeDirOf(instructionsPath: string): string {
   return GLOBAL_INSTRUCTIONS_SEGMENTS.reduce((path) => dirname(path), instructionsPath);
-}
-
-function authenticationStatus(exitCode: number): boolean | undefined {
-  if (exitCode === 0) {
-    return true;
-  }
-  if (exitCode === 1) {
-    return false;
-  }
-  return undefined;
 }

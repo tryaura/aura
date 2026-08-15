@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import claudeCode from "@tryaura/adapter-claude-code";
+import codex from "@tryaura/adapter-codex";
 import cursor from "@tryaura/adapter-cursor";
 import { runCli } from "@tryaura/aura-cli";
 
@@ -12,5 +13,5 @@ await runCli({
     displayName: "Aura",
     version: packageManifest.version,
   },
-  plugins: [claudeCode, cursor],
+  plugins: [claudeCode, codex, cursor],
 });

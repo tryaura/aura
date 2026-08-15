@@ -2,7 +2,7 @@ import { join } from "node:path";
 
 import {
   defineAdapter,
-  findVersionedExecutable,
+  detectExecutable,
   type AdapterDetection,
   type AdapterFileMap,
   type AdapterFileSpec,
@@ -22,7 +22,15 @@ const SOURCE_IDS = Object.freeze({
 });
 
 export const cursorAdapter = defineAdapter({
-  detect: detectCursor,
+  /**
+   * Cursor exposes no command that reports credential state, so detection stops at `--version`.
+   *
+   * On Windows the installer puts a `cursor.cmd` shim into `resources\app\bin` and adds that
+   * directory to the search path; there is no `cursor.exe` beside it, so the shim is what gets
+   * probed.
+   */
+  detect: (environment) =>
+    detectExecutable(environment, { binaryName: "cursor", windowsBinaryName: "cursor.cmd" }),
   displayName: "Cursor",
   files: cursorFiles,
   id: "cursor",
@@ -38,21 +46,6 @@ export const cursorAdapter = defineAdapter({
   }),
   supportedRange: ">=0.45.0 <4.0.0",
 });
-
-/**
- * Finds a Cursor installation on the search path.
- *
- * On Windows the installer puts a `cursor.cmd` shim into `resources\app\bin` and adds that
- * directory to the search path; there is no `cursor.exe` beside it, so the shim is what gets
- * probed.
- */
-async function detectCursor(environment: Environment): Promise<AdapterDetection> {
-  const found = await findVersionedExecutable(
-    environment,
-    environment.platform === "win32" ? "cursor.cmd" : "cursor",
-  );
-  return found === undefined ? { installed: false } : { ...found, installed: true };
-}
 
 /**
  * Declares Cursor's configuration, expanding the project rules directory to a fixed point.
