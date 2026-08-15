@@ -1,56 +1,67 @@
-import { Readable, Writable } from "node:stream";
-
-import {
-  defineAdapter,
-  defineCheck,
-  definePlugin,
-  type AuraPlugin,
-  type Environment,
-  type Severity,
-} from "@tryaura/aura-sdk";
+import { defineCheck, definePlugin, type Environment } from "@tryaura/aura-sdk";
 import { describe, expect, it } from "vitest";
 
 import { runCli } from "./index.js";
-import type { CliDistro, CliExitCode, CliRuntime } from "./types.js";
+import {
+  BRANDING,
+  createCapture,
+  distro,
+  findingPlugin,
+  fixtureAdapter,
+  throwingPlugin,
+} from "./testing.js";
 
-const BRANDING = {
-  command: "acme",
-  description: "Agent setup doctor",
-  displayName: "Acme Doctor",
-  docsUrl: "https://example.com/docs",
-  version: "1.2.3",
-};
+const ESCAPE = String.fromCharCode(27);
 
 describe("runCli", () => {
-  it("runs check end to end with zero plugins", async () => {
+  it("refuses to call a run with no checks clean", async () => {
     const capture = createCapture(["check"]);
 
     const exitCode = await runCli(distro(), capture.runtime);
 
-    expect(exitCode).toBe(0);
-    expect(capture.exitCodes).toEqual([0]);
+    expect(exitCode).toBe(2);
+    expect(capture.exitCodes).toEqual([2]);
     expect(capture.stdout.text).toContain("Acme Doctor check");
-    expect(capture.stdout.text).toContain("✓");
-    expect(capture.stdout.text).toContain("No checks reported issues.");
+    expect(capture.stdout.text).toContain("Nothing to check");
+    expect(capture.stdout.text).toContain("ships no plugins");
     expect(capture.stderr.text).toBe("");
+  });
+
+  it("reports a clean run when checks ran and found nothing", async () => {
+    const capture = createCapture(["check"]);
+
+    const exitCode = await runCli(distro([findingPlugin("info", [])]), capture.runtime);
+
+    expect(exitCode).toBe(0);
+    expect(capture.stdout.text).toContain("✓ Passed (1)");
+    expect(capture.stdout.text).toContain("1 passed, 0 informational, 0 warnings, 0 errors");
   });
 
   it("emits deterministic JSON without human decoration", async () => {
     const capture = createCapture(["check", "--json"]);
 
-    const exitCode = await runCli(distro(), capture.runtime);
+    const exitCode = await runCli(distro([findingPlugin("info", [])]), capture.runtime);
 
     expect(exitCode).toBe(0);
     expect(JSON.parse(capture.stdout.text)).toEqual({
       diagnostics: [],
       exitCode: 0,
       findings: [],
-      passedChecks: [],
+      passedChecks: [{ id: "fixture-info/INFO", title: "info check" }],
+      skipped: [],
       status: "clean",
-      summary: { errors: 0, informational: 0, passed: 0, warnings: 0 },
+      summary: { errors: 0, informational: 0, passed: 1, warnings: 0 },
     });
     expect(capture.stdout.text).not.toContain("✓");
     expect(capture.stderr.text).toBe("");
+  });
+
+  it("keeps everything but the document off the machine-readable stream", async () => {
+    const capture = createCapture(["check", "--json", "--home", "relative/home"]);
+
+    expect(await runCli(distro(), capture.runtime)).toBe(2);
+    expect(capture.stdout.text).toBe("");
+    expect(capture.stderr.text).toContain("--home must be an absolute path");
   });
 
   it("uses branding in top-level help and version output", async () => {
@@ -68,19 +79,13 @@ describe("runCli", () => {
 
   it("passes --home and --path overrides into the environment", async () => {
     let observed: Environment | undefined;
-    const adapter = defineAdapter({
-      async detect(environment) {
-        observed = environment;
-        return { installed: false };
-      },
-      displayName: "Fixture",
-      files: () => [],
-      id: "fixture",
-      parse: () => ({ instructionFiles: [], mcpServers: [], skills: [] }),
-      supportedRange: ">=1",
-    });
     const plugin = definePlugin({
-      adapters: [adapter],
+      adapters: [
+        fixtureAdapter((environment) => {
+          observed = environment;
+          return { installed: false };
+        }),
+      ],
       apiVersion: 1,
       id: "fixture",
       name: "Fixture",
@@ -94,6 +99,38 @@ describe("runCli", () => {
     expect(observed?.pathEntries).toEqual(["/fake/bin"]);
   });
 
+  it("captures the home directory at the process boundary", async () => {
+    let observed: Environment | undefined;
+    const plugin = definePlugin({
+      adapters: [
+        fixtureAdapter((environment) => {
+          observed = environment;
+          return { installed: false };
+        }),
+      ],
+      apiVersion: 1,
+      id: "fixture",
+      name: "Fixture",
+      version: "1.0.0",
+    });
+    const capture = createCapture(["check"]);
+
+    await runCli(distro([plugin]), { ...capture.runtime, homeDir: "/sandbox" });
+
+    expect(observed?.homeDir).toBe("/sandbox");
+  });
+
+  it("rejects path overrides that cannot mean what the user intended", async () => {
+    const home = createCapture(["check", "--home", "relative/home"]);
+    const search = createCapture(["check", "--path", "/usr/bin:"]);
+
+    expect(await runCli(distro(), home.runtime)).toBe(2);
+    expect(home.stderr.text).toContain("--home must be an absolute path");
+    expect(home.stdout.text).toBe("");
+    expect(await runCli(distro(), search.runtime)).toBe(2);
+    expect(search.stderr.text).toContain("(empty)");
+  });
+
   it("groups findings and applies warning/error exit-code precedence", async () => {
     const warning = createCapture(["check"]);
     const error = createCapture(["check"]);
@@ -102,6 +139,23 @@ describe("runCli", () => {
     expect(warning.stdout.text).toContain("! Warnings (1)");
     expect(await runCli(distro([findingPlugin("error")]), error.runtime)).toBe(2);
     expect(error.stdout.text).toContain("✗ Errors (1)");
+  });
+
+  it("lists the applications that were looked for and not found", async () => {
+    const plugin = definePlugin({
+      adapters: [fixtureAdapter(() => ({ installed: false }))],
+      apiVersion: 1,
+      checks: [],
+      id: "fixture",
+      name: "Fixture",
+      version: "1.0.0",
+    });
+    const capture = createCapture(["check"]);
+
+    await runCli(distro([plugin]), capture.runtime);
+
+    expect(capture.stdout.text).toContain("Not found (1)");
+    expect(capture.stdout.text).toContain("Fixture App");
   });
 
   it("maps invalid invocations to exit code two and stderr", async () => {
@@ -114,94 +168,69 @@ describe("runCli", () => {
     expect(capture.stderr.text).toContain("Unknown Syntax Error");
   });
 
-  it("does not expose thrown check details", async () => {
-    const check = defineCheck({
-      defaultSeverity: "error",
-      detect: () => {
-        throw new Error("secret source contents");
-      },
-      explain: "Test check.",
-      fixability: "manual",
-      id: "throwing/CHECK",
-      scope: "global",
-      title: "Throwing check",
-    });
-    const plugin = definePlugin({
-      apiVersion: 1,
-      checks: [check],
-      id: "throwing",
-      name: "Throwing",
-      version: "1.0.0",
-    });
+  it("skips a check that throws and keeps the findings of the ones that ran", async () => {
     const capture = createCapture(["check"]);
 
-    const exitCode = await runCli(distro([plugin]), capture.runtime);
+    const exitCode = await runCli(
+      distro([throwingPlugin(), findingPlugin("warn")]),
+      capture.runtime,
+    );
 
     expect(exitCode).toBe(2);
-    expect(capture.stderr.text).toContain("check failed unexpectedly");
-    expect(capture.stderr.text).not.toContain("secret source contents");
+    expect(capture.stdout.text).toContain("! Warnings (1)");
+    expect(capture.stdout.text).toContain("[throwing/CHECK:check]");
+    expect(capture.stdout.text).not.toContain("secret source contents");
+    expect(capture.stderr.text).toBe("");
+  });
+
+  it("surfaces what a check reported only when asked", async () => {
+    const capture = createCapture(["check", "--detail"]);
+
+    await runCli(distro([throwingPlugin()]), capture.runtime);
+
+    expect(capture.stdout.text).toContain("secret source contents");
+  });
+
+  it("strips control characters out of text a plugin supplied", async () => {
+    const capture = createCapture(["check"]);
+    const plugin = findingPlugin("warn", [
+      { id: "escaped", message: `before${ESCAPE}[2K${ESCAPE}[1Gafter` },
+    ]);
+
+    await runCli(distro([plugin]), capture.runtime);
+
+    expect(capture.stdout.text).not.toContain(ESCAPE);
+    expect(capture.stdout.text).toContain("before [2K [1Gafter");
+  });
+
+  it("grants bare check ids only where the distribution said so", async () => {
+    const bare = definePlugin({
+      apiVersion: 1,
+      checks: [
+        defineCheck({
+          defaultSeverity: "warn",
+          detect: () => [],
+          explain: "Test check.",
+          fixability: "manual",
+          id: "INS-001",
+          scope: "global",
+          title: "Bare check",
+        }),
+      ],
+      id: "official",
+      name: "Official",
+      version: "1.0.0",
+    });
+    const granted = createCapture(["check"]);
+    const refused = createCapture(["check"]);
+
+    expect(
+      await runCli(
+        { branding: BRANDING, plugins: [bare], registry: { bareCheckIdPlugins: ["official"] } },
+        granted.runtime,
+      ),
+    ).toBe(0);
+    expect(await runCli(distro([bare]), refused.runtime)).toBe(2);
+    expect(refused.stderr.text).toContain("Acme Doctor:");
   });
 });
-
-function distro(plugins: readonly AuraPlugin[] = []): CliDistro {
-  return { branding: BRANDING, plugins };
-}
-
-function findingPlugin(severity: Severity): AuraPlugin {
-  const check = defineCheck({
-    defaultSeverity: severity,
-    detect: () => [{ id: `${severity}-finding`, message: `${severity} finding` }],
-    explain: "Test check.",
-    fixability: "manual",
-    id: `fixture-${severity}/${severity.toUpperCase()}`,
-    scope: "global",
-    title: `${severity} check`,
-  });
-  return definePlugin({
-    apiVersion: 1,
-    checks: [check],
-    id: `fixture-${severity}`,
-    name: `Fixture ${severity}`,
-    version: "1.0.0",
-  });
-}
-
-class TextOutput extends Writable {
-  text = "";
-
-  override _write(
-    chunk: unknown,
-    _encoding: BufferEncoding,
-    callback: (error?: Error | null) => void,
-  ): void {
-    this.text += Buffer.isBuffer(chunk) ? chunk.toString("utf8") : String(chunk);
-    callback();
-  }
-}
-
-function createCapture(argv: readonly string[]): {
-  readonly exitCodes: CliExitCode[];
-  readonly runtime: CliRuntime;
-  readonly stderr: TextOutput;
-  readonly stdout: TextOutput;
-} {
-  const exitCodes: CliExitCode[] = [];
-  const stderr = new TextOutput();
-  const stdout = new TextOutput();
-  return {
-    exitCodes,
-    runtime: {
-      argv,
-      cwd: process.cwd(),
-      environmentVariables: { PATH: "/usr/bin" },
-      setExitCode: (exitCode) => {
-        exitCodes.push(exitCode);
-      },
-      stderr,
-      stdin: Readable.from([]),
-      stdout,
-    },
-    stderr,
-    stdout,
-  };
-}

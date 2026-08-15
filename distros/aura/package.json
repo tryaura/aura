@@ -2,10 +2,10 @@
   "name": "@tryaura/aura",
   "version": "0.0.0",
   "private": true,
-  "type": "module",
   "bin": {
     "aura": "./dist/main.js"
   },
+  "type": "module",
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit"

@@ -1,6 +1,5 @@
 import type { Writable } from "node:stream";
 
-import { intro, log, outro } from "@clack/prompts";
 import type { Finding } from "@tryaura/aura-sdk";
 
 import type { CheckReport } from "./report.js";
@@ -11,21 +10,29 @@ export function renderJson(report: CheckReport, output: Writable): void {
 }
 
 export function renderHuman(report: CheckReport, branding: CliBranding, output: Writable): void {
-  const options = { output, withGuide: false };
-  intro(`${branding.displayName} check`, options);
+  output.write(`${branding.displayName} check\n`);
 
   if (report.passedChecks.length > 0) {
     renderGroup(
       "✓",
       `Passed (${String(report.passedChecks.length)})`,
-      report.passedChecks.map((check) => `[${check.id}] ${check.title}`),
+      report.passedChecks.map((check) => `[${safe(check.id)}] ${safe(check.title)}`),
+      output,
+    );
+  } else if (report.status === "empty") {
+    renderGroup(
+      "!",
+      "Nothing to check",
+      [
+        "No checks are registered. This build of the CLI ships no plugins, so nothing about this machine was inspected.",
+      ],
       output,
     );
   } else if (report.findings.length === 0 && report.diagnostics.length === 0) {
     renderGroup("✓", "Clean", ["No checks reported issues."], output);
   }
 
-  renderFindingGroup("✓", "Informational", report, "info", output);
+  renderFindingGroup("·", "Informational", report, "info", output);
   renderFindingGroup("!", "Warnings", report, "warn", output);
   renderFindingGroup("✗", "Errors", report, "error", output);
 
@@ -33,18 +40,28 @@ export function renderHuman(report: CheckReport, branding: CliBranding, output: 
     renderGroup(
       "✗",
       `Scan errors (${String(report.diagnostics.length)})`,
-      report.diagnostics.map(
-        (diagnostic) => `[${diagnostic.adapterId}:${diagnostic.phase}] ${diagnostic.message}`,
-      ),
+      report.diagnostics.flatMap((diagnostic) => [
+        `[${safe(diagnostic.id)}:${diagnostic.phase}] ${safe(diagnostic.message)}`,
+        ...(diagnostic.detail === undefined ? [] : [`  ${safe(diagnostic.detail)}`]),
+      ]),
+      output,
+    );
+  }
+
+  if (report.skipped.length > 0) {
+    renderGroup(
+      "·",
+      `Not found (${String(report.skipped.length)})`,
+      report.skipped.map((app) => safe(app.displayName)),
       output,
     );
   }
 
   if (branding.docsUrl !== undefined) {
-    log.info(`Docs: ${branding.docsUrl}`, options);
+    renderGroup("·", `Docs: ${branding.docsUrl}`, [], output);
   }
 
-  outro(summaryMessage(report), options);
+  output.write(`\n${summaryMessage(report)}\n`);
 }
 
 function renderFindingGroup(
@@ -62,7 +79,10 @@ function renderFindingGroup(
   renderGroup(
     symbol,
     `${label} (${String(findings.length)})`,
-    findings.map((finding) => `[${finding.checkId}] ${finding.message}`),
+    findings.flatMap((finding) => [
+      `[${safe(finding.checkId)}] ${safe(finding.message)}`,
+      ...(finding.details === undefined ? [] : [`  ${safe(finding.details)}`]),
+    ]),
     output,
   );
 }
@@ -73,13 +93,32 @@ function renderGroup(
   entries: readonly string[],
   output: Writable,
 ): void {
-  log.message([`${symbol} ${heading}`, ...entries], {
-    output,
-    withGuide: false,
-  });
+  output.write(`\n${symbol} ${heading}\n`);
+  for (const entry of entries) {
+    output.write(`  ${entry}\n`);
+  }
 }
 
 function summaryMessage(report: CheckReport): string {
   const { errors, informational, passed, warnings } = report.summary;
   return `${String(passed)} passed, ${String(informational)} informational, ${String(warnings)} warnings, ${String(errors)} errors`;
+}
+
+/**
+ * Neutralizes control characters in text Aura did not write itself.
+ *
+ * Findings and diagnostics quote what was read out of third-party agent configuration, so their
+ * text is attacker-influenced in the same way a filename is. An escape sequence reaching the
+ * terminal can repaint the report — turning an error line into a passing one — or drive the
+ * terminal itself, so every byte below `space` is replaced before it is written.
+ */
+export function safe(value: string): string {
+  let result = "";
+
+  for (const character of value) {
+    const code = character.codePointAt(0) ?? 0;
+    result += code < 0x20 || (code >= 0x7f && code <= 0x9f) ? " " : character;
+  }
+
+  return result;
 }

@@ -1,6 +1,9 @@
+import { homedir } from "node:os";
 import process from "node:process";
 
-import { Builtins, Cli } from "clipanion/lib/advanced/index.js";
+// Deep import on purpose: clipanion's ESM entry contains a directory import Node cannot resolve, so
+// the package root loads only under CommonJS. This is the file its `main` points at.
+import { Builtins, Cli, type Command } from "clipanion/lib/advanced/index.js";
 
 import { createPluginRegistry } from "@tryaura/core";
 
@@ -13,23 +16,24 @@ export async function runCli(distro: CliDistro, runtime?: CliRuntime): Promise<C
   let exitCode: CliExitCode;
 
   try {
-    const registry = createPluginRegistry(distro.plugins);
+    const registry = createPluginRegistry(distro.plugins, distro.registry ?? {});
     const cli = createCli(distro, resolved.colorDepth > 0);
     const context: AuraCliContext = {
       branding: distro.branding,
       colorDepth: resolved.colorDepth,
       cwd: resolved.cwd,
+      defaultHomeDir: resolved.homeDir,
       env: resolved.environmentVariables,
       registry,
+      report: resolved.stdout,
       stderr: resolved.stderr,
       stdin: resolved.stdin,
       stdout: resolved.stdout,
-      ...(runtime?.homeDir === undefined ? {} : { defaultHomeDir: runtime.homeDir }),
     };
 
     try {
       const command = cli.process(resolved.argv, context);
-      exitCode = normalizeExitCode(await cli.run(command, context));
+      exitCode = normalizeExitCode(await cli.run(command, executionContext(command, context)));
     } catch (error) {
       const normalized = error instanceof Error ? error : new Error(String(error));
       resolved.stderr.write(`${cli.error(normalized, { colored: false })}\n`);
@@ -50,27 +54,80 @@ interface ResolvedRuntime {
   readonly colorDepth: number;
   readonly cwd: string;
   readonly environmentVariables: Record<string, string | undefined>;
+  readonly homeDir: string;
   readonly stderr: NonNullable<CliRuntime["stderr"]>;
   readonly stdin: NonNullable<CliRuntime["stdin"]>;
   readonly stdout: NonNullable<CliRuntime["stdout"]>;
 }
 
+/**
+ * Captures every ambient value the run depends on.
+ *
+ * This is the CLI's half of the boundary `Environment` draws inside the kernel: an embedder that
+ * fills in the whole runtime gets a run that reads nothing from the surrounding process — including
+ * the home directory, which is the one thing a caller sandboxing `HOME` would otherwise still leak.
+ */
 function resolveRuntime(runtime: CliRuntime | undefined): ResolvedRuntime {
+  const environmentVariables = {
+    ...resolveValue(runtime?.environmentVariables, () => process.env),
+  };
+  const stdout = resolveValue(runtime?.stdout, () => process.stdout);
+
   return {
     argv: [...resolveValue(runtime?.argv, () => process.argv.slice(2))],
-    colorDepth: resolveValue(runtime?.colorDepth, () => 0),
+    colorDepth: resolveValue(runtime?.colorDepth, () =>
+      // An injected stream is not a terminal Aura can ask about color, so it never gets any.
+      runtime?.stdout === undefined ? detectColorDepth(environmentVariables) : 0,
+    ),
     cwd: resolveValue(runtime?.cwd, () => process.cwd()),
-    environmentVariables: {
-      ...resolveValue(runtime?.environmentVariables, () => process.env),
-    },
+    environmentVariables,
+    homeDir: resolveValue(runtime?.homeDir, () => homedir()),
     stderr: resolveValue(runtime?.stderr, () => process.stderr),
     stdin: resolveValue(runtime?.stdin, () => process.stdin),
-    stdout: resolveValue(runtime?.stdout, () => process.stdout),
+    stdout,
   };
 }
 
 function resolveValue<T>(value: T | undefined, fallback: () => T): T {
   return value === undefined ? fallback() : value;
+}
+
+/**
+ * Decides how much color the terminal should get.
+ *
+ * Only the command framework's help and error output is colored; the report renders the same bytes
+ * either way, so there is no second, disagreeing opinion about color further down.
+ */
+function detectColorDepth(environmentVariables: Record<string, string | undefined>): number {
+  const noColor = environmentVariables["NO_COLOR"];
+  if (noColor !== undefined && noColor !== "") {
+    return 0;
+  }
+
+  const forceColor = environmentVariables["FORCE_COLOR"];
+  if (forceColor !== undefined && forceColor !== "" && forceColor !== "0") {
+    return 8;
+  }
+
+  return process.stdout.isTTY === true ? 8 : 0;
+}
+
+/**
+ * Gives a command the streams it should run against.
+ *
+ * `--json` emits one document a script parses, so the report goes to `report` and everything else
+ * the run produces — including the framework's own error output, which it writes to `stdout` — is
+ * pointed at stderr. A plugin that calls `console.log` still reaches the process directly; nothing
+ * here can intercept that, since the capture that would is unusable (see `createCli`).
+ */
+function executionContext(
+  command: Command<AuraCliContext>,
+  context: AuraCliContext,
+): AuraCliContext {
+  if (command instanceof CheckCommand && command.json) {
+    return { ...context, stdout: context.stderr };
+  }
+  return context;
 }
 
 function createCli(distro: CliDistro, enableColors: boolean): Cli<AuraCliContext> {
@@ -81,6 +138,10 @@ function createCli(distro: CliDistro, enableColors: boolean): Cli<AuraCliContext
         ? branding.displayName
         : `${branding.displayName} — ${branding.description}`,
     binaryName: branding.command,
+    // Off deliberately. Capture patches `process.stdout._write` to forward to the context's stream,
+    // which in a real run is that same stream — every write then recurses into itself and the
+    // process wedges with no output at all. Anything a plugin prints therefore goes straight at the
+    // process; see `executionContext` for what that means for `--json`.
     enableCapture: false,
     enableColors,
     ...(branding.version === undefined ? {} : { binaryVersion: branding.version }),
@@ -103,11 +164,9 @@ function normalizeExitCode(exitCode: number): CliExitCode {
 }
 
 function applyExitCode(exitCode: CliExitCode, runtime: CliRuntime | undefined): void {
-  if (runtime?.setExitCode !== undefined) {
-    runtime.setExitCode(exitCode);
+  if (runtime?.setExitCode === undefined) {
+    process.exitCode = exitCode;
     return;
   }
-  if (runtime === undefined) {
-    process.exitCode = exitCode;
-  }
+  runtime.setExitCode(exitCode);
 }
