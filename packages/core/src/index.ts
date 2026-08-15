@@ -4,3 +4,8 @@ export { createPluginRegistry } from "./plugin-registry.js";
 export type { PluginRegistry, PluginRegistryOptions } from "./plugin-registry.js";
 export { SUPPORTED_PLUGIN_API_VERSION } from "./plugin-validation.js";
 export type { ContributionKind, PluginCandidate } from "./plugin-validation.js";
+export { buildWorkspaceModel } from "./workspace/build.js";
+export type { WorkspaceScan, WorkspaceScanOptions } from "./workspace/build.js";
+export type { ScanDiagnostic, ScanPhase } from "./workspace/diagnostics.js";
+export { createFileReader } from "./workspace/reader.js";
+export type { FileReader, PathContents } from "./workspace/reader.js";
