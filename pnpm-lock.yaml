@@ -113,10 +113,13 @@ importers:
       '@tryaura/aura-sdk':
         specifier: workspace:*
         version: link:../sdk
+      diff:
+        specifier: ^9.0.0
+        version: 9.0.0
+    devDependencies:
       '@tryaura/core':
         specifier: workspace:*
         version: link:../core
-    devDependencies:
       '@types/node':
         specifier: 24.13.3
         version: 24.13.3
