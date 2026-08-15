@@ -1,7 +1,17 @@
-import type { Buffer } from "node:buffer";
-import { chmod, mkdir, rename, rm, rmdir, symlink, unlink, writeFile } from "node:fs/promises";
-import { basename, dirname, join } from "node:path";
+import {
+  chmod,
+  mkdir,
+  rename,
+  rm,
+  rmdir,
+  symlink,
+  unlink,
+  utimes,
+  writeFile,
+} from "node:fs/promises";
+import { dirname } from "node:path";
 
+import { removeCreatedDirectories, replaceFile, replaceLink } from "./filesystem.js";
 import { DEFAULT_FILE_MODE } from "./limits.js";
 import { revalidateMutationPath, revalidateSymlinkTarget } from "./path-policy.js";
 import type {
@@ -22,8 +32,6 @@ export interface UndoStep {
   readonly index: number;
   readonly undo: UndoAction;
 }
-
-let temporarySequence = 0;
 
 /** The only function in the kernel that turns a prepared fix operation into filesystem writes. */
 export async function applyPreparedOperation(
@@ -78,6 +86,7 @@ async function applyRemove(
     return undoStep(index, undefined, async () => {
       await mkdir(path);
       await chmod(path, before.mode);
+      await utimes(path, before.modifiedTimeMs / 1000, before.modifiedTimeMs / 1000);
     });
   }
 
@@ -105,7 +114,7 @@ async function applySymlink(
   await verifyPath(path, before, index, plan);
   await revalidateSymlinkTarget(target, plan.policy, index);
   const undoDirectory = await ensureDirectory(dirname(path));
-  await replaceWithLink(path, target);
+  await replaceLink(path, target);
 
   if (before.kind === "missing") {
     return undoStep(index, undoDirectory, async () => {
@@ -119,7 +128,7 @@ async function applySymlink(
   }
 
   return undoStep(index, undoDirectory, async () => {
-    await replaceWithLink(path, before.target);
+    await replaceLink(path, before.target);
   });
 }
 
@@ -150,62 +159,22 @@ async function applyWrite(
   if (before.kind === "file") {
     // The existing file keeps its own mode; `operation.mode` describes a file Aura creates, and the
     // preview says so when the two differ.
-    await replaceAtomically(path, prepared.operation.content, before.mode);
+    await replaceFile(path, prepared.operation.content, before.mode);
     return undoStep(index, undoDirectory, async () => {
       await restoreFile(path, before);
     });
   }
 
-  await replaceAtomically(
-    path,
-    prepared.operation.content,
-    prepared.operation.mode ?? DEFAULT_FILE_MODE,
-  );
+  await replaceFile(path, prepared.operation.content, prepared.operation.mode ?? DEFAULT_FILE_MODE);
   return undoStep(index, undoDirectory, async () => {
-    await replaceWithLink(path, before.target);
+    await replaceLink(path, before.target);
   });
 }
 
-/**
- * Replaces a path with new contents, atomically and without following a link.
- *
- * Writing in place would do neither: it follows a symbolic link that took the path's place after
- * the check, and it truncates before it writes, so an interrupted write leaves a half-written file.
- * Building the replacement beside the target and renaming it over avoids both — `rename` replaces
- * the link itself, and is either fully done or not done at all.
- */
-async function replaceAtomically(
-  path: string,
-  content: Buffer | string,
-  mode: number,
-): Promise<void> {
-  const temporary = temporaryPathFor(path);
-  await writeFile(temporary, content, { flag: "wx", mode: 0o600 });
-
-  try {
-    await chmod(temporary, mode);
-    await rename(temporary, path);
-  } catch (error) {
-    await rm(temporary, { force: true });
-    throw error;
-  }
-}
-
-/** Puts a symbolic link at `path` the same way, for the same reasons. */
-async function replaceWithLink(path: string, target: string): Promise<void> {
-  const temporary = temporaryPathFor(path);
-  await symlink(target, temporary);
-
-  try {
-    await rename(temporary, path);
-  } catch (error) {
-    await rm(temporary, { force: true });
-    throw error;
-  }
-}
-
+/** Puts a captured file back exactly as it was read, timestamp included. */
 async function restoreFile(path: string, state: CapturedFileState): Promise<void> {
-  await replaceAtomically(path, state.content, state.mode);
+  await replaceFile(path, state.content, state.mode);
+  await utimes(path, state.modifiedTimeMs / 1000, state.modifiedTimeMs / 1000);
 }
 
 /** Creates missing parents, returning an undo for whatever it had to create. */
@@ -216,7 +185,7 @@ async function ensureDirectory(path: string): Promise<UndoAction | undefined> {
   }
 
   return async () => {
-    await rm(created, { force: true, recursive: true });
+    await removeCreatedDirectories(created, path);
   };
 }
 
@@ -234,14 +203,6 @@ function undoStep(
       }
     },
   };
-}
-
-function temporaryPathFor(target: string): string {
-  temporarySequence += 1;
-  return join(
-    dirname(target),
-    `.${basename(target)}.aura-${String(process.pid)}-${String(temporarySequence)}.tmp`,
-  );
 }
 
 async function verifyPath(

@@ -15,6 +15,7 @@ import { createFixPlanFixture, type FixPlanFixture } from "./testing.js";
 
 const temporaryDirectories: string[] = [];
 const restoreModes: string[] = [];
+const now = (): Date => new Date("2026-08-15T00:00:00.000Z");
 
 afterEach(async () => {
   await Promise.all(restoreModes.splice(0).map((path) => chmod(path, 0o700)));
@@ -41,6 +42,7 @@ describe("fix-plan application", () => {
 
     await executeFixPlan({
       model: fixture.model,
+      now,
       plan: {
         operations: [{ content: "replaced\n", path: link, type: "write" }],
         summary: "Write at a linked path.",
@@ -76,7 +78,7 @@ describe("fix-plan application", () => {
     // Something else edits the third path between preview and apply.
     await writeFile(drifting, "changed underneath\n", "utf8");
 
-    const failure = await applyFixPlan(prepared).catch((error: unknown) => error);
+    const failure = await applyFixPlan(prepared, { now }).catch((error: unknown) => error);
 
     expect(failure).toBeInstanceOf(FixPlanApplyError);
     expect(failure).toMatchObject({
@@ -117,7 +119,7 @@ describe("fix-plan application", () => {
     });
     await writeFile(drifting, "changed underneath\n", "utf8");
 
-    await expect(applyFixPlan(prepared)).rejects.toMatchObject({ rollback: "complete" });
+    await expect(applyFixPlan(prepared, { now })).rejects.toMatchObject({ rollback: "complete" });
 
     await expect(readFile(source, "utf8")).resolves.toBe("source\n");
     await expect(lstat(destination)).rejects.toHaveProperty("code", "ENOENT");
@@ -136,7 +138,7 @@ describe("fix-plan application", () => {
         summary: "Prepare then apply.",
       },
     });
-    const result = await applyFixPlan(prepared);
+    const result = await applyFixPlan(prepared, { now });
 
     expect(result.preview).toBe(prepared.preview);
     expect(result.appliedOperationCount).toBe(1);
