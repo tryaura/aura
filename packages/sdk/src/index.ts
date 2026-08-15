@@ -32,6 +32,8 @@ export type {
   Snippet,
 } from "./content.js";
 export { defineAdapter, defineCheck, definePlugin } from "./define.js";
+export { detectExecutable } from "./detect.js";
+export type { DetectExecutableOptions } from "./detect.js";
 export {
   COMMAND_NOT_FOUND_EXIT_CODE,
   DEFAULT_EXEC_TIMEOUT_MS,
@@ -64,4 +66,13 @@ export type {
   StdioMcpTransport,
   WorkspaceModel,
 } from "./model.js";
+export {
+  collectMcpServers,
+  configStringArray,
+  configStringRecord,
+  isConfigRecord,
+  parseConfigObject,
+  redactMcpArguments,
+  sanitizeMcpUrl,
+} from "./mcp.js";
 export type { AuraPlugin } from "./plugin.js";

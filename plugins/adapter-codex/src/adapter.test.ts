@@ -1,0 +1,173 @@
+import {
+  COMMAND_NOT_FOUND_EXIT_CODE,
+  TIMEOUT_EXIT_CODE,
+  type AdapterSourceFile,
+  type Environment,
+  type EnvironmentPlatform,
+  type ExecRequest,
+  type ExecResult,
+} from "@tryaura/aura-sdk";
+import { describe, expect, it } from "vitest";
+
+import { codexAdapter } from "./adapter.js";
+
+describe("Codex detection", () => {
+  it("detects the first Codex executable and checks authentication without logging in", async () => {
+    const requests: ExecRequest[] = [];
+    const environment = environmentWithExec(requests, (request) => {
+      if (request.command === "/first/codex") {
+        return result(COMMAND_NOT_FOUND_EXIT_CODE);
+      }
+      return request.args?.[0] === "--version"
+        ? result(0, "codex-cli 0.147.0\n")
+        : result(0, "Logged in using ChatGPT\n");
+    });
+
+    await expect(codexAdapter.detect(environment)).resolves.toEqual({
+      authenticated: true,
+      executablePath: "/second/codex",
+      installed: true,
+      version: "0.147.0",
+    });
+    expect(requests.map((request) => [request.command, ...(request.args ?? [])])).toEqual([
+      ["/first/codex", "--version"],
+      ["/second/codex", "--version"],
+      ["/second/codex", "login", "status"],
+    ]);
+  });
+
+  it.each([
+    [1, false],
+    [2, undefined],
+  ])("maps login status exit %i to %s", async (exitCode, authenticated) => {
+    const environment = environmentWithExec([], (request) =>
+      request.args?.[0] === "--version" ? result(0, "codex-cli 0.146.0\n") : result(exitCode),
+    );
+
+    const detection = await codexAdapter.detect(environment);
+    expect(detection.authenticated).toBe(authenticated);
+  });
+
+  it("reports Codex absent without probing authentication", async () => {
+    const requests: ExecRequest[] = [];
+    const environment = environmentWithExec(requests, () => result(COMMAND_NOT_FOUND_EXIT_CODE));
+
+    await expect(codexAdapter.detect(environment)).resolves.toEqual({ installed: false });
+    expect(requests.map((request) => request.args)).toEqual([["--version"], ["--version"]]);
+  });
+
+  it.each([
+    ["exits without a version", result(2, "usage: codex\n")],
+    ["reports non-version output", result(0, "codex, the manuscript\n")],
+    ["times out", result(TIMEOUT_EXIT_CODE)],
+  ])("keeps searching when a candidate %s", async (_case, response) => {
+    const requests: ExecRequest[] = [];
+    const environment = environmentWithExec(requests, (request) =>
+      request.command === "/first/codex" ? response : result(0, "codex-cli 0.147.0\n"),
+    );
+
+    await expect(codexAdapter.detect(environment)).resolves.toMatchObject({
+      executablePath: "/second/codex",
+      installed: true,
+      version: "0.147.0",
+    });
+    expect(requests.filter((request) => request.command === "/first/codex")).toHaveLength(1);
+  });
+
+  it("skips duplicate and relative PATH entries", async () => {
+    const requests: ExecRequest[] = [];
+    const base = environmentWithExec(requests, () => result(COMMAND_NOT_FOUND_EXIT_CODE));
+    const environment: Environment = {
+      ...base,
+      pathEntries: ["relative", "/absolute", "/absolute"],
+    };
+
+    await expect(codexAdapter.detect(environment)).resolves.toEqual({ installed: false });
+    expect(requests.map((request) => request.command)).toEqual(["/absolute/codex"]);
+  });
+
+  it("uses the Windows executable name", async () => {
+    const requests: ExecRequest[] = [];
+    const environment = environmentWithExec(
+      requests,
+      () => result(COMMAND_NOT_FOUND_EXIT_CODE),
+      "win32",
+    );
+
+    await codexAdapter.detect(environment);
+    expect(requests[0]?.command).toBe("/first/codex.exe");
+  });
+});
+
+describe("Codex global model", () => {
+  it("declares the optional global instruction and MCP configuration files", () => {
+    const environment = environmentWithExec([], () => result(0));
+
+    expect(codexAdapter.files(environment)).toEqual([
+      {
+        id: "codex.instructions.global",
+        kind: "instructions",
+        optional: true,
+        path: "/home/dev/.codex/AGENTS.md",
+        scope: "global",
+      },
+      {
+        id: "codex.mcp.global",
+        kind: "mcp",
+        optional: true,
+        path: "/home/dev/.codex/config.toml",
+        scope: "global",
+      },
+    ]);
+  });
+
+  it("models AGENTS.md as a native link to Aura's shared instructions", () => {
+    const instructions = sourceFile("codex.instructions.global", "instructions", "# Global\n");
+    const snapshot = codexAdapter.parse({
+      cwd: "/workspace",
+      detection: { installed: true },
+      files: new Map([[instructions.spec.id, instructions]]),
+      homeDir: "/home/dev",
+    });
+
+    expect(snapshot.instructionFiles).toEqual([
+      {
+        content: "# Global\n",
+        links: [{ kind: "native", targetPath: "/home/dev/agents/AGENTS.md", valid: false }],
+        path: "/home/dev/.codex/AGENTS.md",
+        scope: "global",
+        sourceId: "codex.instructions.global",
+      },
+    ]);
+  });
+});
+
+function environmentWithExec(
+  requests: ExecRequest[],
+  respond: (request: ExecRequest) => ExecResult,
+  platform: EnvironmentPlatform = "linux",
+): Environment {
+  return {
+    cwd: "/workspace",
+    exec: (request) => {
+      requests.push(request);
+      return Promise.resolve(respond(request));
+    },
+    homeDir: "/home/dev",
+    now: () => new Date(0),
+    pathEntries: ["/first", "/second"],
+    platform,
+  };
+}
+
+function sourceFile(id: string, kind: "instructions" | "mcp", content: string): AdapterSourceFile {
+  return {
+    content,
+    exists: true,
+    spec: { id, kind, path: "/home/dev/.codex/AGENTS.md", scope: "global" },
+  };
+}
+
+function result(exitCode: number, stdout = ""): ExecResult {
+  return { exitCode, stderr: "", stdout };
+}
