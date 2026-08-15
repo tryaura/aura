@@ -1,4 +1,5 @@
 import { applyPreparedOperation, type UndoStep } from "./apply.js";
+import { setJournalStatus, stageJournal } from "./journal.js";
 import { prepareOperations } from "./prepare.js";
 import {
   blockedPlanError,
@@ -10,6 +11,7 @@ import {
   FixPlanApplyError,
   FixPlanError,
   operationError,
+  type FixPlanApplyOptions,
   type FixPlanExecutionOptions,
   type FixPlanExecutionResult,
   type FixPlanPreview,
@@ -62,12 +64,15 @@ export async function prepareFixPlan(options: FixPlanPreviewOptions): Promise<Pr
  * partway through, the operations already applied are rolled back and the failure is reported as a
  * {@link FixPlanApplyError} describing what is on disk.
  */
-export async function applyFixPlan(prepared: PreparedFixPlan): Promise<FixPlanExecutionResult> {
+export async function applyFixPlan(
+  prepared: PreparedFixPlan,
+  options: FixPlanApplyOptions,
+): Promise<FixPlanExecutionResult> {
   if (prepared.preview.conflictedOperationCount > 0) {
     throw blockedPlanError(prepared.preview);
   }
 
-  return applyOperations(prepared[PREPARED_STATE], prepared.preview);
+  return applyOperations(prepared[PREPARED_STATE], prepared.preview, options.now);
 }
 
 /** Validates, previews, and optionally applies a plan through the kernel's single write path. */
@@ -75,26 +80,29 @@ export async function executeFixPlan(
   options: FixPlanExecutionOptions,
 ): Promise<FixPlanExecutionResult> {
   const prepared = await prepareFixPlan(options);
-  const dryRun = options.dryRun ?? false;
-
-  if (dryRun) {
-    return Object.freeze({ appliedOperationCount: 0, dryRun, preview: prepared.preview });
+  if (options.dryRun === true) {
+    return Object.freeze({ appliedOperationCount: 0, dryRun: true, preview: prepared.preview });
   }
 
-  return applyFixPlan(prepared);
+  return applyFixPlan(prepared, { now: options.now });
 }
 
 async function applyOperations(
   plan: PreparedPlanState,
   preview: FixPlanPreview,
+  now: () => Date,
 ): Promise<FixPlanExecutionResult> {
   const applied: UndoStep[] = [];
+  const journal = await stageJournal(plan, now);
 
   for (const operation of plan.operations.filter(isApplicable)) {
     try {
       applied.push(await applyPreparedOperation(operation, plan));
     } catch (error) {
       const outcome = await rollback(applied);
+      if (journal !== undefined && outcome.remaining === 0) {
+        await markAborted(journal);
+      }
       throw new FixPlanApplyError(
         asFixPlanError(error, operation),
         rollbackStatus(applied.length, outcome),
@@ -104,7 +112,45 @@ async function applyOperations(
     }
   }
 
-  return Object.freeze({ appliedOperationCount: applied.length, dryRun: false, preview });
+  if (journal === undefined) {
+    return Object.freeze({ appliedOperationCount: applied.length, dryRun: false, preview });
+  }
+
+  try {
+    await setJournalStatus(journal, "applied");
+  } catch (error) {
+    const outcome = await rollback(applied);
+    if (outcome.remaining === 0) {
+      await markAborted(journal);
+    }
+    const failure =
+      error instanceof FixPlanError
+        ? error
+        : new FixPlanError("backup-error", `could not finalize fix-plan backup: ${messageOf(error)}`, {
+            cause: error,
+          });
+    throw new FixPlanApplyError(
+      failure,
+      rollbackStatus(applied.length, outcome),
+      outcome.remaining,
+      outcome.failures,
+    );
+  }
+
+  return Object.freeze({
+    appliedOperationCount: applied.length,
+    backupId: journal.manifest.id,
+    dryRun: false,
+    preview,
+  });
+}
+
+async function markAborted(journal: Parameters<typeof setJournalStatus>[0]): Promise<void> {
+  try {
+    await setJournalStatus(journal, "aborted");
+  } catch {
+    // The pending entry remains recoverable and is safer than hiding a journal write failure.
+  }
 }
 
 /**

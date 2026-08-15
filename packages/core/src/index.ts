@@ -6,9 +6,11 @@ export {
   prepareFixPlan,
   previewFixPlan,
 } from "./fix-plan/execute.js";
+export { undoLastFixPlan } from "./fix-plan/undo.js";
 export type { PreparedFixPlan } from "./fix-plan/execute.js";
-export { FixPlanApplyError, FixPlanError } from "./fix-plan/types.js";
+export { FixPlanApplyError, FixPlanError, FixPlanUndoError } from "./fix-plan/types.js";
 export type {
+  FixPlanApplyOptions,
   FixOperationEffect,
   FixOperationPreview,
   FixPlanErrorCode,
@@ -17,6 +19,8 @@ export type {
   FixPlanPreview,
   FixPlanPreviewOptions,
   FixPlanRollbackStatus,
+  FixPlanUndoOptions,
+  FixPlanUndoResult,
 } from "./fix-plan/types.js";
 export { createPluginRegistry } from "./plugin-registry.js";
 export type { PluginRegistry, PluginRegistryOptions } from "./plugin-registry.js";

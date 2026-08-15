@@ -21,6 +21,7 @@ import {
 import { createFixPlanFixture, type FixPlanFixture } from "./testing.js";
 
 const temporaryDirectories: string[] = [];
+const now = (): Date => new Date("2026-08-15T00:00:00.000Z");
 
 afterEach(async () => {
   await Promise.all(
@@ -84,7 +85,7 @@ describe("fix-plan execution", () => {
     expect(firstPreview.operations[2]?.diff).toContain(`rename to ${archive}`);
     expect(firstPreview.operations[3]?.diff).toContain(`link target ${shared}`);
 
-    const result = await executeFixPlan({ model: fixture.model, plan });
+    const result = await executeFixPlan({ model: fixture.model, now, plan });
 
     expect(result.appliedOperationCount).toBe(4);
     expect(result.dryRun).toBe(false);
@@ -116,9 +117,9 @@ describe("fix-plan execution", () => {
       summary: "Apply an idempotent fixture.",
     };
 
-    const first = await executeFixPlan({ model: fixture.model, plan });
+    const first = await executeFixPlan({ model: fixture.model, now, plan });
     const afterFirst = await snapshotFixture(fixture.root);
-    const second = await executeFixPlan({ model: fixture.model, plan });
+    const second = await executeFixPlan({ model: fixture.model, now, plan });
     const afterSecond = await snapshotFixture(fixture.root);
 
     expect(first.appliedOperationCount).toBe(4);

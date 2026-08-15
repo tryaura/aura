@@ -1,8 +1,8 @@
-import { isAbsolute, resolve } from "node:path";
+import { isAbsolute, join, resolve, sep } from "node:path";
 
 import type { FileOperation, FixPlan, WorkspaceModel } from "@tryaura/aura-sdk";
 
-import { claimPath, createClaimIndex, detectCaseInsensitive } from "./claims.js";
+import { claimPath, comparablePath, createClaimIndex, detectCaseInsensitive } from "./claims.js";
 import { runProbes, type AncestorProbe } from "./probe.js";
 import { describeRoots, matchRoot, resolveAllowedRoots, type AllowedRoot } from "./roots.js";
 import { operationError } from "./types.js";
@@ -18,6 +18,8 @@ export interface PathPolicy {
   /** Whether path comparison must ignore case. See {@link detectCaseInsensitive}. */
   readonly caseInsensitive: boolean;
   readonly roots: readonly AllowedRoot[];
+  /** Kernel-owned paths that plans may never mutate. */
+  readonly reservedRoots: readonly string[];
 }
 
 /** Resolves the roots and filesystem traits a plan is validated against. */
@@ -28,6 +30,7 @@ export async function createPathPolicy(
   const workspaceRoot = resolve(model.projectRoot ?? model.cwd);
   return {
     caseInsensitive: await detectCaseInsensitive(workspaceRoot),
+    reservedRoots: Object.freeze([resolve(model.homeDir, join("agents", ".backups"))]),
     roots: resolveAllowedRoots(model, managedHomeRoots),
   };
 }
@@ -122,6 +125,15 @@ function assertPathShape(path: string, policy: PathPolicy, operationIndex: numbe
     );
   }
 
+  if (policy.reservedRoots.some((root) => isWithin(root, path, policy.caseInsensitive))) {
+    throw operationError(
+      "invalid-path",
+      operationIndex,
+      `path is reserved for Aura's undo journal: ${path}`,
+      { path },
+    );
+  }
+
   if (matchRoot(path, policy.roots, policy.caseInsensitive) === undefined) {
     throw operationError(
       "invalid-path",
@@ -130,4 +142,12 @@ function assertPathShape(path: string, policy: PathPolicy, operationIndex: numbe
       { path },
     );
   }
+}
+
+function isWithin(root: string, candidate: string, caseInsensitive: boolean): boolean {
+  const comparableRoot = comparablePath(resolve(root), caseInsensitive);
+  const comparableCandidate = comparablePath(resolve(candidate), caseInsensitive);
+  return (
+    comparableCandidate === comparableRoot || comparableCandidate.startsWith(`${comparableRoot}${sep}`)
+  );
 }
