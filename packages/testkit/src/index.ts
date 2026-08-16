@@ -2,11 +2,15 @@ export { runBinaryCheck } from "./binary-runner.js";
 export { runCheck } from "./runner.js";
 export { createSeedBuilder } from "./seed.js";
 export { createClaudeCodeSeed } from "./fixtures/claude-code.js";
-export { createCodexSeed } from "./fixtures/codex.js";
+export { CODEX_NESTED_PACKAGE, createCodexSeed } from "./fixtures/codex.js";
 export { createCursorSeed } from "./fixtures/cursor.js";
 export { ANY_ARGUMENT } from "./types.js";
 export type { ClaudeCodeFixtureVersion, ClaudeCodeSeedOptions } from "./fixtures/claude-code.js";
-export type { CodexFixtureVersion, CodexSeedOptions } from "./fixtures/codex.js";
+export type {
+  CodexFixtureVersion,
+  CodexProjectInstructions,
+  CodexSeedOptions,
+} from "./fixtures/codex.js";
 export type {
   CursorFixtureVersion,
   CursorRulesFixture,

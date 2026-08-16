@@ -76,6 +76,7 @@ export async function scanAdapter(adapter: Adapter, context: ScanContext): Promi
       detection,
       environment: context.environment,
       projectBoundary: await context.projectBoundary,
+      projectRoot: await context.projectRoot,
       reader: context.reader,
     });
   } catch (error) {

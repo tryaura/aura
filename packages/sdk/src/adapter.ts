@@ -174,11 +174,18 @@ export interface Adapter {
    * until it returns no new spec ids. Returning a previously declared id is allowed only when the
    * spec is unchanged. Must not touch the filesystem: use the supplied results to discover child
    * paths and let `exists` report read outcomes.
+   *
+   * `projectRoot` is the repository containing {@link Environment.cwd}, resolved by core before the
+   * first call and `undefined` outside a repository. An application that reads configuration from
+   * the repository root — or from every directory between it and the invocation directory — needs
+   * it to declare those paths at all, since {@link Environment} deliberately carries no filesystem
+   * access of its own. It is the same value {@link AdapterParseInput.projectRoot} carries.
    */
   readonly files: (
     environment: Environment,
     detection: AdapterDetection,
     files: AdapterFileMap,
+    projectRoot: string | undefined,
   ) => readonly AdapterFileSpec[];
   /**
    * Stable adapter identifier, unique across all loaded plugins.

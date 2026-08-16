@@ -4,18 +4,31 @@ import { createSeedBuilder } from "../seed.js";
 /** Verified versions plus the first version outside the adapter's supported range. */
 export type CodexFixtureVersion = "0.146.0" | "0.147.0" | "0.148.0";
 
+/**
+ * Which project instruction files the workspace ships.
+ *
+ * `"root"` seeds the repository-root `AGENTS.md` alone. `"nested"` adds a Git marker and a second
+ * `AGENTS.md` inside {@link CODEX_NESTED_PACKAGE}, so a scan invoked from that package walks the
+ * same two levels Codex does. `"override"` adds the root `AGENTS.override.md` that Codex prefers
+ * over the `AGENTS.md` beside it.
+ */
+export type CodexProjectInstructions = "nested" | "override" | "root";
+
+/** Workspace-relative directory the `"nested"` layout puts its second `AGENTS.md` in. */
+export const CODEX_NESTED_PACKAGE = "packages/app";
+
 export interface CodexSeedOptions {
   readonly authenticated: boolean;
-  /** Seed a repo-root `AGENTS.md` in the workspace. */
-  readonly projectInstructions?: boolean;
+  /** Project instruction layout. Omitted means the workspace ships none. */
+  readonly projectInstructions?: CodexProjectInstructions | undefined;
   /** Record the workspace under `[projects]` in `config.toml`; omitted means no entry at all. */
-  readonly projectTrust?: "trusted" | "untrusted";
+  readonly projectTrust?: "trusted" | "untrusted" | undefined;
   readonly version: CodexFixtureVersion;
 }
 
 /** Builds one documented Codex configuration against an exact CLI version. */
 export function createCodexSeed(options: CodexSeedOptions): Promise<TestSeed> {
-  const builder = createSeedBuilder()
+  let builder = createSeedBuilder()
     .homeFile(
       ".codex/AGENTS.md",
       ["# Global Codex instructions", "", "Follow the shared Aura instructions.", ""].join("\n"),
@@ -33,14 +46,30 @@ export function createCodexSeed(options: CodexSeedOptions): Promise<TestSeed> {
       },
     ]);
 
-  return (
-    options.projectInstructions === true
-      ? builder.workspaceFile(
-          "AGENTS.md",
-          ["# Project Codex instructions", "", "Prefer the repository conventions.", ""].join("\n"),
-        )
-      : builder
-  ).build();
+  if (options.projectInstructions !== undefined) {
+    builder = builder.workspaceFile("AGENTS.md", instructions("Project"));
+  }
+  if (options.projectInstructions === "override") {
+    builder = builder.workspaceFile("AGENTS.override.md", instructions("Project override"));
+  }
+  if (options.projectInstructions === "nested") {
+    builder = builder
+      // A worktree leaves a `.git` file rather than a directory, and project-root detection accepts
+      // either, so the cheaper one is what the fixture writes.
+      .workspaceFile(".git", "gitdir: /dev/null\n")
+      .workspaceFile(`${CODEX_NESTED_PACKAGE}/AGENTS.md`, instructions("Package"));
+  }
+
+  return builder.build();
+}
+
+function instructions(title: string): string {
+  return [
+    `# ${title} Codex instructions`,
+    "",
+    `Prefer the ${title.toLowerCase()} conventions.`,
+    "",
+  ].join("\n");
 }
 
 function codexConfiguration(

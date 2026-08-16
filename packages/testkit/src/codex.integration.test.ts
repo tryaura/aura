@@ -1,8 +1,10 @@
+import { join } from "node:path";
+
 import codexPlugin from "@tryaura/adapter-codex";
 import { buildWorkspaceModel, createEnvironment } from "@tryaura/core";
 import { describe, expect, it } from "vitest";
 
-import { createCodexSeed, type CodexFixtureVersion } from "./index.js";
+import { CODEX_NESTED_PACKAGE, createCodexSeed, type CodexFixtureVersion } from "./index.js";
 
 describe("Codex versioned fixtures", () => {
   it.each([
@@ -14,7 +16,7 @@ describe("Codex versioned fixtures", () => {
     async (version, support) => {
       await using seed = await createCodexSeed({
         authenticated: true,
-        projectInstructions: true,
+        projectInstructions: "root",
         projectTrust: "trusted",
         version,
       });
@@ -86,7 +88,9 @@ describe("Codex versioned fixtures", () => {
       expect(serialized).not.toContain("sk-fixture-secret");
       expect(serialized).not.toContain("inline-fixture-secret");
       expect(scan.model.apps[0]?.sourceFiles.map((file) => file.spec.path)).toEqual([
+        `${seed.homeDir}/.codex/AGENTS.override.md`,
         `${seed.homeDir}/.codex/AGENTS.md`,
+        `${seed.workspaceDir}/AGENTS.override.md`,
         `${seed.workspaceDir}/AGENTS.md`,
         `${seed.homeDir}/.codex/config.toml`,
       ]);
@@ -127,6 +131,66 @@ describe("Codex versioned fixtures", () => {
     expect(scan.model.apps[0]?.metadata).toEqual({ projectTrust: expected });
     // Without a seeded workspace AGENTS.md only the global instruction file appears.
     expect(scan.model.instructionFiles.map((file) => file.scope)).toEqual(["global"]);
+  });
+
+  it("reads one AGENTS.md per directory from the repository root down to the invocation directory", async () => {
+    await using seed = await createCodexSeed({
+      authenticated: true,
+      projectInstructions: "nested",
+      version: "0.147.0",
+    });
+    const adapter = codexPlugin.adapters?.[0];
+    if (adapter === undefined) {
+      throw new Error("Codex plugin did not contribute its adapter.");
+    }
+
+    const scan = await buildWorkspaceModel({
+      adapters: [adapter],
+      environment: createEnvironment({
+        cwd: join(seed.workspaceDir, CODEX_NESTED_PACKAGE),
+        environmentVariables: {},
+        homeDir: seed.homeDir,
+        path: seed.pathDir,
+        platform: "linux",
+      }),
+    });
+
+    expect(scan.diagnostics).toEqual([]);
+    // The intermediate `packages` directory ships none, so it contributes nothing between them.
+    expect(scan.model.instructionFiles.map((file) => file.path)).toEqual([
+      `${seed.homeDir}/.codex/AGENTS.md`,
+      `${seed.workspaceDir}/AGENTS.md`,
+      `${seed.workspaceDir}/${CODEX_NESTED_PACKAGE}/AGENTS.md`,
+    ]);
+  });
+
+  it("reports the AGENTS.override.md Codex prefers instead of the file it shadows", async () => {
+    await using seed = await createCodexSeed({
+      authenticated: true,
+      projectInstructions: "override",
+      version: "0.147.0",
+    });
+    const adapter = codexPlugin.adapters?.[0];
+    if (adapter === undefined) {
+      throw new Error("Codex plugin did not contribute its adapter.");
+    }
+
+    const scan = await buildWorkspaceModel({
+      adapters: [adapter],
+      environment: createEnvironment({
+        cwd: seed.workspaceDir,
+        environmentVariables: {},
+        homeDir: seed.homeDir,
+        path: seed.pathDir,
+        platform: "linux",
+      }),
+    });
+
+    expect(scan.diagnostics).toEqual([]);
+    expect(scan.model.instructionFiles.map((file) => file.path)).toEqual([
+      `${seed.homeDir}/.codex/AGENTS.md`,
+      `${seed.workspaceDir}/AGENTS.override.md`,
+    ]);
   });
 
   it("models an unauthenticated installation without triggering a login flow", async () => {
