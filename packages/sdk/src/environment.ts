@@ -108,7 +108,13 @@ export interface ExecResult {
  * an `Environment`. Checks and fixes never do — see {@link Check}.
  */
 export interface Environment {
-  /** Directory Aura was invoked from. */
+  /**
+   * Directory Aura was invoked from.
+   *
+   * Absolute and normalized, with no trailing separator, so it is safe to compare or use as a
+   * lookup key and not only to build paths from. Not resolved through symlinks: it is the path the
+   * user named, which is the one the applications launched from here recorded.
+   */
   readonly cwd: string;
   /** Runs an external command. See {@link ExecRequest} for the safety guarantees. */
   readonly exec: (request: ExecRequest) => Promise<ExecResult>;

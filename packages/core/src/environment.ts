@@ -1,4 +1,5 @@
 import { homedir } from "node:os";
+import { resolve } from "node:path";
 
 import type { Environment, EnvironmentPlatform } from "@tryaura/aura-sdk";
 
@@ -30,7 +31,11 @@ export interface EnvironmentBootOptions {
  * values before the snapshot is created.
  */
 export function createEnvironment(options: EnvironmentBootOptions = {}): Environment {
-  const cwd = options.cwd ?? process.cwd();
+  // Normalized here so every consumer gets the same guarantee `process.cwd()` already gives:
+  // absolute, no trailing separator. An embedder supplies this value, and adapters use it both to
+  // build paths — where `join` would have hidden the difference — and as a literal lookup key, as
+  // Claude Code's per-directory MCP servers are keyed by the directory they were added from.
+  const cwd = resolve(options.cwd ?? process.cwd());
   const environmentVariables = copyEnvironmentVariables(
     options.environmentVariables ?? process.env,
   );

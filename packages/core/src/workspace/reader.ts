@@ -54,6 +54,8 @@ export interface PathContents {
  * and core reads them, so no plugin ever holds a handle to the filesystem.
  */
 export interface FileReader {
+  /** Whether a path is there, without opening it. See {@link pathExists}. */
+  readonly exists: (path: string) => Promise<boolean>;
   /** Reads one path. Resolves for every outcome, including missing paths, and never rejects. */
   readonly read: (path: string) => Promise<PathContents>;
   /**
@@ -71,9 +73,27 @@ export function createFileReader(): FileReader {
   const limit = createLimiter(MAX_CONCURRENT_OPERATIONS);
 
   return Object.freeze({
+    exists: (path: string) => limit(() => pathExists(path)),
     read: (path: string) => limit(() => readPath(path)),
     realPath: (path: string) => limit(() => resolveRealPath(path)),
   });
+}
+
+/**
+ * Whether a path is there, deciding it exactly as {@link readPath} decides `exists`: `lstat`
+ * succeeding is the whole test, so a dangling symlink is present and a denied parent is not.
+ *
+ * Kept apart from reading because instruction links are answered with existence alone, and a
+ * project document's link targets are named by whatever repository the user checked out. Opening
+ * one would pull the bytes of an arbitrary absolute path into the scan to answer yes or no.
+ */
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await lstat(path);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -85,9 +105,11 @@ export function createFileReader(): FileReader {
  */
 export function createCachingReader(reader: FileReader): FileReader {
   const contents = new Map<string, Promise<PathContents>>();
+  const presence = new Map<string, Promise<boolean>>();
   const realPaths = new Map<string, Promise<string | undefined>>();
 
   return Object.freeze({
+    exists: (path: string) => memoize(presence, path, () => reader.exists(path)),
     read: (path: string) => memoize(contents, path, () => reader.read(path)),
     realPath: (path: string) => memoize(realPaths, path, () => reader.realPath(path)),
   });

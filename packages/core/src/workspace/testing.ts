@@ -27,6 +27,8 @@ export interface MemoryReaderOptions {
 
 /** A {@link FileReader} over a literal filesystem, recording every path it was asked for. */
 export interface MemoryReader extends FileReader {
+  /** Paths passed to `exists`, in call order. Kept apart from `reads` so a test can tell which. */
+  readonly probes: readonly string[];
   /** Paths passed to `read`, in call order. */
   readonly reads: readonly string[];
 }
@@ -36,9 +38,15 @@ export function createMemoryReader(
   entries: MemoryEntries = {},
   options: MemoryReaderOptions = {},
 ): MemoryReader {
+  const probes: string[] = [];
   const reads: string[] = [];
 
   return {
+    exists: (path) => {
+      probes.push(path);
+      return Promise.resolve(options.problems?.[path] !== undefined || entries[path] !== undefined);
+    },
+    probes,
     read: (path) => {
       reads.push(path);
       const problem = options.problems?.[path];

@@ -132,6 +132,26 @@ export interface InstalledSkill {
   readonly version?: string | undefined;
 }
 
+/**
+ * A file an adapter read successfully but could not use.
+ *
+ * Core learns whether a path could be opened; only the adapter knows whether the bytes are the
+ * document it expected. Without this an unparsable `.mcp.json` is indistinguishable from one that
+ * configures nothing, which is the difference between "you have no MCP servers" and "yours are
+ * silently not loading" — the second being the answer a user ran a doctor to get.
+ */
+export interface AdapterProblem {
+  /**
+   * One sentence naming the problem, in terms the user can act on.
+   *
+   * Rendered in the default report, so it names the path but never quotes what the file contained:
+   * the files an adapter parses are the ones holding API tokens.
+   */
+  readonly message: string;
+  /** The {@link AdapterFileSpec.id} whose contents could not be used. */
+  readonly sourceId: string;
+}
+
 /** What one adapter parsed out of the files it declared. */
 export interface AdapterSnapshot {
   /** Instruction documents found for this application. */
@@ -144,6 +164,13 @@ export interface AdapterSnapshot {
    * Rendered in user-visible output. Never place credentials or file contents here.
    */
   readonly metadata?: JsonObject | undefined;
+  /**
+   * Declared files whose contents this adapter could not use.
+   *
+   * Reported to the user beside the model rather than inside it, like every other scan diagnostic,
+   * so checks stay pure functions over machine state.
+   */
+  readonly problems?: readonly AdapterProblem[] | undefined;
   /** Skills installed for this application. */
   readonly skills: readonly InstalledSkill[];
 }
@@ -174,8 +201,13 @@ export interface SharedInstructionsState {
   readonly problem?: FileProblem | undefined;
 }
 
-/** One agent application as Aura sees it. */
-export interface AppModel extends AdapterSnapshot {
+/**
+ * One agent application as Aura sees it.
+ *
+ * `problems` is omitted rather than inherited: it describes how well the scan went, which core
+ * reports as a diagnostic beside the model instead of recording as state of the machine.
+ */
+export interface AppModel extends Omit<AdapterSnapshot, "problems"> {
   /** The {@link Adapter.id} that produced this model. */
   readonly adapterId: string;
   /** What detection found. */

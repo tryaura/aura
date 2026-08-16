@@ -1,10 +1,11 @@
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 
 import {
   defineAdapter,
   detectExecutable,
   SHARED_INSTRUCTIONS_TEMPLATE_TOKEN,
   type AdapterFileSpec,
+  type AdapterProblem,
   type AdapterSourceFile,
   type Environment,
   type JsonObject,
@@ -16,10 +17,10 @@ import {
   CLAUDE_PERMISSIONS_KEY,
 } from "./contract.js";
 import { parseInstructionFile } from "./instructions.js";
-import { parseMcpServers } from "./mcp.js";
+import { parseGlobalMcpServers, parseMcpServers } from "./mcp.js";
 import { parsePermissionSettings } from "./settings.js";
 
-/** Path segments {@link claudeFiles} appends to the home directory for the instruction file. */
+/** Path segments {@link claudeFiles} appends to the home directory for the global instructions. */
 const GLOBAL_INSTRUCTIONS_SEGMENTS = Object.freeze([".claude", "CLAUDE.md"]);
 
 export const claudeCodeAdapter = defineAdapter({
@@ -29,20 +30,30 @@ export const claudeCodeAdapter = defineAdapter({
   files: claudeFiles,
   id: CLAUDE_CODE_ADAPTER_ID,
   installHint: "Run `claude update`, or reinstall Claude Code from https://claude.ai/install.",
-  parse: ({ files }) => {
-    const instructions = files.get(SOURCE_IDS.instructions);
-    const mcp = files.get(SOURCE_IDS.mcp);
+  parse: ({ cwd, files, homeDir }) => {
+    const globalFile = files.get(SOURCE_IDS.mcp);
+    const projectFile = files.get(SOURCE_IDS.mcpProject);
+    const global =
+      globalFile === undefined ? EMPTY_GLOBAL_MCP : parseGlobalMcpServers(globalFile, cwd);
+    const project = projectFile === undefined ? EMPTY_MCP : parseMcpServers(projectFile);
 
     return {
-      instructionFiles:
-        instructions?.content === undefined
-          ? []
-          : [parseInstructionFile(instructions, homeDirOf(instructions.spec.path))],
-      mcpServers: mcp?.content === undefined ? [] : parseMcpServers(mcp),
+      instructionFiles: [SOURCE_IDS.instructions, SOURCE_IDS.instructionsProject].flatMap((id) => {
+        const file = files.get(id);
+        return file?.content === undefined ? [] : [parseInstructionFile(file, homeDir)];
+      }),
+      // Ordered by specificity: what applies everywhere, what the repository ships, then what this
+      // one directory was given. Nothing is collapsed — two scopes configuring the same name is
+      // itself a finding, and a model that deduplicated could not report it.
+      mcpServers: [...global.globalServers, ...project.servers, ...global.localServers],
       metadata: permissionMetadata(
         files.get(SOURCE_IDS.settingsGlobal),
         files.get(SOURCE_IDS.settingsProject),
       ),
+      problems: [
+        ...unusableMcp(globalFile, global.malformed),
+        ...unusableMcp(projectFile, project.malformed),
+      ],
       skills: [],
     };
   },
@@ -53,6 +64,33 @@ export const claudeCodeAdapter = defineAdapter({
   },
   supportedRange: ">=2.1.0 <3.0.0",
 });
+
+/** What an absent file contributes, so `parse` reads the same whether or not one was found. */
+const EMPTY_MCP = Object.freeze({ malformed: false, servers: [] });
+const EMPTY_GLOBAL_MCP = Object.freeze({ globalServers: [], localServers: [], malformed: false });
+
+/**
+ * Reports MCP configuration that is present but unreadable.
+ *
+ * The failure this describes is invisible from the outside: Claude Code refuses the whole file, so
+ * every server in it stops working at once while the file still sits there looking configured.
+ * Silence is the wrong answer from a tool whose job is explaining that.
+ */
+function unusableMcp(
+  file: AdapterSourceFile | undefined,
+  malformed: boolean,
+): readonly AdapterProblem[] {
+  if (file === undefined || !malformed) {
+    return [];
+  }
+
+  return [
+    {
+      message: `Claude Code's MCP configuration at ${file.spec.path} is not a valid JSON object, so none of the servers it declares are loading — in Claude Code either. Fix the file to restore them.`,
+      sourceId: file.spec.id,
+    },
+  ];
+}
 
 function permissionMetadata(
   globalSettings: AdapterSourceFile | undefined,
@@ -75,14 +113,15 @@ function permissionMetadata(
 }
 
 /**
- * Declares the global configuration Claude Code keeps under the home directory.
+ * Declares the global and project configuration Claude Code reads.
  *
- * Global scope only. Project state — `./CLAUDE.md`, `.claude/CLAUDE.md`, `.mcp.json`, and the
- * per-directory servers under `projects` in `~/.claude.json` — is not read yet, so a workspace's
- * own configuration does not appear in the model.
+ * Project instructions and MCP config are rooted at the invocation directory, not the repository
+ * root, because that is where Claude Code itself looks. The local-scope MCP servers are not
+ * declared here at all: they live inside the global `~/.claude.json`, which is already declared,
+ * and {@link parseGlobalMcpServers} lifts them out of it.
  *
- * Permission settings are the narrow exception: ENV-004 needs their effective default mode, but
- * the model records only that mode and rule counts rather than permission entries.
+ * Permission settings remain intentionally narrow: ENV-004 needs their effective default mode,
+ * but the model records only that mode and rule counts rather than permission entries.
  */
 function claudeFiles(environment: Environment): readonly AdapterFileSpec[] {
   return [
@@ -94,11 +133,25 @@ function claudeFiles(environment: Environment): readonly AdapterFileSpec[] {
       scope: "global",
     },
     {
+      id: SOURCE_IDS.instructionsProject,
+      kind: "instructions",
+      optional: true,
+      path: join(environment.cwd, "CLAUDE.md"),
+      scope: "project",
+    },
+    {
       id: SOURCE_IDS.mcp,
       kind: "mcp",
       optional: true,
       path: join(environment.homeDir, ".claude.json"),
       scope: "global",
+    },
+    {
+      id: SOURCE_IDS.mcpProject,
+      kind: "mcp",
+      optional: true,
+      path: join(environment.cwd, ".mcp.json"),
+      scope: "project",
     },
     {
       id: SOURCE_IDS.settingsGlobal,
@@ -115,15 +168,4 @@ function claudeFiles(environment: Environment): readonly AdapterFileSpec[] {
       scope: "project",
     },
   ];
-}
-
-/**
- * Recovers the home directory from the path {@link claudeFiles} built out of it.
- *
- * `parse` is pure and never receives an `Environment`, so this is where the home directory still
- * exists. Undoing the join beside the join itself keeps the two from drifting, and leaves the
- * instruction parser free of any assumption about where its document sits.
- */
-function homeDirOf(instructionsPath: string): string {
-  return GLOBAL_INSTRUCTIONS_SEGMENTS.reduce((path) => dirname(path), instructionsPath);
 }

@@ -22,7 +22,7 @@ describe("createLinkResolver", () => {
     ]);
   });
 
-  it("reads each target once, however many documents and apps point at it", async () => {
+  it("probes each target once, however many documents and apps point at it", async () => {
     const reader = createMemoryReader({ "/home/dev/shared.md": "# shared" });
     const resolver = createLinkResolver(createCachingReader(reader));
     const link = createLink("/home/dev/shared.md");
@@ -33,7 +33,24 @@ describe("createLinkResolver", () => {
     ]);
     await resolver.resolve([createDocument("/workspace/CLAUDE.md", [link])]);
 
-    expect(reader.reads).toEqual(["/home/dev/shared.md"]);
+    expect(reader.probes).toEqual(["/home/dev/shared.md"]);
+  });
+
+  it("never opens a target, whatever path an instruction file names", async () => {
+    const reader = createMemoryReader({ "/home/dev/.ssh/id_rsa": "PRIVATE KEY" });
+    const resolver = createLinkResolver(reader);
+
+    // What a checked-out repository's CLAUDE.md would import. `~/agents/AGENTS.md` is an ordinary
+    // thing to import from a project document, so the path cannot be refused — but existence is
+    // all that is ever reported about one, so the bytes are never a reason to open it.
+    const resolved = await resolver.resolve([
+      createDocument("/workspace/CLAUDE.md", [createLink("/home/dev/.ssh/id_rsa", false)]),
+    ]);
+
+    expect(resolved[0]?.links).toEqual([
+      { kind: "import", targetPath: "/home/dev/.ssh/id_rsa", valid: true },
+    ]);
+    expect(reader.reads).toEqual([]);
   });
 
   it("leaves documents without links untouched", async () => {
