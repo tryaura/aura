@@ -1,7 +1,7 @@
 import {
   JOURNAL_VERSION,
   type JournalManifest,
-  type JournalStatus,
+  type StoredArchiveOperation,
   type StoredDirectoryState,
   type StoredFileState,
   type StoredMissingState,
@@ -13,7 +13,15 @@ import {
   type StoredSymlinkState,
   type StoredWriteOperation,
 } from "./journal-schema.js";
-import { FixPlanError } from "./types.js";
+import {
+  corrupt,
+  isRecord,
+  optionalString,
+  parseStatus,
+  requiredBoolean,
+  requiredNumber,
+  requiredString,
+} from "./journal-parse-fields.js";
 
 export function parseManifest(text: string, path: string): JournalManifest {
   let value: unknown;
@@ -78,6 +86,9 @@ function parseOperation(value: unknown, path: string): StoredOperation {
   };
 
   switch (value["type"]) {
+    case "archive": {
+      return parseArchive(value, common, path);
+    }
     case "move": {
       return parseMove(value, common, path);
     }
@@ -94,6 +105,28 @@ function parseOperation(value: unknown, path: string): StoredOperation {
       throw corrupt(path, `unsupported journal operation: ${String(value["type"])}`);
     }
   }
+}
+
+function parseArchive(
+  value: Record<string, unknown>,
+  common: OperationCommon,
+  path: string,
+): StoredArchiveOperation {
+  const before = parseState(value["before"], path);
+  if (
+    before.kind !== "file" ||
+    before.payload === undefined ||
+    !isConsolidationPayload(before.payload)
+  ) {
+    throw corrupt(path, "archive before state must contain a consolidation payload");
+  }
+  return {
+    ...common,
+    after: parseReplaceableState(value["after"], path),
+    before,
+    path: requiredString(value, "path", path),
+    type: "archive",
+  };
 }
 
 interface OperationCommon {
@@ -210,7 +243,11 @@ function parseState(value: unknown, path: string): StoredPathState {
 
 function parseFileState(value: Record<string, unknown>, path: string): StoredFileState {
   const payload = optionalString(value, "payload", path);
-  if (payload !== undefined && !/^files\/[0-9]+-(?:after|before)\.bin$/u.test(payload)) {
+  if (
+    payload !== undefined &&
+    !/^files\/[0-9]+-(?:after|before)\.bin$/u.test(payload) &&
+    !isConsolidationPayload(payload)
+  ) {
     throw corrupt(path, `invalid file payload path: ${payload}`);
   }
   return {
@@ -220,6 +257,15 @@ function parseFileState(value: Record<string, unknown>, path: string): StoredFil
     payload,
     size: requiredNumber(value, "size", path),
   };
+}
+
+function isConsolidationPayload(payload: string): boolean {
+  const parts = payload.split(/[\\/]/u);
+  return (
+    parts[0] === "consolidation" &&
+    parts.length > 1 &&
+    parts.slice(1).every((part) => part.length > 0 && part !== "." && part !== "..")
+  );
 }
 
 /**
@@ -235,55 +281,4 @@ function requiredMode(value: Record<string, unknown>, path: string): number {
     throw corrupt(path, "mode must be a non-negative integer");
   }
   return mode & 0o777;
-}
-
-function parseStatus(value: unknown, path: string): JournalStatus {
-  if (value === "aborted" || value === "applied" || value === "pending" || value === "undone") {
-    return value;
-  }
-  throw corrupt(path, `invalid journal status: ${String(value)}`);
-}
-
-function requiredString(value: Record<string, unknown>, key: string, path: string): string {
-  const field = value[key];
-  if (typeof field !== "string") {
-    throw corrupt(path, `${key} must be a string`);
-  }
-  return field;
-}
-
-function optionalString(
-  value: Record<string, unknown>,
-  key: string,
-  path: string,
-): string | undefined {
-  const field = value[key];
-  if (field !== undefined && typeof field !== "string") {
-    throw corrupt(path, `${key} must be a string when present`);
-  }
-  return field;
-}
-
-function requiredNumber(value: Record<string, unknown>, key: string, path: string): number {
-  const field = value[key];
-  if (typeof field !== "number" || !Number.isFinite(field)) {
-    throw corrupt(path, `${key} must be a finite number`);
-  }
-  return field;
-}
-
-function requiredBoolean(value: Record<string, unknown>, key: string, path: string): boolean {
-  const field = value[key];
-  if (typeof field !== "boolean") {
-    throw corrupt(path, `${key} must be a boolean`);
-  }
-  return field;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function corrupt(path: string, message: string, cause?: unknown): FixPlanError {
-  return new FixPlanError("journal-corrupt", `${message}: ${path}`, { cause, path });
 }

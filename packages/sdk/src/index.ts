@@ -49,6 +49,8 @@ export {
 } from "./environment.js";
 export type { Environment, EnvironmentPlatform, ExecRequest, ExecResult } from "./environment.js";
 export type {
+  ArchiveFileOperation,
+  ArchiveFileReplacement,
   FileMode,
   FileOperation,
   FixPlan,

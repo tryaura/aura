@@ -72,6 +72,7 @@ async function matchesBefore(entry: JournalHandle, operation: StoredOperation): 
         (await matches(entry, operation.destinationPath, { kind: "missing" }))
       );
     }
+    case "archive":
     case "remove":
     case "symlink":
     case "write": {
@@ -82,6 +83,9 @@ async function matchesBefore(entry: JournalHandle, operation: StoredOperation): 
 
 async function matchesAfter(entry: JournalHandle, operation: StoredOperation): Promise<boolean> {
   switch (operation.type) {
+    case "archive": {
+      return matches(entry, operation.path, operation.after);
+    }
     case "move": {
       return (
         (await matches(entry, operation.sourcePath, { kind: "missing" })) &&

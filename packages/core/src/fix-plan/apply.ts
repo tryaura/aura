@@ -15,6 +15,7 @@ import { removeCreatedDirectories, replaceFile, replaceLink } from "./filesystem
 import { revalidateMutationPath, revalidateSymlinkTarget } from "./path-policy.js";
 import type {
   ApplicableOperation,
+  PreparedArchiveOperation,
   PreparedMoveOperation,
   PreparedPlanState,
   PreparedRemoveOperation,
@@ -38,6 +39,9 @@ export async function applyPreparedOperation(
   plan: PreparedPlanState,
 ): Promise<UndoStep> {
   switch (prepared.type) {
+    case "archive": {
+      return applyArchive(prepared, plan);
+    }
     case "move": {
       return applyMove(prepared, plan);
     }
@@ -51,6 +55,26 @@ export async function applyPreparedOperation(
       return applyWrite(prepared, plan);
     }
   }
+}
+
+async function applyArchive(
+  prepared: PreparedArchiveOperation,
+  plan: PreparedPlanState,
+): Promise<UndoStep> {
+  const { path, replacement } = prepared.operation;
+  const index = prepared.preview.index;
+  await verifyPath(path, prepared.before, index, plan);
+
+  if (replacement === undefined) {
+    await unlink(path);
+  } else if (replacement.type === "symlink") {
+    await revalidateSymlinkTarget(replacement.target, plan.policy, index);
+    await replaceLink(path, replacement.target);
+  } else {
+    await replaceFile(path, replacement.content, prepared.replacementMode ?? prepared.before.mode);
+  }
+
+  return undoStep(index, undefined, async () => restoreFile(path, prepared.before));
 }
 
 async function applyMove(

@@ -3,7 +3,8 @@ import { link, lstat, mkdir, open, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 
 import { inspectLock, removeObservedLock, type LockOwner } from "./journal-lock-record.js";
-import { errorCode, errorMessage, FixPlanError } from "./types.js";
+import { errorCode, errorMessage } from "./error-values.js";
+import { FixPlanError } from "./types.js";
 
 const LOCK_NAME = ".lock";
 const LOCK_SUFFIX = ".json";

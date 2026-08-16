@@ -1,5 +1,5 @@
 import { Buffer } from "node:buffer";
-import { chmod, lstat, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import type { StoredOperation, StoredPathState } from "./journal-schema.js";
@@ -12,7 +12,8 @@ import type {
   PathState,
   SymlinkPathState,
 } from "./state.js";
-import { errorCode, FixPlanError } from "./types.js";
+import { errorCode } from "./error-values.js";
+import { FixPlanError } from "./types.js";
 
 export async function storeOperation(
   operation: ApplicableOperation,
@@ -23,6 +24,36 @@ export async function storeOperation(
   const createdDirectory = await firstMissingDirectory(parent, virtualDirectories);
   recordCreatedDirectories(createdDirectory, parent, virtualDirectories);
   switch (operation.type) {
+    case "archive": {
+      const payload = join("consolidation", operation.operation.relativePath);
+      const before = await storeFileAt(
+        operation.before.content,
+        operation.before.mode,
+        directory,
+        payload,
+        operation.before.modifiedTimeMs,
+      );
+      const replacement = operation.operation.replacement;
+      const after =
+        replacement === undefined
+          ? ({ kind: "missing" } as const)
+          : replacement.type === "symlink"
+            ? ({ kind: "symlink", target: replacement.target } as const)
+            : await storeFile(
+                Buffer.from(replacement.content, "utf8"),
+                operation.replacementMode ?? operation.before.mode,
+                directory,
+                operation.preview.index,
+                "after",
+              );
+      return {
+        after,
+        before,
+        index: operation.preview.index,
+        path: operation.operation.path,
+        type: "archive",
+      };
+    }
     case "move": {
       return {
         createdDirectory,
@@ -88,6 +119,9 @@ export async function storeOperation(
 
 function parentCreatedBy(operation: ApplicableOperation): string | undefined {
   switch (operation.type) {
+    case "archive": {
+      return undefined;
+    }
     case "move": {
       return dirname(operation.operation.destinationPath);
     }
@@ -212,7 +246,18 @@ async function storeFile(
   modifiedTimeMs?: number,
 ): Promise<StoredPathState & { readonly kind: "file" }> {
   const payload = join("files", `${String(index)}-${label}.bin`);
+  return storeFileAt(content, mode, directory, payload, modifiedTimeMs);
+}
+
+async function storeFileAt(
+  content: Buffer,
+  mode: number,
+  directory: string,
+  payload: string,
+  modifiedTimeMs?: number,
+): Promise<StoredPathState & { readonly kind: "file" }> {
   const path = join(directory, payload);
+  await mkdir(dirname(path), { mode: 0o700, recursive: true });
   await writeFile(path, content, { flag: "wx", mode: 0o600 });
   await chmod(path, 0o600);
   return {

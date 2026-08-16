@@ -188,7 +188,9 @@ describe("runSetup", () => {
     expect(fixture.stdout()).toContain("cannot configure shared instructions");
     expect(fixture.stdout()).toContain("Blocked, and left out of the plan");
     expect(fixture.stdout()).toContain("unsupported");
-    expect(fixture.stdout()).not.toContain("already in place");
+    // The baseline note speaks only for the manifest, which really is in place; nothing in the
+    // output may claim the shared instructions Aura just refused to read are settled.
+    expect(fixture.stdout()).toContain("The Aura manifest is already in place.");
     expect(fixture.stdout()).not.toContain("Already converged");
     expect(fixture.stderr()).toContain("the plan is blocked");
     await expect(snapshot(fixture.homeDir)).resolves.toEqual(before);

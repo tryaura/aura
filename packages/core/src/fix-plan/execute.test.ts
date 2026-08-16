@@ -34,7 +34,9 @@ afterEach(async () => {
 
 describe("fix-plan execution", () => {
   it("exports the typed preview and execution contract", () => {
-    expectTypeOf<"conflict" | "create" | "noop" | "update">().toMatchTypeOf<FixOperationEffect>();
+    expectTypeOf<
+      "archive" | "conflict" | "create" | "noop" | "update"
+    >().toMatchTypeOf<FixOperationEffect>();
     expectTypeOf<FixOperationPreview["diff"]>().toEqualTypeOf<string>();
     expectTypeOf<"invalid-path" | "path-conflict">().toMatchTypeOf<FixPlanErrorCode>();
     expectTypeOf<FixPlanPreviewOptions["plan"]>().toEqualTypeOf<FixPlan>();

@@ -170,13 +170,17 @@ export function collectAdapterViolations(
   plugin: AuraPlugin,
 ): void {
   for (const adapter of adapters ?? []) {
-    if (adapter.sharedLink === undefined) {
-      continue;
-    }
-    for (const violation of sharedLinkViolations(adapter.sharedLink)) {
-      state.violations.push(
-        `${formatPlugin(plugin)} adapter "${adapter.id}" declares invalid sharedLink: ${violation}.`,
-      );
+    for (const [name, link] of [
+      ["sharedLink", adapter.sharedLink],
+      ["projectSharedLink", adapter.projectSharedLink],
+    ] as const) {
+      if (link !== undefined) {
+        for (const violation of sharedLinkViolations(link)) {
+          state.violations.push(
+            `${formatPlugin(plugin)} adapter "${adapter.id}" declares invalid ${name}: ${violation}.`,
+          );
+        }
+      }
     }
   }
 }

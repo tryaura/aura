@@ -225,6 +225,8 @@ export interface AppModel extends Omit<AdapterSnapshot, "problems"> {
    * retained alongside the documents parsed out of them.
    */
   readonly sourceFiles: readonly AdapterFileStatus[];
+  /** How this application can be wired to the repository's shared instructions. */
+  readonly projectSharedLink?: ResolvedSharedLink | undefined;
   /** How this application can be wired to the shared instruction source, when declared. */
   readonly sharedLink?: ResolvedSharedLink | undefined;
   /** Whether Aura understands the detected version. */

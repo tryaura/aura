@@ -22,21 +22,18 @@ afterEach(async () => {
 });
 
 describe("planSetup", () => {
-  it("plans the manifest write first, then the shared instructions", async () => {
+  it("plans the manifest write from the baseline selection", async () => {
     const model = await scan();
-    const outcome = planSetup(context(model, true, true));
+    const outcome = planSetup(context(model, true));
 
     expect(outcome.blockers).toEqual([]);
-    expect(operationPaths(outcome)).toEqual([
-      join(model.homeDir, "agents", "aura.json"),
-      join(model.homeDir, "agents", "AGENTS.md"),
-    ]);
+    expect(operationPaths(outcome)).toEqual([join(model.homeDir, "agents", "aura.json")]);
     expect(outcome.plan.operations[0]).toMatchObject({ mode: 0o600, type: "write" });
   });
 
   it("plans nothing when nothing was selected on a bare machine", async () => {
     const model = await scan();
-    const outcome = planSetup(context(model, false, false));
+    const outcome = planSetup(context(model, false));
 
     expect(outcome.plan.operations).toEqual([]);
     expect(outcome.blockers).toEqual([]);
@@ -59,7 +56,7 @@ describe("planSetup", () => {
       );
     });
 
-    const outcome = planSetup(context(model, false, false));
+    const outcome = planSetup(context(model, false));
     expect(operationPaths(outcome)).toEqual([join(model.homeDir, "agents", "aura.json")]);
   });
 
@@ -69,8 +66,8 @@ describe("planSetup", () => {
       await writeFile(join(homeDir, "agents", "aura.json"), "{ not json", "utf8");
     });
 
-    const outcome = planSetup(context(model, true, true));
-    expect(operationPaths(outcome)).toEqual([join(model.homeDir, "agents", "AGENTS.md")]);
+    const outcome = planSetup(context(model, true));
+    expect(operationPaths(outcome)).toEqual([]);
     expect(outcome.blockers).toEqual([
       {
         path: join(model.homeDir, "agents", "aura.json"),
@@ -90,7 +87,7 @@ describe("planSetup", () => {
       },
     };
 
-    const outcome = planSetup(context(model, true, true));
+    const outcome = planSetup(context(model, true));
     expect(operationPaths(outcome)).toEqual([join(model.homeDir, "agents", "aura.json")]);
     expect(outcome.blockers).toEqual([
       {
@@ -163,7 +160,7 @@ describe("planSetup", () => {
       );
     });
 
-    const outcome = planSetup(context(model, false, false));
+    const outcome = planSetup(context(model, false));
 
     expect(outcome.manifest.apps).toEqual({ existing: { managed: true } });
     expect(outcome.plan.manualSteps).toEqual([]);
@@ -220,7 +217,7 @@ describe("planSetup", () => {
       },
     };
 
-    const outcome = planSetup(context(model, false, false));
+    const outcome = planSetup(context(model, false));
 
     expect(outcome.plan.operations).toEqual([]);
     expect(outcome.blockers).toEqual([
@@ -242,16 +239,12 @@ function catalog(...ids: readonly string[]): readonly AppCatalogEntry[] {
   return ids.map((id) => ({ adapterId: id, displayName: id, kind: "undetected" }));
 }
 
-function context(
-  model: WorkspaceModel,
-  createManifest: boolean,
-  createSharedInstructions: boolean,
-): SetupStepContext {
+function context(model: WorkspaceModel, createManifest: boolean): SetupStepContext {
   return {
     appCatalog: [],
     manifest: model.manifest,
     model,
-    selections: { baseline: { createManifest, createSharedInstructions } },
+    selections: { baseline: { createManifest } },
   };
 }
 

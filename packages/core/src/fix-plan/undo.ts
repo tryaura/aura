@@ -6,8 +6,8 @@ import { createPathPolicy, type PathPolicy } from "./path-policy.js";
 import { targetPaths, withTargetLocks } from "./target-lock.js";
 import { preflightUndo } from "./undo-preflight.js";
 import { restoreOperations, rollForward } from "./undo-restore.js";
+import { errorMessage } from "./error-values.js";
 import {
-  errorMessage,
   FixPlanError,
   FixPlanUndoError,
   type FixPlanBackup,
@@ -78,6 +78,7 @@ function storedOperationPaths(operation: StoredOperation): readonly string[] {
     case "move": {
       return [operation.sourcePath, operation.destinationPath];
     }
+    case "archive":
     case "remove":
     case "symlink":
     case "write": {
