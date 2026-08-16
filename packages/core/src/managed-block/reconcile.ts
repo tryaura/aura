@@ -4,12 +4,17 @@ import {
   AURA_MANAGED_BLOCK_NOTICE,
   AURA_MANAGED_SNIPPET_BEGIN_PREFIX,
   AURA_MANAGED_SNIPPET_END_PREFIX,
-  canonicalizeManagedSnippet,
-  hashCanonicalManagedSnippet,
-  isManagedSnippetId,
 } from "./protocol.js";
 import { readManagedBlock } from "./read.js";
-import { managedSnippetContentProblems, stripManagedMarkers } from "./scan.js";
+import { prepareDesiredSnippets } from "./reconcile-desired.js";
+import {
+  controlledSnippetIds,
+  type PreparedManagedSnippet,
+  preservedUnownedNotes,
+  type RenderedManagedSnippet,
+  renderLedgerSnippets,
+} from "./reconcile-ledger.js";
+import { stripManagedMarkers } from "./scan.js";
 import { detectLineEnding } from "./source-lines.js";
 import type {
   DesiredManagedSnippet,
@@ -19,13 +24,6 @@ import type {
   ManagedBlockReconcileOptions,
   ManagedBlockWriteResult,
 } from "./types.js";
-
-/** A desired snippet that passed validation, canonicalized and hashed exactly once. */
-interface PreparedSnippet {
-  readonly canonical: string;
-  readonly hash: string;
-  readonly id: string;
-}
 
 type ParsedSource = Exclude<ManagedBlockReadResult, { readonly status: "invalid" }>;
 
@@ -42,15 +40,35 @@ export function reconcileManagedBlock(
   desiredSnippets: readonly DesiredManagedSnippet[],
   options: ManagedBlockReconcileOptions = {},
 ): ManagedBlockWriteResult {
-  const current = readManagedBlock(source);
-  const desired = prepareDesiredSnippets(desiredSnippets);
+  return reconcileParsedManagedBlock(source, readManagedBlock(source), desiredSnippets, options);
+}
+
+/**
+ * {@link reconcileManagedBlock}, for a caller that already parsed `source`.
+ *
+ * `current` must be `readManagedBlock(source)` for the same string; passing a result read from
+ * anything else splices content at offsets that no longer describe the source.
+ */
+export function reconcileParsedManagedBlock(
+  source: string,
+  current: ManagedBlockReadResult,
+  desiredSnippets: readonly DesiredManagedSnippet[],
+  options: ManagedBlockReconcileOptions = {},
+): ManagedBlockWriteResult {
+  const desired = prepareDesiredSnippets(desiredSnippets, options);
   if (desired.problems.length > 0) {
     return invalidResult(source, current.notes, desired.problems);
   }
 
   if (current.status !== "invalid") {
-    const notes = [...current.notes, ...overwrittenNotes(current)];
-    return settle(source, buildContent(source, desired.prepared, current), notes);
+    const block = current.status === "present" ? current.block : undefined;
+    const rendered = renderLedgerSnippets(source, block, desired.prepared, options);
+    const notes = [
+      ...current.notes,
+      ...overwrittenNotes(current, desired.prepared, options),
+      ...preservedUnownedNotes(block, desired.prepared, options),
+    ];
+    return settle(source, buildContent(source, rendered, current), notes);
   }
   if (options.onInvalid !== "repair") {
     return invalidResult(source, current.notes, current.problems);
@@ -67,7 +85,7 @@ export function reconcileManagedBlock(
 
 function buildContent(
   source: string,
-  prepared: readonly PreparedSnippet[],
+  prepared: readonly RenderedManagedSnippet[],
   current: ParsedSource,
 ): string {
   if (prepared.length === 0) {
@@ -103,7 +121,7 @@ function buildContent(
 }
 
 function renderManagedBlock(
-  snippets: readonly PreparedSnippet[],
+  snippets: readonly RenderedManagedSnippet[],
   lineEnding: "\n" | "\r\n",
   endsWithLineEnding: boolean,
 ): string {
@@ -115,6 +133,10 @@ function renderManagedBlock(
   ];
 
   for (const snippet of snippets) {
+    if (snippet.kind === "preserved") {
+      parts.push(snippet.raw);
+      continue;
+    }
     const content =
       lineEnding === "\n" ? snippet.canonical : snippet.canonical.replaceAll("\n", lineEnding);
     parts.push(
@@ -133,49 +155,23 @@ function renderManagedBlock(
   return parts.join("");
 }
 
-interface PreparedDesired {
-  readonly prepared: readonly PreparedSnippet[];
-  readonly problems: readonly ManagedBlockProblem[];
-}
-
-function prepareDesiredSnippets(snippets: readonly DesiredManagedSnippet[]): PreparedDesired {
-  const ids = new Set<string>();
-  const prepared: PreparedSnippet[] = [];
-  const problems: ManagedBlockProblem[] = [];
-
-  for (const snippet of snippets) {
-    if (!isManagedSnippetId(snippet.id)) {
-      problems.push(
-        Object.freeze({
-          code: "invalid-snippet-id",
-          message: `Snippet ID "${snippet.id}" is not safe inside an HTML comment marker.`,
-        }),
-      );
-    }
-    if (ids.has(snippet.id)) {
-      problems.push(
-        Object.freeze({
-          code: "duplicate-snippet",
-          message: `Desired snippet ID "${snippet.id}" appears more than once.`,
-        }),
-      );
-    }
-    ids.add(snippet.id);
-
-    const canonical = canonicalizeManagedSnippet(snippet.content);
-    problems.push(...managedSnippetContentProblems(snippet.id, canonical));
-    prepared.push({ canonical, hash: hashCanonicalManagedSnippet(canonical), id: snippet.id });
-  }
-
-  return { prepared, problems: Object.freeze(problems) };
-}
-
-function overwrittenNotes(current: ParsedSource): readonly ManagedBlockNote[] {
+function overwrittenNotes(
+  current: ParsedSource,
+  desired: readonly PreparedManagedSnippet[],
+  options: ManagedBlockReconcileOptions,
+): readonly ManagedBlockNote[] {
   if (current.status === "absent") {
     return [];
   }
+  const controlled = controlledSnippetIds(desired, options);
+  const preserved = new Set(options.preserveSnippetIds ?? []);
   return current.block.snippets
-    .filter((snippet) => !snippet.hashMatches)
+    .filter(
+      (snippet) =>
+        !snippet.hashMatches &&
+        (options.ownedSnippetIds === undefined || controlled.has(snippet.id)) &&
+        !preserved.has(snippet.id),
+    )
     .map((snippet) =>
       Object.freeze({
         code: "overwritten-snippet" as const,

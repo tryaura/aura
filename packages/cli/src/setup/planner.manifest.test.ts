@@ -6,6 +6,7 @@ import { createWorkspaceModel } from "@tryaura/aura-sdk/testing";
 
 import type { AppCatalogEntry } from "./catalog.js";
 import { planSetup } from "./planner.js";
+import { emptySnippetCatalog } from "./testing.js";
 import type { SetupStepContext } from "./types.js";
 
 const PATH = "/home/dev/agents/aura.json";
@@ -58,7 +59,13 @@ function context(
     manifest: state,
     sharedInstructions: { content: "ready", exists: true, path: "/home/dev/agents/AGENTS.md" },
   });
-  return { appCatalog, manifest: state, model, selections: { apps: { managed } } };
+  return {
+    appCatalog,
+    manifest: state,
+    model,
+    selections: { apps: { managed } },
+    snippetCatalog: emptySnippetCatalog(),
+  };
 }
 
 function manifest(apps: object): string {

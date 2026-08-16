@@ -15,10 +15,16 @@ import { createCheckReport } from "../report.js";
 import { renderHuman, safe } from "../render.js";
 import type { CliBranding, CliExitCode } from "../types.js";
 import { buildAppCatalog } from "./catalog.js";
-import { planSetup } from "./planner.js";
+import { planSetup, type SetupNotice } from "./planner.js";
+import { createSnippetCatalog } from "./snippets.js";
 import { SETUP_STEPS } from "./steps/index.js";
 import { renderSetupSummary } from "./summary.js";
-import { SETUP_ABORTED, type SetupSelections, type SetupStep } from "./types.js";
+import {
+  SETUP_ABORTED,
+  type SetupSelections,
+  type SetupStep,
+  type SetupStepContext,
+} from "./types.js";
 import type { WizardIo } from "./wizard-types.js";
 
 /** Everything one `setup` run needs, so the flow does not reach back into the command object. */
@@ -73,19 +79,30 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
   }
 
   const appCatalog = buildAppCatalog(request.registry.adapters, model);
+  const snippetCatalog = createSnippetCatalog(request.registry.snippets, model.manifest);
 
-  let selections: SetupSelections = {};
-  for (const step of request.steps ?? SETUP_STEPS) {
-    const outcome = await step.gather(
-      { appCatalog, findings: initialChecks.findings, manifest: model.manifest, model, selections },
-      io,
+  const gathered = await gatherSelections(
+    request.steps ?? SETUP_STEPS,
+    {
+      appCatalog,
+      findings: initialChecks.findings,
+      manifest: model.manifest,
+      model,
+      snippetCatalog,
+    },
+    io,
+  );
+  if (gathered.status === "invalid-dependency") {
+    request.stderr.write(
+      `${branding.displayName}: setup step "${safe(gathered.stepId)}" requires "${safe(gathered.dependencyId)}" to run first. Run the full setup flow.\n`,
     );
-    if (outcome === SETUP_ABORTED) {
-      stdout.write("\nLeft everything as it was.\n");
-      return 1;
-    }
-    selections = outcome;
+    return 2;
   }
+  if (gathered.status === "aborted") {
+    stdout.write("\nLeft everything as it was.\n");
+    return 1;
+  }
+  const selections = gathered.selections;
 
   const outcome = planSetup({
     appCatalog,
@@ -93,6 +110,7 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
     manifest: model.manifest,
     model,
     selections,
+    snippetCatalog,
   });
   const prepared = await prepareFixPlan({ model, plan: outcome.plan });
 
@@ -101,12 +119,18 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
     prepared.preview.conflictedOperationCount === 0 &&
     outcome.blockers.length === 0
   ) {
-    renderConvergedSetup(prepared.preview, request.withDetail, stdout);
+    renderConvergedSetup(prepared.preview, outcome.notices, request.withDetail, stdout);
     return endOnGreen(request, scan);
   }
 
   stdout.write("\n");
-  renderSetupSummary(prepared.preview, outcome.blockers, request.withDetail, stdout);
+  renderSetupSummary(
+    prepared.preview,
+    outcome.blockers,
+    outcome.notices,
+    request.withDetail,
+    stdout,
+  );
 
   if (prepared.preview.conflictedOperationCount > 0 || outcome.blockers.length > 0) {
     request.stderr.write(
@@ -149,17 +173,49 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
   return endOnGreen(request, rescanned);
 }
 
+type GatherSelectionsResult =
+  | { readonly status: "aborted" }
+  | {
+      readonly dependencyId: string;
+      readonly status: "invalid-dependency";
+      readonly stepId: string;
+    }
+  | { readonly selections: SetupSelections; readonly status: "ready" };
+
+async function gatherSelections(
+  steps: readonly SetupStep[],
+  context: Omit<SetupStepContext, "selections">,
+  io: WizardIo,
+): Promise<GatherSelectionsResult> {
+  let selections: SetupSelections = {};
+  const completedSteps = new Set<string>();
+  for (const step of steps) {
+    const dependencyId = step.dependsOn?.find((id) => !completedSteps.has(id));
+    if (dependencyId !== undefined) {
+      return { dependencyId, status: "invalid-dependency", stepId: step.id };
+    }
+    const outcome = await step.gather({ ...context, selections }, io);
+    if (outcome === SETUP_ABORTED) {
+      return { status: "aborted" };
+    }
+    selections = outcome;
+    completedSteps.add(step.id);
+  }
+  return { selections, status: "ready" };
+}
+
 function renderConvergedSetup(
   preview: FixPlanPreview,
+  notices: readonly SetupNotice[],
   withDetail: boolean,
   output: Writable,
 ): void {
   output.write("\n");
-  if (preview.manualSteps.length === 0) {
+  if (preview.manualSteps.length === 0 && notices.length === 0) {
     output.write("Already converged — nothing to change.\n\n");
     return;
   }
-  renderSetupSummary(preview, [], withDetail, output);
+  renderSetupSummary(preview, [], notices, withDetail, output);
   output.write("\n");
 }
 

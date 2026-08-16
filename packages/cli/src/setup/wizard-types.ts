@@ -2,7 +2,13 @@
 export interface WizardOption {
   /** One dim line of context rendered under the label. */
   readonly description?: string | undefined;
+  /** Visible but not selectable. */
+  readonly disabled?: boolean | undefined;
+  /** Optional heading rendered before the first adjacent option in this group. */
+  readonly group?: string | undefined;
   readonly label: string;
+  /** Full multi-line content shown by the interactive preview action. */
+  readonly preview?: string | undefined;
   readonly value: string;
 }
 

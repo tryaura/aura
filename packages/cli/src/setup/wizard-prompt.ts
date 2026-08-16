@@ -3,7 +3,12 @@ import type { Readable, Writable } from "node:stream";
 
 import { safe } from "../render.js";
 import { createFormSession, type Keypress } from "./wizard-form.js";
-import { renderAnsweredSummary, renderWizardFrame } from "./wizard-render.js";
+import {
+  DEFAULT_WIZARD_VIEWPORT,
+  renderAnsweredSummary,
+  renderWizardFrame,
+  type WizardViewport,
+} from "./wizard-render.js";
 import type {
   WizardConfirmation,
   WizardFormResult,
@@ -73,9 +78,11 @@ async function runForm(
   let renderedLines = 0;
 
   const paint = (): void => {
-    const frame = renderWizardFrame(session.frame(), options.colorDepth);
+    // Read the size every repaint rather than once, so a resize mid-form is picked up.
+    const viewport = resolveViewport(stdout);
+    const frame = renderWizardFrame(session.frame(), options.colorDepth, viewport);
     stdout.write(`${erasure(renderedLines)}${frame}`);
-    renderedLines = countLines(frame);
+    renderedLines = countLines(frame, viewport.columns);
   };
 
   return new Promise<WizardFormResult>((resolveForm) => {
@@ -156,14 +163,62 @@ function erasure(lines: number): string {
   return lines > 0 ? `\u001b[${String(lines)}A\r\u001b[0J` : "";
 }
 
-function countLines(frame: string): number {
+const ESCAPE = "\u001b";
+
+/**
+ * Rows the terminal actually used, which is what `erasure` has to undo.
+ *
+ * A line wider than the terminal occupies more than one row, so counting newlines alone
+ * under-reports the frame and the next repaint erases too little. Styling is skipped because
+ * escape sequences take no width. A line of exactly `columns` still counts as one row: terminals
+ * defer the wrap until another character arrives, and the newline arrives first.
+ */
+function countLines(frame: string, columns: number): number {
   let count = 0;
-  for (const character of frame) {
-    if (character === "\n") {
-      count += 1;
-    }
+  for (const line of frame.split("\n").slice(0, -1)) {
+    count += Math.max(1, Math.ceil(visibleWidth(line) / columns));
   }
   return count;
+}
+
+function visibleWidth(line: string): number {
+  let width = 0;
+  let inSequence = false;
+
+  for (const character of line) {
+    if (inSequence) {
+      inSequence = !endsEscapeSequence(character);
+    } else if (character === ESCAPE) {
+      inSequence = true;
+    } else {
+      width += 1;
+    }
+  }
+  return width;
+}
+
+/** A CSI sequence runs until its final byte, which is the first ASCII letter after the escape. */
+function endsEscapeSequence(character: string): boolean {
+  const code = character.codePointAt(0) ?? 0;
+  return (code >= 0x41 && code <= 0x5a) || (code >= 0x61 && code <= 0x7a);
+}
+
+function resolveViewport(stdout: Writable): WizardViewport {
+  return {
+    columns: terminalSize(stdout, "columns") ?? DEFAULT_WIZARD_VIEWPORT.columns,
+    rows: terminalSize(stdout, "rows") ?? DEFAULT_WIZARD_VIEWPORT.rows,
+  };
+}
+
+function terminalSize(stdout: Writable, field: "columns" | "rows"): number | undefined {
+  if (field === "columns") {
+    return positiveInteger("columns" in stdout ? stdout.columns : undefined);
+  }
+  return positiveInteger("rows" in stdout ? stdout.rows : undefined);
+}
+
+function positiveInteger(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : undefined;
 }
 
 function supportsRawMode(

@@ -7,6 +7,7 @@ import type { AppCatalogEntry } from "../catalog.js";
 import { SETUP_ABORTED, type SetupStepContext } from "../types.js";
 import { createScriptedWizardIo, type ScriptedWizardScript } from "../wizard-scripted.js";
 import type { WizardIo, WizardQuestion } from "../wizard-types.js";
+import { emptySnippetCatalog } from "../testing.js";
 import { appsStep } from "./apps.js";
 
 describe("appsStep", () => {
@@ -269,5 +270,6 @@ function context(
       sharedInstructions: { exists: false, path: "/home/dev/agents/AGENTS.md" },
     }),
     selections: {},
+    snippetCatalog: emptySnippetCatalog(),
   };
 }

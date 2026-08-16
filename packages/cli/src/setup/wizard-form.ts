@@ -1,3 +1,4 @@
+import { handlePreviewKeypress, openPreview, type PreviewState } from "./wizard-preview.js";
 import type { WizardFrame, WizardQuestionView } from "./wizard-render.js";
 import type { WizardAnswer, WizardAnswers, WizardQuestion } from "./wizard-types.js";
 
@@ -48,9 +49,15 @@ export function createFormSession(questions: readonly WizardQuestion[]): FormSes
   const tabCount = questions.length + 1;
   let activeTab = 0;
   let cursorRow = 0;
+  let preview: PreviewState | undefined;
 
   const handle = (keypress: Keypress): FormEvent => {
-    if (keypress.name === "escape" || (keypress.ctrl && keypress.name === "c")) {
+    const previewResult = handlePreviewKeypress(preview, keypress);
+    if (previewResult !== undefined) {
+      preview = previewResult.preview;
+      return previewResult.event;
+    }
+    if (keypress.name === "escape") {
       return "abort";
     }
     if (keypress.name === "return" || keypress.name === "enter") {
@@ -116,6 +123,14 @@ export function createFormSession(questions: readonly WizardQuestion[]): FormSes
   };
 
   const applyOptionKey = (keypress: Keypress, state: QuestionState): boolean => {
+    if (keypress.sequence === "p") {
+      const option = state.question.options[cursorRow];
+      if (option?.preview === undefined || option.disabled === true) {
+        return false;
+      }
+      preview = openPreview(option.preview, option.label);
+      return true;
+    }
     if (keypress.name === "space") {
       return toggleRow(state, cursorRow);
     }
@@ -131,7 +146,7 @@ export function createFormSession(questions: readonly WizardQuestion[]): FormSes
 
   return {
     answers: () => collectAnswers(states),
-    frame: () => ({ activeTab, cursorRow, questions: states.map(toView) }),
+    frame: () => ({ activeTab, cursorRow, questions: states.map(toView), preview }),
     handle,
     views: () => states.map(toView),
   };
@@ -152,10 +167,18 @@ function editFreeText(keypress: Keypress, state: QuestionState): boolean {
   return true;
 }
 
-/** Toggles the multi-select option on `row`; a no-op on any other kind of row. */
+/**
+ * Toggles the multi-select option on `row`; a no-op on any other kind of row.
+ *
+ * A disabled option can be cleared but never selected. Refusing both directions would strand any
+ * selection that was seeded before the option became unavailable, with no way to give it up.
+ */
 function toggleRow(state: QuestionState, row: number): boolean {
   const option = state.question.options[row];
   if (option === undefined || state.question.kind !== "multiselect") {
+    return false;
+  }
+  if (option.disabled === true && !state.selected.has(option.value)) {
     return false;
   }
   toggle(state.selected, option.value);
@@ -170,7 +193,7 @@ const answerActive = (state: QuestionState, row: number): void => {
   }
   if (state.question.kind === "select") {
     const option = state.question.options[row];
-    if (option === undefined) {
+    if (option === undefined || option.disabled === true) {
       return;
     }
     state.selected.clear();

@@ -69,6 +69,7 @@ export interface ManagedBlockProblem {
 /** Stable categories for state a caller should report but that never blocks reconciliation. */
 type ManagedBlockNoteCode =
   | "overwritten-snippet"
+  | "preserved-unowned-snippet"
   | "repaired-invalid-block"
   | "unmanaged-content"
   | "unterminated-fence";
@@ -103,6 +104,15 @@ export interface ManagedBlockReconcileOptions {
    * the escape hatch for a file that would otherwise stay unmanageable until edited by hand.
    */
   readonly onInvalid?: "fail" | "repair";
+  /**
+   * Snippet ids Aura owned before this reconciliation.
+   *
+   * When omitted, the desired snippets remain the complete managed set for backward compatibility.
+   * When present, existing snippets outside this ledger and the desired set are preserved verbatim.
+   */
+  readonly ownedSnippetIds?: readonly string[] | undefined;
+  /** Owned snippet ids whose existing sections must be preserved verbatim for this run. */
+  readonly preserveSnippetIds?: readonly string[] | undefined;
 }
 
 /** One targeted resolution for a parsed managed snippet. */

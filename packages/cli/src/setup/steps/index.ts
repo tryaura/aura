@@ -2,6 +2,7 @@ import type { SetupStep } from "../types.js";
 import { appsStep } from "./apps.js";
 import { baselineStep } from "./baseline.js";
 import { instructionsStep } from "./instructions.js";
+import { snippetsStep } from "./snippets.js";
 
 /**
  * Every setup step, in the order the wizard runs them.
@@ -12,5 +13,6 @@ import { instructionsStep } from "./instructions.js";
 export const SETUP_STEPS: readonly SetupStep[] = Object.freeze([
   appsStep,
   instructionsStep,
+  snippetsStep,
   baselineStep,
 ]);

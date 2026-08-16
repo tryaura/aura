@@ -9,6 +9,7 @@ import { createAuraManifestWriteOperation, createEmptyAuraManifest } from "@trya
 
 import { catalogEntryId, catalogEntryName, type AppCatalogEntry } from "./catalog.js";
 import { planInstructions } from "./instruction-planner.js";
+import { planSnippets } from "./snippet-planner.js";
 import type { SetupSelections, SetupStepContext } from "./types.js";
 
 /** A file the plan refuses to touch, and the reason the user can act on. */
@@ -17,10 +18,23 @@ export interface SetupBlocker {
   readonly reason: string;
 }
 
+/**
+ * Something the plan did to content it did not author, reported but never blocking.
+ *
+ * `overwritten` means a hand edit inside a managed section is being replaced; `preserved` means a
+ * tagged section Aura does not own was left where it stood. Both are grouped under their own
+ * heading, because "we kept your text" and "we are about to discard it" are opposite messages.
+ */
+export interface SetupNotice {
+  readonly kind: "overwritten" | "preserved";
+  readonly message: string;
+}
+
 export interface SetupPlanOutcome {
   readonly blockers: readonly SetupBlocker[];
   /** The desired state the plan persists, recomputed from scratch every run. */
   readonly manifest: AuraManifest;
+  readonly notices: readonly SetupNotice[];
   readonly plan: FixPlan;
 }
 
@@ -39,11 +53,14 @@ export function planSetup(context: SetupStepContext): SetupPlanOutcome {
   const apps = context.selections.apps;
   const instructionPlan = planInstructions(context);
   blockers.push(...instructionPlan.blockers);
+  const snippetPlan = planSetupSnippets(context, instructionPlan.operations);
+  blockers.push(...snippetPlan.blockers);
   const manifest = desiredManifest(
     context.manifest,
     apps,
     context.appCatalog,
     instructionPlan.ownership,
+    context.selections.snippets === undefined ? undefined : snippetPlan.manifestSnippets,
   );
   const baseline = context.selections.baseline;
 
@@ -53,7 +70,8 @@ export function planSetup(context: SetupStepContext): SetupPlanOutcome {
     context.manifest.status === "ready" ||
     baseline?.createManifest === true ||
     (apps !== undefined && apps.managed.length > 0) ||
-    context.selections.instructions !== undefined
+    context.selections.instructions !== undefined ||
+    context.selections.snippets !== undefined
   ) {
     operations.push(createAuraManifestWriteOperation(context.manifest, manifest));
   }
@@ -66,11 +84,18 @@ export function planSetup(context: SetupStepContext): SetupPlanOutcome {
     });
   }
 
-  operations.push(...instructionPlan.operations);
+  operations.push(
+    ...withPlannedSharedContent(
+      instructionPlan.operations,
+      context.model.sharedInstructions.path,
+      snippetPlan,
+    ),
+  );
 
   return Object.freeze({
     blockers: Object.freeze(blockers),
     manifest,
+    notices: snippetPlan.notices,
     plan: Object.freeze({
       manualSteps: Object.freeze([...appManualSteps(context), ...instructionPlan.manualSteps]),
       operations: Object.freeze(operations),
@@ -84,12 +109,77 @@ function desiredManifest(
   apps: SetupSelections["apps"],
   appCatalog: readonly AppCatalogEntry[],
   ownershipUpdates: ReadonlyMap<string, readonly string[]>,
+  snippets: AuraManifest["snippets"] | undefined,
 ): AuraManifest {
   const base = state.status === "ready" ? state.value : createEmptyAuraManifest();
   const ownership = desiredOwnership(base, ownershipUpdates);
-  return apps === undefined
-    ? { ...base, ownership }
-    : { ...base, apps: desiredApps(base, apps, appCatalog), ownership };
+  const withApps =
+    apps === undefined
+      ? { ...base, ownership }
+      : { ...base, apps: desiredApps(base, apps, appCatalog), ownership };
+  return snippets === undefined ? withApps : { ...withApps, snippets };
+}
+
+function planSetupSnippets(
+  context: SetupStepContext,
+  instructionOperations: readonly FileOperation[],
+): ReturnType<typeof planSnippets> {
+  const sharedSource = plannedSharedContent(
+    instructionOperations,
+    context.model.sharedInstructions.path,
+  );
+  return planSnippets(context, sharedSource ?? context.model.sharedInstructions.content ?? "");
+}
+
+function plannedSharedContent(
+  operations: readonly FileOperation[],
+  path: string,
+): string | undefined {
+  for (const operation of operations) {
+    if (operation.type === "write" && operation.path === path) {
+      return operation.content;
+    }
+    if (
+      operation.type === "archive" &&
+      operation.path === path &&
+      operation.replacement?.type === "write"
+    ) {
+      return operation.replacement.content;
+    }
+  }
+  return undefined;
+}
+
+function withPlannedSharedContent(
+  operations: readonly FileOperation[],
+  path: string,
+  snippetPlan: ReturnType<typeof planSnippets>,
+): readonly FileOperation[] {
+  if (!snippetPlan.updated) {
+    return operations;
+  }
+  let replaced = false;
+  const result = operations.map((operation): FileOperation => {
+    if (operation.type === "write" && operation.path === path) {
+      replaced = true;
+      return { ...operation, content: snippetPlan.content };
+    }
+    if (
+      operation.type === "archive" &&
+      operation.path === path &&
+      operation.replacement?.type === "write"
+    ) {
+      replaced = true;
+      return {
+        ...operation,
+        replacement: { ...operation.replacement, content: snippetPlan.content },
+      };
+    }
+    return operation;
+  });
+  return replaced
+    ? result
+    : [...result, { content: snippetPlan.content, mode: 0o600, path, type: "write" }];
 }
 
 function desiredOwnership(

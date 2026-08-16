@@ -43,6 +43,8 @@ export interface ContentContribution {
 
 /** A Markdown fragment a user can add to their instruction files. */
 export interface Snippet extends ContentContribution {
+  /** Picker group. Omitted contributions are shown under `general`. */
+  readonly category?: string | undefined;
   /** Discriminant. */
   readonly kind: "snippet";
   /** The Markdown file. */
