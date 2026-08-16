@@ -1,15 +1,16 @@
-import { isAbsolute, relative, sep } from "node:path";
-
 import {
   defineCheck,
   type DetectedFinding,
   type JsonObject,
+  type Scope,
   type WorkspaceModel,
 } from "@tryaura/aura-sdk";
 
+import { sha256 } from "../hashing.js";
+import { extractParagraphs, type InstructionParagraph } from "../instruction-paragraphs.js";
+import { displayInstructionPath, instructionLineRange } from "../instruction-paths.js";
 import { clusterMatches, type MatchCluster } from "./clusters.js";
 import { findMatches, type ParagraphMatch } from "./matches.js";
-import { extractParagraphs, sha256, type InstructionParagraph } from "./paragraphs.js";
 
 /**
  * How many pair edges one finding carries into machine-readable output.
@@ -23,6 +24,8 @@ const METADATA_MATCH_LIMIT = 100;
 const PATH_SEPARATOR = "\u0000";
 /** How many copies the one-line detail names before it summarizes the rest. */
 const DETAIL_LOCATION_LIMIT = 6;
+/** Listed rather than derived, so cluster ordering does not depend on which scopes a run saw. */
+const SCOPES: readonly Scope[] = ["global", "project"];
 
 export const duplicateInstructionsCheck = defineCheck({
   defaultSeverity: "warn",
@@ -68,6 +71,14 @@ function detectDuplicateInstructions(model: WorkspaceModel): readonly DetectedFi
   });
 }
 
+/**
+ * Splits one cluster into the parts INS-003 owns, which is duplication within a single scope.
+ *
+ * Guidance repeated from a global file into a project file is the same defect INS-008 reports as a
+ * precedence problem, with the better remediation: it names which tier should keep the text. Two
+ * checks describing one duplicate at two severities is noise, so the cross-tier copies are left to
+ * INS-008 and every scope that still duplicates on its own is reported here.
+ */
 function describeCluster(
   cluster: MatchCluster,
   paragraphs: readonly InstructionParagraph[],
@@ -78,12 +89,19 @@ function describeCluster(
       return paragraph === undefined ? [] : [{ index, paragraph }];
     })
     .sort((left, right) => compareParagraphs(left.paragraph, right.paragraph));
-  const paths = [...new Set(members.map((member) => member.paragraph.path))].sort();
-  if (paths.length < 2) {
-    return [];
-  }
 
-  return [{ key: sha256(paths.join(PATH_SEPARATOR)), matches: cluster.matches, members, paths }];
+  return SCOPES.flatMap((scope) => {
+    const scoped = members.filter((member) => member.paragraph.scope === scope);
+    const paths = [...new Set(scoped.map((member) => member.paragraph.path))].sort();
+    if (paths.length < 2) {
+      return [];
+    }
+    const indexes = new Set(scoped.map((member) => member.index));
+    const matches = cluster.matches.filter(
+      (match) => indexes.has(match.left) && indexes.has(match.right),
+    );
+    return [{ key: sha256(paths.join(PATH_SEPARATOR)), matches, members: scoped, paths }];
+  });
 }
 
 function findingForCluster(
@@ -105,7 +123,7 @@ function findingForCluster(
     100,
   );
   const identical = metadataMatches.every((match) => match.kind === "exact");
-  const files = describeFiles(cluster.paths.map((path) => displayPath(path, model)));
+  const files = describeFiles(cluster.paths.map((path) => displayInstructionPath(path, model)));
 
   return {
     details: describeCopies(cluster.members, model),
@@ -144,44 +162,13 @@ function describeFiles(labels: readonly string[]): string {
 function describeCopies(members: readonly ClusterMember[], model: WorkspaceModel): string {
   const listed = members
     .slice(0, DETAIL_LOCATION_LIMIT)
-    .map(({ paragraph }) => `${displayPath(paragraph.path, model)}:${lineRange(paragraph)}`);
+    .map(
+      ({ paragraph }) =>
+        `${displayInstructionPath(paragraph.path, model)}:${instructionLineRange(paragraph.startLine, paragraph.endLine)}`,
+    );
   const remaining = members.length - listed.length;
   const summary = remaining > 0 ? `, and ${String(remaining)} more` : "";
   return `Copies: ${listed.join(", ")}${summary}.`;
-}
-
-function lineRange(paragraph: InstructionParagraph): string {
-  return paragraph.startLine === paragraph.endLine
-    ? String(paragraph.startLine)
-    : `${String(paragraph.startLine)}-${String(paragraph.endLine)}`;
-}
-
-/**
- * Names a file the way the user would type it, without hiding which one it is.
- *
- * A bare file name cannot tell two per-package `AGENTS.md` copies apart, which is the case this
- * check exists to find, so the path is shortened against the workspace rather than truncated.
- */
-function displayPath(path: string, model: WorkspaceModel): string {
-  const inside = pathInside(model.projectRoot ?? model.cwd, path);
-  if (inside !== undefined) {
-    return inside;
-  }
-  const home = pathInside(model.homeDir, path);
-  return home === undefined ? path : `~/${home}`;
-}
-
-function pathInside(root: string, path: string): string | undefined {
-  const difference = relative(root, path);
-  if (
-    difference.length === 0 ||
-    difference === ".." ||
-    difference.startsWith(`..${sep}`) ||
-    isAbsolute(difference)
-  ) {
-    return undefined;
-  }
-  return difference.split(sep).join("/");
 }
 
 interface MetadataMatch extends JsonObject {

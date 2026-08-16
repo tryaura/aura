@@ -18,6 +18,14 @@ function gitResponse(request: ExecRequest): { exitCode: number; stderr: string; 
   if (request.args?.includes("--git-common-dir") === true) {
     return { exitCode: 0, stderr: "", stdout: "/workspace/.git\n" };
   }
+  if (request.args?.includes("package.json") === true) {
+    return {
+      exitCode: 0,
+      stderr: "",
+      stdout:
+        "package.json\0packages/core/package.json\0packages/broken/package.json\0packages/padded/package.json\0",
+    };
+  }
   return { exitCode: 0, stderr: "", stdout: "AGENTS.md\0.claude/settings.local.json\0" };
 }
 
@@ -38,6 +46,19 @@ describe("repository workspace state", () => {
       "/workspace/.git": DIRECTORY,
       "/workspace/.git/info/exclude": "/.claude/settings.local.json\n",
       "/workspace/.gitignore": "# heading\n\n/dist\r\n!/AGENTS.md\n",
+      "/workspace/package.json": JSON.stringify({
+        name: "workspace",
+        scripts: { build: "tsc", ignored: 42, test: "vitest" },
+      }),
+      "/workspace/packages/broken/package.json": "{not-json",
+      "/workspace/packages/padded/package.json": JSON.stringify({
+        name: "  @example/padded  ",
+        scripts: { build: "tsc" },
+      }),
+      "/workspace/packages/core/package.json": JSON.stringify({
+        name: "@example/core",
+        scripts: { verify: "pnpm test", build: "tsc" },
+      }),
       "/workspace/packages/core/.gitignore": "nested file must not be read\n",
     });
 
@@ -71,6 +92,15 @@ describe("repository workspace state", () => {
         path: "/workspace/.git/info/exclude",
         patterns: [{ line: 1, value: "/.claude/settings.local.json" }],
       },
+      packageManifests: [
+        { name: "workspace", path: "package.json", scripts: ["build", "test"] },
+        {
+          name: "@example/core",
+          path: "packages/core/package.json",
+          scripts: ["build", "verify"],
+        },
+        { name: "@example/padded", path: "packages/padded/package.json", scripts: ["build"] },
+      ],
       trackedAgentPaths: ["AGENTS.md", ".claude/settings.local.json"],
     });
     expect(reader.reads.filter((path) => path === "/workspace/.gitignore")).toHaveLength(1);
@@ -79,6 +109,16 @@ describe("repository workspace state", () => {
     expect(requests.map((request) => [request.command, ...(request.args ?? [])])).toEqual([
       ["/tools/git", "--version"],
       ["/tools/git", "-C", "/workspace", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+      [
+        "/tools/git",
+        "-C",
+        "/workspace",
+        "ls-files",
+        "-z",
+        "--",
+        "package.json",
+        ":(glob)**/package.json",
+      ],
       [
         "/tools/git",
         "-C",
@@ -118,6 +158,7 @@ describe("repository workspace state", () => {
       "AGENTS.md",
       ".claude/settings.local.json",
     ]);
+    expect(model.repository?.packageManifests).toEqual([]);
   });
 
   it("models missing and unreadable root gitignore files and tolerates unavailable Git", async () => {

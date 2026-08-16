@@ -5,6 +5,7 @@ import type {
   GitignoreModel,
   InstructionDocument,
   JsonObject,
+  RepositoryPackageManifest,
   Scope,
   WorkspaceModel,
 } from "@tryaura/aura-sdk";
@@ -92,6 +93,8 @@ export function model(
 export interface TestRepositoryOptions {
   readonly apps?: readonly AppModel[];
   readonly infoExclude?: GitignoreModel;
+  readonly instructionFiles?: readonly InstructionDocument[];
+  readonly packageManifests?: readonly RepositoryPackageManifest[];
   readonly trackedAgentPaths?: readonly string[];
 }
 
@@ -101,11 +104,15 @@ export function projectModel(
   options: TestRepositoryOptions = {},
 ): WorkspaceModel {
   return {
-    ...model({ apps: options.apps ?? [] }),
+    ...model({
+      apps: options.apps ?? [],
+      instructionFiles: options.instructionFiles ?? [],
+    }),
     cwd: "/repo/packages/app",
     projectRoot: "/repo",
     repository: {
       gitignore: rootGitignore,
+      packageManifests: options.packageManifests ?? [],
       trackedAgentPaths: options.trackedAgentPaths ?? [],
       ...(options.infoExclude === undefined ? {} : { infoExclude: options.infoExclude }),
     },

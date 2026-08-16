@@ -83,7 +83,12 @@ export type {
   StdioMcpTransport,
   WorkspaceModel,
 } from "./model.js";
-export type { GitignoreModel, GitignorePattern, RepositoryModel } from "./repository.js";
+export type {
+  GitignoreModel,
+  GitignorePattern,
+  RepositoryModel,
+  RepositoryPackageManifest,
+} from "./repository.js";
 export {
   collectMcpServers,
   configStringArray,
