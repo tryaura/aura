@@ -64,7 +64,9 @@ export async function readSpec(spec: AdapterFileSpec, options: SpecReadOptions):
           phase: "read",
         },
       ],
-      file: { exists: false, spec },
+      // `exists` stays true so that a fix treats the path as occupied rather than free to create,
+      // and the problem says Aura refused the read rather than that the entry is an odd file type.
+      file: { exists: true, problem: "outside-project", spec },
     };
   }
 
@@ -73,8 +75,10 @@ export async function readSpec(spec: AdapterFileSpec, options: SpecReadOptions):
     content: contents.content,
     entries: contents.entries,
     exists: contents.exists,
+    ...(contents.pathKind === undefined ? {} : { pathKind: contents.pathKind }),
     problem: contents.problem,
     spec,
+    ...(contents.symlinkTarget === undefined ? {} : { symlinkTarget: contents.symlinkTarget }),
   };
 
   return { diagnostics: describe(spec, options.adapter, contents.problem, file.exists), file };
@@ -146,6 +150,7 @@ function describe(
 const PROBLEM_REASONS: Readonly<Record<FileProblem, string>> = {
   denied: "permission was denied",
   loop: "the path is a loop of symbolic links",
+  "outside-project": "it resolves outside the project",
   resources: "the system ran out of file handles",
   "too-large": `it is larger than the ${MAX_FILE_BYTES / 1_000_000} MB Aura reads`,
   "too-many-entries": `it holds more than the ${MAX_DIRECTORY_ENTRIES} entries Aura lists`,

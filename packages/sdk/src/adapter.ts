@@ -5,6 +5,30 @@ import type { AdapterSnapshot } from "./model.js";
 /** What an adapter expects a declared file to contain. */
 export type AdapterFileKind = "config" | "instructions" | "mcp" | "skills";
 
+/** Placeholder an adapter uses inside a shared-instruction link template. */
+export const SHARED_INSTRUCTIONS_TEMPLATE_TOKEN = "{{sharedInstructions}}";
+
+/** How Aura wires an application's instruction entry point to the shared source. */
+export type AdapterSharedLinkKind = "import-line" | "native-copy" | "symlink";
+
+/** Declarative write-side support for linking one application to Aura's shared instructions. */
+export interface AdapterSharedLink {
+  /**
+   * Application entry path. `~/...` resolves from home; `./...` resolves from the workspace cwd.
+   */
+  readonly entryPath: string;
+  /** How core should materialize the link. */
+  readonly kind: AdapterSharedLinkKind;
+  /**
+   * Content to reconcile or write, containing exactly one
+   * {@link SHARED_INSTRUCTIONS_TEMPLATE_TOKEN}. Required except for `symlink`.
+   */
+  readonly lineTemplate?: string | undefined;
+}
+
+/** What kind of filesystem entry supplied an adapter source. */
+export type AdapterPathKind = "directory" | "file" | "symlink";
+
 /** A file or directory an adapter asks Aura core to read on its behalf. */
 export interface AdapterFileSpec {
   /**
@@ -38,6 +62,7 @@ export interface AdapterFileSpec {
 export type FileProblem =
   | "denied"
   | "loop"
+  | "outside-project"
   | "resources"
   | "too-large"
   | "too-many-entries"
@@ -50,8 +75,12 @@ export interface AdapterFileStatus {
   readonly exists: boolean;
   /** Why no contents were captured, when the reason was something other than absence. */
   readonly problem?: FileProblem | undefined;
+  /** The kind of entry found at the declared path. Absent when the path was missing. */
+  readonly pathKind?: AdapterPathKind | undefined;
   /** The spec that requested this path. */
   readonly spec: AdapterFileSpec;
+  /** Raw link target when {@link pathKind} is `symlink`. */
+  readonly symlinkTarget?: string | undefined;
 }
 
 /**
@@ -169,6 +198,8 @@ export interface Adapter {
    * snapshot rather than throwing.
    */
   readonly parse: (input: AdapterParseInput) => AdapterSnapshot;
+  /** Optional declarative mechanism for linking this app to the shared instruction source. */
+  readonly sharedLink?: AdapterSharedLink | undefined;
   /** Semver range of application versions this adapter understands, for example `">=1 <2"`. */
   readonly supportedRange: string;
 }

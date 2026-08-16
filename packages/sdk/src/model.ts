@@ -1,6 +1,7 @@
 import type {
   AdapterDetection,
   AdapterFileStatus,
+  AdapterSharedLinkKind,
   AdapterSupport,
   FileProblem,
 } from "./adapter.js";
@@ -147,6 +148,32 @@ export interface AdapterSnapshot {
   readonly skills: readonly InstalledSkill[];
 }
 
+/** One adapter's shared-link declaration after core resolves its entry path and template. */
+export interface ResolvedSharedLink {
+  /** Rendered managed snippet or whole-file content. Absent for `symlink`. */
+  readonly content?: string | undefined;
+  /** Absolute instruction entry path the mechanism owns or updates. */
+  readonly entryPath: string;
+  readonly kind: AdapterSharedLinkKind;
+  /**
+   * Where the entry lives, which decides how {@link content} names the shared source.
+   *
+   * A `global` entry sits under the home directory and refers to it as `~/agents/AGENTS.md`. A
+   * `project` entry sits inside the workspace and has to use an absolute path, because no agent
+   * application resolves `~` from a project file — which makes that content specific to one machine
+   * and one user, and not something to commit.
+   */
+  readonly scope: Scope;
+}
+
+/** Core's bounded read of the canonical shared instruction source. */
+export interface SharedInstructionsState {
+  readonly content?: string | undefined;
+  readonly exists: boolean;
+  readonly path: string;
+  readonly problem?: FileProblem | undefined;
+}
+
 /** One agent application as Aura sees it. */
 export interface AppModel extends AdapterSnapshot {
   /** The {@link Adapter.id} that produced this model. */
@@ -164,6 +191,8 @@ export interface AppModel extends AdapterSnapshot {
    * retained alongside the documents parsed out of them.
    */
   readonly sourceFiles: readonly AdapterFileStatus[];
+  /** How this application can be wired to the shared instruction source, when declared. */
+  readonly sharedLink?: ResolvedSharedLink | undefined;
   /** Whether Aura understands the detected version. */
   readonly support: AdapterSupport;
 }
@@ -232,6 +261,8 @@ export interface WorkspaceModel {
   readonly projectRoot?: string | undefined;
   /** Repository state captured once by core, when the workspace is inside a repository. */
   readonly repository?: RepositoryModel | undefined;
+  /** Canonical `~/agents/AGENTS.md` source read independently of any application adapter. */
+  readonly sharedInstructions: SharedInstructionsState;
   /** Installed skills across every application. */
   readonly skills: readonly InstalledSkill[];
 }

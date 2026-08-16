@@ -3,6 +3,7 @@ import { join } from "node:path";
 import {
   defineAdapter,
   detectExecutable,
+  SHARED_INSTRUCTIONS_TEMPLATE_TOKEN,
   type AdapterDetection,
   type AdapterFileMap,
   type AdapterFileSpec,
@@ -15,6 +16,7 @@ import { parseRuleFile } from "./rules.js";
 
 const SOURCE_IDS = Object.freeze({
   agents: "cursor.rules.project.agents",
+  aura: "cursor.rules.project/aura-owned",
   legacyRules: "cursor.rules.project.legacy",
   mcpGlobal: "cursor.mcp.global",
   mcpProject: "cursor.mcp.project",
@@ -46,6 +48,18 @@ export const cursorAdapter = defineAdapter({
     }),
     skills: [],
   }),
+  sharedLink: {
+    entryPath: "./.cursor/rules/aura.mdc",
+    kind: "native-copy",
+    lineTemplate: [
+      "---",
+      "alwaysApply: true",
+      "---",
+      "",
+      `@file ${SHARED_INSTRUCTIONS_TEMPLATE_TOKEN}`,
+      "",
+    ].join("\n"),
+  },
   supportedRange: ">=0.45.0 <4.0.0",
 });
 
@@ -89,6 +103,13 @@ function cursorFiles(
       scope: "project",
     },
     {
+      id: SOURCE_IDS.aura,
+      kind: "instructions",
+      optional: true,
+      path: join(environment.cwd, ".cursor", "rules", "aura.mdc"),
+      scope: "project",
+    },
+    {
       id: SOURCE_IDS.mcpGlobal,
       kind: "mcp",
       optional: true,
@@ -114,6 +135,9 @@ function discoveredRuleSpecs(files: AdapterFileMap): readonly AdapterFileSpec[] 
       continue;
     }
     for (const entry of file.entries) {
+      if (file.spec.id === SOURCE_IDS.rulesProject && entry === "aura.mdc") {
+        continue;
+      }
       specs.push({
         id: `${file.spec.id}/${encodeURIComponent(entry)}`,
         kind: "instructions",

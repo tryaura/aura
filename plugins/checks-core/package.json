@@ -20,6 +20,8 @@
     "@tryaura/adapter-claude-code": "workspace:*",
     "@tryaura/adapter-codex": "workspace:*",
     "@tryaura/aura-sdk": "workspace:*",
+    "@tryaura/content-official": "workspace:*",
+    "@tryaura/core": "workspace:*",
     "ignore": "^7.0.6"
   },
   "devDependencies": {

@@ -1,4 +1,6 @@
-import type { AuraPlugin } from "@tryaura/aura-sdk";
+import type { Adapter, AuraPlugin } from "@tryaura/aura-sdk";
+
+import { sharedLinkViolations } from "./workspace/shared-links.js";
 
 /** The plugin contract supported by this Aura core build. */
 export const SUPPORTED_PLUGIN_API_VERSION = 1;
@@ -159,6 +161,24 @@ export function collectIdentityViolations(state: RegistryState, plugin: AuraPlug
   }
 
   return state.violations.length === violationCount;
+}
+
+/** Validates write-side adapter data before it can enter a runtime registry. */
+export function collectAdapterViolations(
+  state: RegistryState,
+  adapters: readonly Adapter[] | undefined,
+  plugin: AuraPlugin,
+): void {
+  for (const adapter of adapters ?? []) {
+    if (adapter.sharedLink === undefined) {
+      continue;
+    }
+    for (const violation of sharedLinkViolations(adapter.sharedLink)) {
+      state.violations.push(
+        `${formatPlugin(plugin)} adapter "${adapter.id}" declares invalid sharedLink: ${violation}.`,
+      );
+    }
+  }
 }
 
 function claimCheckId(

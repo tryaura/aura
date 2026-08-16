@@ -96,6 +96,14 @@ describe("Claude Code candidate search", () => {
 });
 
 describe("Claude Code file specifications", () => {
+  it("declares the managed shared-instructions import", () => {
+    expect(claudeCodeAdapter.sharedLink).toEqual({
+      entryPath: "~/.claude/CLAUDE.md",
+      kind: "import-line",
+      lineTemplate: "@{{sharedInstructions}}",
+    });
+  });
+
   it("declares global configuration and the project permission settings", () => {
     const environment = environmentWithExec([], () => result(0));
 

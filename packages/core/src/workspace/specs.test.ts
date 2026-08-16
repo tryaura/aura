@@ -102,7 +102,10 @@ describe("declared path handling", () => {
     });
 
     expect(reader.reads).not.toContain("/home/dev/.ssh/id_rsa");
-    expect(model.apps[0]?.sourceFiles[0]?.exists).toBe(false);
+    expect(model.apps[0]?.sourceFiles[0]).toMatchObject({
+      exists: true,
+      problem: "outside-project",
+    });
     expect(diagnostics[0]?.message).toContain("outside /workspace");
   });
 

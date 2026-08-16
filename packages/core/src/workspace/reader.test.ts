@@ -29,6 +29,7 @@ describe("createFileReader", () => {
       content: "# instructions\n",
       exists: true,
       isDirectory: false,
+      pathKind: "file",
     });
   });
 
@@ -43,6 +44,7 @@ describe("createFileReader", () => {
       entries: ["audit", "review"],
       exists: true,
       isDirectory: true,
+      pathKind: "directory",
     });
   });
 
@@ -55,12 +57,17 @@ describe("createFileReader", () => {
     });
   });
 
-  it("treats a dangling symlink as missing", async () => {
+  it("preserves a dangling symlink and its target", async () => {
     const root = await createTemporaryDirectory();
     const path = join(root, "AGENTS.md");
     await symlink(join(root, "gone.md"), path);
 
-    await expect(read(path)).resolves.toEqual({ exists: false, isDirectory: false });
+    await expect(read(path)).resolves.toEqual({
+      exists: true,
+      isDirectory: false,
+      pathKind: "symlink",
+      symlinkTarget: join(root, "gone.md"),
+    });
   });
 
   // Windows has no mkfifo; the isFile guard that makes this pass is platform-independent.
@@ -88,6 +95,7 @@ describe("createFileReader", () => {
     await expect(read(path)).resolves.toEqual({
       exists: true,
       isDirectory: false,
+      pathKind: "file",
       problem: "too-large",
     });
   });
@@ -102,7 +110,12 @@ describe("createFileReader", () => {
 
     // Running as root defeats the permission bits, so only assert when they took effect.
     if (contents.content === undefined) {
-      expect(contents).toEqual({ exists: true, isDirectory: false, problem: "denied" });
+      expect(contents).toEqual({
+        exists: true,
+        isDirectory: false,
+        pathKind: "file",
+        problem: "denied",
+      });
     }
   });
 
@@ -113,6 +126,13 @@ describe("createFileReader", () => {
     await writeFile(target, "# real", "utf8");
     await symlink(target, link);
 
+    await expect(read(link)).resolves.toEqual({
+      content: "# real",
+      exists: true,
+      isDirectory: false,
+      pathKind: "symlink",
+      symlinkTarget: target,
+    });
     await expect(reader.realPath(link)).resolves.toBe(await reader.realPath(target));
     await expect(reader.realPath(join(root, "gone.md"))).resolves.toBeUndefined();
   });

@@ -6,6 +6,8 @@ import type {
   AdapterSourceFile,
   AppModel,
   Environment,
+  ResolvedSharedLink,
+  SharedInstructionsState,
   WorkspaceModel,
 } from "@tryaura/aura-sdk";
 
@@ -15,6 +17,7 @@ import { createLinkResolver, type LinkResolver } from "./links.js";
 import { findProjectRoot } from "./project-root.js";
 import { createCachingReader, createFileReader, type FileReader } from "./reader.js";
 import { scanRepository } from "./repository.js";
+import { resolveAdapterSharedLink, sharedInstructionsPath } from "./shared-links.js";
 import { evaluateSupport, isComparableRange } from "./support.js";
 
 /** Everything {@link buildWorkspaceModel} needs. */
@@ -76,15 +79,17 @@ export async function buildWorkspaceModel(options: WorkspaceScanOptions): Promis
     projectRoot,
     reader,
   };
+  const sharedPath = sharedInstructionsPath(options.environment);
 
   // The repository scan needs only the project root, so it runs alongside the adapters rather than
   // after them: its Git probes are latency the scan would otherwise pay end to end.
-  const [scans, root, repository] = await Promise.all([
+  const [scans, root, repository, sharedContents] = await Promise.all([
     Promise.all(options.adapters.map((adapter) => scanAdapter(adapter, context))),
     projectRoot,
     projectRoot.then((found) =>
       found === undefined ? undefined : scanRepository(found, options.environment, reader),
     ),
+    reader.read(sharedPath),
   ]);
 
   const apps: AppModel[] = [];
@@ -110,6 +115,7 @@ export async function buildWorkspaceModel(options: WorkspaceScanOptions): Promis
       mcpServers: apps.flatMap((app) => app.mcpServers),
       projectRoot: root,
       ...(repository === undefined ? {} : { repository }),
+      sharedInstructions: toSharedInstructions(sharedPath, sharedContents),
       skills: apps.flatMap((app) => app.skills),
     },
     skipped,
@@ -184,6 +190,13 @@ async function scanAdapter(adapter: Adapter, context: ScanContext): Promise<Adap
 
   diagnostics.push(...discovery.diagnostics);
 
+  let sharedLink: ResolvedSharedLink | undefined;
+  try {
+    sharedLink = resolveAdapterSharedLink(adapter, context.environment, discovery.files);
+  } catch (error) {
+    diagnostics.push(failure(adapter, "files", error));
+  }
+
   let snapshot = EMPTY_SNAPSHOT;
   try {
     const parsed = adapter.parse({
@@ -224,6 +237,7 @@ async function scanAdapter(adapter: Adapter, context: ScanContext): Promise<Adap
       // Contents are dropped here: they were consumed by parse and are not retained beside the
       // documents parsed out of them.
       sourceFiles: [...discovery.files.values()].map(toStatus),
+      ...(sharedLink === undefined ? {} : { sharedLink }),
       support: evaluateSupport(adapter.supportedRange, detection.version),
     },
     diagnostics,
@@ -238,7 +252,30 @@ const EMPTY_SNAPSHOT: AdapterSnapshot = Object.freeze({
 });
 
 function toStatus(file: AdapterSourceFile): AdapterFileStatus {
-  return { exists: file.exists, problem: file.problem, spec: file.spec };
+  return {
+    exists: file.exists,
+    ...(file.pathKind === undefined ? {} : { pathKind: file.pathKind }),
+    problem: file.problem,
+    spec: file.spec,
+    ...(file.symlinkTarget === undefined ? {} : { symlinkTarget: file.symlinkTarget }),
+  };
+}
+
+function toSharedInstructions(
+  path: string,
+  contents: Awaited<ReturnType<FileReader["read"]>>,
+): SharedInstructionsState {
+  const problem =
+    contents.problem ??
+    (contents.exists && (contents.isDirectory || contents.content === undefined)
+      ? "unsupported"
+      : undefined);
+  return {
+    content: contents.content,
+    exists: contents.exists,
+    path,
+    problem,
+  };
 }
 
 /** Records a plugin failure without repeating what the plugin said. */

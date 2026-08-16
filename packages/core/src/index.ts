@@ -9,6 +9,7 @@ export {
   previewFixPlan,
 } from "./fix-plan/execute.js";
 export { listFixPlanBackups, undoFixPlan } from "./fix-plan/undo.js";
+export { prepareAutomaticFixes } from "./fix-plan/automatic.js";
 export type { PreparedFixPlan } from "./fix-plan/execute.js";
 export { FixPlanApplyError, FixPlanError, FixPlanUndoError } from "./fix-plan/types.js";
 export type {

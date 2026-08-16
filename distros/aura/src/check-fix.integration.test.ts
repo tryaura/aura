@@ -1,0 +1,189 @@
+import { existsSync } from "node:fs";
+import { lstat, readdir, readFile, readlink } from "node:fs/promises";
+import { join } from "node:path";
+import { Readable, Writable } from "node:stream";
+
+import { runCli, type CliRuntime } from "@tryaura/aura-cli";
+import { createSeedBuilder, type TestSeed } from "@tryaura/aura-testkit";
+import { describe, expect, it } from "vitest";
+
+import { AURA_DISTRO } from "./distro.js";
+
+const SHARED_TEMPLATE = "# Shared agent instructions\n";
+
+describe("aura check --fix", () => {
+  it("atomically wires Claude Code, Codex, and Cursor and is idempotent", async () => {
+    await using seed = await threeAppSeed().build();
+    const sharedPath = join(seed.homeDir, "agents", "AGENTS.md");
+    const claudePath = join(seed.homeDir, ".claude", "CLAUDE.md");
+    const codexPath = join(seed.homeDir, ".codex", "AGENTS.md");
+    const cursorPath = join(seed.workspaceDir, ".cursor", "rules", "aura.mdc");
+    const destinations = [sharedPath, claudePath, codexPath, cursorPath];
+    let changedBeforeEveryPreviewFinished = false;
+    let previewCount = 0;
+    const firstOutput = new CapturedOutput((chunk) => {
+      if (chunk.includes("diff --aura")) {
+        previewCount += 1;
+        changedBeforeEveryPreviewFinished ||= destinations.some((path) => existsSync(path));
+      }
+    });
+
+    const first = await run(seed, ["check", "--fix", "--yes", "--detail"], firstOutput);
+
+    expect(first.exitCode).toBe(0);
+    expect(first.stderr).toBe("");
+    expect(previewCount).toBe(4);
+    expect(changedBeforeEveryPreviewFinished).toBe(false);
+    expect(first.stdout.indexOf("Fix preview")).toBeLessThan(
+      first.stdout.indexOf("Applied 4 fix operation(s)."),
+    );
+    expect(first.stdout).toContain("6 passed, 0 informational, 0 warnings, 0 errors");
+    await expect(readFile(sharedPath, "utf8")).resolves.toBe(SHARED_TEMPLATE);
+    await expect(readFile(claudePath, "utf8")).resolves.toContain("@~/agents/AGENTS.md");
+    await expect(readlink(codexPath)).resolves.toBe(sharedPath);
+    await expect(readFile(cursorPath, "utf8")).resolves.toBe(
+      `---\nalwaysApply: true\n---\n\n@file ${sharedPath}\n`,
+    );
+    // The Cursor wrapper is the only entry that has to name the source absolutely, so it is the
+    // only one the user must be told not to commit.
+    expect(first.stdout).toContain("Steps to take yourself:");
+    expect(first.stdout).toContain(`${cursorPath} points at the shared source by absolute path`);
+
+    const beforeSecondRun = await snapshot(seed);
+    const second = await run(seed, ["check", "--fix", "--yes"]);
+    const afterSecondRun = await snapshot(seed);
+
+    expect(second.exitCode).toBe(0);
+    expect(second.stdout).not.toContain("Fix preview");
+    expect(second.stdout).toContain("Nothing to fix.");
+    expect(second.stdout).toContain("6 passed, 0 informational, 0 warnings, 0 errors");
+    expect(afterSecondRun).toEqual(beforeSecondRun);
+  });
+
+  it("shows the shape of each change without quoting file contents", async () => {
+    await using seed = await threeAppSeed().build();
+    const cursorPath = join(seed.workspaceDir, ".cursor", "rules", "aura.mdc");
+
+    const result = await run(seed, ["check", "--fix", "--dry-run"]);
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stdout).toContain(`create ${cursorPath}`);
+    expect(result.stdout).not.toContain("diff --aura");
+    expect(result.stdout).toContain("Re-run with --detail to see the full diff of every change.");
+    expect(result.stdout).toContain("Dry run: nothing was written.");
+    expect(existsSync(cursorPath)).toBe(false);
+  });
+
+  it("refuses to write when there is nobody to ask", async () => {
+    await using seed = await threeAppSeed().build();
+    const sharedPath = join(seed.homeDir, "agents", "AGENTS.md");
+
+    const result = await run(seed, ["check", "--fix"]);
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain("stdin is not a terminal");
+    expect(result.stderr).toContain("--yes");
+    expect(existsSync(sharedPath)).toBe(false);
+  });
+
+  it("leaves a real Codex instruction file byte-for-byte intact", async () => {
+    const original = "# Personal Codex rules\n\nNever replace this file.\n";
+    await using seed = await threeAppSeed().homeFile(".codex/AGENTS.md", original).build();
+    const codexPath = join(seed.homeDir, ".codex", "AGENTS.md");
+
+    const result = await run(seed, ["check", "--fix", "--yes"]);
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stdout).toContain("Consolidate its content");
+    await expect(readFile(codexPath, "utf8")).resolves.toBe(original);
+    expect((await lstat(codexPath)).isSymbolicLink()).toBe(false);
+  });
+});
+
+function threeAppSeed() {
+  return createSeedBuilder()
+    .shim("claude", [
+      { args: ["--version"], stdout: "2.1.233 (Claude Code)\n" },
+      { args: ["auth", "status"], stdout: '{"loggedIn":true}\n' },
+    ])
+    .shim("codex", [
+      { args: ["--version"], stdout: "codex-cli 0.147.0\n" },
+      { args: ["login", "status"], stdout: "Logged in using ChatGPT\n" },
+    ])
+    .shim("cursor", [{ args: ["--version"], stdout: "3.11.0\nfixture-commit\narm64\n" }]);
+}
+
+async function run(
+  seed: TestSeed,
+  argv: readonly string[],
+  stdout = new CapturedOutput(),
+): Promise<{ readonly exitCode: number; readonly stderr: string; readonly stdout: string }> {
+  const stderr = new CapturedOutput();
+  let exitCode = -1;
+  const runtime: CliRuntime = {
+    argv,
+    cwd: seed.workspaceDir,
+    environmentVariables: { PATH: seed.pathDir },
+    homeDir: seed.homeDir,
+    setExitCode: (value) => {
+      exitCode = value;
+    },
+    stderr,
+    stdin: Readable.from([]),
+    stdout,
+  };
+
+  await runCli(AURA_DISTRO, runtime);
+  return { exitCode, stderr: stderr.text, stdout: stdout.text };
+}
+
+class CapturedOutput extends Writable {
+  text = "";
+
+  constructor(private readonly observe: (chunk: string) => void = () => {}) {
+    super();
+  }
+
+  override _write(
+    chunk: unknown,
+    _encoding: BufferEncoding,
+    callback: (error?: Error | null) => void,
+  ): void {
+    const text = Buffer.isBuffer(chunk) ? chunk.toString("utf8") : String(chunk);
+    this.observe(text);
+    this.text += text;
+    callback();
+  }
+}
+
+async function snapshot(seed: TestSeed): Promise<readonly string[]> {
+  return [
+    ...(await snapshotTree(seed.homeDir, "home")),
+    ...(await snapshotTree(seed.workspaceDir, "workspace")),
+  ];
+}
+
+async function snapshotTree(root: string, label: string): Promise<readonly string[]> {
+  const snapshotEntries: string[] = [];
+
+  async function visit(directory: string, relativeDirectory: string): Promise<void> {
+    const entries = await readdir(directory, { withFileTypes: true });
+    entries.sort((left, right) => left.name.localeCompare(right.name));
+    for (const entry of entries) {
+      const path = join(directory, entry.name);
+      const relativePath = join(relativeDirectory, entry.name);
+      if (entry.isDirectory()) {
+        snapshotEntries.push(`directory:${relativePath}`);
+        await visit(path, relativePath);
+      } else if (entry.isSymbolicLink()) {
+        snapshotEntries.push(`symlink:${relativePath}:${await readlink(path)}`);
+      } else {
+        const contents = await readFile(path);
+        snapshotEntries.push(`file:${relativePath}:${contents.toString("base64")}`);
+      }
+    }
+  }
+
+  await visit(root, label);
+  return snapshotEntries;
+}

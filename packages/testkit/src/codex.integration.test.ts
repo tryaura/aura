@@ -42,9 +42,12 @@ describe("Codex versioned fixtures", () => {
         supportedRange: ">=0.146.0 <0.148.0",
         version,
       });
-      expect(scan.model.instructionFiles[0]?.links).toEqual([
-        { kind: "native", targetPath: `${seed.homeDir}/agents/AGENTS.md`, valid: true },
-      ]);
+      expect(scan.model.instructionFiles[0]?.links).toEqual([]);
+      expect(scan.model.apps[0]?.sharedLink).toEqual({
+        entryPath: `${seed.homeDir}/.codex/AGENTS.md`,
+        kind: "symlink",
+        scope: "global",
+      });
       expect(scan.model.mcpServers.map((server) => server.name)).toEqual([
         "docs",
         "legacy",
