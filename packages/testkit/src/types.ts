@@ -45,11 +45,27 @@ export interface TestSeed {
   readonly invocations: (command: string) => Promise<readonly (readonly string[])[]>;
 }
 
+/** The directories a seed materialized, for file content that has to name one. */
+export interface SeedRoots {
+  readonly homeDir: string;
+  readonly workspaceDir: string;
+}
+
+/**
+ * File content, or a function producing it from the directories the seed materialized.
+ *
+ * Those directories are temporary and only exist once `build` has run, so a fixture whose content
+ * has to contain one — a config keyed by workspace path, an absolute import — would otherwise have
+ * to write that file itself, outside the builder, and hand-roll the cleanup-on-failure and
+ * duplicate-path checks `build` already does.
+ */
+export type SeedContent = string | ((roots: SeedRoots) => string);
+
 /** Fluent description of files and executables to materialize for a test. */
 export interface TestSeedBuilder {
-  homeFile(path: string, content: string): TestSeedBuilder;
+  homeFile(path: string, content: SeedContent): TestSeedBuilder;
   shim(command: string, responses: readonly ShimResponse[]): TestSeedBuilder;
-  workspaceFile(path: string, content: string): TestSeedBuilder;
+  workspaceFile(path: string, content: SeedContent): TestSeedBuilder;
   build(): Promise<TestSeed>;
 }
 

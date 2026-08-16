@@ -104,7 +104,7 @@ describe("Claude Code file specifications", () => {
     });
   });
 
-  it("declares global configuration and the project permission settings", () => {
+  it("declares global and project instructions, MCP configuration, and permission settings", () => {
     const environment = environmentWithExec([], () => result(0));
 
     expect(claudeCodeAdapter.files(environment)).toEqual([
@@ -116,11 +116,25 @@ describe("Claude Code file specifications", () => {
         scope: "global",
       },
       {
+        id: "claude-code.instructions.project",
+        kind: "instructions",
+        optional: true,
+        path: "/workspace/CLAUDE.md",
+        scope: "project",
+      },
+      {
         id: "claude-code.mcp.global",
         kind: "mcp",
         optional: true,
         path: "/home/dev/.claude.json",
         scope: "global",
+      },
+      {
+        id: "claude-code.mcp.project",
+        kind: "mcp",
+        optional: true,
+        path: "/workspace/.mcp.json",
+        scope: "project",
       },
       {
         id: "claude-code.settings.global",

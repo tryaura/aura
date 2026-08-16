@@ -8,7 +8,10 @@ import {
   type Environment,
   type ResolvedSharedLink,
   type Scope,
+  type SharedInstructionsState,
 } from "@tryaura/aura-sdk";
+
+import type { PathContents } from "./reader.js";
 
 const GLOBAL_PREFIX = "~/";
 const PROJECT_PREFIX = "./";
@@ -116,4 +119,28 @@ function relativeEntryPath(entryPath: string): string | undefined {
 
 function countToken(template: string): number {
   return template.split(SHARED_INSTRUCTIONS_TEMPLATE_TOKEN).length - 1;
+}
+
+/**
+ * Describes core's bounded read of the shared instruction source.
+ *
+ * A directory or an entry whose bytes never arrived is reported as `unsupported` rather than as
+ * present-and-empty: the shared source is a file every adapter is wired to, and treating an
+ * unreadable one as empty would offer to overwrite whatever is actually there.
+ */
+export function toSharedInstructions(
+  path: string,
+  contents: PathContents,
+): SharedInstructionsState {
+  const problem =
+    contents.problem ??
+    (contents.exists && (contents.isDirectory || contents.content === undefined)
+      ? "unsupported"
+      : undefined);
+  return {
+    content: contents.content,
+    exists: contents.exists,
+    path,
+    problem,
+  };
 }

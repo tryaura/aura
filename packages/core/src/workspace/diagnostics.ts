@@ -1,3 +1,5 @@
+import type { Adapter, AdapterFileMap, AdapterProblem } from "@tryaura/aura-sdk";
+
 /** The stage of a scan that produced a {@link ScanDiagnostic}. */
 export type ScanPhase = "detect" | "files" | "parse" | "read" | "support";
 
@@ -25,6 +27,30 @@ export interface ScanDiagnostic {
   readonly path?: string | undefined;
   /** Where in the scan it happened. */
   readonly phase: ScanPhase;
+}
+
+/**
+ * Reports the files an adapter read but could not use.
+ *
+ * A path core opened without trouble and an adapter then found unusable produces no read
+ * diagnostic and no model entry, so silence is otherwise the entire user-facing result of a
+ * corrupt config. The path is taken from the declared spec rather than from the adapter, which is
+ * what keeps {@link AdapterProblem.sourceId} honest: an id naming no declared spec locates nothing.
+ */
+export function describeAdapterProblems(
+  adapter: Adapter,
+  problems: readonly AdapterProblem[],
+  files: AdapterFileMap,
+): readonly ScanDiagnostic[] {
+  return problems.map((problem) => {
+    const path = files.get(problem.sourceId)?.spec.path;
+    return {
+      adapterId: adapter.id,
+      message: problem.message,
+      ...(path === undefined ? {} : { path }),
+      phase: "parse",
+    };
+  });
 }
 
 /** How much of a plugin's error text is kept, before it stops being a diagnostic and starts being a dump. */

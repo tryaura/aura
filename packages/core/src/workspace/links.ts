@@ -19,6 +19,12 @@ export interface LinkResolver {
  * Pass the scan's caching reader. Applications import the same shared instruction files, and
  * deduplicating those lookups belongs to the reader, where it also covers the paths adapters
  * declared — a target that ten documents point at is usually a file some adapter already read.
+ *
+ * Targets are probed, never opened. A link target is an absolute path named by an instruction file,
+ * and a project document's instruction file arrives with whatever repository the user checked out.
+ * `~/agents/AGENTS.md` is an ordinary thing for one to import, so the path itself cannot be
+ * refused — but `valid` is all Aura reports about a target, so reading one is work this owes
+ * nobody, and `~/.ssh/id_rsa` is what a hostile checkout would name instead.
  */
 export function createLinkResolver(reader: FileReader): LinkResolver {
   const resolve = async (
@@ -35,6 +41,5 @@ export function createLinkResolver(reader: FileReader): LinkResolver {
 }
 
 async function resolveLink(link: InstructionLink, reader: FileReader): Promise<InstructionLink> {
-  const contents = await reader.read(link.targetPath);
-  return { ...link, valid: contents.exists };
+  return { ...link, valid: await reader.exists(link.targetPath) };
 }
