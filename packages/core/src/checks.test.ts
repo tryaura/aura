@@ -1,4 +1,9 @@
-import type { Check, DetectedFinding, WorkspaceModel } from "@tryaura/aura-sdk";
+import type {
+  Check,
+  DetectedFinding,
+  FindingMetadataTablePresentation,
+  WorkspaceModel,
+} from "@tryaura/aura-sdk";
 import { describe, expect, it } from "vitest";
 
 import { runChecks } from "./index.js";
@@ -53,6 +58,29 @@ describe("runChecks", () => {
     expect(
       runChecks([createCheck("alpha/SEC-001", [detected])], MODEL).findings[0],
     ).not.toHaveProperty("detail");
+  });
+
+  it("preserves a declared metadata presentation hint", () => {
+    const presentation: FindingMetadataTablePresentation = {
+      columns: [{ heading: "File", key: "path" }],
+      kind: "metadata-table",
+      rowsKey: "files",
+    };
+    const finding = runChecks(
+      [
+        createCheck("alpha/SEC-001", [
+          {
+            id: "first",
+            message: "First finding",
+            metadata: { files: [{ path: "/workspace/AGENTS.md" }] },
+            presentation,
+          },
+        ]),
+      ],
+      MODEL,
+    ).findings[0];
+
+    expect(finding?.presentation).toEqual(presentation);
   });
 
   it("skips a check that throws, keeps the rest, and withholds its untrusted text", () => {

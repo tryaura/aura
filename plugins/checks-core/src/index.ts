@@ -8,6 +8,7 @@ import { duplicateInstructionsCheck } from "./ins-003/index.js";
 import { legacyInstructionsCheck } from "./ins-004.js";
 import { contradictoryInstructionsCheck } from "./ins-005/index.js";
 import { instructionLinkIntegrityCheck } from "./ins-006/index.js";
+import { instructionContextBudgetCheck } from "./ins-007/index.js";
 import { instructionPrecedenceCheck } from "./ins-008/index.js";
 import { sharedInstructionLinksCheck, sharedInstructionsCheck } from "./instructions.js";
 import { legacyInstructionsAdapter } from "./legacy-adapter.js";
@@ -26,6 +27,7 @@ export default definePlugin({
     legacyInstructionsCheck,
     contradictoryInstructionsCheck,
     instructionLinkIntegrityCheck,
+    instructionContextBudgetCheck,
     instructionPrecedenceCheck,
   ],
   id: "checks-core",

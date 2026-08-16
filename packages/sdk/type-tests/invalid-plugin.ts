@@ -6,6 +6,7 @@ import {
   type Check,
   type DetectedFinding,
   type DirectoryContentSource,
+  type FindingMetadataTableColumn,
   type FixPlan,
   type McpServerDef,
   type Preset,
@@ -92,6 +93,15 @@ const contradictoryFinding: DetectedFinding = {
   message: "Findings cannot restate the identity of their check.",
 };
 
+// @ts-expect-error Boolean labels belong only to a column that asks for the boolean format.
+const mislabeledColumn: FindingMetadataTableColumn = {
+  falseLabel: "no",
+  format: "integer",
+  heading: "Bytes",
+  key: "bytes",
+  trueLabel: "yes",
+};
+
 const invalidSnippet: Snippet = {
   description: "Invalid source shape.",
   id: "example/invalid",
@@ -132,6 +142,7 @@ const worldWritableFixPlan: FixPlan = {
 };
 
 void contradictoryFinding;
+void mislabeledColumn;
 void invalidSnippet;
 void snippetAsPreset;
 void presetAsMcpServer;
