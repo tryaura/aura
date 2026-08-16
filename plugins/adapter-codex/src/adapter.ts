@@ -24,13 +24,19 @@ export const codexAdapter = defineAdapter({
   id: CODEX_ADAPTER_ID,
   installHint:
     "Run `npm install -g @openai/codex@latest`, or update Codex with your package manager.",
-  parse: ({ cwd, files, homeDir, projectRoot }) => {
+  parse: ({ cwd, files, projectRoot }) => {
     const instructions = files.get(SOURCE_IDS.instructions);
     const mcp = files.get(SOURCE_IDS.mcp);
 
     return {
+      // A path core refused to read — denied, oversized, outside the project — is not an empty
+      // instruction file, and modelling it as one asserts the user wrote nothing where nobody
+      // looked. A dangling symlink carries no `problem` and is still worth a document: the broken
+      // link itself is the thing INS-002 needs to see.
       instructionFiles:
-        instructions?.content === undefined ? [] : [parseInstructionFile(instructions, homeDir)],
+        instructions?.exists !== true || instructions.problem !== undefined
+          ? []
+          : [parseInstructionFile(instructions)],
       mcpServers: mcp?.content === undefined ? [] : parseMcpServers(mcp),
       metadata: {
         [CODEX_PROJECT_TRUST_KEY]:
@@ -38,6 +44,10 @@ export const codexAdapter = defineAdapter({
       },
       skills: [],
     };
+  },
+  sharedLink: {
+    entryPath: "~/.codex/AGENTS.md",
+    kind: "symlink",
   },
   // Verified releases only: Codex ships breaking changes in 0.x minors, so the range widens one
   // verified version at a time rather than trusting a whole major like Claude Code's does.

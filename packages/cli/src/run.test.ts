@@ -66,6 +66,30 @@ describe("runCli", () => {
     expect(capture.stderr.text).toContain("--home must be an absolute path");
   });
 
+  it("rejects --fix with --json until fix records are defined", async () => {
+    const capture = createCapture(["check", "--fix", "--json"]);
+
+    expect(await runCli(distro([findingPlugin("info", [])]), capture.runtime)).toBe(2);
+    expect(capture.stdout.text).toBe("");
+    expect(capture.stderr.text).toContain("--fix cannot be combined with --json");
+  });
+
+  it.each([["--dry-run"], ["--yes"]])("rejects %s without --fix", async (flag) => {
+    const capture = createCapture(["check", flag]);
+
+    expect(await runCli(distro([findingPlugin("info", [])]), capture.runtime)).toBe(2);
+    expect(capture.stdout.text).toBe("");
+    expect(capture.stderr.text).toContain(`${flag} only means something with --fix`);
+  });
+
+  it("rejects --dry-run with --yes", async () => {
+    const capture = createCapture(["check", "--fix", "--dry-run", "--yes"]);
+
+    expect(await runCli(distro([findingPlugin("info", [])]), capture.runtime)).toBe(2);
+    expect(capture.stdout.text).toBe("");
+    expect(capture.stderr.text).toContain("--dry-run and --yes contradict each other");
+  });
+
   it("uses branding in top-level help and version output", async () => {
     const help = createCapture([]);
     const version = createCapture(["--version"]);

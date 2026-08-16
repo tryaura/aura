@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import {
   defineAdapter,
   detectExecutable,
+  SHARED_INSTRUCTIONS_TEMPLATE_TOKEN,
   type AdapterFileSpec,
   type AdapterSourceFile,
   type Environment,
@@ -44,6 +45,11 @@ export const claudeCodeAdapter = defineAdapter({
       ),
       skills: [],
     };
+  },
+  sharedLink: {
+    entryPath: "~/.claude/CLAUDE.md",
+    kind: "import-line",
+    lineTemplate: `@${SHARED_INSTRUCTIONS_TEMPLATE_TOKEN}`,
   },
   supportedRange: ">=2.1.0 <3.0.0",
 });

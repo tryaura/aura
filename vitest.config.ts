@@ -2,6 +2,13 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
+    /*
+     * Vitest 4 no longer excludes build output by default, and `verify` runs `build` before `test`.
+     * Without this, every test a package compiles into `dist` is collected twice — once from source
+     * and once from a stale copy — which doubles the process-spawning integration tests and reports
+     * pass or fail for code nobody edited.
+     */
+    exclude: ["**/node_modules/**", "**/dist/**", "**/.git/**"],
     /**
      * Above the SDK's own 5s probe ceiling, which the default 5s test timeout exactly matched.
      *

@@ -72,6 +72,14 @@ describe("Cursor detection", () => {
 });
 
 describe("Cursor file specifications", () => {
+  it("declares the whole-owned shared-instructions wrapper", () => {
+    expect(cursorAdapter.sharedLink).toEqual({
+      entryPath: "./.cursor/rules/aura.mdc",
+      kind: "native-copy",
+      lineTemplate: "---\nalwaysApply: true\n---\n\n@file {{sharedInstructions}}\n",
+    });
+  });
+
   it("declares modern, legacy, and AGENTS.md rules plus global and project MCP configuration", () => {
     const environment = environmentWithExec([], () => result(0));
 
@@ -95,6 +103,13 @@ describe("Cursor file specifications", () => {
         kind: "instructions",
         optional: true,
         path: "/workspace/AGENTS.md",
+        scope: "project",
+      },
+      {
+        id: "cursor.rules.project/aura-owned",
+        kind: "instructions",
+        optional: true,
+        path: "/workspace/.cursor/rules/aura.mdc",
         scope: "project",
       },
       {
@@ -132,7 +147,7 @@ describe("Cursor file specifications", () => {
       ],
     ]);
 
-    expect(cursorAdapter.files(environment, { installed: true }, files).slice(5)).toEqual([
+    expect(cursorAdapter.files(environment, { installed: true }, files).slice(6)).toEqual([
       {
         id: "cursor.rules.project/api.mdc",
         kind: "instructions",

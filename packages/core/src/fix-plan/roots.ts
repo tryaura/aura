@@ -33,6 +33,10 @@ export function resolveAllowedRoots(
   const homeDir = resolve(model.homeDir);
   const roots = new Map<string, AllowedRoot>();
   add(roots, { exact: false, path: resolve(model.projectRoot ?? model.cwd) });
+  const sharedDirectory = dirname(resolve(model.sharedInstructions.path));
+  if (isStrictDescendant(homeDir, sharedDirectory)) {
+    add(roots, { exact: false, path: sharedDirectory });
+  }
 
   for (const root of managedHomeRoots === undefined
     ? deriveManagedHomeRoots(model, homeDir)

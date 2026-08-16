@@ -1,7 +1,9 @@
 import type { Stats } from "node:fs";
-import { opendir, readFile, realpath, stat } from "node:fs/promises";
+import { lstat, opendir, readFile, readlink, realpath, stat } from "node:fs/promises";
 
-import type { FileProblem } from "@tryaura/aura-sdk";
+import type { AdapterPathKind, FileProblem } from "@tryaura/aura-sdk";
+
+import { createLimiter } from "./concurrency.js";
 
 /**
  * The largest file Aura reads, in bytes.
@@ -36,8 +38,12 @@ export interface PathContents {
   readonly exists: boolean;
   /** Whether the path is a directory. */
   readonly isDirectory: boolean;
+  /** Kind of the final path entry without following a symbolic link. */
+  readonly pathKind?: AdapterPathKind | undefined;
   /** Why no contents were captured, when the reason was something other than absence. */
   readonly problem?: FileProblem | undefined;
+  /** Raw target of the final path entry when it is a symbolic link. */
+  readonly symlinkTarget?: string | undefined;
 }
 
 /**
@@ -113,35 +119,98 @@ function memoize<T>(
 async function readPath(path: string): Promise<PathContents> {
   let stats: Stats;
   try {
-    stats = await stat(path);
+    stats = await lstat(path);
   } catch (error) {
     return isAbsence(error) ? MISSING : { ...MISSING, problem: toProblem(error) };
   }
 
+  if (stats.isSymbolicLink()) {
+    return readSymbolicLink(path);
+  }
+
   if (stats.isDirectory()) {
-    return readDirectory(path);
+    return readResolvedPath(path, stats, "directory");
+  }
+  if (!stats.isFile()) {
+    return { exists: true, isDirectory: false, problem: "unsupported" };
+  }
+  return readResolvedPath(path, stats, "file");
+}
+
+async function readSymbolicLink(path: string): Promise<PathContents> {
+  let symlinkTarget: string;
+  try {
+    symlinkTarget = await readlink(path);
+  } catch (error) {
+    return {
+      exists: true,
+      isDirectory: false,
+      pathKind: "symlink",
+      problem: toProblem(error),
+    };
+  }
+
+  let targetStats: Stats;
+  try {
+    targetStats = await stat(path);
+  } catch (error) {
+    return isAbsence(error)
+      ? { exists: true, isDirectory: false, pathKind: "symlink", symlinkTarget }
+      : {
+          exists: true,
+          isDirectory: false,
+          pathKind: "symlink",
+          problem: toProblem(error),
+          symlinkTarget,
+        };
+  }
+
+  return readResolvedPath(path, targetStats, "symlink", symlinkTarget);
+}
+
+async function readResolvedPath(
+  path: string,
+  stats: Stats,
+  pathKind: AdapterPathKind,
+  symlinkTarget?: string,
+): Promise<PathContents> {
+  const metadata = {
+    pathKind,
+    ...(symlinkTarget === undefined ? {} : { symlinkTarget }),
+  };
+
+  if (stats.isDirectory()) {
+    return readDirectory(path, metadata);
   }
 
   // Sockets, FIFOs and device files are not configuration, and reading one is not a bounded
   // operation: a FIFO blocks until someone writes to it, a character device never ends. Project
   // paths are built from cwd, so a hostile checkout must not be able to reach readFile at all.
   if (!stats.isFile()) {
-    return { exists: true, isDirectory: false, problem: "unsupported" };
+    return { ...metadata, exists: true, isDirectory: false, problem: "unsupported" };
   }
 
   if (stats.size > MAX_FILE_BYTES) {
-    return { exists: true, isDirectory: false, problem: "too-large" };
+    return { ...metadata, exists: true, isDirectory: false, problem: "too-large" };
   }
 
   try {
-    return { content: await readFile(path, "utf8"), exists: true, isDirectory: false };
+    return {
+      ...metadata,
+      content: await readFile(path, "utf8"),
+      exists: true,
+      isDirectory: false,
+    };
   } catch (error) {
-    return { exists: true, isDirectory: false, problem: toProblem(error) };
+    return { ...metadata, exists: true, isDirectory: false, problem: toProblem(error) };
   }
 }
 
 /** Lists a directory one level deep, in sorted order so two scans of one machine agree. */
-async function readDirectory(path: string): Promise<PathContents> {
+async function readDirectory(
+  path: string,
+  metadata: Pick<PathContents, "pathKind" | "symlinkTarget">,
+): Promise<PathContents> {
   const entries: string[] = [];
 
   try {
@@ -149,16 +218,16 @@ async function readDirectory(path: string): Promise<PathContents> {
     for await (const entry of directory) {
       if (entries.length >= MAX_DIRECTORY_ENTRIES) {
         // Leaving the loop early closes the handle, so the oversized directory costs nothing more.
-        return { exists: true, isDirectory: true, problem: "too-many-entries" };
+        return { ...metadata, exists: true, isDirectory: true, problem: "too-many-entries" };
       }
 
       entries.push(entry.name);
     }
   } catch (error) {
-    return { exists: true, isDirectory: true, problem: toProblem(error) };
+    return { ...metadata, exists: true, isDirectory: true, problem: toProblem(error) };
   }
 
-  return { entries: entries.sort(), exists: true, isDirectory: true };
+  return { ...metadata, entries: entries.sort(), exists: true, isDirectory: true };
 }
 
 async function resolveRealPath(path: string): Promise<string | undefined> {
@@ -205,42 +274,4 @@ function errorCode(error: unknown): string | undefined {
   }
 
   return undefined;
-}
-
-/** Runs at most `limit` tasks concurrently, queueing the rest in call order. */
-interface Limiter {
-  <T>(task: () => Promise<T>): Promise<T>;
-}
-
-function createLimiter(limit: number): Limiter {
-  let active = 0;
-  const waiting: (() => void)[] = [];
-
-  const acquire = (): Promise<void> => {
-    if (active < limit) {
-      active += 1;
-      return Promise.resolve();
-    }
-
-    return new Promise<void>((resolve) => {
-      waiting.push(() => {
-        active += 1;
-        resolve();
-      });
-    });
-  };
-
-  const release = (): void => {
-    active -= 1;
-    waiting.shift()?.();
-  };
-
-  return async <T>(task: () => Promise<T>): Promise<T> => {
-    await acquire();
-    try {
-      return await task();
-    } finally {
-      release();
-    }
-  };
 }

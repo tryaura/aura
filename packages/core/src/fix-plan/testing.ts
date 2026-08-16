@@ -68,6 +68,7 @@ export async function createFixPlanFixture(): Promise<FixPlanFixture> {
       instructionFiles: [],
       mcpServers: [],
       projectRoot: workspace,
+      sharedInstructions: { exists: false, path: join(home, "agents", "AGENTS.md") },
       skills: [],
     },
     root,

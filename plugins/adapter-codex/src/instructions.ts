@@ -1,28 +1,30 @@
-import { join } from "node:path";
+import { dirname, isAbsolute, resolve } from "node:path";
 
 import type { AdapterSourceFile, InstructionDocument } from "@tryaura/aura-sdk";
 
 /**
- * Models Codex's file-placement mechanism as a native link to Aura's shared instructions.
+ * Models a real Codex instruction symlink without mistaking a user-owned file for one.
  *
- * Codex has no import syntax, so placement is the only mechanism, and the link is declared
- * unconditionally. Core resolves `valid` to whether the shared file exists — nothing more. Whether
- * this document's content actually mirrors the shared instructions is a content comparison that
- * belongs to a check, not to this parser.
+ * Codex has no import syntax, so a regular `AGENTS.md` carries no link. Core resolves a symbolic
+ * link's validity from its actual target, while INS-002 decides whether that target is Aura's shared
+ * instruction source.
  */
-export function parseInstructionFile(
-  file: AdapterSourceFile,
-  homeDir: string,
-): InstructionDocument {
+export function parseInstructionFile(file: AdapterSourceFile): InstructionDocument {
+  const target = file.symlinkTarget;
   return {
     content: file.content ?? "",
-    links: [
-      {
-        kind: "native",
-        targetPath: join(homeDir, "agents", "AGENTS.md"),
-        valid: false,
-      },
-    ],
+    links:
+      file.pathKind === "symlink" && target !== undefined
+        ? [
+            {
+              kind: "symlink",
+              targetPath: isAbsolute(target)
+                ? resolve(target)
+                : resolve(dirname(file.spec.path), target),
+              valid: false,
+            },
+          ]
+        : [],
     path: file.spec.path,
     scope: file.spec.scope,
     sourceId: file.spec.id,

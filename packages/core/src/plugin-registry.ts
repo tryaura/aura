@@ -11,6 +11,7 @@ import type {
 
 import {
   claimId,
+  collectAdapterViolations,
   collectChecks,
   collectIdentityViolations,
   collectNamespaced,
@@ -138,6 +139,8 @@ function collectCandidate(
   }
 
   collected.plugins.push(plugin);
+
+  collectAdapterViolations(state, plugin.adapters, plugin);
 
   // Adapter ids name the application itself (`claude-code`, `cursor`) rather than the plugin, so
   // they are deliberately global: two plugins teaching Aura the same app must collide, not coexist

@@ -211,6 +211,12 @@ importers:
       '@tryaura/aura-sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+      '@tryaura/content-official':
+        specifier: workspace:*
+        version: link:../content-official
+      '@tryaura/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       ignore:
         specifier: ^7.0.6
         version: 7.0.6

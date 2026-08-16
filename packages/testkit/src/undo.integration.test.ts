@@ -77,6 +77,7 @@ function workspaceModel(homeDir: string, cwd: string, shared: string): Workspace
     homeDir,
     instructionFiles: [],
     mcpServers: [],
+    sharedInstructions: { content: "after\n", exists: true, path: shared },
     projectRoot: cwd,
     skills: [],
   };

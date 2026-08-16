@@ -62,8 +62,17 @@ describe("compiled Aura distribution", () => {
     const result = await runBinaryCheck({ binaryPath: BINARY_PATH, seed });
     expect(result.report).toEqual({
       diagnostics: [],
-      exitCode: 0,
-      findings: [],
+      exitCode: 2,
+      findings: [
+        {
+          checkId: "INS-001",
+          id: "shared-source",
+          locations: [{ path: "<HOME>/agents/AGENTS.md" }],
+          message: "The shared instruction source is missing.",
+          scope: "global",
+          severity: "error",
+        },
+      ],
       passedChecks: [
         { id: "ENV-001", title: "Agent applications use supported versions" },
         { id: "ENV-002", title: "Agent applications are authenticated" },
@@ -72,16 +81,17 @@ describe("compiled Aura distribution", () => {
           title: "Repository ignore rules separate personal and shared agent state",
         },
         { id: "ENV-004", title: "Agent settings allow the current project to run normally" },
+        { id: "INS-002", title: "Agent applications load shared instructions" },
       ],
       skipped: [
         { adapterId: "claude-code", displayName: "Claude Code" },
         { adapterId: "codex", displayName: "Codex" },
         { adapterId: "cursor", displayName: "Cursor" },
       ],
-      status: "clean",
-      summary: { errors: 0, informational: 0, passed: 4, warnings: 0 },
+      status: "error",
+      summary: { errors: 1, informational: 0, passed: 5, warnings: 0 },
     });
-    expect(result.exitCode).toBe(0);
+    expect(result.exitCode).toBe(2);
     expect(result.stderr).toBe("");
     expect(result.diffs).toEqual([]);
   });

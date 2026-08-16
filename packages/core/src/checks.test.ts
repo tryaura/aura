@@ -9,6 +9,7 @@ const MODEL: WorkspaceModel = {
   homeDir: "/home/dev",
   instructionFiles: [],
   mcpServers: [],
+  sharedInstructions: { exists: false, path: "/home/dev/agents/AGENTS.md" },
   skills: [],
 };
 

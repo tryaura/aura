@@ -5,12 +5,16 @@ export type {
   AdapterFileMap,
   AdapterFileSpec,
   AdapterFileStatus,
+  AdapterPathKind,
   AdapterParseInput,
+  AdapterSharedLink,
+  AdapterSharedLinkKind,
   AdapterSourceFile,
   AdapterSupport,
   AdapterSupportStatus,
   FileProblem,
 } from "./adapter.js";
+export { SHARED_INSTRUCTIONS_TEMPLATE_TOKEN } from "./adapter.js";
 export type { Check, DetectedFinding, Finding, FindingLocation } from "./check.js";
 export type {
   Fixability,
@@ -66,6 +70,8 @@ export type {
   McpServer,
   McpTransport,
   RepositoryModel,
+  ResolvedSharedLink,
+  SharedInstructionsState,
   StdioMcpTransport,
   WorkspaceModel,
 } from "./model.js";

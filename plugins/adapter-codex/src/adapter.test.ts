@@ -100,6 +100,13 @@ describe("Codex detection", () => {
 });
 
 describe("Codex global model", () => {
+  it("declares the shared-instructions symlink", () => {
+    expect(codexAdapter.sharedLink).toEqual({
+      entryPath: "~/.codex/AGENTS.md",
+      kind: "symlink",
+    });
+  });
+
   it("declares the optional global instruction and MCP configuration files", () => {
     const environment = environmentWithExec([], () => result(0));
 
@@ -121,7 +128,7 @@ describe("Codex global model", () => {
     ]);
   });
 
-  it("models AGENTS.md as a native link to Aura's shared instructions", () => {
+  it("models a real AGENTS.md as user-owned content", () => {
     const instructions = sourceFile("codex.instructions.global", "instructions", "# Global\n");
     const snapshot = codexAdapter.parse({
       cwd: "/workspace",
@@ -133,7 +140,7 @@ describe("Codex global model", () => {
     expect(snapshot.instructionFiles).toEqual([
       {
         content: "# Global\n",
-        links: [{ kind: "native", targetPath: "/home/dev/agents/AGENTS.md", valid: false }],
+        links: [],
         path: "/home/dev/.codex/AGENTS.md",
         scope: "global",
         sourceId: "codex.instructions.global",
@@ -199,6 +206,28 @@ describe("Codex global model", () => {
         homeDir: "/home/dev",
       }).metadata,
     ).toEqual({ projectTrust: "trusted" });
+  });
+
+  it("claims nothing about a path core refused to read", () => {
+    const instructions: AdapterSourceFile = {
+      exists: true,
+      problem: "denied",
+      spec: {
+        id: "codex.instructions.global",
+        kind: "instructions",
+        path: "/home/dev/.codex/AGENTS.md",
+        scope: "global",
+      },
+    };
+    const snapshot = codexAdapter.parse({
+      cwd: "/workspace",
+      detection: { installed: true },
+      files: new Map([[instructions.spec.id, instructions]]),
+      homeDir: "/home/dev",
+    });
+
+    // An empty document here would assert the user wrote nothing where nobody looked.
+    expect(snapshot.instructionFiles).toEqual([]);
   });
 });
 
