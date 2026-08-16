@@ -2,8 +2,8 @@ import type { JsonObject, Scope } from "./common.js";
 import type { Environment } from "./environment.js";
 import type { AdapterSnapshot } from "./model.js";
 
-/** What an adapter expects a declared file to contain. */
-export type AdapterFileKind = "config" | "instructions" | "mcp" | "skills";
+/** What an adapter expects a declared filesystem path to contain. */
+export type AdapterFileKind = "config" | "instructions" | "mcp" | "probe" | "skills";
 
 /** Placeholder an adapter uses inside a shared-instruction link template. */
 export const SHARED_INSTRUCTIONS_TEMPLATE_TOKEN = "{{sharedInstructions}}";
@@ -38,8 +38,19 @@ export interface AdapterFileSpec {
    * came from.
    */
   readonly id: string;
-  /** What the adapter expects to find here. */
+  /**
+   * What the adapter expects to find here. A `probe` captures metadata without file contents and
+   * is omitted from the application's final `sourceFiles` list.
+   */
   readonly kind: AdapterFileKind;
+  /**
+   * Maximum bytes of file contents to capture.
+   *
+   * Core normally refuses files above its global safety limit. An adapter may set a smaller limit
+   * when the application itself deliberately truncates a file, so Aura models the same prefix
+   * without reading the unused remainder.
+   */
+  readonly maxBytes?: number | undefined;
   /** Whether a missing path is normal. A required path that is absent is reported to the user. */
   readonly optional?: boolean | undefined;
   /**
@@ -49,6 +60,14 @@ export interface AdapterFileSpec {
    * directory, which is exactly the ambient state {@link Environment} exists to replace.
    */
   readonly path: string;
+  /**
+   * Application-specific project root that contains this path.
+   *
+   * Core normally confines project paths to its detected repository root. Set this only when the
+   * application uses a different root that the adapter discovered from trusted global
+   * configuration; core canonicalizes it before applying the same containment check.
+   */
+  readonly projectBoundary?: string | undefined;
   /** Whether this is user-level or workspace-level state. */
   readonly scope: Scope;
 }
@@ -77,6 +96,8 @@ export interface AdapterFileStatus {
   readonly problem?: FileProblem | undefined;
   /** The kind of entry found at the declared path. Absent when the path was missing. */
   readonly pathKind?: AdapterPathKind | undefined;
+  /** File size in bytes, when core could inspect a regular file or a symlink to one. */
+  readonly size?: number | undefined;
   /** The spec that requested this path. */
   readonly spec: AdapterFileSpec;
   /** Raw link target when {@link pathKind} is `symlink`. */
@@ -174,11 +195,18 @@ export interface Adapter {
    * until it returns no new spec ids. Returning a previously declared id is allowed only when the
    * spec is unchanged. Must not touch the filesystem: use the supplied results to discover child
    * paths and let `exists` report read outcomes.
+   *
+   * `projectRoot` is the repository containing {@link Environment.cwd}, resolved by core before the
+   * first call and `undefined` outside a repository. An application that reads configuration from
+   * the repository root — or from every directory between it and the invocation directory — needs
+   * it to declare those paths at all, since {@link Environment} deliberately carries no filesystem
+   * access of its own. It is the same value {@link AdapterParseInput.projectRoot} carries.
    */
   readonly files: (
     environment: Environment,
     detection: AdapterDetection,
     files: AdapterFileMap,
+    projectRoot: string | undefined,
   ) => readonly AdapterFileSpec[];
   /**
    * Stable adapter identifier, unique across all loaded plugins.

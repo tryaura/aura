@@ -23,6 +23,8 @@ export interface DiscoveryOptions {
   readonly environment: Environment;
   /** Canonical directory project-scoped paths must stay inside. */
   readonly projectBoundary: string | undefined;
+  /** Repository root containing the working directory, handed to the adapter as declared. */
+  readonly projectRoot: string | undefined;
   readonly reader: FileReader;
 }
 
@@ -47,13 +49,16 @@ export async function discoverAdapterFiles(
   adapter: Adapter,
   options: DiscoveryOptions,
 ): Promise<AdapterFileDiscovery> {
-  const { detection, environment, projectBoundary, reader } = options;
+  const { detection, environment, projectBoundary, projectRoot, reader } = options;
   const diagnostics: ScanDiagnostic[] = [];
   const files = new Map<string, AdapterSourceFile>();
   const specs = new Map<string, AdapterFileSpec>();
 
   for (let round = 0; round < MAX_ADAPTER_FILE_ROUNDS; round += 1) {
-    const newSpecs = collectNewSpecs(adapter.files(environment, detection, new Map(files)), specs);
+    const newSpecs = collectNewSpecs(
+      adapter.files(environment, detection, new Map(files), projectRoot),
+      specs,
+    );
 
     if (newSpecs.length === 0) {
       return { diagnostics, files };
@@ -112,8 +117,10 @@ function sameSpec(left: AdapterFileSpec, right: AdapterFileSpec): boolean {
   return (
     left.id === right.id &&
     left.kind === right.kind &&
+    left.maxBytes === right.maxBytes &&
     left.optional === right.optional &&
     left.path === right.path &&
+    left.projectBoundary === right.projectBoundary &&
     left.scope === right.scope
   );
 }

@@ -8,8 +8,27 @@ import { type AppModel } from "@tryaura/aura-sdk";
  */
 export const CODEX_SOURCE_IDS = Object.freeze({
   instructions: "codex.instructions.global",
+  instructionsProject: "codex.instructions.project",
   mcp: "codex.mcp.global",
 });
+
+/**
+ * Suffix marking the higher-priority `AGENTS.override.md` beside a plain `AGENTS.md` slot.
+ *
+ * Codex reads the override at every scope and falls back to `AGENTS.md` only when it finds none, so
+ * the two files are one slot with two candidates rather than two independent instruction sources.
+ */
+export const CODEX_OVERRIDE_SUFFIX = ".override";
+
+/**
+ * Names the slot for an `AGENTS.md` in a directory `ancestors` levels above the invocation
+ * directory. Zero — the invocation directory itself — keeps the unsuffixed id.
+ */
+export function codexProjectInstructionsId(ancestors: number): string {
+  return ancestors === 0
+    ? CODEX_SOURCE_IDS.instructionsProject
+    : `${CODEX_SOURCE_IDS.instructionsProject}.${String(ancestors)}`;
+}
 
 export const CODEX_ADAPTER_ID = "codex";
 

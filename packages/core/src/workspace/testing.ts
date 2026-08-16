@@ -8,8 +8,9 @@ import type {
   InstructionDocument,
   InstructionLink,
 } from "@tryaura/aura-sdk";
+import { Buffer } from "node:buffer";
 
-import type { FileReader, PathContents } from "./reader.js";
+import type { FileReadOptions, FileReader, PathContents } from "./reader.js";
 
 /** Marks an entry of {@link createMemoryReader} as a directory rather than a file. */
 export const DIRECTORY = null;
@@ -27,7 +28,7 @@ export interface MemoryReaderOptions {
 
 /** A {@link FileReader} over a literal filesystem, recording every path it was asked for. */
 export interface MemoryReader extends FileReader {
-  /** Paths passed to `exists`, in call order. Kept apart from `reads` so a test can tell which. */
+  /** Paths passed to `exists` or `inspect`, in call order. */
   readonly probes: readonly string[];
   /** Paths passed to `read`, in call order. */
   readonly reads: readonly string[];
@@ -46,15 +47,23 @@ export function createMemoryReader(
       probes.push(path);
       return Promise.resolve(options.problems?.[path] !== undefined || entries[path] !== undefined);
     },
+    inspect: (path) => {
+      probes.push(path);
+      const problem = options.problems?.[path];
+      if (problem !== undefined) {
+        return Promise.resolve({ exists: true, isDirectory: false, problem });
+      }
+      return Promise.resolve(withoutMemoryContents(path, entries));
+    },
     probes,
-    read: (path) => {
+    read: (path, readOptions) => {
       reads.push(path);
       const problem = options.problems?.[path];
       if (problem !== undefined) {
         return Promise.resolve({ exists: true, isDirectory: false, problem });
       }
 
-      return Promise.resolve(toContents(path, entries));
+      return Promise.resolve(toContents(path, entries, readOptions));
     },
     // A memory filesystem has no reason to fail resolution, so an unlinked path is its own target.
     realPath: (path) => Promise.resolve(options.links?.[path] ?? path),
@@ -62,7 +71,7 @@ export function createMemoryReader(
   };
 }
 
-function toContents(path: string, entries: MemoryEntries): PathContents {
+function toContents(path: string, entries: MemoryEntries, options?: FileReadOptions): PathContents {
   const entry = entries[path];
 
   if (entry === undefined) {
@@ -70,10 +79,36 @@ function toContents(path: string, entries: MemoryEntries): PathContents {
   }
 
   if (entry === DIRECTORY) {
-    return { entries: childrenOf(path, entries), exists: true, isDirectory: true };
+    return {
+      entries: childrenOf(path, entries),
+      exists: true,
+      isDirectory: true,
+      pathKind: "directory",
+    };
   }
 
-  return { content: entry, exists: true, isDirectory: false };
+  const contents = Buffer.from(entry, "utf8");
+  return {
+    content:
+      options?.maxBytes === undefined
+        ? entry
+        : contents.subarray(0, options.maxBytes).toString("utf8"),
+    exists: true,
+    isDirectory: false,
+    pathKind: "file",
+    ...(options?.maxBytes === undefined ? {} : { size: contents.length }),
+  };
+}
+
+function withoutMemoryContents(path: string, entries: MemoryEntries): PathContents {
+  const contents = toContents(path, entries);
+  const entry = entries[path];
+  return {
+    exists: contents.exists,
+    isDirectory: contents.isDirectory,
+    ...(contents.pathKind === undefined ? {} : { pathKind: contents.pathKind }),
+    ...(typeof entry === "string" ? { size: Buffer.byteLength(entry, "utf8") } : {}),
+  };
 }
 
 /** Immediate children of a directory, taken from the paths the filesystem declares. */

@@ -3,7 +3,12 @@ import { isAbsolute, sep } from "node:path";
 import type { Adapter, AdapterFileSpec, AdapterSourceFile, FileProblem } from "@tryaura/aura-sdk";
 
 import type { ScanDiagnostic } from "./diagnostics.js";
-import { MAX_DIRECTORY_ENTRIES, MAX_FILE_BYTES, type FileReader } from "./reader.js";
+import {
+  MAX_DIRECTORY_ENTRIES,
+  MAX_FILE_BYTES,
+  type FileReader,
+  type PathContents,
+} from "./reader.js";
 
 /** One declared path, read, together with anything worth telling the user about it. */
 export interface SpecRead {
@@ -37,51 +42,98 @@ export interface SpecReadOptions {
  * hands the completed discovery map to `parse`.
  */
 export async function readSpec(spec: AdapterFileSpec, options: SpecReadOptions): Promise<SpecRead> {
-  const { adapter } = options;
-
-  if (!isAbsolute(spec.path)) {
-    return {
-      diagnostics: [
-        {
-          adapterId: adapter.id,
-          message: `${adapter.displayName} declares "${spec.id}" with the relative path ${spec.path}. Adapter paths must be absolute — build them from Environment.homeDir or Environment.cwd. Aura did not read it.`,
-          path: spec.path,
-          phase: "files",
-        },
-      ],
-      file: { exists: false, spec },
-    };
+  const invalid = invalidSpec(spec, options.adapter);
+  if (invalid !== undefined) {
+    return invalid;
   }
 
   const escape = await findEscape(spec, options);
   if (escape !== undefined) {
-    return {
-      diagnostics: [
-        {
-          adapterId: adapter.id,
-          message: `${adapter.displayName} declares the project ${spec.kind} file ${spec.path}, but it resolves to ${escape}, outside ${options.projectBoundary}. Aura did not read it; a link like this in a checked-out repository is how a project reaches into your home directory.`,
-          path: spec.path,
-          phase: "read",
-        },
-      ],
-      // `exists` stays true so that a fix treats the path as occupied rather than free to create,
-      // and the problem says Aura refused the read rather than that the entry is an odd file type.
-      file: { exists: true, problem: "outside-project", spec },
-    };
+    return escapedSpec(spec, options.adapter, escape);
   }
 
-  const contents = await options.reader.read(spec.path);
-  const file: AdapterSourceFile = {
-    content: contents.content,
-    entries: contents.entries,
+  const contents = await readDeclaredPath(spec, options.reader);
+  const file = toSourceFile(spec, contents);
+
+  return { diagnostics: describe(spec, options.adapter, contents.problem, file.exists), file };
+}
+
+function invalidSpec(spec: AdapterFileSpec, adapter: Adapter): SpecRead | undefined {
+  if (!isAbsolute(spec.path)) {
+    return invalid(
+      adapter,
+      spec,
+      `with the relative path ${spec.path}. Adapter paths must be absolute — build them from Environment.homeDir or Environment.cwd`,
+    );
+  }
+  if (spec.maxBytes !== undefined && (!Number.isSafeInteger(spec.maxBytes) || spec.maxBytes < 0)) {
+    return invalid(
+      adapter,
+      spec,
+      "with an invalid maxBytes value. It must be a non-negative integer",
+    );
+  }
+  if (spec.projectBoundary !== undefined && !isAbsolute(spec.projectBoundary)) {
+    return invalid(
+      adapter,
+      spec,
+      "with a relative project boundary. Project boundaries must be absolute",
+    );
+  }
+  return undefined;
+}
+
+function invalid(adapter: Adapter, spec: AdapterFileSpec, reason: string): SpecRead {
+  return {
+    diagnostics: [
+      {
+        adapterId: adapter.id,
+        message: `${adapter.displayName} declares "${spec.id}" ${reason}. Aura did not read it.`,
+        path: spec.path,
+        phase: "files",
+      },
+    ],
+    file: { exists: false, spec },
+  };
+}
+
+function escapedSpec(spec: AdapterFileSpec, adapter: Adapter, escape: ProjectEscape): SpecRead {
+  return {
+    diagnostics: [
+      {
+        adapterId: adapter.id,
+        message: `${adapter.displayName} declares the project ${spec.kind} file ${spec.path}, but it resolves to ${escape.path}, outside ${escape.boundary}. Aura did not read it; a link like this in a checked-out repository is how a project reaches into your home directory.`,
+        path: spec.path,
+        phase: "read",
+      },
+    ],
+    file: { exists: true, problem: "outside-project", spec },
+  };
+}
+
+async function readDeclaredPath(spec: AdapterFileSpec, reader: FileReader): Promise<PathContents> {
+  if (spec.kind === "probe" && reader.inspect !== undefined) {
+    return reader.inspect(spec.path);
+  }
+  const maxBytes = spec.maxBytes;
+  return reader.read(
+    spec.path,
+    maxBytes === undefined ? undefined : { maxBytes: Math.min(maxBytes, MAX_FILE_BYTES) },
+  );
+}
+
+function toSourceFile(spec: AdapterFileSpec, contents: PathContents): AdapterSourceFile {
+  const captured = spec.kind === "probe";
+  return {
+    ...(captured || contents.content === undefined ? {} : { content: contents.content }),
+    ...(captured || contents.entries === undefined ? {} : { entries: contents.entries }),
     exists: contents.exists,
     ...(contents.pathKind === undefined ? {} : { pathKind: contents.pathKind }),
     problem: contents.problem,
+    ...(contents.size === undefined ? {} : { size: contents.size }),
     spec,
     ...(contents.symlinkTarget === undefined ? {} : { symlinkTarget: contents.symlinkTarget }),
   };
-
-  return { diagnostics: describe(spec, options.adapter, contents.problem, file.exists), file };
 }
 
 /**
@@ -90,21 +142,36 @@ export async function readSpec(spec: AdapterFileSpec, options: SpecReadOptions):
  * Global-scope paths are adapter-authored locations under the home directory and are not subject
  * to this: the untrusted input is the repository the user happens to have checked out.
  */
+interface ProjectEscape {
+  readonly boundary: string;
+  readonly path: string;
+}
+
 async function findEscape(
   spec: AdapterFileSpec,
   options: SpecReadOptions,
-): Promise<string | undefined> {
-  const { projectBoundary } = options;
-  if (spec.scope !== "project" || projectBoundary === undefined) {
+): Promise<ProjectEscape | undefined> {
+  if (spec.scope !== "project") {
     return undefined;
   }
 
+  const requestedBoundary = spec.projectBoundary ?? options.projectBoundary;
+  if (requestedBoundary === undefined) {
+    return undefined;
+  }
+  const projectBoundary =
+    spec.projectBoundary === undefined
+      ? requestedBoundary
+      : await options.reader.realPath(requestedBoundary);
+  if (projectBoundary === undefined) {
+    return { boundary: requestedBoundary, path: spec.path };
+  }
   const resolved = await options.reader.realPath(spec.path);
   if (resolved === undefined || contains(projectBoundary, resolved)) {
     return undefined;
   }
 
-  return resolved;
+  return { boundary: projectBoundary, path: resolved };
 }
 
 function contains(directory: string, path: string): boolean {

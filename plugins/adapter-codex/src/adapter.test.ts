@@ -107,10 +107,17 @@ describe("Codex global model", () => {
     });
   });
 
-  it("declares the optional global instruction and MCP configuration files", () => {
+  it("declares global instructions and configuration before project discovery", () => {
     const environment = environmentWithExec([], () => result(0));
 
-    expect(codexAdapter.files(environment)).toEqual([
+    expect(codexAdapter.files(environment, { installed: true }, new Map(), undefined)).toEqual([
+      {
+        id: "codex.instructions.global.override",
+        kind: "instructions",
+        optional: true,
+        path: "/home/dev/.codex/AGENTS.override.md",
+        scope: "global",
+      },
       {
         id: "codex.instructions.global",
         kind: "instructions",

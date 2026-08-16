@@ -76,6 +76,7 @@ export async function scanAdapter(adapter: Adapter, context: ScanContext): Promi
       detection,
       environment: context.environment,
       projectBoundary: await context.projectBoundary,
+      projectRoot: await context.projectRoot,
       reader: context.reader,
     });
   } catch (error) {
@@ -115,7 +116,9 @@ export async function scanAdapter(adapter: Adapter, context: ScanContext): Promi
       skills: snapshot.skills,
       // Contents are dropped here: they were consumed by parse and are not retained beside the
       // documents parsed out of them.
-      sourceFiles: [...discovery.files.values()].map(toStatus),
+      sourceFiles: [...discovery.files.values()]
+        .filter((file) => file.spec.kind !== "probe")
+        .map(toStatus),
       ...(sharedLink === undefined ? {} : { sharedLink }),
       support: evaluateSupport(adapter.supportedRange, detection.version),
     },
@@ -170,6 +173,7 @@ function toStatus(file: AdapterSourceFile): AdapterFileStatus {
     exists: file.exists,
     ...(file.pathKind === undefined ? {} : { pathKind: file.pathKind }),
     problem: file.problem,
+    ...(file.size === undefined ? {} : { size: file.size }),
     spec: file.spec,
     ...(file.symlinkTarget === undefined ? {} : { symlinkTarget: file.symlinkTarget }),
   };
