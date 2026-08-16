@@ -4,20 +4,15 @@ import type {
   FindingMetadataTablePresentation,
   WorkspaceModel,
 } from "@tryaura/aura-sdk";
+import { createWorkspaceModel } from "@tryaura/aura-sdk/testing";
 import { describe, expect, it } from "vitest";
 
 import { runChecks } from "./index.js";
 
-const MODEL: WorkspaceModel = {
-  apps: [],
-  cwd: "/workspace",
-  homeDir: "/home/dev",
-  instructionFiles: [],
+const MODEL: WorkspaceModel = createWorkspaceModel({
   manifest: { exists: false, path: "/home/dev/agents/aura.json", status: "missing" },
-  mcpServers: [],
   sharedInstructions: { exists: false, path: "/home/dev/agents/AGENTS.md" },
-  skills: [],
-};
+});
 
 describe("runChecks", () => {
   it("stamps identity and default severity onto detected findings", () => {

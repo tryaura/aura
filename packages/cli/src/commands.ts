@@ -97,6 +97,7 @@ export class CheckCommand extends Command<AuraCliContext> {
       let scan = await buildWorkspaceModel({
         adapters: this.context.registry.adapters,
         environment,
+        snippets: this.context.registry.snippets,
       });
       let run = runChecks(this.context.registry.checks, scan.model);
       let fixDiagnostics: readonly CheckDiagnostic[] = [];
@@ -124,6 +125,7 @@ export class CheckCommand extends Command<AuraCliContext> {
           scan = await buildWorkspaceModel({
             adapters: this.context.registry.adapters,
             environment,
+            snippets: this.context.registry.snippets,
           });
           run = runChecks(this.context.registry.checks, scan.model);
         }

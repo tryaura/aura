@@ -7,6 +7,7 @@ import type {
   ResolvedSharedLink,
   WorkspaceModel,
 } from "@tryaura/aura-sdk";
+import { createWorkspaceModel } from "@tryaura/aura-sdk/testing";
 import { runChecks } from "@tryaura/core";
 
 /** Canonical shared instruction path every fixture in this package agrees on. */
@@ -77,21 +78,17 @@ export function workspace(
   exists = content !== undefined,
   problem?: FileProblem,
 ): WorkspaceModel {
-  return {
+  return createWorkspaceModel({
     apps,
-    cwd: "/workspace",
-    homeDir: "/home/dev",
     instructionFiles: apps.flatMap((application) => application.instructionFiles),
     manifest: { exists: false, path: "/home/dev/agents/aura.json", status: "missing" },
-    mcpServers: [],
     sharedInstructions: {
       content,
       exists,
       path: SHARED_PATH,
       ...(problem === undefined ? {} : { problem }),
     },
-    skills: [],
-  };
+  });
 }
 
 export function onlyFinding(check: Check, model: WorkspaceModel): Finding {

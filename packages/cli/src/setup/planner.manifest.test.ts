@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { parseAuraManifest } from "@tryaura/core";
 import type { WorkspaceModel } from "@tryaura/aura-sdk";
+import { createWorkspaceModel } from "@tryaura/aura-sdk/testing";
 
 import type { AppCatalogEntry } from "./catalog.js";
 import { planSetup } from "./planner.js";
@@ -53,16 +54,10 @@ function context(
   if (state.status !== "ready") {
     throw new Error("expected a valid manifest fixture");
   }
-  const model: WorkspaceModel = {
-    apps: [],
-    cwd: "/workspace",
-    homeDir: "/home/dev",
-    instructionFiles: [],
+  const model: WorkspaceModel = createWorkspaceModel({
     manifest: state,
-    mcpServers: [],
     sharedInstructions: { content: "ready", exists: true, path: "/home/dev/agents/AGENTS.md" },
-    skills: [],
-  };
+  });
   return { appCatalog, manifest: state, model, selections: { apps: { managed } } };
 }
 

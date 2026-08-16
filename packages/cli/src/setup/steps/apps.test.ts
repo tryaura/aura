@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { AdapterSupportStatus, AuraManifestState } from "@tryaura/aura-sdk";
+import { createWorkspaceModel } from "@tryaura/aura-sdk/testing";
 
 import type { AppCatalogEntry } from "../catalog.js";
 import { SETUP_ABORTED, type SetupStepContext } from "../types.js";
@@ -263,16 +264,10 @@ function context(
   return {
     appCatalog: catalog,
     manifest,
-    model: {
-      apps: [],
-      cwd: "/workspace",
-      homeDir: "/home/dev",
-      instructionFiles: [],
+    model: createWorkspaceModel({
       manifest,
-      mcpServers: [],
       sharedInstructions: { exists: false, path: "/home/dev/agents/AGENTS.md" },
-      skills: [],
-    },
+    }),
     selections: {},
   };
 }

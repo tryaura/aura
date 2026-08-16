@@ -46,11 +46,13 @@ export {
   hashManagedSnippet,
 } from "./managed-block/protocol.js";
 export { readManagedBlock } from "./managed-block/read.js";
+export { diffManagedSnippet, reconcileManagedSnippet } from "./managed-block/reconcile-snippet.js";
 export { reconcileManagedBlock } from "./managed-block/reconcile.js";
 export type {
   DesiredManagedSnippet,
   ManagedBlockReadResult,
   ManagedBlockWriteResult,
+  ManagedSnippetResolution,
 } from "./managed-block/types.js";
 export { createPluginRegistry } from "./plugin-registry.js";
 export type { PluginRegistry, PluginRegistryOptions } from "./plugin-registry.js";

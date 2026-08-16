@@ -9,6 +9,7 @@ import type {
   Scope,
   WorkspaceModel,
 } from "@tryaura/aura-sdk";
+import { createWorkspaceModel } from "@tryaura/aura-sdk/testing";
 
 /** Everything a check reads off one application, with defaults for what a test does not care about. */
 export interface TestAppOptions {
@@ -72,10 +73,8 @@ export function model(
   } = {},
 ): WorkspaceModel {
   const apps = options.apps ?? [];
-  return {
+  return createWorkspaceModel({
     apps,
-    cwd: "/workspace",
-    homeDir: "/home/dev",
     instructionFiles: [
       ...apps.flatMap((candidate) => candidate.instructionFiles),
       ...(options.instructionFiles ?? []),
@@ -86,7 +85,7 @@ export function model(
     // source exists would make the INS checks disagree with the one in `fixtures.ts`.
     sharedInstructions: { exists: false, path: "/home/dev/agents/AGENTS.md" },
     skills: apps.flatMap((candidate) => candidate.skills),
-  };
+  });
 }
 
 /** Where the repository state a project-scoped check reads comes from. */

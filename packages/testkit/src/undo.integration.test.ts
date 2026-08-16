@@ -2,6 +2,7 @@ import { chmod, lstat, readFile, readlink } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { WorkspaceModel } from "@tryaura/aura-sdk";
+import { createWorkspaceModel } from "@tryaura/aura-sdk/testing";
 import { executeFixPlan, undoFixPlan } from "@tryaura/core";
 import { describe, expect, it } from "vitest";
 
@@ -55,7 +56,7 @@ describe("persistent undo integration", () => {
 });
 
 function workspaceModel(homeDir: string, cwd: string, shared: string): WorkspaceModel {
-  return {
+  return createWorkspaceModel({
     apps: [
       {
         adapterId: "testkit",
@@ -75,15 +76,12 @@ function workspaceModel(homeDir: string, cwd: string, shared: string): Workspace
     ],
     cwd,
     homeDir,
-    instructionFiles: [],
     manifest: {
       exists: false,
       path: join(homeDir, "agents", "aura.json"),
       status: "missing",
     },
-    mcpServers: [],
     sharedInstructions: { content: "after\n", exists: true, path: shared },
     projectRoot: cwd,
-    skills: [],
-  };
+  });
 }

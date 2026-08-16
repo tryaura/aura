@@ -23,6 +23,7 @@ export interface OpenBlock {
 export interface OpenSnippet {
   readonly contentStart: number;
   readonly id: string;
+  readonly startOffset: number;
   readonly startLine: number;
   readonly storedHash: string;
 }
@@ -60,10 +61,14 @@ export function closeSnippet(
   return Object.freeze({
     computedHash,
     content,
+    contentEndOffset: end.start,
+    contentStartOffset: snippet.contentStart,
+    endOffset: end.end,
     endLine: end.number,
     hashMatches: computedHash === snippet.storedHash,
     id: snippet.id,
     startLine: snippet.startLine,
+    startOffset: snippet.startOffset,
     storedHash: snippet.storedHash,
   });
 }

@@ -1,6 +1,24 @@
-import type { Fixability, JsonObject, Scope, Severity } from "./common.js";
+import type { JsonObject, Scope, Severity } from "./common.js";
 import type { FixPlan } from "./fix.js";
 import type { WorkspaceModel } from "./model.js";
+
+/** One named remediation a guided check can offer for a specific finding. */
+export interface GuidedFixChoice {
+  /**
+   * Opt-in detail for this choice, such as a diff.
+   *
+   * A function rather than a string because the value it returns quotes the user's files. Held as
+   * data, one `JSON.stringify` of a choice puts that content in a report nobody asked for; held as
+   * a call, the content does not exist until a caller asks for it by name.
+   */
+  readonly details?: (() => string) | undefined;
+  /** Stable identifier interpreted by the check, such as `keep` or `restore`. */
+  readonly id: string;
+  /** Short user-facing action label. */
+  readonly label: string;
+  /** The complete plan produced by selecting this choice. */
+  readonly plan: FixPlan;
+}
 
 /** Where in a file a finding applies. */
 export interface FindingLocation {
@@ -126,7 +144,7 @@ interface CheckDefinition {
   readonly title: string;
 }
 
-interface FixableCheck extends CheckDefinition {
+interface AutomaticCheck extends CheckDefinition {
   /**
    * Builds the remediation for one finding.
    *
@@ -134,8 +152,21 @@ interface FixableCheck extends CheckDefinition {
    * cannot be fixed automatically, even though the check declares itself fixable.
    */
   readonly fix: (finding: Finding, model: WorkspaceModel) => FixPlan | undefined;
-  /** Whether the returned remediation is complete or includes manual steps. */
-  readonly fixability: Exclude<Fixability, "manual">;
+  readonly fixability: "auto";
+  readonly guidedFixes?: never;
+}
+
+interface GuidedCheck extends CheckDefinition {
+  /**
+   * Legacy non-interactive remediation. Return `undefined` when choosing a resolution requires
+   * user intent; {@link guidedFixes} can still expose the available named choices.
+   */
+  readonly fix: (finding: Finding, model: WorkspaceModel) => FixPlan | undefined;
+  readonly fixability: "guided";
+  /** Builds the named resolutions an interactive client may present for this finding. */
+  readonly guidedFixes?:
+    | ((finding: Finding, model: WorkspaceModel) => readonly GuidedFixChoice[])
+    | undefined;
 }
 
 interface ManualCheck extends CheckDefinition {
@@ -146,4 +177,4 @@ interface ManualCheck extends CheckDefinition {
 }
 
 /** One rule evaluated against the normalized workspace, with its remediation contract enforced. */
-export type Check = FixableCheck | ManualCheck;
+export type Check = AutomaticCheck | GuidedCheck | ManualCheck;

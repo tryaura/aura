@@ -9,7 +9,7 @@ import {
   isManagedSnippetId,
 } from "./protocol.js";
 import { readManagedBlock } from "./read.js";
-import { scanForMarkers, stripManagedMarkers } from "./scan.js";
+import { managedSnippetContentProblems, stripManagedMarkers } from "./scan.js";
 import { detectLineEnding } from "./source-lines.js";
 import type {
   DesiredManagedSnippet,
@@ -163,39 +163,11 @@ function prepareDesiredSnippets(snippets: readonly DesiredManagedSnippet[]): Pre
     ids.add(snippet.id);
 
     const canonical = canonicalizeManagedSnippet(snippet.content);
-    collectContentProblems(snippet.id, canonical, problems);
+    problems.push(...managedSnippetContentProblems(snippet.id, canonical));
     prepared.push({ canonical, hash: hashCanonicalManagedSnippet(canonical), id: snippet.id });
   }
 
   return { prepared, problems: Object.freeze(problems) };
-}
-
-/**
- * Rejects content that would escape its own snippet. Written verbatim, a marker inside a snippet
- * body reopens or closes the protocol, and the resulting file parses as invalid forever — so the
- * damage has to be caught before the write, not after.
- */
-function collectContentProblems(
-  id: string,
-  canonical: string,
-  problems: ManagedBlockProblem[],
-): void {
-  const scan = scanForMarkers(canonical);
-  if (scan.markerLine !== undefined) {
-    problems.push(
-      Object.freeze({
-        code: "invalid-snippet-content",
-        message: `Snippet "${id}" declares an Aura marker on content line ${scan.markerLine}. Wrap marker examples in a Markdown fence.`,
-      }),
-    );
-  } else if (scan.unterminatedFence) {
-    problems.push(
-      Object.freeze({
-        code: "invalid-snippet-content",
-        message: `Snippet "${id}" ends inside an unclosed Markdown fence, which would hide every marker after it. Close the fence.`,
-      }),
-    );
-  }
 }
 
 function overwrittenNotes(current: ParsedSource): readonly ManagedBlockNote[] {

@@ -27,6 +27,11 @@
       "types": "./src/index.ts",
       "development": "./src/index.ts",
       "default": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./src/testing.ts",
+      "development": "./src/testing.ts",
+      "default": "./dist/testing.js"
     }
   },
   "publishConfig": {
@@ -34,6 +39,10 @@
       ".": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
+      },
+      "./testing": {
+        "types": "./dist/testing.d.ts",
+        "default": "./dist/testing.js"
       }
     },
     "access": "public"

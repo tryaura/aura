@@ -53,6 +53,7 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
   const scan = await buildWorkspaceModel({
     adapters: request.registry.adapters,
     environment,
+    snippets: request.registry.snippets,
   });
   const model = scan.model;
 
@@ -143,6 +144,7 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
   const rescanned = await buildWorkspaceModel({
     adapters: request.registry.adapters,
     environment,
+    snippets: request.registry.snippets,
   });
   return endOnGreen(request, rescanned);
 }

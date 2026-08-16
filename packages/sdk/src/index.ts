@@ -26,6 +26,7 @@ export type {
   FindingMetadataTablePresentation,
   FindingMetadataValueColumn,
   FindingPresentation,
+  GuidedFixChoice,
 } from "./check.js";
 export type {
   Fixability,
@@ -92,6 +93,7 @@ export type {
   McpServer,
   McpTransport,
   ResolvedSharedLink,
+  ResolvedSnippet,
   SharedInstructionsState,
   StdioMcpTransport,
   WorkspaceModel,
