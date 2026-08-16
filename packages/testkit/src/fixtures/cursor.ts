@@ -1,4 +1,4 @@
-import type { TestSeed } from "../types.js";
+import type { ShimResponse, TestSeed } from "../types.js";
 import { createSeedBuilder } from "../seed.js";
 
 export type CursorFixtureVersion = "3.11.0" | "4.0.0";
@@ -7,6 +7,13 @@ export type CursorRulesFixture = "current" | "legacy";
 export interface CursorSeedOptions {
   readonly rules: CursorRulesFixture;
   readonly version: CursorFixtureVersion;
+}
+
+/** The `cursor` executable's answers, for composing multi-app seeds on one builder. */
+export function cursorShimResponses(
+  options: Pick<CursorSeedOptions, "version">,
+): readonly ShimResponse[] {
+  return [{ args: ["--version"], stdout: `${options.version}\nfixture-commit\narm64\n` }];
 }
 
 /** Builds documented Cursor rule and MCP configuration against an exact editor version. */
@@ -43,9 +50,7 @@ export function createCursorSeed(options: CursorSeedOptions): Promise<TestSeed> 
         2,
       ) + "\n",
     )
-    .shim("cursor", [
-      { args: ["--version"], stdout: `${options.version}\nfixture-commit\narm64\n` },
-    ]);
+    .shim("cursor", cursorShimResponses(options));
 
   if (options.rules === "legacy") {
     builder = builder

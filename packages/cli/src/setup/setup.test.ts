@@ -6,9 +6,9 @@ import { PassThrough } from "node:stream";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createEnvironment, createPluginRegistry, type PluginRegistry } from "@tryaura/core";
-import { defineAdapter, definePlugin, type AuraPlugin, type Environment } from "@tryaura/aura-sdk";
+import type { Environment } from "@tryaura/aura-sdk";
 
-import { BRANDING, findingPlugin } from "../testing.js";
+import { appsPlugin, BRANDING, findingPlugin } from "../testing.js";
 import { runSetup, type SetupRequest } from "./setup.js";
 import { SETUP_ABORTED, type SetupStep } from "./types.js";
 import { createScriptedWizardIo, type ScriptedWizardScript } from "./wizard-scripted.js";
@@ -88,16 +88,6 @@ describe("runSetup", () => {
     expect(manifestMode).toBe(0o600);
     expect(fixture.stdout()).toContain("Passed (1)");
     expect(fixture.stdout()).toContain("backup");
-  });
-
-  it("does not name a synthetic inventory adapter among the detected applications", async () => {
-    const fixture = await createFixture();
-    const registry = createPluginRegistry([findingPlugin("info", []), inventoryPlugin()], {});
-
-    await runSetup(fixture.request({}, { registry }));
-
-    expect(fixture.stdout()).toContain("No agent applications detected.");
-    expect(fixture.stdout()).not.toContain("File inventory");
   });
 
   it("converges to a no-op on the second run without touching the journal", async () => {
@@ -203,29 +193,55 @@ describe("runSetup", () => {
     expect(fixture.stderr()).toContain("the plan is blocked");
     await expect(snapshot(fixture.homeDir)).resolves.toEqual(before);
   });
-});
+  it("stores the app selection in the manifest and lists install instructions", async () => {
+    const fixture = await createFixture();
+    const registry = createPluginRegistry([findingPlugin("info", []), appsPlugin()], {});
 
-/** A plugin whose adapter models files rather than an application the user installed. */
-function inventoryPlugin(): AuraPlugin {
-  return definePlugin({
-    adapters: [
-      defineAdapter({
-        detect: async () => ({ installed: true, version: "1.0.0" }),
-        displayName: "File inventory",
-        files: () => [],
-        id: "file-inventory",
-        parse: () => ({ instructionFiles: [], mcpServers: [], skills: [] }),
-        supportedRange: ">=1 <2",
-        synthetic: true,
-      }),
-    ],
-    apiVersion: 1,
-    checks: [],
-    id: "fixture-inventory",
-    name: "Fixture inventory",
-    version: "1.0.0",
+    const exitCode = await runSetup(
+      fixture.request(
+        { forms: [{ apps: { kind: "options", values: ["installed-app", "missing-app"] } }] },
+        { registry },
+      ),
+    );
+
+    expect(exitCode).toBe(0);
+    expect(fixture.stdout()).toContain("✓ Installed App 1.2.3");
+    expect(fixture.stdout()).toContain("✗ Missing App — not found");
+    expect(fixture.stdout()).toContain("Steps to take yourself:");
+    expect(fixture.stdout()).toContain("Install Missing App: brew install missing-app");
+    const manifest = await readFile(join(fixture.homeDir, "agents", "aura.json"), "utf8");
+    expect(JSON.parse(manifest)).toMatchObject({
+      apps: {
+        "installed-app": { managed: true },
+        "missing-app": { managed: true },
+      },
+    });
+    await expect(runSetup(fixture.request({}, { registry }))).resolves.toBe(0);
+    expect(fixture.stdout().match(/Steps to take yourself:/gu)).toHaveLength(2);
+    expect(fixture.stdout()).not.toContain("Already converged — nothing to change.");
   });
-}
+
+  it("confirms an empty app selection before the plan confirmation", async () => {
+    const fixture = await createFixture();
+    const registry = createPluginRegistry([findingPlugin("info", []), appsPlugin()], {});
+    const before = await snapshot(fixture.homeDir);
+
+    // First confirmation: "nothing will be managed"; second: "Apply this plan?".
+    const exitCode = await runSetup(
+      fixture.request(
+        {
+          confirmations: ["accepted", "declined"],
+          forms: [{ apps: { kind: "options", values: [] } }],
+        },
+        { registry },
+      ),
+    );
+
+    expect(exitCode).toBe(0);
+    expect(fixture.stdout()).toContain("Left everything as it was.");
+    await expect(snapshot(fixture.homeDir)).resolves.toEqual(before);
+  });
+});
 
 function stubStep(id: string): SetupStep {
   return {

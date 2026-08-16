@@ -4,7 +4,14 @@ import { join } from "node:path";
 import { Readable, Writable } from "node:stream";
 
 import { runCli, type CliRuntime } from "@tryaura/aura-cli";
-import { createSeedBuilder, type TestSeed } from "@tryaura/aura-testkit";
+import {
+  claudeCodeShimResponses,
+  codexShimResponses,
+  createClaudeCodeSeed,
+  createSeedBuilder,
+  cursorShimResponses,
+  type TestSeed,
+} from "@tryaura/aura-testkit";
 import { describe, expect, it } from "vitest";
 
 import { AURA_DISTRO } from "./distro.js";
@@ -54,6 +61,94 @@ describe("aura setup", () => {
     expect(result.exitCode).toBe(0);
     expect(existsSync(join(seed.homeDir, "agents", ".backups", ".target-locks"))).toBe(true);
     expect(existsSync(join(managedHome, "agents", ".backups", ".target-locks"))).toBe(false);
+  });
+
+  it("offers the whole registry as not found on a machine with no apps", async () => {
+    await using seed = await createSeedBuilder().build();
+
+    const result = await run(seed, ["setup", "--yes"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("✗ Claude Code — not found");
+    expect(result.stdout).toContain("✗ Codex — not found");
+    expect(result.stdout).toContain("✗ Cursor — not found");
+    expect(result.stdout).toContain("No agent applications were detected.");
+    const manifest = await readFile(join(seed.homeDir, "agents", "aura.json"), "utf8");
+    expect(JSON.parse(manifest)).toMatchObject({ apps: {} });
+  });
+
+  it("pre-selects a detected application and stores it in the manifest", async () => {
+    await using seed = await createClaudeCodeSeed({ authenticated: true, version: "2.1.233" });
+
+    const result = await run(seed, ["setup", "--yes"]);
+
+    expect(result.stdout).toContain("✓ Claude Code 2.1.233 (authenticated)");
+    expect(result.stdout).toContain("✗ Codex — not found");
+    expect(result.stdout).not.toContain("Steps to take yourself:");
+    const manifest = await readFile(join(seed.homeDir, "agents", "aura.json"), "utf8");
+    expect(JSON.parse(manifest)).toMatchObject({ apps: { "claude-code": { managed: true } } });
+  });
+
+  it("detects three applications on one machine and manages them all", async () => {
+    await using seed = await createSeedBuilder()
+      .homeFile("agents/AGENTS.md", "# Shared agent instructions\n")
+      .shim("claude", claudeCodeShimResponses({ authenticated: true, version: "2.1.233" }))
+      .shim("codex", codexShimResponses({ authenticated: true, version: "0.147.0" }))
+      .shim("cursor", cursorShimResponses({ version: "3.11.0" }))
+      .build();
+
+    const result = await run(seed, ["setup", "--yes"]);
+
+    expect(result.stdout).toContain("✓ Claude Code 2.1.233 (authenticated)");
+    expect(result.stdout).toContain("✓ Codex 0.147.0 (authenticated)");
+    expect(result.stdout).toContain("✓ Cursor 3.11.0");
+    const manifest = await readFile(join(seed.homeDir, "agents", "aura.json"), "utf8");
+    expect(JSON.parse(manifest)).toMatchObject({
+      apps: {
+        "claude-code": { managed: true },
+        codex: { managed: true },
+        cursor: { managed: true },
+      },
+    });
+  });
+
+  it("flags an unsupported version but keeps the application manageable", async () => {
+    await using seed = await createClaudeCodeSeed({ authenticated: true, version: "3.0.0" });
+
+    const result = await run(seed, ["setup", "--yes"]);
+
+    expect(result.stdout).toContain(
+      "⚠ Claude Code 3.0.0 — unsupported version (supported: >=2.1.0 <3.0.0); fixes are downgraded",
+    );
+    const manifest = await readFile(join(seed.homeDir, "agents", "aura.json"), "utf8");
+    expect(JSON.parse(manifest)).toMatchObject({ apps: { "claude-code": { managed: true } } });
+  });
+
+  it("keeps managing a selected application that is not installed and shows its install hint", async () => {
+    await using seed = await createSeedBuilder()
+      .homeFile(
+        "agents/aura.json",
+        JSON.stringify(
+          {
+            apps: { codex: { managed: true } },
+            mcpServers: [],
+            ownership: {},
+            schemaVersion: 1,
+            skills: [],
+            snippets: [],
+          },
+          undefined,
+          2,
+        ) + "\n",
+      )
+      .build();
+
+    const result = await run(seed, ["setup", "--yes"]);
+
+    expect(result.stdout).toContain("Steps to take yourself:");
+    expect(result.stdout).toContain("Install Codex: Run `npm install -g @openai/codex@latest`");
+    const manifest = await readFile(join(seed.homeDir, "agents", "aura.json"), "utf8");
+    expect(JSON.parse(manifest)).toMatchObject({ apps: { codex: { managed: true } } });
   });
 
   it("stops at the plan under --dry-run without writing", async () => {
