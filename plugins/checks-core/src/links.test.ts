@@ -185,6 +185,34 @@ describe("INS-002", () => {
     }
   });
 
+  it("does not accept an import as Codex's native symlink mechanism", () => {
+    const path = "/home/dev/.codex/AGENTS.md";
+    const application = app({
+      id: "codex",
+      instructionFiles: [
+        {
+          content: `@${SHARED_PATH}\n`,
+          links: [{ kind: "import", targetPath: SHARED_PATH, valid: true }],
+          path,
+          scope: "global",
+          sourceId: "codex.instructions.global",
+        },
+      ],
+      link: { entryPath: path, kind: "symlink", scope: "global" },
+      source: { exists: true, pathKind: "file" },
+    });
+
+    expect(sharedInstructionLinksCheck.detect(workspace([application], "# Shared\n"))).toHaveLength(
+      1,
+    );
+  });
+
+  it("ignores any synthetic inventory adapter, not one named id", () => {
+    const inventory = app({ id: "legacy-instructions", synthetic: true });
+
+    expect(sharedInstructionLinksCheck.detect(workspace([inventory], "# Shared\n"))).toEqual([]);
+  });
+
   it("keeps problematic entries report-only", () => {
     const model = workspace(
       [

@@ -5,9 +5,13 @@ import { env002 } from "./env-002.js";
 import { env003 } from "./env-003.js";
 import { env004 } from "./env-004.js";
 import { duplicateInstructionsCheck } from "./ins-003/index.js";
+import { legacyInstructionsCheck } from "./ins-004.js";
+import { instructionLinkIntegrityCheck } from "./ins-006/index.js";
 import { sharedInstructionLinksCheck, sharedInstructionsCheck } from "./instructions.js";
+import { legacyInstructionsAdapter } from "./legacy-adapter.js";
 
 export default definePlugin({
+  adapters: [legacyInstructionsAdapter],
   apiVersion: 1,
   checks: [
     env001,
@@ -17,6 +21,8 @@ export default definePlugin({
     sharedInstructionsCheck,
     sharedInstructionLinksCheck,
     duplicateInstructionsCheck,
+    legacyInstructionsCheck,
+    instructionLinkIntegrityCheck,
   ],
   id: "checks-core",
   name: "Aura Core Checks",

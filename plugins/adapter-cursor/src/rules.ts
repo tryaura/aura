@@ -1,8 +1,9 @@
-import { dirname, isAbsolute, resolve } from "node:path";
-
 import {
+  isFileReference,
   maskMarkdownCode,
+  referenceTargetPath,
   type AdapterSourceFile,
+  type AtImportContext,
   type InstructionDocument,
   type InstructionLink,
   type JsonObject,
@@ -10,17 +11,15 @@ import {
 
 const FILE_DIRECTIVE_PATTERN = /(^|[\s([{>"'])@file\s+([^\s)\]}>"']+)/gmu;
 const REFERENCE_PATTERN = /(^|[\s([{>"'])@((?:\/|\.{1,2}\/)?[A-Za-z0-9_.+/-]+)/gmu;
-const PATH_PREFIX_PATTERN = /^(?:\/|\.{1,2}\/)/u;
-const FILE_EXTENSION_PATTERN = /\.[A-Za-z0-9]+$/u;
 const FRONTMATTER_PATTERN = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/u;
 const FRONTMATTER_FIELD_PATTERN = /^(alwaysApply|description|globs):\s*(.*?)\s*$/u;
 
-export function parseRuleFile(file: AdapterSourceFile): InstructionDocument {
+export function parseRuleFile(file: AdapterSourceFile, homeDir: string): InstructionDocument {
   const content = file.content ?? "";
   const metadata = parseFrontmatter(content);
   return {
     content,
-    links: parseReferences(content, file.spec.path),
+    links: parseReferences(content, { homeDir, sourcePath: file.spec.path }),
     ...(metadata === undefined ? {} : { metadata }),
     path: file.spec.path,
     scope: file.spec.scope,
@@ -57,7 +56,7 @@ function parseFrontmatterField(line: string): readonly (readonly [string, string
   return [[name, name === "alwaysApply" ? value === "true" : value]];
 }
 
-function parseReferences(content: string, sourcePath: string): readonly InstructionLink[] {
+function parseReferences(content: string, context: AtImportContext): readonly InstructionLink[] {
   const visible = maskMarkdownCode(content);
   const links: InstructionLink[] = [];
   const targets = new Set<string>();
@@ -79,8 +78,10 @@ function parseReferences(content: string, sourcePath: string): readonly Instruct
   references.sort((left, right) => left.index - right.index);
   for (const reference of references) {
     const normalized = normalizeReference(reference.raw);
-    if (reference.typed || isReference(normalized)) {
-      addReference(normalized, sourcePath, targets, links);
+    // Cursor's `@` mentions deliberately reach past instructions into the code they describe, so
+    // any extension counts here where an instruction import would require a documented one.
+    if (reference.typed || isFileReference(normalized)) {
+      addReference(normalized, context, targets, links);
     }
   }
 
@@ -89,7 +90,7 @@ function parseReferences(content: string, sourcePath: string): readonly Instruct
 
 function addReference(
   reference: string,
-  sourcePath: string,
+  context: AtImportContext,
   targets: Set<string>,
   links: InstructionLink[],
 ): void {
@@ -97,9 +98,7 @@ function addReference(
     return;
   }
 
-  const targetPath = isAbsolute(reference)
-    ? resolve(reference)
-    : resolve(dirname(sourcePath), reference);
+  const targetPath = referenceTargetPath(reference, context);
   if (targets.has(targetPath)) {
     return;
   }
@@ -109,8 +108,4 @@ function addReference(
 
 function normalizeReference(reference: string): string {
   return reference.replace(/[.,;:!?]+$/u, "");
-}
-
-function isReference(reference: string): boolean {
-  return PATH_PREFIX_PATTERN.test(reference) || FILE_EXTENSION_PATTERN.test(reference);
 }

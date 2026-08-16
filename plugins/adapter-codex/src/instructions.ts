@@ -1,7 +1,13 @@
 import { dirname, isAbsolute, resolve } from "node:path";
 import { Buffer } from "node:buffer";
 
-import type { AdapterFileMap, AdapterSourceFile, InstructionDocument } from "@tryaura/aura-sdk";
+import {
+  parseAtImports,
+  type AdapterFileMap,
+  type AdapterSourceFile,
+  type InstructionDocument,
+  type InstructionLink,
+} from "@tryaura/aura-sdk";
 
 /** What one level's candidates resolved to: the file Codex reads, and the ones it does not. */
 export interface SelectedInstructions {
@@ -11,7 +17,21 @@ export interface SelectedInstructions {
 }
 
 export interface InstructionSelectionOptions {
+  readonly homeDir: string;
   readonly projectMaxBytes: number;
+}
+
+/** What {@link parseInstructionFile} needs beyond the file itself. */
+export interface ParseInstructionOptions {
+  /**
+   * Contents to parse instead of the file's own.
+   *
+   * Project files are truncated to what Codex's byte budget still allows, so the document must be
+   * built from the text Codex would actually read rather than the whole file.
+   */
+  readonly content?: string | undefined;
+  /** The current user's home directory, which `~/` references resolve against. */
+  readonly homeDir: string;
 }
 
 /**
@@ -42,7 +62,7 @@ export function selectInstructionFiles(
 
     shadowed.push(...candidates.filter((file) => file !== chosen));
     if (chosen.spec.scope === "project") {
-      const selected = projectDocument(chosen, projectBytesRemaining);
+      const selected = projectDocument(chosen, projectBytesRemaining, options.homeDir);
       if (selected === undefined) {
         continue;
       }
@@ -51,7 +71,7 @@ export function selectInstructionFiles(
       continue;
     }
 
-    documents.push(parseInstructionFile(chosen));
+    documents.push(parseInstructionFile(chosen, { homeDir: options.homeDir }));
   }
 
   return { documents, shadowed };
@@ -91,6 +111,7 @@ function hasContent(file: AdapterSourceFile): boolean {
 function projectDocument(
   file: AdapterSourceFile,
   remaining: number,
+  homeDir: string,
 ): { readonly bytes: number; readonly document: InstructionDocument } | undefined {
   if (remaining === 0) {
     return undefined;
@@ -103,7 +124,7 @@ function projectDocument(
 
   return {
     bytes: Math.min(source.sourceBytes, remaining),
-    document: parseInstructionFile(file, source.content),
+    document: parseInstructionFile(file, { content: source.content, homeDir }),
   };
 }
 
@@ -155,23 +176,34 @@ function isReadableInstructionSource(file: AdapterSourceFile): boolean {
  */
 export function parseInstructionFile(
   file: AdapterSourceFile,
-  content = file.content ?? "",
+  options: ParseInstructionOptions,
 ): InstructionDocument {
+  const content = options.content ?? file.content ?? "";
   const target = file.symlinkTarget;
+  const symlink: readonly InstructionLink[] =
+    file.pathKind === "symlink" && target !== undefined
+      ? [
+          {
+            kind: "symlink",
+            targetPath: isAbsolute(target)
+              ? resolve(target)
+              : resolve(dirname(file.spec.path), target),
+            valid: false,
+          },
+        ]
+      : [];
   return {
     content,
-    links:
-      file.pathKind === "symlink" && target !== undefined
-        ? [
-            {
-              kind: "symlink",
-              targetPath: isAbsolute(target)
-                ? resolve(target)
-                : resolve(dirname(file.spec.path), target),
-              valid: false,
-            },
-          ]
-        : [],
+    /**
+     * Import-shaped references are retained for diagnostics even though Codex reads them as plain
+     * text. The links deliberately use the ordinary `import` kind: the normalized model records
+     * what the document says, while INS-006 combines that with the owning adapter's capability
+     * table to explain that the directive is ineffective.
+     */
+    links: [
+      ...symlink,
+      ...parseAtImports(content, { homeDir: options.homeDir, sourcePath: file.spec.path }),
+    ],
     path: file.spec.path,
     scope: file.spec.scope,
     sourceId: file.spec.id,

@@ -229,6 +229,13 @@ export interface AppModel extends Omit<AdapterSnapshot, "problems"> {
   readonly sharedLink?: ResolvedSharedLink | undefined;
   /** Whether Aura understands the detected version. */
   readonly support: AdapterSupport;
+  /**
+   * Whether this models files rather than an application the user installed.
+   *
+   * Set from {@link Adapter.synthetic}. Anything that names applications to the user, or reasons
+   * about what an application supports, should skip these.
+   */
+  readonly synthetic?: boolean | undefined;
 }
 
 /**

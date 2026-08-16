@@ -230,4 +230,13 @@ export interface Adapter {
   readonly sharedLink?: AdapterSharedLink | undefined;
   /** Semver range of application versions this adapter understands, for example `">=1 <2"`. */
   readonly supportedRange: string;
+  /**
+   * Whether this adapter models files rather than an application the user installed.
+   *
+   * An inventory adapter reports itself installed so that core reads its paths, but naming it
+   * where Aura lists applications would claim the user runs something they have never heard of.
+   * Core carries the flag through to {@link AppModel.synthetic} so that user-facing lists and
+   * checks written about real applications can exclude it once, rather than each by name.
+   */
+  readonly synthetic?: boolean | undefined;
 }

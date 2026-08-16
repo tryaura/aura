@@ -32,10 +32,13 @@ export const codexAdapter = defineAdapter({
   id: CODEX_ADAPTER_ID,
   installHint:
     "Run `npm install -g @openai/codex@latest`, or update Codex with your package manager.",
-  parse: ({ cwd, files, projectRoot }) => {
+  parse: ({ cwd, files, homeDir, projectRoot }) => {
     const mcp = files.get(SOURCE_IDS.mcp);
     const settings = parseCodexProjectSettings(mcp);
-    const instructions = selectInstructionFiles(files, { projectMaxBytes: settings.maxBytes });
+    const instructions = selectInstructionFiles(files, {
+      homeDir,
+      projectMaxBytes: settings.maxBytes,
+    });
 
     return {
       instructionFiles: instructions.documents,

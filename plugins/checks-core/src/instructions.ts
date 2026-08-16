@@ -99,9 +99,16 @@ export const sharedInstructionLinksCheck = defineCheck({
 type LinkOutcome = { readonly blocked: string } | { readonly plan: FixPlan };
 
 function detectMissingLink(app: AppModel, model: WorkspaceModel): readonly DetectedFinding[] {
+  // An inventory adapter models files no application owns, so there is nothing to link it to.
+  if (app.synthetic === true) {
+    return [];
+  }
   const sharedPath = resolve(model.sharedInstructions.path);
   const valid = app.instructionFiles.some((document) =>
-    document.links.some((link) => link.valid && resolve(link.targetPath) === sharedPath),
+    document.links.some(
+      (link) =>
+        link.valid && compatibleLink(app, link.kind) && resolve(link.targetPath) === sharedPath,
+    ),
   );
   if (valid) {
     return [];
@@ -118,6 +125,24 @@ function detectMissingLink(app: AppModel, model: WorkspaceModel): readonly Detec
       metadata: { appId: app.adapterId },
     },
   ];
+}
+
+function compatibleLink(
+  app: AppModel,
+  kind: InstructionDocument["links"][number]["kind"],
+): boolean {
+  switch (app.sharedLink?.kind) {
+    case "symlink": {
+      return kind === "symlink";
+    }
+    case "import-line":
+    case "native-copy": {
+      return kind === "import" || kind === "native";
+    }
+    case undefined: {
+      return true;
+    }
+  }
 }
 
 /** Decides what Aura can do for one application, and says so in the same breath. */
