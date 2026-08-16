@@ -3,10 +3,10 @@ import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, normalize, relative, sep } from "node:path";
 
 import { readInvocations, validateShim, writeShim } from "./shims.js";
-import type { ShimResponse, TestSeed, TestSeedBuilder } from "./types.js";
+import type { SeedContent, SeedRoots, ShimResponse, TestSeed, TestSeedBuilder } from "./types.js";
 
 interface SeedFile {
-  readonly content: string;
+  readonly content: SeedContent;
   readonly path: string;
 }
 
@@ -20,7 +20,7 @@ class SeedBuilder implements TestSeedBuilder {
   readonly #shims = new Map<string, SeedShim>();
   readonly #workspaceFiles = new Map<string, SeedFile>();
 
-  homeFile(path: string, content: string): TestSeedBuilder {
+  homeFile(path: string, content: SeedContent): TestSeedBuilder {
     addFile(this.#homeFiles, "HOME", path, content);
     return this;
   }
@@ -37,7 +37,7 @@ class SeedBuilder implements TestSeedBuilder {
     return this;
   }
 
-  workspaceFile(path: string, content: string): TestSeedBuilder {
+  workspaceFile(path: string, content: SeedContent): TestSeedBuilder {
     addFile(this.#workspaceFiles, "workspace", path, content);
     return this;
   }
@@ -61,9 +61,10 @@ class SeedBuilder implements TestSeedBuilder {
         mkdir(pathDir, { recursive: true }),
         mkdir(workspaceDir, { recursive: true }),
       ]);
+      const roots: SeedRoots = { homeDir, workspaceDir };
       await Promise.all([
-        writeFiles(homeDir, this.#homeFiles.values()),
-        writeFiles(workspaceDir, this.#workspaceFiles.values()),
+        writeFiles(homeDir, this.#homeFiles.values(), roots),
+        writeFiles(workspaceDir, this.#workspaceFiles.values(), roots),
       ]);
       await Promise.all(
         [...this.#shims.values()].map((shim) =>
@@ -97,7 +98,12 @@ export function createSeedBuilder(): TestSeedBuilder {
   return new SeedBuilder();
 }
 
-function addFile(files: Map<string, SeedFile>, scope: string, path: string, content: string): void {
+function addFile(
+  files: Map<string, SeedFile>,
+  scope: string,
+  path: string,
+  content: SeedContent,
+): void {
   const normalized = normalizeSeedPath(path);
   if (files.has(normalized)) {
     throw new Error(`${scope} file is already seeded: ${normalized}`);
@@ -118,19 +124,24 @@ function normalizeSeedPath(path: string): string {
 }
 
 /**
- * Materializes one root's files.
+ * Materializes one root's files, resolving any content declared as a function of the roots.
  *
  * Sequential on purpose: two declared paths can disagree about whether a name is a file or a
  * directory, and writing them in declaration order makes which one fails deterministic.
  */
-async function writeFiles(root: string, files: Iterable<SeedFile>): Promise<void> {
+async function writeFiles(
+  root: string,
+  files: Iterable<SeedFile>,
+  roots: SeedRoots,
+): Promise<void> {
   for (const file of files) {
     const destination = join(root, file.path);
     const fromRoot = relative(root, destination);
     if (fromRoot === ".." || fromRoot.startsWith(`..${sep}`) || isAbsolute(fromRoot)) {
       throw new Error(`Seed file escaped its root: ${file.path}`);
     }
+    const content = typeof file.content === "string" ? file.content : file.content(roots);
     await mkdir(dirname(destination), { recursive: true });
-    await writeFile(destination, file.content, "utf8");
+    await writeFile(destination, content, "utf8");
   }
 }

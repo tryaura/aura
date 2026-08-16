@@ -61,14 +61,18 @@ describe("runBinaryCheck", () => {
     ).rejects.toThrow("Could not launch compiled Aura binary");
   });
 
-  it("rejects unsupported process exit codes", async () => {
+  it("rejects unsupported process exit codes and keeps what the run printed", async () => {
     await using seed = await createSeedBuilder().build();
     const binaryPath = await writeFixtureBinary(
       seed.workspaceDir,
-      `#!/bin/sh\nprintf '%s\\n' '${EMPTY_REPORT}'\nexit 7\n`,
+      `#!/bin/sh\nprintf 'diagnostic detail\\n' >&2\nprintf '%s\\n' '${EMPTY_REPORT}'\nexit 7\n`,
     );
 
-    await expect(runBinaryCheck({ binaryPath, seed })).rejects.toThrow("unsupported exit code 7");
+    // The transcript is what turns a rejected run into a debuggable one, and every rejection
+    // builds it the same way — so a run that exits on its own proves it without a race.
+    const run = runBinaryCheck({ binaryPath, seed });
+    await expect(run).rejects.toThrow("unsupported exit code 7");
+    await expect(run).rejects.toThrow("diagnostic detail");
   });
 
   it("rejects signal termination", async () => {
@@ -80,19 +84,21 @@ describe("runBinaryCheck", () => {
     );
   });
 
-  it("kills a run that outlives its timeout and keeps what it printed", async () => {
+  it("kills a run that outlives its timeout", async () => {
     await using seed = await createSeedBuilder().build();
-    const binaryPath = await writeFixtureBinary(
-      seed.workspaceDir,
-      "#!/bin/sh\nprintf 'started\\n' >&2\nwhile : ; do : ; done\n",
+    // `exec sleep` rather than a busy loop: the process only has to outlive the timeout, and a
+    // spinning shell competes for the core this process needs to fire the timer. `exec` also puts
+    // `sleep` in the process the runner kills, so nothing survives the SIGKILL.
+    //
+    // Deliberately asserts nothing about the transcript. Whether a killed child's buffered output
+    // reaches the parent depends on how promptly it was scheduled before the kill, which on a
+    // loaded machine it is not — and the transcript is proven on the exit-code path above, which
+    // builds it through the same code and does not race.
+    const binaryPath = await writeFixtureBinary(seed.workspaceDir, "#!/bin/sh\nexec sleep 30\n");
+
+    await expect(runBinaryCheck({ binaryPath, seed, timeoutMs: 1_500 })).rejects.toThrow(
+      "killed the run after 1500ms without an exit",
     );
-
-    // Long enough that the fixture has certainly reached its loop even on a loaded machine, which is
-    // what makes "the transcript survived the kill" the thing this asserts rather than a race.
-    const run = runBinaryCheck({ binaryPath, seed, timeoutMs: 1_500 });
-
-    await expect(run).rejects.toThrow("killed the run after 1500ms without an exit");
-    await expect(run).rejects.toThrow("started");
   });
 
   it("rejects arguments the runner already supplies", async () => {

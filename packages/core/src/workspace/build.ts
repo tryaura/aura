@@ -7,17 +7,25 @@ import type {
   AppModel,
   Environment,
   ResolvedSharedLink,
-  SharedInstructionsState,
   WorkspaceModel,
 } from "@tryaura/aura-sdk";
 
-import { describeFailure, type ScanDiagnostic, type ScanPhase } from "./diagnostics.js";
+import {
+  describeAdapterProblems,
+  describeFailure,
+  type ScanDiagnostic,
+  type ScanPhase,
+} from "./diagnostics.js";
 import { type AdapterFileDiscovery, discoverAdapterFiles } from "./discovery.js";
 import { createLinkResolver, type LinkResolver } from "./links.js";
 import { findProjectRoot } from "./project-root.js";
 import { createCachingReader, createFileReader, type FileReader } from "./reader.js";
 import { scanRepository } from "./repository.js";
-import { resolveAdapterSharedLink, sharedInstructionsPath } from "./shared-links.js";
+import {
+  resolveAdapterSharedLink,
+  sharedInstructionsPath,
+  toSharedInstructions,
+} from "./shared-links.js";
 import { evaluateSupport, isComparableRange } from "./support.js";
 
 /** Everything {@link buildWorkspaceModel} needs. */
@@ -197,24 +205,9 @@ async function scanAdapter(adapter: Adapter, context: ScanContext): Promise<Adap
     diagnostics.push(failure(adapter, "files", error));
   }
 
-  let snapshot = EMPTY_SNAPSHOT;
-  try {
-    const parsed = adapter.parse({
-      cwd: context.environment.cwd,
-      detection,
-      files: discovery.files,
-      homeDir: context.environment.homeDir,
-      projectRoot: await context.projectRoot,
-    });
-    snapshot = {
-      instructionFiles: await context.links.resolve(parsed.instructionFiles),
-      mcpServers: [...parsed.mcpServers],
-      metadata: parsed.metadata,
-      skills: [...parsed.skills],
-    };
-  } catch (error) {
-    diagnostics.push(failure(adapter, "parse", error));
-  }
+  const parse = await parseAdapter(adapter, detection, discovery, context);
+  const snapshot = parse.snapshot;
+  diagnostics.push(...parse.diagnostics);
 
   if (!isComparableRange(adapter.supportedRange)) {
     diagnostics.push({
@@ -244,6 +237,41 @@ async function scanAdapter(adapter: Adapter, context: ScanContext): Promise<Adap
   };
 }
 
+/**
+ * Hands one adapter its files and normalizes what it makes of them.
+ *
+ * Guarded like every other plugin call: an adapter that throws loses its own snapshot and nothing
+ * else. The files it read but could not use are a different thing entirely — those are reported as
+ * the adapter's own diagnostics, since only it can tell a corrupt config from an empty one.
+ */
+async function parseAdapter(
+  adapter: Adapter,
+  detection: AdapterDetection,
+  discovery: AdapterFileDiscovery,
+  context: ScanContext,
+): Promise<{ diagnostics: readonly ScanDiagnostic[]; snapshot: AdapterSnapshot }> {
+  try {
+    const parsed = adapter.parse({
+      cwd: context.environment.cwd,
+      detection,
+      files: discovery.files,
+      homeDir: context.environment.homeDir,
+      projectRoot: await context.projectRoot,
+    });
+    return {
+      diagnostics: describeAdapterProblems(adapter, parsed.problems ?? [], discovery.files),
+      snapshot: {
+        instructionFiles: await context.links.resolve(parsed.instructionFiles),
+        mcpServers: [...parsed.mcpServers],
+        metadata: parsed.metadata,
+        skills: [...parsed.skills],
+      },
+    };
+  } catch (error) {
+    return { diagnostics: [failure(adapter, "parse", error)], snapshot: EMPTY_SNAPSHOT };
+  }
+}
+
 /** What an application contributes when its adapter failed to parse anything. */
 const EMPTY_SNAPSHOT: AdapterSnapshot = Object.freeze({
   instructionFiles: [],
@@ -258,23 +286,6 @@ function toStatus(file: AdapterSourceFile): AdapterFileStatus {
     problem: file.problem,
     spec: file.spec,
     ...(file.symlinkTarget === undefined ? {} : { symlinkTarget: file.symlinkTarget }),
-  };
-}
-
-function toSharedInstructions(
-  path: string,
-  contents: Awaited<ReturnType<FileReader["read"]>>,
-): SharedInstructionsState {
-  const problem =
-    contents.problem ??
-    (contents.exists && (contents.isDirectory || contents.content === undefined)
-      ? "unsupported"
-      : undefined);
-  return {
-    content: contents.content,
-    exists: contents.exists,
-    path,
-    problem,
   };
 }
 

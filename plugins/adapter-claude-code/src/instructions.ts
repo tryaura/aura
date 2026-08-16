@@ -35,6 +35,13 @@ export function parseInstructionFile(
   };
 }
 
+/**
+ * Collects the imports a document declares, one link per distinct target.
+ *
+ * Deduplicated because the link count is otherwise bounded only by file size, and a project
+ * `CLAUDE.md` is a file the user did not write — it arrives with the repository. Two mentions of
+ * one path are also nothing a user needs told twice.
+ */
 function parseImports(
   content: string,
   sourcePath: string,
@@ -42,17 +49,20 @@ function parseImports(
 ): readonly InstructionLink[] {
   const visible = maskMarkdownCode(content);
   const links: InstructionLink[] = [];
+  const targets = new Set<string>();
 
   for (const match of visible.matchAll(IMPORT_PATTERN)) {
     const reference = match[2]?.slice(1).replace(/[.,;:!?]+$/u, "");
     if (reference === undefined || !isImport(reference)) {
       continue;
     }
-    links.push({
-      kind: "import",
-      targetPath: resolveImport(reference, sourcePath, homeDir),
-      valid: false,
-    });
+
+    const targetPath = resolveImport(reference, sourcePath, homeDir);
+    if (targets.has(targetPath)) {
+      continue;
+    }
+    targets.add(targetPath);
+    links.push({ kind: "import", targetPath, valid: false });
   }
 
   return links;

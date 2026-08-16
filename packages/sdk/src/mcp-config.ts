@@ -34,14 +34,29 @@ export function parseJsonMcpServers(
   file: AdapterSourceFile,
   options: JsonMcpConfigOptions,
 ): readonly McpServer[] {
+  const root = parseConfigObject(file.content, (text): unknown => JSON.parse(text));
+  return collectJsonMcpServers(file, root?.["mcpServers"], options);
+}
+
+/**
+ * Normalizes an `mcpServers` record the caller has already parsed out of its document.
+ *
+ * Separate from {@link parseJsonMcpServers} for the configurations that keep more than one such
+ * record: Claude Code stores global servers beside a `projects` map of per-directory ones, and
+ * reaching them through the whole-file entry point would parse the largest file in a scan twice.
+ */
+export function collectJsonMcpServers(
+  file: AdapterSourceFile,
+  entries: unknown,
+  options: JsonMcpConfigOptions,
+): readonly McpServer[] {
   if (!options.variablePattern.global) {
     throw new TypeError(
       "JsonMcpConfigOptions.variablePattern must be a global regular expression (g flag).",
     );
   }
 
-  const root = parseConfigObject(file.content, (text): unknown => JSON.parse(text));
-  return collectMcpServers(file, options.appId, root?.["mcpServers"], (candidate) =>
+  return collectMcpServers(file, options.appId, entries, (candidate) =>
     parseTransport(candidate, options.variablePattern),
   );
 }

@@ -58,6 +58,7 @@ export type {
   WriteFileOperation,
 } from "./fix.js";
 export type {
+  AdapterProblem,
   AdapterSnapshot,
   AppModel,
   GitignoreModel,
@@ -84,7 +85,7 @@ export {
   redactMcpArguments,
   sanitizeMcpUrl,
 } from "./mcp.js";
-export { parseJsonMcpServers } from "./mcp-config.js";
+export { collectJsonMcpServers, parseJsonMcpServers } from "./mcp-config.js";
 export type { JsonMcpConfigOptions } from "./mcp-config.js";
 export { maskMarkdownCode } from "./markdown.js";
 export type { AuraPlugin } from "./plugin.js";
