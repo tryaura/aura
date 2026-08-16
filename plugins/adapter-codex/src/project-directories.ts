@@ -9,12 +9,6 @@ export interface ProjectLookup {
 }
 
 /**
- * Guards against a cwd that is not actually inside the reported root, and against a repository
- * nested deeply enough that walking it would cost more than the answer is worth.
- */
-const MAX_ANCESTORS = 64;
-
-/**
  * Every directory of the current project Codex consults, from `cwd` outward to the repository root.
  *
  * Two features need exactly this list. Codex keys `[projects."..."]` by the directory it was
@@ -36,7 +30,7 @@ export function projectDirectories(lookup: ProjectLookup): readonly string[] {
   const directories: string[] = [];
   const stop = resolve(lookup.projectRoot);
   let current = cwd;
-  for (let depth = 0; depth < MAX_ANCESTORS && isWithin(current, stop); depth += 1) {
+  while (isWithin(current, stop)) {
     directories.push(current);
     if (current === stop) {
       break;
@@ -50,6 +44,20 @@ export function projectDirectories(lookup: ProjectLookup): readonly string[] {
   }
 
   return directories.length === 0 ? [cwd] : directories;
+}
+
+/** Every logical ancestor from `cwd` through the filesystem root, with no arbitrary depth cap. */
+export function ancestorDirectories(cwd: string): readonly string[] {
+  const directories: string[] = [];
+  let current = resolve(cwd);
+  for (;;) {
+    directories.push(current);
+    const parent = dirname(current);
+    if (parent === current) {
+      return directories;
+    }
+    current = parent;
+  }
 }
 
 function isWithin(candidate: string, root: string): boolean {

@@ -104,8 +104,8 @@ describe("buildWorkspaceModel", () => {
     });
 
     expect(model.apps[0]?.sourceFiles).toStrictEqual([
-      { exists: true, problem: undefined, spec: INSTRUCTIONS },
-      { exists: true, problem: undefined, spec: SKILLS },
+      { exists: true, pathKind: "file", problem: undefined, spec: INSTRUCTIONS },
+      { exists: true, pathKind: "directory", problem: undefined, spec: SKILLS },
     ]);
   });
 
@@ -139,9 +139,9 @@ describe("buildWorkspaceModel", () => {
         [
           "skills",
           {
-            content: undefined,
             entries: ["review", "summarize"],
             exists: true,
+            pathKind: "directory",
             problem: undefined,
             spec: SKILLS,
           },
@@ -150,8 +150,8 @@ describe("buildWorkspaceModel", () => {
           "instructions",
           {
             content: "# instructions",
-            entries: undefined,
             exists: true,
+            pathKind: "file",
             problem: undefined,
             spec: INSTRUCTIONS,
           },

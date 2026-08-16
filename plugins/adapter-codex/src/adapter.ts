@@ -16,12 +16,12 @@ import {
   CODEX_ADAPTER_ID,
   CODEX_OVERRIDE_SUFFIX,
   CODEX_PROJECT_TRUST_KEY,
-  codexProjectInstructionsId,
   CODEX_SOURCE_IDS as SOURCE_IDS,
 } from "./contract.js";
+import { parseCodexProjectSettings } from "./config.js";
 import { selectInstructionFiles } from "./instructions.js";
 import { parseMcpServers } from "./mcp.js";
-import { projectDirectories } from "./project-directories.js";
+import { codexProjectInstructionFiles } from "./project-instructions.js";
 import { parseProjectTrust } from "./trust.js";
 
 export const codexAdapter = defineAdapter({
@@ -34,7 +34,8 @@ export const codexAdapter = defineAdapter({
     "Run `npm install -g @openai/codex@latest`, or update Codex with your package manager.",
   parse: ({ cwd, files, projectRoot }) => {
     const mcp = files.get(SOURCE_IDS.mcp);
-    const instructions = selectInstructionFiles(files);
+    const settings = parseCodexProjectSettings(mcp);
+    const instructions = selectInstructionFiles(files, { projectMaxBytes: settings.maxBytes });
 
     return {
       instructionFiles: instructions.documents,
@@ -51,19 +52,10 @@ export const codexAdapter = defineAdapter({
     entryPath: "~/.codex/AGENTS.md",
     kind: "symlink",
   },
-  // Verified releases only: Codex ships breaking changes in 0.x minors, so the range widens one
-  // verified version at a time rather than trusting a whole major like Claude Code's does.
   supportedRange: ">=0.146.0 <0.148.0",
 });
 
-/**
- * Reports an override that shadows the file Aura's own shared link writes to.
- *
- * A repository shadowing its own `AGENTS.md` is ordinary and says nothing. `~/.codex/AGENTS.md` is
- * different: it is the entry INS-002 links to the shared instruction source, so an override beside
- * it means Aura can wire that link up perfectly and Codex will still never read it. Nothing in the
- * model shows that on its own — the link is present, valid, and pointed at exactly the right file.
- */
+/** Reports an override that shadows the file Aura's own shared link writes to. */
 function shadowedEntryProblems(shadowed: readonly AdapterSourceFile[]): readonly AdapterProblem[] {
   return shadowed
     .filter((file) => file.spec.id === SOURCE_IDS.instructions)
@@ -74,41 +66,21 @@ function shadowedEntryProblems(shadowed: readonly AdapterSourceFile[]): readonly
 }
 
 /**
- * Declares the global and project configuration Codex reads, in the order Codex reads it.
+ * Declares global configuration first, then probes project candidates without loading them.
  *
- * Project instructions are not one file. Codex starts at the repository root and walks *down* to
- * the invocation directory, taking at most one `AGENTS.md` per directory and concatenating them
- * root-first. Declaring only the invocation directory would therefore miss the repository's own
- * `AGENTS.md` for every scan started from a package inside a monorepo — the common case, and the
- * one where the guidance Codex is actually loading is the guidance Aura would never see. The walk
- * stops where Codex stops: nothing below the invocation directory is read, by Codex or here.
- *
- * Every level declares its `AGENTS.override.md` beside its `AGENTS.md`, because Codex prefers the
- * override wherever it finds one. Which of the two actually applies is decided in
- * {@link selectInstructionFiles}, once core has said what is really on disk.
- *
- * One limit is deliberately not modelled: Codex stops concatenating once the combined instructions
- * reach `project_doc_max_bytes` (32 KiB by default), so a very large set is not loaded in full.
- * Aura reports the files Codex reads, not the prefix of them that survives its budget.
+ * The first round reads `config.toml` and the two global candidates. Later rounds inspect configured
+ * root markers and project candidate filenames, then read only the candidate Codex selects at each
+ * level. Selected files carry the aggregate project-document byte limit into core's read.
  */
 function codexFiles(
   environment: Environment,
   _detection: AdapterDetection,
-  _files: AdapterFileMap,
+  files: AdapterFileMap,
   projectRoot: string | undefined,
 ): readonly AdapterFileSpec[] {
   const codexHome = join(environment.homeDir, ".codex");
-
-  return [
+  const declarations: AdapterFileSpec[] = [
     ...instructionLevel(codexHome, SOURCE_IDS.instructions, "global"),
-    // The walk hands back the invocation directory first, so its index is the ancestor count the
-    // slot id is named for. Reversed afterwards because Codex reads the outermost directory first.
-    ...projectDirectories({ cwd: environment.cwd, projectRoot })
-      .map((directory, ancestors) =>
-        instructionLevel(directory, codexProjectInstructionsId(ancestors), "project"),
-      )
-      .reverse()
-      .flat(),
     {
       id: SOURCE_IDS.mcp,
       kind: "mcp",
@@ -117,9 +89,24 @@ function codexFiles(
       scope: "global",
     },
   ];
+
+  const config = files.get(SOURCE_IDS.mcp);
+  if (config === undefined) {
+    return declarations;
+  }
+
+  declarations.push(
+    ...codexProjectInstructionFiles(
+      environment,
+      files,
+      projectRoot,
+      parseCodexProjectSettings(config),
+    ),
+  );
+  return declarations;
 }
 
-/** The two candidate instruction files one directory can supply, in Codex's preference order. */
+/** The two global instruction candidates, in Codex's preference order. */
 function instructionLevel(directory: string, id: string, scope: Scope): readonly AdapterFileSpec[] {
   return [
     {

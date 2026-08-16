@@ -90,9 +90,8 @@ describe("Codex versioned fixtures", () => {
       expect(scan.model.apps[0]?.sourceFiles.map((file) => file.spec.path)).toEqual([
         `${seed.homeDir}/.codex/AGENTS.override.md`,
         `${seed.homeDir}/.codex/AGENTS.md`,
-        `${seed.workspaceDir}/AGENTS.override.md`,
-        `${seed.workspaceDir}/AGENTS.md`,
         `${seed.homeDir}/.codex/config.toml`,
+        `${seed.workspaceDir}/AGENTS.md`,
       ]);
       await expect(seed.invocations("codex")).resolves.toEqual([
         ["--version"],

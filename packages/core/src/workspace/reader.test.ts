@@ -33,6 +33,37 @@ describe("createFileReader", () => {
     });
   });
 
+  it("inspects a file without capturing its contents", async () => {
+    const root = await createTemporaryDirectory();
+    const path = join(root, "AGENTS.md");
+    await writeFile(path, "# instructions\n", "utf8");
+    const inspect = reader.inspect;
+    if (inspect === undefined) {
+      throw new Error("The production reader must support metadata-only inspection.");
+    }
+
+    await expect(inspect(path)).resolves.toEqual({
+      exists: true,
+      isDirectory: false,
+      pathKind: "file",
+      size: 15,
+    });
+  });
+
+  it("reads only the requested UTF-8 prefix", async () => {
+    const root = await createTemporaryDirectory();
+    const path = join(root, "AGENTS.md");
+    await writeFile(path, "abcdef", "utf8");
+
+    await expect(reader.read(path, { maxBytes: 3 })).resolves.toEqual({
+      content: "abc",
+      exists: true,
+      isDirectory: false,
+      pathKind: "file",
+      size: 6,
+    });
+  });
+
   it("lists a directory's immediate children, sorted", async () => {
     const root = await createTemporaryDirectory();
     const path = join(root, "skills");

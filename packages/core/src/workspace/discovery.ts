@@ -117,8 +117,10 @@ function sameSpec(left: AdapterFileSpec, right: AdapterFileSpec): boolean {
   return (
     left.id === right.id &&
     left.kind === right.kind &&
+    left.maxBytes === right.maxBytes &&
     left.optional === right.optional &&
     left.path === right.path &&
+    left.projectBoundary === right.projectBoundary &&
     left.scope === right.scope
   );
 }

@@ -1,40 +1,9 @@
-import type {
-  AdapterFileKind,
-  AdapterFileSpec,
-  AdapterSourceFile,
-  Environment,
-  Scope,
-} from "@tryaura/aura-sdk";
+import type { AdapterFileKind, AdapterFileSpec, AdapterSourceFile, Scope } from "@tryaura/aura-sdk";
 import { describe, expect, it } from "vitest";
 
 import { codexAdapter } from "./adapter.js";
 
 describe("Codex project scope", () => {
-  it("declares one AGENTS.md per directory from the repository root down to the invocation directory", () => {
-    expect(projectSpecs("/repo/packages/app", "/repo")).toEqual([
-      ["codex.instructions.project.2.override", "/repo/AGENTS.override.md"],
-      ["codex.instructions.project.2", "/repo/AGENTS.md"],
-      ["codex.instructions.project.1.override", "/repo/packages/AGENTS.override.md"],
-      ["codex.instructions.project.1", "/repo/packages/AGENTS.md"],
-      ["codex.instructions.project.override", "/repo/packages/app/AGENTS.override.md"],
-      ["codex.instructions.project", "/repo/packages/app/AGENTS.md"],
-    ]);
-  });
-
-  it("declares only the invocation directory when no repository contains it", () => {
-    expect(projectSpecs("/elsewhere/scratch", undefined)).toEqual([
-      ["codex.instructions.project.override", "/elsewhere/scratch/AGENTS.override.md"],
-      ["codex.instructions.project", "/elsewhere/scratch/AGENTS.md"],
-    ]);
-  });
-
-  it("falls back to the invocation directory when it is not inside the reported root", () => {
-    expect(projectSpecs("/elsewhere", "/repo")).toEqual([
-      ["codex.instructions.project.override", "/elsewhere/AGENTS.override.md"],
-      ["codex.instructions.project", "/elsewhere/AGENTS.md"],
-    ]);
-  });
-
   it("parses every declared level in scope order, root before invocation directory", () => {
     const snapshot = codexAdapter.parse({
       cwd: "/repo/packages/app",
@@ -101,7 +70,7 @@ describe("Codex project scope", () => {
     ]);
   });
 
-  it("falls back to the AGENTS.md beside an override that holds nothing", () => {
+  it("does not fall back after Codex selects an empty project override", () => {
     const snapshot = codexAdapter.parse({
       cwd: "/workspace",
       detection: { installed: true },
@@ -119,8 +88,31 @@ describe("Codex project scope", () => {
       homeDir: "/home/dev",
     });
 
-    expect(snapshot.instructionFiles.map((file) => file.path)).toEqual(["/workspace/AGENTS.md"]);
+    expect(snapshot.instructionFiles).toEqual([]);
     expect(snapshot.problems).toEqual([]);
+  });
+
+  it("applies the configured project document budget root-first", () => {
+    const config = source(
+      "codex.mcp.global",
+      "/home/dev/.codex/config.toml",
+      "global",
+      "project_doc_max_bytes = 8\n",
+      "mcp",
+    );
+    const snapshot = codexAdapter.parse({
+      cwd: "/repo/app",
+      detection: { installed: true },
+      files: new Map([
+        entry(config),
+        entry(source("codex.instructions.project.1", "/repo/AGENTS.md", "project", "123456")),
+        entry(source("codex.instructions.project", "/repo/app/AGENTS.md", "project", "abcdef")),
+      ]),
+      homeDir: "/home/dev",
+      projectRoot: "/repo",
+    });
+
+    expect(snapshot.instructionFiles.map((file) => file.content)).toEqual(["123456", "ab"]);
   });
 
   it("models a symlinked project AGENTS.md as a link for INS-002 to judge", () => {
@@ -230,28 +222,6 @@ describe("Codex project scope", () => {
     expect(snapshot.metadata).toEqual({ projectTrust: "unknown" });
   });
 });
-
-/** The project-scoped instruction slots the adapter declares, as `[id, path]` in declared order. */
-function projectSpecs(
-  cwd: string,
-  projectRoot: string | undefined,
-): readonly (readonly [string, string])[] {
-  return codexAdapter
-    .files(environment(cwd), { installed: true }, new Map(), projectRoot)
-    .filter((spec) => spec.scope === "project")
-    .map((spec) => [spec.id, spec.path] as const);
-}
-
-function environment(cwd: string): Environment {
-  return {
-    cwd,
-    exec: () => Promise.resolve({ exitCode: 0, stderr: "", stdout: "" }),
-    homeDir: "/home/dev",
-    now: () => new Date(0),
-    pathEntries: [],
-    platform: "linux",
-  };
-}
 
 function entry(file: AdapterSourceFile): readonly [string, AdapterSourceFile] {
   return [file.spec.id, file];

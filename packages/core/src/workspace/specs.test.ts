@@ -20,6 +20,55 @@ const OPTIONAL: AdapterFileSpec = {
 };
 
 describe("declared path handling", () => {
+  it("uses metadata-only probes without retaining them as adapter sources", async () => {
+    const probe: AdapterFileSpec = {
+      id: "candidate",
+      kind: "probe",
+      optional: true,
+      path: "/workspace/AGENTS.md",
+      scope: "project",
+    };
+    const reader = createMemoryReader({ [probe.path]: "# instructions" });
+    const adapter = createTestAdapter({ files: () => [probe] });
+
+    const { model } = await buildWorkspaceModel({
+      adapters: [adapter],
+      environment: createTestEnvironment(),
+      reader,
+    });
+
+    expect(reader.probes).toContain(probe.path);
+    expect(reader.reads).not.toContain(probe.path);
+    expect(model.apps[0]?.sourceFiles).toEqual([]);
+  });
+
+  it("captures only the adapter-requested prefix", async () => {
+    const instructions: AdapterFileSpec = {
+      id: "instructions",
+      kind: "instructions",
+      maxBytes: 4,
+      path: "/home/dev/AGENTS.md",
+      scope: "global",
+    };
+    const adapter = createTestAdapter({
+      files: () => [instructions],
+      parse: ({ files }) => ({
+        instructionFiles: [],
+        mcpServers: [],
+        metadata: { captured: files.get(instructions.id)?.content ?? "" },
+        skills: [],
+      }),
+    });
+
+    const { model } = await buildWorkspaceModel({
+      adapters: [adapter],
+      environment: createTestEnvironment(),
+      reader: createMemoryReader({ [instructions.path]: "abcdefgh" }),
+    });
+
+    expect(model.apps[0]?.metadata).toEqual({ captured: "abcd" });
+  });
+
   it("reports a missing required path but not a missing optional one", async () => {
     const adapter = createTestAdapter({ files: () => [REQUIRED, OPTIONAL] });
 
@@ -107,6 +156,46 @@ describe("declared path handling", () => {
       problem: "outside-project",
     });
     expect(diagnostics[0]?.message).toContain("outside /workspace");
+  });
+
+  it("honors an adapter-discovered project boundary after canonicalizing it", async () => {
+    const spec: AdapterFileSpec = {
+      id: "instructions",
+      kind: "instructions",
+      path: "/workspace/AGENTS.md",
+      projectBoundary: "/workspace",
+      scope: "project",
+    };
+    const adapter = createTestAdapter({ files: () => [spec] });
+    const reader = createMemoryReader({ [spec.path]: "# parent instructions" });
+
+    const { diagnostics, model } = await buildWorkspaceModel({
+      adapters: [adapter],
+      environment: createTestEnvironment({ cwd: "/workspace/app" }),
+      reader,
+    });
+
+    expect(diagnostics).toEqual([]);
+    expect(model.apps[0]?.sourceFiles[0]?.exists).toBe(true);
+  });
+
+  it("rejects a relative adapter-discovered project boundary", async () => {
+    const spec: AdapterFileSpec = {
+      id: "instructions",
+      kind: "instructions",
+      path: "/workspace/AGENTS.md",
+      projectBoundary: "workspace",
+      scope: "project",
+    };
+    const adapter = createTestAdapter({ files: () => [spec] });
+
+    const { diagnostics } = await buildWorkspaceModel({
+      adapters: [adapter],
+      environment: createTestEnvironment(),
+      reader: createMemoryReader(),
+    });
+
+    expect(diagnostics[0]?.message).toContain("boundaries must be absolute");
   });
 
   it("leaves a global path alone, since its location is the adapter's own", async () => {
