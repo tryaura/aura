@@ -9,6 +9,7 @@ import type { WorkspaceModel } from "@tryaura/aura-sdk";
 
 import type { AppCatalogEntry } from "./catalog.js";
 import { planSetup } from "./planner.js";
+import { emptySnippetCatalog } from "./testing.js";
 import type { SetupStepContext } from "./types.js";
 
 const temporaryDirectories: string[] = [];
@@ -119,6 +120,7 @@ describe("planSetup", () => {
       manifest: model.manifest,
       model,
       selections: { apps: { managed: ["kept", "added"] } },
+      snippetCatalog: emptySnippetCatalog(),
     });
 
     expect(outcome.manifest.apps).toEqual({
@@ -137,6 +139,7 @@ describe("planSetup", () => {
       manifest: model.manifest,
       model,
       selections: { apps: { managed: ["app"] } },
+      snippetCatalog: emptySnippetCatalog(),
     });
 
     expect(operationPaths(outcome)).toEqual([join(model.homeDir, "agents", "aura.json")]);
@@ -197,6 +200,7 @@ describe("planSetup", () => {
       manifest: model.manifest,
       model,
       selections: { apps: { managed: ["hinted", "hintless"] } },
+      snippetCatalog: emptySnippetCatalog(),
     });
 
     expect(outcome.plan.manualSteps).toEqual([
@@ -245,6 +249,7 @@ function context(model: WorkspaceModel, createManifest: boolean): SetupStepConte
     manifest: model.manifest,
     model,
     selections: { baseline: { createManifest } },
+    snippetCatalog: emptySnippetCatalog(),
   };
 }
 

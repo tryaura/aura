@@ -233,4 +233,59 @@ describe("interactive wizard", () => {
     decline.press("return");
     await expect(declined).resolves.toBe("declined");
   });
+
+  it("previews a row without changing its selection", async () => {
+    const session = createSession();
+    const io = createInteractiveWizardIo({
+      colorDepth: 0,
+      stdin: session.stdin,
+      stdout: session.stdout,
+    });
+    const question: WizardQuestion = {
+      id: "snippets",
+      kind: "multiselect",
+      label: "Snippets",
+      options: [{ label: "Rules", preview: "# Full rules", value: "official/rules" }],
+      prompt: "Choose snippets",
+    };
+
+    const form = io.ask([question]);
+    session.press("p", { sequence: "p" });
+    expect(session.output()).toContain("# Full rules");
+    session.press("escape");
+    session.press("space", { sequence: " " });
+    session.press("return");
+
+    await expect(form).resolves.toEqual({
+      snippets: { kind: "options", values: ["official/rules"] },
+    });
+  });
+
+  it("lets a disabled initial selection be cleared but never re-selected", async () => {
+    const session = createSession();
+    const io = createInteractiveWizardIo({
+      colorDepth: 0,
+      stdin: session.stdin,
+      stdout: session.stdout,
+    });
+    const form = io.ask([
+      {
+        id: "snippets",
+        initial: ["retired/rules"],
+        kind: "multiselect",
+        label: "Snippets",
+        options: [{ disabled: true, label: "Retired", value: "retired/rules" }],
+        prompt: "Choose snippets",
+      },
+    ]);
+
+    // The first space gives the stale selection up; the second must not take it back.
+    session.press("space", { sequence: " " });
+    session.press("space", { sequence: " " });
+    session.press("return");
+
+    await expect(form).resolves.toEqual({
+      snippets: { kind: "options", values: [] },
+    });
+  });
 });

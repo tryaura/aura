@@ -4,12 +4,13 @@ import type { FixPlanPreview } from "@tryaura/core";
 
 import { renderManualSteps, renderOperationPreviews } from "../preview-render.js";
 import { safe } from "../render.js";
-import type { SetupBlocker } from "./planner.js";
+import type { SetupBlocker, SetupNotice } from "./planner.js";
 
 /** Shows the whole plan — changes, blockers, manual steps — before the one confirmation. */
 export function renderSetupSummary(
   preview: FixPlanPreview,
   blockers: readonly SetupBlocker[],
+  notices: readonly SetupNotice[],
   withDetail: boolean,
   output: Writable,
 ): void {
@@ -20,10 +21,29 @@ export function renderSetupSummary(
   }
   renderOperationPreviews(preview.operations, withDetail, output);
   renderBlockers(blockers, output);
+  renderNotices(notices, output);
   renderManualSteps(preview.manualSteps, output);
 
   if (!withDetail && preview.changedOperationCount > 0) {
     output.write("\nRe-run with --detail to see the full diff of every change.\n");
+  }
+}
+
+const NOTICE_HEADINGS: Readonly<Record<SetupNotice["kind"], string>> = Object.freeze({
+  overwritten: "Hand edits Aura is replacing:",
+  preserved: "Preserved content Aura does not own:",
+});
+
+function renderNotices(notices: readonly SetupNotice[], output: Writable): void {
+  for (const kind of ["overwritten", "preserved"] as const) {
+    const matching = notices.filter((notice) => notice.kind === kind);
+    if (matching.length === 0) {
+      continue;
+    }
+    output.write(`\n${NOTICE_HEADINGS[kind]}\n`);
+    for (const notice of matching) {
+      output.write(`  · ${safe(notice.message)}\n`);
+    }
   }
 }
 

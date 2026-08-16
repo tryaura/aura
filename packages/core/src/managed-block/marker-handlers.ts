@@ -77,8 +77,8 @@ export function handleMarkerInsideBlock(
       snippet: {
         contentStart: line.end,
         id: marker.id,
-        startOffset: line.start,
         startLine: line.number,
+        startOffset: line.start,
         storedHash: marker.hash,
       },
     };

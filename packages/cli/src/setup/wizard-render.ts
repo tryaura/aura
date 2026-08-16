@@ -1,4 +1,4 @@
-import { safe } from "../render.js";
+import { safe, safeMultiline } from "../render.js";
 import type { WizardQuestion } from "./wizard-types.js";
 
 /** One question's live state while its form is on screen. */
@@ -11,6 +11,14 @@ export interface WizardQuestionView {
   readonly text: string;
 }
 
+/** A snippet body on screen, and how far into it the reader has scrolled. */
+export interface WizardPreview {
+  readonly content: string;
+  /** First content row to show; clamped here to whatever the viewport can actually hold. */
+  readonly offset: number;
+  readonly title: string;
+}
+
 /** Everything one repaint needs; the renderer holds no state of its own. */
 export interface WizardFrame {
   /** Index into the tabs: one per question, then the Submit tab. */
@@ -18,7 +26,22 @@ export interface WizardFrame {
   /** Row the cursor is on inside the active question; options first, free text last. */
   readonly cursorRow: number;
   readonly questions: readonly WizardQuestionView[];
+  readonly preview?: WizardPreview | undefined;
 }
+
+/** The terminal a frame is being painted into. */
+export interface WizardViewport {
+  readonly columns: number;
+  readonly rows: number;
+}
+
+export const DEFAULT_WIZARD_VIEWPORT: WizardViewport = Object.freeze({ columns: 80, rows: 24 });
+
+/** Title, two blank lines, the hint, and a row of headroom for the cursor. */
+const PREVIEW_CHROME_ROWS = 5;
+
+/** Below this the wrapped body is unreadable anyway, and the arithmetic stops being useful. */
+const PREVIEW_MIN_COLUMNS = 40;
 
 const UNANSWERED = "☐";
 const ANSWERED = "☑";
@@ -31,8 +54,15 @@ const CURSOR = "❯";
  * bytes directly. With `colorDepth` 0 the output carries no escape sequences at all, so the same
  * frames are byte-stable under captured streams.
  */
-export function renderWizardFrame(frame: WizardFrame, colorDepth: number): string {
+export function renderWizardFrame(
+  frame: WizardFrame,
+  colorDepth: number,
+  viewport: WizardViewport = DEFAULT_WIZARD_VIEWPORT,
+): string {
   const style = createStyle(colorDepth);
+  if (frame.preview !== undefined) {
+    return renderPreview(frame.preview, style, viewport);
+  }
   const lines = [renderTabBar(frame, style), ""];
 
   const active = frame.questions[frame.activeTab];
@@ -91,13 +121,22 @@ function renderQuestionBody(
 ): readonly string[] {
   const lines = [` ${style.bold(safe(view.question.prompt))}`, ""];
 
+  let previousGroup: string | undefined;
   view.question.options.forEach((option, index) => {
+    if (option.group !== undefined && option.group !== previousGroup) {
+      if (index > 0) {
+        lines.push("");
+      }
+      lines.push(` ${style.bold(safe(option.group))}`);
+      previousGroup = option.group;
+    }
     const cursor = index === cursorRow ? CURSOR : " ";
     const marker =
       view.question.kind === "multiselect"
         ? `${view.selected.has(option.value) ? ANSWERED : UNANSWERED} `
         : "";
-    lines.push(`${cursor} ${String(index + 1)}. ${marker}${safe(option.label)}`);
+    const unavailable = option.disabled === true ? style.dim(" — unavailable") : "";
+    lines.push(`${cursor} ${String(index + 1)}. ${marker}${safe(option.label)}${unavailable}`);
     if (option.description !== undefined) {
       lines.push(style.dim(`      ${safe(option.description)}`));
     }
@@ -130,7 +169,52 @@ function renderHint(question: WizardQuestion | undefined): string {
     return " ↵ submit · ←/→ back to a question · esc cancel";
   }
   const toggle = question.kind === "multiselect" ? " · space toggle" : "";
-  return ` ↑/↓ move${toggle} · ←/→ questions · ↵ select · esc cancel`;
+  const preview = question.options.some((option) => option.preview !== undefined)
+    ? " · p preview"
+    : "";
+  return ` ↑/↓ move${toggle}${preview} · ←/→ questions · ↵ select · esc cancel`;
+}
+
+/**
+ * Shows one screenful of the body, never more.
+ *
+ * A snippet is plugin-supplied and arbitrarily long, and the engine repaints by moving the cursor
+ * up as many rows as it last printed. A frame taller than the terminal scrolls the buffer, that
+ * count stops pointing at the frame, and every later repaint lands in the wrong place — so the
+ * body is wrapped to the viewport and clipped to it rather than trusted to fit.
+ */
+function renderPreview(preview: WizardPreview, style: Style, viewport: WizardViewport): string {
+  const rows = wrapPreviewLines(preview.content, Math.max(PREVIEW_MIN_COLUMNS, viewport.columns));
+  const capacity = Math.max(1, viewport.rows - PREVIEW_CHROME_ROWS);
+  const offset = clamp(preview.offset, Math.max(0, rows.length - capacity));
+  const visible = rows.slice(offset, offset + capacity);
+  const hidden = rows.length - offset - visible.length;
+  const more = hidden > 0 ? ` · ${String(hidden)} more line${hidden === 1 ? "" : "s"}` : "";
+  const hint = ` ↑/↓ scroll${more} · esc/↵ return to picker`;
+  return `${style.bold(safe(preview.title))}\n\n${visible.join("\n")}\n\n${style.dim(hint)}\n`;
+}
+
+/** Sanitizes the body and hard-wraps it, so one entry here is exactly one terminal row. */
+export function wrapPreviewLines(content: string, columns: number): readonly string[] {
+  return safeMultiline(content)
+    .split("\n")
+    .flatMap((line) => wrapLine(line, columns));
+}
+
+function wrapLine(line: string, columns: number): readonly string[] {
+  const characters = [...line];
+  if (characters.length <= columns) {
+    return [line];
+  }
+  const wrapped: string[] = [];
+  for (let index = 0; index < characters.length; index += columns) {
+    wrapped.push(characters.slice(index, index + columns).join(""));
+  }
+  return wrapped;
+}
+
+function clamp(value: number, maximum: number): number {
+  return Math.min(Math.max(value, 0), maximum);
 }
 
 function summarizeAnswer(view: WizardQuestionView): string {

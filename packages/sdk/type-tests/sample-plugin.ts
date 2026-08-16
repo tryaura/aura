@@ -25,6 +25,7 @@ const directorySource: DirectoryContentSource = {
 };
 
 const snippet: Snippet = {
+  category: "example",
   description: "Adds the sample project's coding rules.",
   id: "example/rules",
   kind: "snippet",

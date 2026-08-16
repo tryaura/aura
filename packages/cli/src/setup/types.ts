@@ -1,6 +1,7 @@
 import type { AuraManifestState, Finding, Scope, WorkspaceModel } from "@tryaura/aura-sdk";
 
 import type { AppCatalogEntry } from "./catalog.js";
+import type { SnippetCatalog } from "./snippets.js";
 import type { WizardIo } from "./wizard-types.js";
 
 /** What the apps step decided; see `steps/apps.ts`. */
@@ -37,6 +38,11 @@ interface InstructionSelections {
   readonly project?: InstructionScopeSelection | undefined;
 }
 
+interface SnippetSelections {
+  /** Available selected ids in picker order, followed by locked unavailable selections. */
+  readonly selected: readonly string[];
+}
+
 /**
  * Everything the wizard has decided so far, one optional slice per step id.
  *
@@ -48,6 +54,7 @@ export interface SetupSelections {
   readonly apps?: AppSelections | undefined;
   readonly baseline?: BaselineSelections | undefined;
   readonly instructions?: InstructionSelections | undefined;
+  readonly snippets?: SnippetSelections | undefined;
 }
 
 export interface SetupStepContext {
@@ -57,6 +64,13 @@ export interface SetupStepContext {
   readonly manifest: AuraManifestState;
   readonly model: WorkspaceModel;
   readonly selections: SetupSelections;
+  /**
+   * The registry's snippets, read on first use.
+   *
+   * Only the snippets step needs the bodies, so nothing is read until it runs; the planner reads
+   * back what that step resolved, and skips the whole catalog when the step did not run.
+   */
+  readonly snippetCatalog: SnippetCatalog;
 }
 
 /** The out-of-band outcome of a step the user backed out of. */
@@ -73,6 +87,8 @@ type SetupStepOutcome = SetupSelections | typeof SETUP_ABORTED;
  * something each step has to get right.
  */
 export interface SetupStep {
+  /** Step ids that must have completed earlier in this run. */
+  readonly dependsOn?: readonly string[] | undefined;
   readonly gather: (context: SetupStepContext, io: WizardIo) => Promise<SetupStepOutcome>;
   readonly id: string;
   readonly title: string;

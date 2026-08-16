@@ -15,11 +15,14 @@ import {
 
 import { BRANDING } from "../testing.js";
 import type { SetupRequest } from "./setup.js";
+import { createSnippetCatalog, type SnippetCatalog } from "./snippets.js";
 import { createScriptedWizardIo } from "./wizard-scripted.js";
 import type { WizardAnswers } from "./wizard-types.js";
 
 export interface Fixture {
   readonly homeDir: string;
+  /** Everything the most recent {@link request} wrote to stdout. */
+  readonly output: () => string;
   readonly request: (
     registry: ReturnType<typeof createPluginRegistry>,
     forms?: readonly WizardAnswers[],
@@ -56,6 +59,15 @@ export function archiveOriginals(): readonly WizardAnswers[] {
   return Array.from({ length: 8 }, () => answer);
 }
 
+/** The real catalog over an empty registry, for a context whose test never reaches a snippet. */
+export function emptySnippetCatalog(): SnippetCatalog {
+  return createSnippetCatalog([], {
+    exists: false,
+    path: "/home/dev/agents/aura.json",
+    status: "missing",
+  });
+}
+
 export async function createFixture(): Promise<Fixture> {
   const root = await mkdtemp(join(tmpdir(), "aura-instruction-setup-"));
   temporaryDirectories.push(root);
@@ -65,11 +77,19 @@ export async function createFixture(): Promise<Fixture> {
   await mkdir(workspace);
   const environment = createEnvironment({ cwd: workspace, environmentVariables: {}, homeDir });
 
+  let captured = "";
+
   return {
     homeDir,
+    output: () => captured,
     request: (registry, forms) => {
       const stdout = new PassThrough();
       const stderr = new PassThrough();
+      captured = "";
+      stdout.setEncoding("utf8");
+      stdout.on("data", (chunk: string) => {
+        captured += chunk;
+      });
       return {
         branding: BRANDING,
         dryRun: false,

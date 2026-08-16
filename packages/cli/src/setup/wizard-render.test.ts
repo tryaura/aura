@@ -151,4 +151,103 @@ describe("renderWizardFrame", () => {
 
     expect(renderWizardFrame(frame, 0)).not.toContain("\u001b");
   });
+
+  it("renders grouped, disabled snippet rows and a sanitized preview", () => {
+    const snippets: WizardQuestion = {
+      id: "snippets",
+      kind: "multiselect",
+      label: "Snippets",
+      options: [
+        {
+          description: "Commit rules.",
+          group: "git",
+          label: "Commits",
+          preview: "# Rules\n\u001b[2KKeep subjects short.",
+          value: "official/commits",
+        },
+        {
+          description: "The source could not be read.",
+          disabled: true,
+          group: "safety",
+          label: "Safety",
+          value: "official/safety",
+        },
+      ],
+      prompt: "Choose snippets",
+    };
+    const grouped = renderWizardFrame(
+      { activeTab: 0, cursorRow: 0, questions: [view(snippets)] },
+      0,
+    );
+
+    expect(grouped).toContain(" git\n❯ 1. ☐ Commits");
+    expect(grouped).toContain(" safety\n  2. ☐ Safety — unavailable");
+    expect(grouped).toContain("p preview");
+    const preview = renderWizardFrame(
+      {
+        activeTab: 0,
+        cursorRow: 0,
+        preview: { content: "# Rules\n\u001b[2KKeep subjects short.", offset: 0, title: "Commits" },
+        questions: [view(snippets)],
+      },
+      0,
+    );
+    expect(preview).toContain("# Rules\n [2KKeep subjects short.");
+    expect(preview).not.toContain("\u001b");
+  });
+
+  it("clips and wraps a preview to the viewport instead of overflowing it", () => {
+    const body = ["short", "x".repeat(100), "tail one", "tail two"].join("\n");
+
+    const rendered = renderWizardFrame(previewFrame(body, 0), 0, { columns: 40, rows: 10 });
+
+    // Ten rows less five of chrome leaves five: "short" and the four rows the long line wraps into.
+    expect(rendered.split("\n")).toEqual([
+      "Commits",
+      "",
+      "short",
+      "x".repeat(40),
+      "x".repeat(40),
+      "x".repeat(20),
+      "tail one",
+      "",
+      " \u2191/\u2193 scroll \u00b7 1 more line \u00b7 esc/\u21b5 return to picker",
+      "",
+    ]);
+    // The frame has to fit, or the engine's cursor-up repaint lands somewhere other than its start.
+    expect(rendered.split("\n").length - 1).toBeLessThanOrEqual(10);
+  });
+
+  it("scrolls a preview by its offset and drops the counter at the end", () => {
+    const body = ["one", "two", "three", "four", "five"].join("\n");
+
+    const rendered = renderWizardFrame(previewFrame(body, 2), 0, { columns: 20, rows: 8 });
+
+    expect(rendered).toContain("three\nfour\nfive");
+    expect(rendered).not.toContain("more line");
+  });
+
+  it("clamps an offset past the end to the last screenful", () => {
+    const body = ["one", "two", "three", "four", "five"].join("\n");
+
+    const rendered = renderWizardFrame(previewFrame(body, 99), 0, { columns: 20, rows: 8 });
+
+    expect(rendered).toContain("three\nfour\nfive");
+  });
 });
+
+function previewFrame(content: string, offset: number): WizardFrame {
+  const question: WizardQuestion = {
+    id: "snippets",
+    kind: "multiselect",
+    label: "Snippets",
+    options: [{ label: "Commits", preview: content, value: "official/commits" }],
+    prompt: "Choose snippets",
+  };
+  return {
+    activeTab: 0,
+    cursorRow: 0,
+    preview: { content, offset, title: "Commits" },
+    questions: [view(question)],
+  };
+}
