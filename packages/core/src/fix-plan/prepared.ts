@@ -1,4 +1,5 @@
 import type {
+  ArchiveFileOperation,
   MovePathOperation,
   RemovePathOperation,
   SymlinkOperation,
@@ -20,6 +21,13 @@ import type { FixPlanError, FixPlanPreview } from "./types.js";
 
 interface PreparedBase {
   readonly preview: FixOperationPreview;
+}
+
+export interface PreparedArchiveOperation extends PreparedBase {
+  readonly before: CapturedFileState;
+  readonly operation: ArchiveFileOperation;
+  readonly replacementMode?: number | undefined;
+  readonly type: "archive";
 }
 
 /** An operation the current filesystem state does not permit. Reported, never applied. */
@@ -66,6 +74,7 @@ export interface PreparedSymlinkOperation extends PreparedBase {
 }
 
 export type PreparedOperation =
+  | PreparedArchiveOperation
   | PreparedConflictOperation
   | PreparedMoveOperation
   | PreparedNoopOperation
@@ -80,6 +89,7 @@ export type PreparedOperation =
  * no impossible branches to defend against.
  */
 export type ApplicableOperation =
+  | PreparedArchiveOperation
   | PreparedMoveOperation
   | PreparedRemoveOperation
   | PreparedSymlinkOperation

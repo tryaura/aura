@@ -1,6 +1,6 @@
 import { Buffer, isUtf8 } from "node:buffer";
 
-import type { FileMode } from "@tryaura/aura-sdk";
+import type { ArchiveFileReplacement, FileMode } from "@tryaura/aura-sdk";
 import { createTwoFilesPatch } from "diff";
 
 import { MAX_DIFF_BYTES } from "./limits.js";
@@ -59,6 +59,26 @@ export function renderMoveDiff(sourcePath: string, destinationPath: string): str
     `rename to ${destinationPath}`,
     "",
   ].join("\n");
+}
+
+export function renderArchiveDiff(
+  path: string,
+  relativePath: string,
+  before: PathState,
+  replacement: ArchiveFileReplacement | undefined,
+  replacementMode: number | undefined,
+): string {
+  const archive = renderSummary(
+    "archive",
+    path,
+    `Preserve the original at <backup>/consolidation/${relativePath}.`,
+  );
+  if (replacement === undefined) {
+    return `${archive}${renderRemoveDiff(path, before)}`;
+  }
+  return replacement.type === "symlink"
+    ? `${archive}${renderSymlinkDiff(path, before, replacement.target)}`
+    : `${archive}${renderWriteDiff(path, before, replacement.content, replacement.mode, replacementMode ?? 0o644)}`;
 }
 
 export function renderSymlinkDiff(path: string, before: PathState, target: string): string {

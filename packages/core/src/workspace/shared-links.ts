@@ -1,4 +1,4 @@
-import { join, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 
 import {
   SHARED_INSTRUCTIONS_TEMPLATE_TOKEN,
@@ -17,11 +17,25 @@ const GLOBAL_PREFIX = "~/";
 const PROJECT_PREFIX = "./";
 const SHARED_INSTRUCTIONS_SEGMENTS = Object.freeze(["agents", "AGENTS.md"]);
 const SHARED_INSTRUCTIONS_HOME_REFERENCE = "~/agents/AGENTS.md";
+const PROJECT_SHARED_INSTRUCTIONS_FILE = "AGENTS.md";
 const SHARED_LINK_KINDS = new Set(["import-line", "native-copy", "symlink"]);
 
 /** Canonical shared-instruction path for one captured environment. */
 export function sharedInstructionsPath(environment: Environment): string {
   return join(environment.homeDir, ...SHARED_INSTRUCTIONS_SEGMENTS);
+}
+
+/**
+ * Canonical project shared-instruction path for one checkout.
+ *
+ * Exported because the setup wizard has to name the same file core links adapters to. Two packages
+ * each spelling out `AGENTS.md` is how a link ends up pointing at a file setup never wrote.
+ */
+export function projectSharedInstructionsPath(
+  projectRoot: string | undefined,
+  cwd: string,
+): string {
+  return join(projectRoot ?? cwd, PROJECT_SHARED_INSTRUCTIONS_FILE);
 }
 
 /** Returns every declarative problem in a shared-link contribution. */
@@ -67,14 +81,73 @@ export function resolveAdapterSharedLink(
   environment: Environment,
   files: AdapterFileMap,
 ): ResolvedSharedLink | undefined {
-  const declaration = adapter.sharedLink;
+  return resolveSharedLink(adapter.sharedLink, "sharedLink", adapter, environment, files, {
+    path: sharedInstructionsPath(environment),
+    portable: false,
+    reference: SHARED_INSTRUCTIONS_HOME_REFERENCE,
+  });
+}
+
+export function resolveAdapterProjectSharedLink(
+  adapter: Adapter,
+  environment: Environment,
+  files: AdapterFileMap,
+  projectRoot: string | undefined,
+): ResolvedSharedLink | undefined {
+  const target = projectSharedInstructionsPath(projectRoot, environment.cwd);
+  return resolveSharedLink(
+    adapter.projectSharedLink,
+    "projectSharedLink",
+    adapter,
+    environment,
+    files,
+    {
+      path: target,
+      portable: true,
+      reference: target,
+    },
+  );
+}
+
+function resolveSharedLink(
+  declaration: AdapterSharedLink | undefined,
+  name: string,
+  adapter: Adapter,
+  environment: Environment,
+  files: AdapterFileMap,
+  target: { readonly path: string; readonly portable: boolean; readonly reference: string },
+): ResolvedSharedLink | undefined {
   if (declaration === undefined) {
     return undefined;
   }
 
+  const entry = resolveSharedEntry(declaration, name, environment, files);
+  if (declaration.kind === "symlink") {
+    return { entryPath: entry.path, kind: declaration.kind, scope: entry.scope };
+  }
+
+  const targetReference = entry.global
+    ? target.reference
+    : target.portable
+      ? portableRelativePath(entry.path, target.path)
+      : target.path;
+  return {
+    content: declaration.lineTemplate?.replace(SHARED_INSTRUCTIONS_TEMPLATE_TOKEN, targetReference),
+    entryPath: entry.path,
+    kind: declaration.kind,
+    scope: entry.scope,
+  };
+}
+
+function resolveSharedEntry(
+  declaration: AdapterSharedLink,
+  name: string,
+  environment: Environment,
+  files: AdapterFileMap,
+): { readonly global: boolean; readonly path: string; readonly scope: Scope } {
   const violations = sharedLinkViolations(declaration);
   if (violations.length > 0) {
-    throw new Error(`declares an invalid sharedLink: ${violations.join("; ")}`);
+    throw new Error(`declares an invalid ${name}: ${violations.join("; ")}`);
   }
 
   const global = declaration.entryPath.startsWith(GLOBAL_PREFIX);
@@ -92,22 +165,12 @@ export function resolveAdapterSharedLink(
       `declares sharedLink entry ${entryPath}, but its files() result did not declare that path at ${expectedScope} scope`,
     );
   }
+  return { global, path: entryPath, scope: expectedScope };
+}
 
-  if (declaration.kind === "symlink") {
-    return { entryPath, kind: declaration.kind, scope: expectedScope };
-  }
-
-  // A global entry can name the source portably; a project entry cannot, because no agent
-  // application expands `~` out of a file inside a checked-out repository. See ResolvedSharedLink.
-  const targetReference = global
-    ? SHARED_INSTRUCTIONS_HOME_REFERENCE
-    : sharedInstructionsPath(environment);
-  return {
-    content: declaration.lineTemplate?.replace(SHARED_INSTRUCTIONS_TEMPLATE_TOKEN, targetReference),
-    entryPath,
-    kind: declaration.kind,
-    scope: expectedScope,
-  };
+function portableRelativePath(entryPath: string, targetPath: string): string {
+  const path = relative(dirname(entryPath), targetPath).replaceAll("\\", "/");
+  return path.startsWith(".") ? path : `./${path}`;
 }
 
 function relativeEntryPath(entryPath: string): string | undefined {

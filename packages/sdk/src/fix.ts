@@ -55,12 +55,36 @@ export interface SymlinkOperation {
   readonly type: "symlink";
 }
 
+/** Contents left at an archived file's original path after its bytes enter the undo journal. */
+export type ArchiveFileReplacement =
+  | {
+      readonly content: string;
+      readonly mode?: FileMode | undefined;
+      readonly type: "write";
+    }
+  | {
+      readonly target: string;
+      readonly type: "symlink";
+    };
+
+/** Archives a regular file into this plan's journal entry, then removes or replaces the original. */
+export interface ArchiveFileOperation {
+  /** Absolute path of the original file. */
+  readonly path: string;
+  /** Safe relative path below the journal entry's `consolidation/` directory. */
+  readonly relativePath: string;
+  /** Optional wrapper left where the original file was; omitted means the original disappears. */
+  readonly replacement?: ArchiveFileReplacement | undefined;
+  readonly type: "archive";
+}
+
 /**
  * A change a fix may request. Discriminate on `type`.
  *
  * The union is closed: a fix cannot run a command, install a package, or make a network request.
  */
 export type FileOperation =
+  | ArchiveFileOperation
   | MovePathOperation
   | RemovePathOperation
   | SymlinkOperation

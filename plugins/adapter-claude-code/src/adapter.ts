@@ -57,6 +57,11 @@ export const claudeCodeAdapter = defineAdapter({
       skills: [],
     };
   },
+  projectSharedLink: {
+    entryPath: "./CLAUDE.md",
+    kind: "import-line",
+    lineTemplate: `@${SHARED_INSTRUCTIONS_TEMPLATE_TOKEN}`,
+  },
   sharedLink: {
     entryPath: "~/.claude/CLAUDE.md",
     kind: "import-line",

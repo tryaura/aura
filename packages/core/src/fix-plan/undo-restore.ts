@@ -10,12 +10,8 @@ import type {
   StoredWriteOperation,
 } from "./journal-schema.js";
 import { primaryPath, type SelectedOperation } from "./undo-preflight.js";
-import {
-  errorMessage,
-  FixPlanError,
-  FixPlanUndoError,
-  type FixPlanRollbackStatus,
-} from "./types.js";
+import { errorMessage } from "./error-values.js";
+import { FixPlanError, FixPlanUndoError, type FixPlanRollbackStatus } from "./types.js";
 
 type UndoAction = () => Promise<void>;
 
@@ -88,6 +84,20 @@ async function restoreOperation(
   operation: StoredOperation,
 ): Promise<AppliedUndo> {
   switch (operation.type) {
+    case "archive": {
+      // Same guard as `remove`: a restore that fails partway must not leave the original half
+      // written where the roll-forward expects to find what the plan put there.
+      try {
+        await restoreState(entry, operation.path, operation.before);
+      } catch (error) {
+        await removeRestoredState(operation.path, operation.before);
+        throw error;
+      }
+      return {
+        index: operation.index,
+        redo: async () => applyStoredState(entry, operation.path, operation.after),
+      };
+    }
     case "move": {
       await rename(operation.destinationPath, operation.sourcePath);
       return {
@@ -123,6 +133,19 @@ async function restoreOperation(
       });
     }
   }
+}
+
+async function applyStoredState(
+  entry: JournalHandle,
+  path: string,
+  state: StoredPathState,
+): Promise<void> {
+  if (state.kind === "directory") {
+    throw new FixPlanError("journal-corrupt", "archive replacement cannot be a directory", {
+      path,
+    });
+  }
+  await restoreState(entry, path, state);
 }
 
 async function restoreReplacement(

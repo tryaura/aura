@@ -18,7 +18,7 @@ import {
 import { type AdapterFileDiscovery, discoverAdapterFiles } from "./discovery.js";
 import type { LinkResolver } from "./links.js";
 import type { FileReader } from "./reader.js";
-import { resolveAdapterSharedLink } from "./shared-links.js";
+import { resolveAdapterProjectSharedLink, resolveAdapterSharedLink } from "./shared-links.js";
 import { evaluateSupport, isComparableRange } from "./support.js";
 
 /** What one adapter needs from the surrounding scan to run its lifecycle. */
@@ -85,9 +85,16 @@ export async function scanAdapter(adapter: Adapter, context: ScanContext): Promi
 
   diagnostics.push(...discovery.diagnostics);
 
+  let projectSharedLink: ResolvedSharedLink | undefined;
   let sharedLink: ResolvedSharedLink | undefined;
   try {
     sharedLink = resolveAdapterSharedLink(adapter, context.environment, discovery.files);
+    projectSharedLink = resolveAdapterProjectSharedLink(
+      adapter,
+      context.environment,
+      discovery.files,
+      await context.projectRoot,
+    );
   } catch (error) {
     diagnostics.push(failure(adapter, "files", error));
   }
@@ -119,6 +126,7 @@ export async function scanAdapter(adapter: Adapter, context: ScanContext): Promi
       sourceFiles: [...discovery.files.values()]
         .filter((file) => file.spec.kind !== "probe")
         .map(toStatus),
+      ...(projectSharedLink === undefined ? {} : { projectSharedLink }),
       ...(sharedLink === undefined ? {} : { sharedLink }),
       support: evaluateSupport(adapter.supportedRange, detection.version),
       ...(adapter.synthetic === undefined ? {} : { synthetic: adapter.synthetic }),

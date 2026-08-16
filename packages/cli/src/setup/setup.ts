@@ -61,12 +61,22 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
     return 2;
   }
 
+  // After the early return, because the steps are the only reason findings are needed here and the
+  // duplicate scan is quadratic in the paragraphs it compares.
+  const initialChecks = runChecks(request.registry.checks, model);
+  for (const diagnostic of initialChecks.diagnostics) {
+    // Message only, never `detail`: it is verbatim text from a check that read the user's files.
+    io.note(
+      `${diagnostic.checkId} could not run, so its findings are missing: ${diagnostic.message}`,
+    );
+  }
+
   const appCatalog = buildAppCatalog(request.registry.adapters, model);
 
   let selections: SetupSelections = {};
   for (const step of request.steps ?? SETUP_STEPS) {
     const outcome = await step.gather(
-      { appCatalog, manifest: model.manifest, model, selections },
+      { appCatalog, findings: initialChecks.findings, manifest: model.manifest, model, selections },
       io,
     );
     if (outcome === SETUP_ABORTED) {
@@ -76,7 +86,13 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
     selections = outcome;
   }
 
-  const outcome = planSetup({ appCatalog, manifest: model.manifest, model, selections });
+  const outcome = planSetup({
+    appCatalog,
+    findings: initialChecks.findings,
+    manifest: model.manifest,
+    model,
+    selections,
+  });
   const prepared = await prepareFixPlan({ model, plan: outcome.plan });
 
   if (

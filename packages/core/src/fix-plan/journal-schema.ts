@@ -64,7 +64,17 @@ export interface StoredMoveOperation extends StoredOperationBase {
   readonly type: "move";
 }
 
+export interface StoredArchiveOperation extends StoredOperationBase {
+  /** State left at the source path after archival. */
+  readonly after: StoredFileState | StoredMissingState | StoredSymlinkState;
+  /** Original bytes, stored below `consolidation/`. */
+  readonly before: StoredFileState;
+  readonly path: string;
+  readonly type: "archive";
+}
+
 export type StoredOperation =
+  | StoredArchiveOperation
   | StoredMoveOperation
   | StoredRemoveOperation
   | StoredSymlinkOperation

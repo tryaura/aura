@@ -226,6 +226,8 @@ export interface Adapter {
    * snapshot rather than throwing.
    */
   readonly parse: (input: AdapterParseInput) => AdapterSnapshot;
+  /** Optional mechanism for linking this app to the repository's shared `AGENTS.md`. */
+  readonly projectSharedLink?: AdapterSharedLink | undefined;
   /** Optional declarative mechanism for linking this app to the shared instruction source. */
   readonly sharedLink?: AdapterSharedLink | undefined;
   /** Semver range of application versions this adapter understands, for example `">=1 <2"`. */

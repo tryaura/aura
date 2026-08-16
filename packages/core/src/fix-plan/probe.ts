@@ -2,7 +2,8 @@ import { lstat } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
 
 import { matchRoot, type AllowedRoot } from "./roots.js";
-import { errorCode, errorMessage, operationError } from "./types.js";
+import { errorCode, errorMessage } from "./error-values.js";
+import { operationError } from "./types.js";
 
 /** The most ancestor probes to keep in flight while validating a plan. */
 const PROBE_CONCURRENCY = 8;

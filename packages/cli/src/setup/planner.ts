@@ -6,9 +6,9 @@ import type {
   FixPlan,
 } from "@tryaura/aura-sdk";
 import { createAuraManifestWriteOperation, createEmptyAuraManifest } from "@tryaura/core";
-import { SHARED_INSTRUCTIONS_TEMPLATE } from "@tryaura/content-official";
 
 import { catalogEntryId, catalogEntryName, type AppCatalogEntry } from "./catalog.js";
+import { planInstructions } from "./instruction-planner.js";
 import type { SetupSelections, SetupStepContext } from "./types.js";
 
 /** A file the plan refuses to touch, and the reason the user can act on. */
@@ -37,7 +37,14 @@ export function planSetup(context: SetupStepContext): SetupPlanOutcome {
   const blockers: SetupBlocker[] = [];
   const operations: FileOperation[] = [];
   const apps = context.selections.apps;
-  const manifest = desiredManifest(context.manifest, apps, context.appCatalog);
+  const instructionPlan = planInstructions(context);
+  blockers.push(...instructionPlan.blockers);
+  const manifest = desiredManifest(
+    context.manifest,
+    apps,
+    context.appCatalog,
+    instructionPlan.ownership,
+  );
   const baseline = context.selections.baseline;
 
   if (context.manifest.status === "read-only") {
@@ -45,7 +52,8 @@ export function planSetup(context: SetupStepContext): SetupPlanOutcome {
   } else if (
     context.manifest.status === "ready" ||
     baseline?.createManifest === true ||
-    (apps !== undefined && apps.managed.length > 0)
+    (apps !== undefined && apps.managed.length > 0) ||
+    context.selections.instructions !== undefined
   ) {
     operations.push(createAuraManifestWriteOperation(context.manifest, manifest));
   }
@@ -56,20 +64,15 @@ export function planSetup(context: SetupStepContext): SetupPlanOutcome {
       path: shared.path,
       reason: `Aura could not safely read this path (${shared.problem}) and will not overwrite it.`,
     });
-  } else if (baseline?.createSharedInstructions === true) {
-    operations.push({
-      content: SHARED_INSTRUCTIONS_TEMPLATE,
-      mode: 0o644,
-      path: shared.path,
-      type: "write",
-    });
   }
+
+  operations.push(...instructionPlan.operations);
 
   return Object.freeze({
     blockers: Object.freeze(blockers),
     manifest,
     plan: Object.freeze({
-      manualSteps: Object.freeze(appManualSteps(context)),
+      manualSteps: Object.freeze([...appManualSteps(context), ...instructionPlan.manualSteps]),
       operations: Object.freeze(operations),
       summary: "Set up Aura on this machine from your selections.",
     }),
@@ -80,12 +83,37 @@ function desiredManifest(
   state: AuraManifestState,
   apps: SetupSelections["apps"],
   appCatalog: readonly AppCatalogEntry[],
+  ownershipUpdates: ReadonlyMap<string, readonly string[]>,
 ): AuraManifest {
   const base = state.status === "ready" ? state.value : createEmptyAuraManifest();
-  if (apps === undefined) {
-    return base;
-  }
+  const ownership = desiredOwnership(base, ownershipUpdates);
+  return apps === undefined
+    ? { ...base, ownership }
+    : { ...base, apps: desiredApps(base, apps, appCatalog), ownership };
+}
 
+function desiredOwnership(
+  base: AuraManifest,
+  updates: ReadonlyMap<string, readonly string[]>,
+): AuraManifest["ownership"] {
+  const next = new Map(Object.entries(base.ownership));
+  for (const [id, files] of updates) {
+    const previous = next.get(id);
+    next.set(id, {
+      files: [...new Set([...(previous?.files ?? []), ...files])].sort(),
+      mcpServerNames: previous?.mcpServerNames ?? [],
+    });
+  }
+  // As in `desiredApps`: assignment would route a `__proto__` adapter id through the inherited
+  // setter and drop the entry, and only `plugin.id` is pattern-checked upstream.
+  return Object.fromEntries(next);
+}
+
+function desiredApps(
+  base: AuraManifest,
+  apps: NonNullable<SetupSelections["apps"]>,
+  appCatalog: readonly AppCatalogEntry[],
+): AuraManifest["apps"] {
   const available = new Set(appCatalog.map(catalogEntryId));
   const managed = new Set(apps.managed.filter((id) => available.has(id)));
   const next = new Map<string, AuraManifestApp>();
@@ -99,7 +127,7 @@ function desiredManifest(
     }
   }
   // Object.fromEntries defines special keys such as `__proto__` as own data properties.
-  return { ...base, apps: Object.fromEntries(next) };
+  return Object.fromEntries(next);
 }
 
 /**

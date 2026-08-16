@@ -2,24 +2,20 @@ import { SETUP_ABORTED, type SetupStep, type SetupStepContext } from "../types.j
 import { selectedValues, type WizardOption } from "../wizard-types.js";
 
 const MANIFEST_VALUE = "manifest";
-const SHARED_VALUE = "shared-instructions";
 
 /**
- * The first setup step: put the machine's Aura baseline in place.
+ * The setup step that puts the machine's Aura baseline in place.
  *
- * Offers only what is currently missing — an existing manifest or shared instruction file makes its
- * option disappear rather than show as pre-completed noise, so the fifth run of `setup` asks about
- * exactly as much as it still has to do.
+ * Offers only what is currently missing — an existing manifest makes its option disappear rather
+ * than show as pre-completed noise, so the fifth run of `setup` asks about exactly as much as it
+ * still has to do. The shared instruction file itself belongs to the instructions step, which is
+ * the one that knows whether it is being created from a template or from consolidated sources.
  */
 export const baselineStep: SetupStep = {
   gather: async (context, io) => {
     const options = baselineOptions(context);
     if (options.length === 0) {
-      io.note(
-        context.model.sharedInstructions.problem === undefined
-          ? "The Aura manifest and shared instructions are already in place."
-          : "Aura cannot configure shared instructions until their path can be read safely.",
-      );
+      io.note("The Aura manifest is already in place.");
       return withBaseline(context, []);
     }
 
@@ -49,10 +45,7 @@ function withBaseline(
 ): SetupStepContext["selections"] {
   return {
     ...context.selections,
-    baseline: {
-      createManifest: values.includes(MANIFEST_VALUE),
-      createSharedInstructions: values.includes(SHARED_VALUE),
-    },
+    baseline: { createManifest: values.includes(MANIFEST_VALUE) },
   };
 }
 
@@ -64,16 +57,6 @@ function baselineOptions(context: SetupStepContext): readonly WizardOption[] {
       description: "Aura's record of what it manages; future runs converge against it.",
       label: `Create ${context.manifest.path}`,
       value: MANIFEST_VALUE,
-    });
-  }
-
-  const shared = context.model.sharedInstructions;
-  const sharedEmpty = !shared.exists || (shared.content?.trim() ?? "") === "";
-  if (shared.problem === undefined && sharedEmpty) {
-    options.push({
-      description: "One canonical instruction file every agent application links to.",
-      label: `Create ${shared.path} from the starter template`,
-      value: SHARED_VALUE,
     });
   }
 

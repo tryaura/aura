@@ -1,31 +1,24 @@
 import { Buffer } from "node:buffer";
 
 import type {
-  FileMode,
   MovePathOperation,
   RemovePathOperation,
   SymlinkOperation,
   WriteFileOperation,
 } from "@tryaura/aura-sdk";
 
-import { AURA_MANIFEST_FILE_MODE, resolveAuraManifestPath } from "../manifest/protocol.js";
 import { captureBefore, findUnwritablePath, spendBudget, type RetentionBudget } from "./capture.js";
-import { comparablePath } from "./claims.js";
 import { renderMoveDiff, renderRemoveDiff, renderSymlinkDiff, renderWriteDiff } from "./diff.js";
-import {
-  DEFAULT_FILE_MODE,
-  FILE_MODES,
-  MAX_MUTABLE_FILE_BYTES,
-  MAX_RETAINED_PLAN_BYTES,
-} from "./limits.js";
+import { FILE_MODES, MAX_MUTABLE_FILE_BYTES, MAX_RETAINED_PLAN_BYTES } from "./limits.js";
 import { createPathPolicy, validatePlanPaths, type ValidatedOperation } from "./path-policy.js";
+import { prepareArchive } from "./prepare-archive.js";
+import { createEnforcedModes, resolveWriteMode, type EnforcedModes } from "./prepare-modes.js";
 import {
   conflict,
   createPreview,
   noop,
   type PreparedOperation,
   type PreparedPlanState,
-  type PreparedWriteOperation,
 } from "./prepared.js";
 import { inspectPath, isCapturedFile } from "./state.js";
 import type { FixPlanPreview, FixPlanPreviewOptions } from "./types.js";
@@ -68,21 +61,6 @@ export async function prepareOperations(
   };
 }
 
-/** Resolves the mode core enforces on a path, or undefined when the path is not core's to hold. */
-type EnforcedModes = (path: string) => FileMode | undefined;
-
-/**
- * The files core holds at a fixed mode regardless of what a plan asked for.
- *
- * Keyed by path rather than by anything a plan carries, so this cannot be opted into: a plugin that
- * wants an existing file chmodded has no way to express it. Only the manifest qualifies today.
- */
-function createEnforcedModes(homeDir: string, caseInsensitive: boolean): EnforcedModes {
-  const manifest = comparablePath(resolveAuraManifestPath(homeDir), caseInsensitive);
-  return (path) =>
-    comparablePath(path, caseInsensitive) === manifest ? AURA_MANIFEST_FILE_MODE : undefined;
-}
-
 /**
  * Blocks every operation while desired state is unreadable, with the reason on each one.
  *
@@ -109,6 +87,9 @@ async function prepareOperation(
   }
 
   switch (operation.operation.type) {
+    case "archive": {
+      return prepareArchive(operation.operation, operation, budget, enforcedMode);
+    }
     case "move": {
       return prepareMove(operation.operation, operation);
     }
@@ -177,27 +158,6 @@ function writeRejection(operation: WriteFileOperation, content: Buffer): string 
   }
 
   return undefined;
-}
-
-/**
- * Settles what the file's permissions will be, once, while the preview is rendered.
- *
- * Three rules in priority order: core holds its own protocol files at a fixed mode, an existing
- * file keeps what the user gave it, and only a file being created takes the mode a plan asked for.
- * Deciding it here is what keeps the preview, the journal, and the write from each deriving it
- * separately and drifting apart.
- */
-function resolveWriteMode(
-  operation: WriteFileOperation,
-  before: PreparedWriteOperation["before"],
-  enforcedMode: EnforcedModes,
-): number {
-  const enforced = enforcedMode(operation.path);
-  if (enforced !== undefined) {
-    return enforced;
-  }
-
-  return before.kind === "file" ? before.mode : (operation.mode ?? DEFAULT_FILE_MODE);
 }
 
 async function prepareRemove(

@@ -5,6 +5,7 @@ import type {
   WorkspaceModel,
 } from "@tryaura/aura-sdk";
 
+import { errorCode } from "./error-values.js";
 import type { JournalStatus } from "./journal-schema.js";
 
 /**
@@ -14,6 +15,7 @@ import type { JournalStatus } from "./journal-schema.js";
  * than thrown so a preview can still show every other operation in the plan.
  */
 export type FixOperationEffect =
+  | "archive"
   | "conflict"
   | "create"
   | "move"
@@ -286,15 +288,4 @@ function rollbackSummary(rollback: FixPlanRollbackStatus, appliedOperationCount:
       return "nothing had been applied";
     }
   }
-}
-
-/** The `errno` code of a Node filesystem failure, when the value is one. */
-export function errorCode(error: unknown): string | undefined {
-  return error instanceof Error && "code" in error && typeof error.code === "string"
-    ? error.code
-    : undefined;
-}
-
-export function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

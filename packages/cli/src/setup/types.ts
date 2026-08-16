@@ -1,4 +1,4 @@
-import type { AuraManifestState, WorkspaceModel } from "@tryaura/aura-sdk";
+import type { AuraManifestState, Finding, Scope, WorkspaceModel } from "@tryaura/aura-sdk";
 
 import type { AppCatalogEntry } from "./catalog.js";
 import type { WizardIo } from "./wizard-types.js";
@@ -12,7 +12,29 @@ interface AppSelections {
 /** What the baseline step decided; see `steps/baseline.ts`. */
 interface BaselineSelections {
   readonly createManifest: boolean;
-  readonly createSharedInstructions: boolean;
+}
+
+/**
+ * What the wizard settled on for one scope.
+ *
+ * `blocked` is not `keep`: it means Aura could not read the target safely, so the scope is left out
+ * of link planning entirely rather than wired to a file Aura refused to touch.
+ */
+type InstructionTargetAction = "blocked" | "consolidate" | "keep" | "template";
+
+export interface InstructionScopeSelection {
+  readonly action: InstructionTargetAction;
+  readonly archiveOriginals: boolean;
+  /** INS-003 finding id to selected `path:startLine:endLine` member id. */
+  readonly duplicateWinners: Readonly<Record<string, string>>;
+  readonly scope: Scope;
+  readonly selectedSources: readonly string[];
+  readonly targetPath: string;
+}
+
+interface InstructionSelections {
+  readonly global: InstructionScopeSelection;
+  readonly project?: InstructionScopeSelection | undefined;
 }
 
 /**
@@ -25,11 +47,13 @@ interface BaselineSelections {
 export interface SetupSelections {
   readonly apps?: AppSelections | undefined;
   readonly baseline?: BaselineSelections | undefined;
+  readonly instructions?: InstructionSelections | undefined;
 }
 
 export interface SetupStepContext {
   /** Every registered adapter, detected or not, in registry order. */
   readonly appCatalog: readonly AppCatalogEntry[];
+  readonly findings?: readonly Finding[] | undefined;
   readonly manifest: AuraManifestState;
   readonly model: WorkspaceModel;
   readonly selections: SetupSelections;

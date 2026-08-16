@@ -60,6 +60,14 @@ export async function validatePlanPaths(
       assertPathShape(operation.target, policy, index);
       probes.push({ includeFinalPath: true, operationIndex: index, path: operation.target });
     }
+    if (operation.type === "archive" && operation.replacement?.type === "symlink") {
+      assertPathShape(operation.replacement.target, policy, index);
+      probes.push({
+        includeFinalPath: true,
+        operationIndex: index,
+        path: operation.replacement.target,
+      });
+    }
 
     operations.push({ index, operation, paths: Object.freeze(paths) });
   }
@@ -102,6 +110,7 @@ export function mutationPaths(operation: FileOperation): string[] {
     case "move": {
       return [operation.sourcePath, operation.destinationPath];
     }
+    case "archive":
     case "remove":
     case "symlink":
     case "write": {
