@@ -7,7 +7,8 @@ import { Builtins, Cli, type Command } from "clipanion/lib/advanced/index.js";
 
 import { createPluginRegistry } from "@tryaura/core";
 
-import { CheckCommand, DefaultCommand, type AuraCliContext } from "./commands.js";
+import { CheckCommand, type AuraCliContext } from "./commands.js";
+import { DefaultCommand } from "./default-command.js";
 import { SetupCommand } from "./setup/command.js";
 import type { CliDistro, CliExitCode, CliRuntime } from "./types.js";
 
@@ -32,18 +33,28 @@ export async function runCli(distro: CliDistro, runtime?: CliRuntime): Promise<C
       stdout: resolved.stdout,
     };
 
+    let command: Command<AuraCliContext>;
     try {
-      const command = cli.process(resolved.argv, context);
-      exitCode = normalizeExitCode(await cli.run(command, executionContext(command, context)));
+      command = cli.process(resolved.argv, context);
     } catch (error) {
       const normalized = error instanceof Error ? error : new Error(String(error));
       resolved.stderr.write(`${cli.error(normalized, { colored: false })}\n`);
       exitCode = 2;
+      applyExitCode(exitCode, runtime);
+      return exitCode;
+    }
+
+    try {
+      exitCode = normalizeExitCode(await cli.run(command, executionContext(command, context)));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      resolved.stderr.write(`${distro.branding.displayName}: ${message}\n`);
+      exitCode = 3;
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     resolved.stderr.write(`${distro.branding.displayName}: ${message}\n`);
-    exitCode = 2;
+    exitCode = 3;
   }
 
   applyExitCode(exitCode, runtime);
@@ -159,7 +170,7 @@ function createCli(distro: CliDistro, enableColors: boolean): Cli<AuraCliContext
 }
 
 function normalizeExitCode(exitCode: number): CliExitCode {
-  if (exitCode === 0 || exitCode === 1) {
+  if (exitCode === 0 || exitCode === 1 || exitCode === 3) {
     return exitCode;
   }
   return 2;

@@ -62,6 +62,8 @@ describe("check --explain", () => {
       fixability: "manual",
       fixesApplicable: false,
       id: "fixture-info/INFO",
+      kind: "check-explanation",
+      schemaVersion: 1,
       scope: "global",
       severity: "info",
       title: "info check",
@@ -69,7 +71,7 @@ describe("check --explain", () => {
     expect(capture.stderr.text).toBe("");
   });
 
-  it("does not promise a fix no command can apply", async () => {
+  it("names the command that can apply an automatic fix", async () => {
     const capture = createCapture(["check", "--explain", "fixture-auto/AUTO"]);
     const plugin = definePlugin({
       apiVersion: 1,
@@ -92,6 +94,39 @@ describe("check --explain", () => {
 
     expect(await runCli(distro([plugin]), capture.runtime)).toBe(0);
     expect(capture.stdout.text).toContain("Fixability: auto");
-    expect(capture.stdout.text).toContain("Applying fixes is not available in this build");
+    expect(capture.stdout.text).toContain("apply with check --fix");
+  });
+
+  it("names the interactive command for guided fixes and reports them as applicable in JSON", async () => {
+    const plugin = definePlugin({
+      apiVersion: 1,
+      checks: [
+        defineCheck({
+          defaultSeverity: "warn",
+          detect: () => [],
+          explain: "Guided check.",
+          fix: () => undefined,
+          fixability: "guided",
+          id: "fixture-guided/GUIDED",
+          scope: "project",
+          title: "guided check",
+        }),
+      ],
+      id: "fixture-guided",
+      name: "Fixture Guided",
+      version: "1.0.0",
+    });
+    const human = createCapture(["check", "--explain", "fixture-guided/GUIDED"]);
+    const json = createCapture(["check", "--explain", "fixture-guided/GUIDED", "--json"]);
+
+    expect(await runCli(distro([plugin]), human.runtime)).toBe(0);
+    expect(human.stdout.text).toContain("check --fix --interactive");
+    expect(await runCli(distro([plugin]), json.runtime)).toBe(0);
+    expect(JSON.parse(json.stdout.text)).toMatchObject({
+      fixability: "guided",
+      fixesApplicable: true,
+      kind: "check-explanation",
+      schemaVersion: 1,
+    });
   });
 });

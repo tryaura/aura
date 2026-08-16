@@ -47,7 +47,8 @@ describe("seeded check integration", () => {
             "findings": [
               {
                 "checkId": "fixture/CONFIG",
-                "id": "legacy-config",
+                "findingId": "legacy-config",
+                "fixability": "manual",
                 "locations": [
                   {
                     "line": 1,
@@ -64,12 +65,24 @@ describe("seeded check integration", () => {
       expect(result.report.diagnostics).toEqual([]);
       expect(result.report.status).toBe("warning");
       expect(result.report.summary).toEqual({
+        categories: {
+          CONFIG: { errors: 0, informational: 0, passed: 0, warnings: 1 },
+        },
+        diagnostics: 0,
         errors: 0,
+        exitCode: 1,
         informational: 0,
         passed: 0,
         warnings: 1,
       });
-      expect(result.report.skipped).toEqual([]);
+      expect(result.report.apps).toEqual([
+        {
+          appId: "fixture-agent",
+          detection: { installed: true, version: "1.2.3" },
+          displayName: "Fixture Agent",
+          support: { status: "supported", supportedRange: ">=1 <2", version: "1.2.3" },
+        },
+      ]);
       expect(result.findings).toBe(result.report.findings);
       await expect(seed.invocations("fixture-agent")).resolves.toEqual([["--version"]]);
       expect(observed?.homeDir).toBe(seed.homeDir);

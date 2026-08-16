@@ -1,5 +1,4 @@
-import type { Finding } from "@tryaura/aura-sdk";
-import type { CheckReport, CliDistro, CliExitCode } from "@tryaura/aura-cli";
+import type { CheckReport, CliDistro, CliExitCode, ReportFinding } from "@tryaura/aura-cli";
 
 /**
  * Matches any single argument in that position.
@@ -117,7 +116,7 @@ export interface TestRunResult {
   readonly diffs: readonly TestFileDiff[];
   readonly exitCode: CliExitCode;
   /** Shorthand for `report.findings`. */
-  readonly findings: readonly Finding[];
+  readonly findings: readonly ReportFinding[];
   /**
    * The whole `check --json` document.
    *

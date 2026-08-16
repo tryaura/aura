@@ -5,22 +5,32 @@ import { parseReport } from "./report.js";
 const fail = (message: string): Error => new Error(message);
 
 const VALID = {
+  apps: [],
   diagnostics: [],
-  exitCode: 1,
   findings: [
     {
       checkId: "fixture/CONFIG",
-      id: "legacy-config",
+      findingId: "legacy-config",
+      fixability: "manual",
       locations: [{ line: 1, path: "<HOME>/.fixture/config.txt" }],
       message: "Fixture Agent uses its legacy configuration.",
       scope: "global",
       severity: "warn",
     },
   ],
+  kind: "check-report",
   passedChecks: [],
-  skipped: [],
+  schemaVersion: 1,
   status: "warning",
-  summary: { errors: 0, informational: 0, passed: 0, warnings: 1 },
+  summary: {
+    categories: { CONFIG: { errors: 0, informational: 0, passed: 0, warnings: 1 } },
+    diagnostics: 0,
+    errors: 0,
+    exitCode: 1,
+    informational: 0,
+    passed: 0,
+    warnings: 1,
+  },
 };
 
 function parse(document: unknown): ReturnType<typeof parseReport> {
@@ -60,9 +70,9 @@ describe("parseReport", () => {
   });
 
   it("reports every problem at once rather than only the first", () => {
-    expect(() => parse({ ...VALID, exitCode: 7, status: "fine" })).toThrow(
-      /report\.exitCode[\S\s]*report\.status/u,
-    );
+    expect(() =>
+      parse({ ...VALID, status: "fine", summary: { ...VALID.summary, exitCode: 7 } }),
+    ).toThrow(/report\.status[\S\s]*report\.summary\.exitCode/u);
   });
 
   it("rejects a location that is not a real position", () => {
@@ -80,7 +90,8 @@ describe("parseReport", () => {
       findings: [
         {
           checkId: "fixture/CONFIG",
-          id: "legacy-config",
+          findingId: "legacy-config",
+          fixability: "manual",
           message: "m",
           scope: "project",
           severity: "info",

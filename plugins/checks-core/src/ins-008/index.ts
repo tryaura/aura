@@ -39,8 +39,9 @@ interface DuplicatePair {
 export const instructionPrecedenceCheck = defineCheck({
   defaultSeverity: "warn",
   detect: detectInstructionPrecedence,
-  explain:
-    "Global instructions should hold preferences that apply across repositories, while project instructions should own repository standards. Repetition, contradictions, or project-only guidance in the global tier make precedence harder to predict and personal configuration harder to reuse.",
+  explain: `Global instructions should hold preferences that apply across repositories, while project instructions should own repository standards. Repetition, contradictions, or project-only guidance in the global tier make precedence harder to predict and personal configuration harder to reuse.
+
+Move repository names, commands, and package-specific rules into the project tier, then remove global copies of project guidance. Where tiers intentionally differ, state the project exception explicitly so the precedence is understandable.`,
   fixability: "manual",
   id: "INS-008",
   scope: "project",

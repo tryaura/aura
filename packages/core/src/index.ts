@@ -1,5 +1,6 @@
 export { createEnvironment } from "./environment.js";
 export type { EnvironmentBootOptions } from "./environment.js";
+export { canonicalAppId } from "./app-id.js";
 export { runChecks } from "./checks.js";
 export type { CheckDiagnostic } from "./checks.js";
 export {
@@ -20,7 +21,12 @@ export {
   previewFixPlan,
 } from "./fix-plan/execute.js";
 export { listFixPlanBackups, undoFixPlan } from "./fix-plan/undo.js";
-export { prepareAutomaticFixes } from "./fix-plan/automatic.js";
+export {
+  collectAutomaticFixCandidates,
+  prepareAutomaticFixes,
+  prepareFixCandidates,
+} from "./fix-plan/automatic.js";
+export type { FixCandidate } from "./fix-plan/automatic.js";
 export type { PreparedFixPlan } from "./fix-plan/execute.js";
 export { FixPlanApplyError, FixPlanError, FixPlanUndoError } from "./fix-plan/types.js";
 export type {

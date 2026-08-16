@@ -66,7 +66,7 @@ export async function collectCheckResult(
   }
 
   const report = parseReport(transcript.stdout, (message) => runError(message, transcript));
-  if (report.exitCode !== exitCode) {
+  if (report.summary.exitCode !== exitCode) {
     throw runError(
       "Check runner saw a report and process with disagreeing exit codes.",
       transcript,
@@ -118,7 +118,12 @@ function requireExitCode(transcript: RunTranscript): CliExitCode {
   if (transcript.exitCode === null) {
     throw runError("Check runner terminated without an exit code.", transcript);
   }
-  if (transcript.exitCode !== 0 && transcript.exitCode !== 1 && transcript.exitCode !== 2) {
+  if (
+    transcript.exitCode !== 0 &&
+    transcript.exitCode !== 1 &&
+    transcript.exitCode !== 2 &&
+    transcript.exitCode !== 3
+  ) {
     throw runError(
       `Check runner returned unsupported exit code ${String(transcript.exitCode)}.`,
       transcript,

@@ -1,6 +1,8 @@
+/* eslint-disable max-lines -- one end-to-end CLI matrix shares the same injected runtime fixtures. */
+import { join } from "node:path";
 import { Readable } from "node:stream";
 
-import { defineCheck, definePlugin, type Environment } from "@tryaura/aura-sdk";
+import { defineAdapter, defineCheck, definePlugin, type Environment } from "@tryaura/aura-sdk";
 import { describe, expect, it } from "vitest";
 
 import { runCli } from "./index.js";
@@ -48,13 +50,22 @@ describe("runCli", () => {
 
     expect(exitCode).toBe(0);
     expect(JSON.parse(capture.stdout.text)).toEqual({
+      apps: [],
       diagnostics: [],
-      exitCode: 0,
       findings: [],
+      kind: "check-report",
       passedChecks: [{ id: "fixture-info/INFO", title: "info check" }],
-      skipped: [],
+      schemaVersion: 1,
       status: "clean",
-      summary: { errors: 0, informational: 0, passed: 1, warnings: 0 },
+      summary: {
+        categories: { INFO: { errors: 0, informational: 0, passed: 1, warnings: 0 } },
+        diagnostics: 0,
+        errors: 0,
+        exitCode: 0,
+        informational: 0,
+        passed: 1,
+        warnings: 0,
+      },
     });
     expect(capture.stdout.text).not.toContain("✓");
     expect(capture.stderr.text).toBe("");
@@ -68,21 +79,76 @@ describe("runCli", () => {
     expect(capture.stderr.text).toContain("--home must be an absolute path");
   });
 
-  it("rejects --fix with --json until fix records are defined", async () => {
+  it("reports a JSON fix run without mixing progress into stdout", async () => {
     const capture = createCapture(["check", "--fix", "--json"]);
 
-    expect(await runCli(distro([findingPlugin("info", [])]), capture.runtime)).toBe(2);
-    expect(capture.stdout.text).toBe("");
-    expect(capture.stderr.text).toContain("--fix cannot be combined with --json");
+    expect(await runCli(distro([findingPlugin("info", [])]), capture.runtime)).toBe(0);
+    expect(JSON.parse(capture.stdout.text)).toMatchObject({ fixes: [], kind: "check-report" });
+    expect(capture.stderr.text).toContain("Nothing to fix");
   });
 
-  it.each([["--dry-run"], ["--yes"]])("rejects %s without --fix", async (flag) => {
-    const capture = createCapture(["check", flag]);
+  it("redacts JSON fix diffs unless --detail is requested", async () => {
+    const plugin = definePlugin({
+      apiVersion: 1,
+      checks: [
+        defineCheck({
+          defaultSeverity: "warn",
+          detect: () => [{ id: "write", message: "Write a fixture file." }],
+          explain: "Why this matters.\n\nRun the automatic fix.",
+          fix: () => ({
+            operations: [
+              {
+                content: "potentially secret contents\n",
+                path: join(process.cwd(), ".context", "check-json-fixture.md"),
+                type: "write",
+              },
+            ],
+            summary: "Write the fixture file.",
+          }),
+          fixability: "auto",
+          id: "fixture-json/AUTO",
+          scope: "project",
+          title: "Automatic JSON check",
+        }),
+      ],
+      id: "fixture-json",
+      name: "Fixture JSON",
+      version: "1.0.0",
+    });
+    const redacted = createCapture(["check", "--fix", "--dry-run", "--json"]);
+    const detailed = createCapture(["check", "--fix", "--dry-run", "--json", "--detail"]);
 
-    expect(await runCli(distro([findingPlugin("info", [])]), capture.runtime)).toBe(2);
-    expect(capture.stdout.text).toBe("");
-    expect(capture.stderr.text).toContain(`${flag} only means something with --fix`);
+    expect(await runCli(distro([plugin]), redacted.runtime)).toBe(1);
+    expect(JSON.parse(redacted.stdout.text).fixes[0].operations[0]).not.toHaveProperty("diff");
+    expect(redacted.stdout.text).not.toContain("potentially secret contents");
+    expect(await runCli(distro([plugin]), detailed.runtime)).toBe(1);
+    expect(JSON.parse(detailed.stdout.text).fixes[0].operations[0].diff).toContain("diff --aura");
+    expect(detailed.stdout.text).toContain("potentially secret contents");
   });
+
+  it("accepts the frozen JSON version and rejects invalid version usage", async () => {
+    const pinned = createCapture(["check", "--json", "--json-version", "1"]);
+    const missingJson = createCapture(["check", "--json-version", "1"]);
+    const unsupported = createCapture(["check", "--json", "--json-version", "2"]);
+
+    expect(await runCli(distro([findingPlugin("info", [])]), pinned.runtime)).toBe(0);
+    expect(JSON.parse(pinned.stdout.text)).toMatchObject({ schemaVersion: 1 });
+    expect(await runCli(distro(), missingJson.runtime)).toBe(2);
+    expect(missingJson.stderr.text).toContain("--json-version only means something with --json");
+    expect(await runCli(distro(), unsupported.runtime)).toBe(2);
+    expect(unsupported.stderr.text).toContain("Supported versions: 1");
+  });
+
+  it.each([["--dry-run"], ["--interactive"], ["--yes"]])(
+    "rejects %s without --fix",
+    async (flag) => {
+      const capture = createCapture(["check", flag]);
+
+      expect(await runCli(distro([findingPlugin("info", [])]), capture.runtime)).toBe(2);
+      expect(capture.stdout.text).toBe("");
+      expect(capture.stderr.text).toContain(`${flag} only means something with --fix`);
+    },
+  );
 
   it("rejects --dry-run with --yes", async () => {
     const capture = createCapture(["check", "--fix", "--dry-run", "--yes"]);
@@ -90,6 +156,64 @@ describe("runCli", () => {
     expect(await runCli(distro([findingPlugin("info", [])]), capture.runtime)).toBe(2);
     expect(capture.stdout.text).toBe("");
     expect(capture.stderr.text).toContain("--dry-run and --yes contradict each other");
+  });
+
+  it("rejects --interactive with --yes and with redirected prompt streams", async () => {
+    const contradictory = createCapture(["check", "--fix", "--interactive", "--yes"]);
+    const redirected = createCapture(["check", "--fix", "--interactive"]);
+
+    expect(await runCli(distro(), contradictory.runtime)).toBe(2);
+    expect(contradictory.stderr.text).toContain("--interactive and --yes contradict each other");
+    expect(await runCli(distro(), redirected.runtime)).toBe(2);
+    expect(redirected.stderr.text).toContain("stdin and prompt output must both be terminals");
+  });
+
+  it("allows interactive JSON when prompts can use terminal stderr", async () => {
+    const capture = createCapture(["check", "--fix", "--interactive", "--json"]);
+    const stdin = Object.assign(Readable.from([]), { isTTY: true });
+    Object.assign(capture.stderr, { isTTY: true });
+
+    expect(await runCli(distro([findingPlugin("info", [])]), { ...capture.runtime, stdin })).toBe(
+      0,
+    );
+    expect(JSON.parse(capture.stdout.text)).toMatchObject({ kind: "check-report" });
+    expect(capture.stderr.text).toContain("Nothing to fix");
+  });
+
+  it("rejects --only with --explain and unknown selectors before scanning", async () => {
+    let invoked = false;
+    const plugin = definePlugin({
+      adapters: [
+        fixtureAdapter(() => {
+          invoked = true;
+          return { installed: false };
+        }),
+      ],
+      apiVersion: 1,
+      checks: [
+        defineCheck({
+          defaultSeverity: "warn",
+          detect: () => [],
+          explain: "Why this matters.\n\nHow to inspect it.",
+          fixability: "manual",
+          id: "fixture/ENV-001",
+          scope: "global",
+          title: "Environment check",
+        }),
+      ],
+      id: "fixture",
+      name: "Fixture",
+      version: "1.0.0",
+    });
+    const explain = createCapture(["check", "--explain", "fixture/ENV-001", "--only", "ENV"]);
+    const unknown = createCapture(["check", "--only", "unknown"]);
+
+    expect(await runCli(distro([plugin]), explain.runtime)).toBe(2);
+    expect(explain.stderr.text).toContain("--explain cannot be combined with --only");
+    expect(await runCli(distro([plugin]), unknown.runtime)).toBe(2);
+    expect(unknown.stderr.text).toContain("Valid categories: ENV");
+    expect(unknown.stderr.text).toContain("Valid app IDs: fixture");
+    expect(invoked).toBe(false);
   });
 
   it("refuses an interactive setup when stdout is redirected", async () => {
@@ -134,6 +258,44 @@ describe("runCli", () => {
 
     expect(observed?.homeDir).toBe("/fake/home");
     expect(observed?.pathEntries).toEqual(["/fake/bin"]);
+  });
+
+  it("does not invoke adapters excluded by --only", async () => {
+    const invoked: string[] = [];
+    const plugin = definePlugin({
+      adapters: ["claude-code", "cursor"].map((id) =>
+        defineAdapter({
+          detect: () => {
+            invoked.push(id);
+            return Promise.resolve({ installed: false });
+          },
+          displayName: id,
+          files: () => [],
+          id,
+          parse: () => ({ instructionFiles: [], mcpServers: [], skills: [] }),
+          supportedRange: ">=1",
+        }),
+      ),
+      apiVersion: 1,
+      checks: [
+        defineCheck({
+          defaultSeverity: "warn",
+          detect: () => [],
+          explain: "Why this matters.\n\nHow to inspect it.",
+          fixability: "manual",
+          id: "fixture/ENV-001",
+          scope: "global",
+          title: "Environment check",
+        }),
+      ],
+      id: "fixture",
+      name: "Fixture",
+      version: "1.0.0",
+    });
+    const capture = createCapture(["check", "--only", "claude"]);
+
+    expect(await runCli(distro([plugin]), capture.runtime)).toBe(0);
+    expect(invoked).toEqual(["claude-code"]);
   });
 
   it("captures the home directory at the process boundary", async () => {
@@ -213,7 +375,7 @@ describe("runCli", () => {
       capture.runtime,
     );
 
-    expect(exitCode).toBe(2);
+    expect(exitCode).toBe(3);
     expect(capture.stdout.text).toContain("! Warnings (1)");
     expect(capture.stdout.text).toContain("Run errors (1)");
     expect(capture.stdout.text).toContain("[throwing/CHECK:check]");
@@ -221,6 +383,82 @@ describe("runCli", () => {
     expect(capture.stdout.text).toContain("0 passed, 0 informational, 1 warnings, 0 errors");
     expect(capture.stdout.text).not.toContain("secret source contents");
     expect(capture.stderr.text).toBe("");
+  });
+
+  it("uses exit code three for a throwing adapter and still emits its app record", async () => {
+    const plugin = definePlugin({
+      adapters: [
+        defineAdapter({
+          detect: () => Promise.reject(new Error("adapter exploded")),
+          displayName: "Broken App",
+          files: () => [],
+          id: "broken-app",
+          parse: () => ({ instructionFiles: [], mcpServers: [], skills: [] }),
+          supportedRange: ">=1",
+        }),
+      ],
+      apiVersion: 1,
+      checks: [
+        defineCheck({
+          defaultSeverity: "warn",
+          detect: () => [],
+          explain: "Why this matters.\n\nHow to inspect it.",
+          fixability: "manual",
+          id: "fixture/ENV-001",
+          scope: "global",
+          title: "Environment check",
+        }),
+      ],
+      id: "fixture",
+      name: "Fixture",
+      version: "1.0.0",
+    });
+    const capture = createCapture(["check", "--json"]);
+
+    expect(await runCli(distro([plugin]), capture.runtime)).toBe(3);
+    expect(JSON.parse(capture.stdout.text)).toMatchObject({
+      apps: [{ appId: "broken-app", detection: { installed: false }, displayName: "Broken App" }],
+      status: "operational-error",
+      summary: { exitCode: 3 },
+    });
+  });
+
+  it("uses exit code three and a failed record when fix preparation fails", async () => {
+    const plugin = definePlugin({
+      apiVersion: 1,
+      checks: [
+        defineCheck({
+          defaultSeverity: "warn",
+          detect: () => [{ id: "invalid", message: "Invalid fix." }],
+          explain: "Why this matters.\n\nRun the automatic fix.",
+          fix: () => ({
+            operations: [{ content: "blocked", path: "/outside-aura-roots", type: "write" }],
+            summary: "Write outside the managed roots.",
+          }),
+          fixability: "auto",
+          id: "fixture/AUTO",
+          scope: "global",
+          title: "Invalid automatic check",
+        }),
+      ],
+      id: "fixture",
+      name: "Fixture",
+      version: "1.0.0",
+    });
+    const capture = createCapture(["check", "--fix", "--yes", "--json"]);
+
+    expect(await runCli(distro([plugin]), capture.runtime)).toBe(3);
+    expect(JSON.parse(capture.stdout.text)).toMatchObject({
+      diagnostics: [{ id: "core/fix-plan", phase: "fix" }],
+      fixes: [
+        {
+          findingId: "invalid",
+          operations: [{ effect: "conflict", paths: ["/outside-aura-roots"] }],
+          status: "failed",
+        },
+      ],
+      status: "operational-error",
+    });
   });
 
   it("surfaces what a check reported only when asked", async () => {
@@ -289,7 +527,7 @@ describe("runCli", () => {
         granted.runtime,
       ),
     ).toBe(0);
-    expect(await runCli(distro([bare]), refused.runtime)).toBe(2);
+    expect(await runCli(distro([bare]), refused.runtime)).toBe(3);
     expect(refused.stderr.text).toContain("Acme Doctor:");
   });
 });

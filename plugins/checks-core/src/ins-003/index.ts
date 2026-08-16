@@ -30,8 +30,9 @@ const SCOPES: readonly Scope[] = ["global", "project"];
 export const duplicateInstructionsCheck = defineCheck({
   defaultSeverity: "warn",
   detect: detectDuplicateInstructions,
-  explain:
-    "Repeated guidance across agent instruction files is easy to update in one place and forget in another. Consolidate each cluster into the shared instruction source, choosing the clearest version when copies have drifted.",
+  explain: `Repeated guidance across agent instruction files is easy to update in one place and forget in another. Similar copies also consume context repeatedly and can diverge into subtly different rules.
+
+Review each reported cluster and keep its clearest version in the shared instruction source. Remove the redundant copies only after confirming their scopes and conditions are preserved.`,
   fixability: "manual",
   id: "INS-003",
   scope: "global",

@@ -7,13 +7,22 @@ import { describe, expect, it } from "vitest";
 import { createSeedBuilder, runBinaryCheck } from "./index.js";
 
 const EMPTY_REPORT = JSON.stringify({
+  apps: [],
   diagnostics: [],
-  exitCode: 2,
   findings: [],
+  kind: "check-report",
   passedChecks: [],
-  skipped: [],
+  schemaVersion: 1,
   status: "empty",
-  summary: { errors: 0, informational: 0, passed: 0, warnings: 0 },
+  summary: {
+    categories: {},
+    diagnostics: 0,
+    errors: 0,
+    exitCode: 2,
+    informational: 0,
+    passed: 0,
+    warnings: 0,
+  },
 });
 
 describe("runBinaryCheck", () => {

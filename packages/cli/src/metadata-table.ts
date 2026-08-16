@@ -13,7 +13,9 @@ import { safeFindingText } from "./safe-text.js";
 const MAX_TABLE_ROWS = 100;
 
 /** Draws the table a finding asked for, or nothing at all if it asked for none it can fill. */
-export function renderFindingPresentation(finding: Finding): readonly string[] {
+export function renderFindingPresentation(
+  finding: Pick<Finding, "metadata" | "presentation">,
+): readonly string[] {
   const presentation = finding.presentation;
   if (presentation?.kind !== "metadata-table" || presentation.columns.length === 0) {
     return [];

@@ -1,0 +1,227 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tryaura.sh/schemas/check-output-v1.schema.json",
+  "title": "Aura check JSON output v1",
+  "oneOf": [{ "$ref": "#/$defs/report" }, { "$ref": "#/$defs/explanation" }],
+  "$defs": {
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["errors", "informational", "passed", "warnings"],
+      "properties": {
+        "errors": { "type": "integer", "minimum": 0 },
+        "informational": { "type": "integer", "minimum": 0 },
+        "passed": { "type": "integer", "minimum": 0 },
+        "warnings": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "categories",
+        "diagnostics",
+        "errors",
+        "exitCode",
+        "informational",
+        "passed",
+        "warnings"
+      ],
+      "properties": {
+        "categories": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/counts" }
+        },
+        "diagnostics": { "type": "integer", "minimum": 0 },
+        "errors": { "type": "integer", "minimum": 0 },
+        "exitCode": { "enum": [0, 1, 2, 3] },
+        "informational": { "type": "integer", "minimum": 0 },
+        "passed": { "type": "integer", "minimum": 0 },
+        "warnings": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "diagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "message", "phase"],
+      "properties": {
+        "detail": { "type": "string" },
+        "id": { "type": "string" },
+        "message": { "type": "string" },
+        "path": { "type": "string" },
+        "phase": { "enum": ["check", "detect", "files", "fix", "parse", "read", "support"] }
+      }
+    },
+    "support": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "supportedRange"],
+      "properties": {
+        "status": { "enum": ["supported", "unknown", "unsupported"] },
+        "supportedRange": { "type": "string" },
+        "version": { "type": "string" }
+      }
+    },
+    "app": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["appId", "detection", "displayName"],
+      "properties": {
+        "appId": { "type": "string" },
+        "detection": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["installed"],
+          "properties": {
+            "authenticated": { "type": "boolean" },
+            "installed": { "type": "boolean" },
+            "version": { "type": "string" }
+          }
+        },
+        "displayName": { "type": "string" },
+        "support": { "$ref": "#/$defs/support" }
+      }
+    },
+    "location": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path"],
+      "properties": {
+        "column": { "type": "integer", "minimum": 1 },
+        "line": { "type": "integer", "minimum": 1 },
+        "path": { "type": "string" }
+      }
+    },
+    "presentation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["columns", "kind", "rowsKey"],
+      "properties": {
+        "columns": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["heading", "key"],
+            "properties": {
+              "align": { "enum": ["left", "right"] },
+              "falseLabel": { "type": "string" },
+              "format": { "enum": ["boolean", "integer", "percentage", "text"] },
+              "heading": { "type": "string" },
+              "key": { "type": "string" },
+              "trueLabel": { "type": "string" }
+            }
+          }
+        },
+        "kind": { "const": "metadata-table" },
+        "rowsKey": { "type": "string" }
+      }
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["checkId", "findingId", "fixability", "message", "scope", "severity"],
+      "properties": {
+        "checkId": { "type": "string" },
+        "details": { "type": "string" },
+        "findingId": { "type": "string" },
+        "fixability": { "enum": ["auto", "guided", "manual"] },
+        "locations": { "type": "array", "items": { "$ref": "#/$defs/location" } },
+        "message": { "type": "string" },
+        "metadata": { "type": "object" },
+        "presentation": { "$ref": "#/$defs/presentation" },
+        "scope": { "enum": ["global", "project"] },
+        "severity": { "enum": ["error", "info", "warn"] }
+      }
+    },
+    "fixOperation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["effect", "paths"],
+      "properties": {
+        "conflict": { "type": "string" },
+        "diff": { "type": "string" },
+        "effect": {
+          "enum": ["archive", "conflict", "create", "move", "noop", "remove", "symlink", "update"]
+        },
+        "paths": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "fix": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["checkId", "findingId", "manualSteps", "operations", "status", "summary"],
+      "properties": {
+        "checkId": { "type": "string" },
+        "findingId": { "type": "string" },
+        "manualSteps": { "type": "array", "items": { "type": "string" } },
+        "message": { "type": "string" },
+        "operations": { "type": "array", "items": { "$ref": "#/$defs/fixOperation" } },
+        "status": { "enum": ["applied", "failed", "partial", "planned"] },
+        "summary": { "type": "string" }
+      }
+    },
+    "report": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "apps",
+        "diagnostics",
+        "findings",
+        "kind",
+        "passedChecks",
+        "schemaVersion",
+        "status",
+        "summary"
+      ],
+      "properties": {
+        "apps": { "type": "array", "items": { "$ref": "#/$defs/app" } },
+        "diagnostics": { "type": "array", "items": { "$ref": "#/$defs/diagnostic" } },
+        "findings": { "type": "array", "items": { "$ref": "#/$defs/finding" } },
+        "fixes": { "type": "array", "items": { "$ref": "#/$defs/fix" } },
+        "kind": { "const": "check-report" },
+        "passedChecks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "title"],
+            "properties": {
+              "id": { "type": "string" },
+              "title": { "type": "string" }
+            }
+          }
+        },
+        "schemaVersion": { "const": 1 },
+        "status": { "enum": ["clean", "empty", "error", "operational-error", "warning"] },
+        "summary": { "$ref": "#/$defs/summary" }
+      }
+    },
+    "explanation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "explain",
+        "fixability",
+        "fixesApplicable",
+        "id",
+        "kind",
+        "schemaVersion",
+        "scope",
+        "severity",
+        "title"
+      ],
+      "properties": {
+        "explain": { "type": "string" },
+        "fixability": { "enum": ["auto", "guided", "manual"] },
+        "fixesApplicable": { "type": "boolean" },
+        "id": { "type": "string" },
+        "kind": { "const": "check-explanation" },
+        "schemaVersion": { "const": 1 },
+        "scope": { "enum": ["global", "project"] },
+        "severity": { "enum": ["error", "info", "warn"] },
+        "title": { "type": "string" }
+      }
+    }
+  }
+}
