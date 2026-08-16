@@ -1,4 +1,9 @@
-import type { FileOperation, FixPlan, WorkspaceModel } from "@tryaura/aura-sdk";
+import type {
+  AuraManifestProblem,
+  FileOperation,
+  FixPlan,
+  WorkspaceModel,
+} from "@tryaura/aura-sdk";
 
 import type { JournalStatus } from "./journal-schema.js";
 
@@ -148,6 +153,7 @@ export type FixPlanErrorCode =
   | "invalid-options"
   | "invalid-path"
   | "journal-corrupt"
+  | "manifest-read-only"
   | "path-conflict"
   | "plan-blocked"
   | "undo-conflict";
@@ -156,6 +162,8 @@ export type FixPlanErrorCode =
 export interface FixPlanErrorDetails {
   /** The underlying failure, when one exists. Carries the original `errno` code for I/O errors. */
   readonly cause?: unknown;
+  /** Why desired state was unusable, on a `manifest-read-only` failure. */
+  readonly manifestProblem?: AuraManifestProblem | undefined;
   /** The operation the failure belongs to, when it belongs to one. */
   readonly operationIndex?: number | undefined;
   /** The path the failure concerns. */
@@ -165,6 +173,14 @@ export interface FixPlanErrorDetails {
 /** A validation or execution failure, usually tied to a particular plan operation. */
 export class FixPlanError extends Error {
   readonly code: FixPlanErrorCode;
+  /**
+   * Why desired state was unusable, present when `code` is `manifest-read-only`.
+   *
+   * Carried rather than flattened into the message: a newer schema version asks the user to upgrade
+   * Aura, while corrupt JSON asks them to repair a file, and a caller cannot tell those apart from
+   * prose.
+   */
+  readonly manifestProblem?: AuraManifestProblem | undefined;
   readonly operationIndex?: number | undefined;
   readonly path?: string | undefined;
   /** The `errno` code of the underlying I/O failure, when the cause was one. */
@@ -174,6 +190,7 @@ export class FixPlanError extends Error {
     super(message, { cause: details.cause });
     this.name = "FixPlanError";
     this.code = code;
+    this.manifestProblem = details.manifestProblem;
     this.operationIndex = details.operationIndex;
     this.path = details.path;
     this.systemErrorCode = errorCode(details.cause);

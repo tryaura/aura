@@ -34,6 +34,14 @@ export interface PreparedNoopOperation extends PreparedBase {
 
 export interface PreparedWriteOperation extends PreparedBase {
   readonly before: CapturedFileState | MissingPathState | SymlinkPathState;
+  /**
+   * The mode the file will actually have, decided while the preview was rendered.
+   *
+   * Not always {@link WriteFileOperation.mode}: an existing file keeps what it has, and core holds
+   * its own protocol files at a fixed mode. Resolving it once is what keeps the preview, the
+   * journal, and the write from each deriving it and drifting apart.
+   */
+  readonly mode: number;
   readonly operation: WriteFileOperation;
   readonly type: "write";
 }

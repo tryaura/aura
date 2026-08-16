@@ -58,11 +58,19 @@ export type {
   WriteFileOperation,
 } from "./fix.js";
 export type {
+  AuraManifest,
+  AuraManifestApp,
+  AuraManifestEntry,
+  AuraManifestOwnership,
+  AuraManifestProblem,
+  AuraManifestSnippet,
+  AuraManifestState,
+  AuraManifestV1,
+} from "./manifest.js";
+export type {
   AdapterProblem,
   AdapterSnapshot,
   AppModel,
-  GitignoreModel,
-  GitignorePattern,
   HttpMcpTransport,
   InstalledSkill,
   InstructionDocument,
@@ -70,12 +78,12 @@ export type {
   InstructionLinkKind,
   McpServer,
   McpTransport,
-  RepositoryModel,
   ResolvedSharedLink,
   SharedInstructionsState,
   StdioMcpTransport,
   WorkspaceModel,
 } from "./model.js";
+export type { GitignoreModel, GitignorePattern, RepositoryModel } from "./repository.js";
 export {
   collectMcpServers,
   configStringArray,

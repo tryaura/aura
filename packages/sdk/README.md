@@ -46,7 +46,11 @@ What the SDK does enforce:
   to `MAX_EXEC_TIMEOUT_MS`, so one hung command cannot stall a scan.
 - `FixPlan.operations` is a closed union of write, remove, move, and symlink — a fix cannot run a
   command or make a network request. `WriteFileOperation.mode` accepts only `0o600`, `0o644`,
-  `0o700`, and `0o755`, so a plan cannot request world-writable or setuid files.
+  `0o700`, and `0o755`, and core rechecks the value at runtime rather than trusting the type, so a
+  plan cannot request world-writable or setuid files even from untyped JavaScript. An existing file
+  keeps the mode it already has; a plan has no way to override that. Core enforces an exact mode on
+  the few files it owns as protocol — currently only `~/agents/aura.json`, which stays at `0o600` —
+  and it selects those by path, so a plan cannot nominate a file for that treatment.
 - Every path in a plan, including a symlink `target`, must resolve inside the workspace or the
   Aura-managed part of the home directory. Core rejects plans that escape those roots.
 
@@ -196,8 +200,10 @@ a hijacked `PATH` can subvert. Record the resolved path as `AdapterDetection.exe
 pass that absolute path as `command` on later calls.
 
 Checks are synchronous and pure. They receive a `WorkspaceModel` containing app state, instruction
-documents, MCP servers, installed skills, source-file metadata, and an optional repository snapshot.
-Checks never read from disk or inspect process environment directly.
+documents, MCP servers, installed skills, source-file metadata, the `~/agents/aura.json` manifest
+state, and an optional repository snapshot. `model.manifest` distinguishes a missing manifest from
+a parsed v1 manifest and a read-only problem. Checks never read from disk or inspect process
+environment directly.
 
 `RepositoryModel` carries the root `.gitignore` and the repository-local `info/exclude`, so a rule
 a developer applied only to their own checkout is not mistaken for a missing one.

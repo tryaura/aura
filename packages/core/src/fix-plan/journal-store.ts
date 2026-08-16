@@ -2,7 +2,6 @@ import { Buffer } from "node:buffer";
 import { chmod, lstat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
-import { DEFAULT_FILE_MODE } from "./limits.js";
 import type { StoredOperation, StoredPathState } from "./journal-schema.js";
 import type { ApplicableOperation } from "./prepared.js";
 import type {
@@ -64,12 +63,14 @@ export async function storeOperation(
     }
     case "write": {
       const content = Buffer.from(operation.operation.content, "utf8");
-      const mode =
-        operation.before.kind === "file"
-          ? operation.before.mode
-          : (operation.operation.mode ?? DEFAULT_FILE_MODE);
       return {
-        after: await storeFile(content, mode, directory, operation.preview.index, "after"),
+        after: await storeFile(
+          content,
+          operation.mode,
+          directory,
+          operation.preview.index,
+          "after",
+        ),
         before: await storedStateWithPayload(
           operation.before,
           directory,
