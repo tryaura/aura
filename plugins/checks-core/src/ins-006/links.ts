@@ -11,6 +11,15 @@ export const IMPORT_SUPPORT: ReadonlyMap<string, boolean> = new Map([
 ]);
 
 /**
+ * How many import hops each application follows before it stops loading.
+ *
+ * Read by every check that reasons about which files an application ends up with, so that they
+ * cannot disagree about where a chain stops. Applications absent from the map follow chains as far
+ * as they go.
+ */
+export const DEPTH_LIMITS: ReadonlyMap<string, number> = new Map([["claude-code", 5]]);
+
+/**
  * How many link findings one instruction file may contribute before the rest are summarized.
  *
  * A document's link count is bounded only by its size, and a project instruction file arrives with

@@ -44,8 +44,10 @@ Plugin authors need `@types/node` in their `tsconfig` for the `import.meta.url` 
 
 Checks are synchronous and pure. They never read from disk or inspect the process environment. A
 check emits `DetectedFinding` values carrying only occurrence-specific data — `id`, `message`, and
-optionally `details`, `locations`, `metadata`, and a `severity` override. Core stamps on `checkId`,
-`scope`, and the resolved severity, so a finding cannot contradict the check that produced it.
+optionally `details`, `locations`, `metadata`, `presentation`, and a `severity` override.
+`presentation` can ask a human renderer to display a metadata array as a generic table; the
+structured metadata remains the source of truth in JSON output. Core stamps on `checkId`, `scope`,
+and the resolved severity, so a finding cannot contradict the check that produced it.
 
 :::danger[Never put secrets in metadata]
 Every `metadata` field is rendered into reports, logs, and CI output. Note how

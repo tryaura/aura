@@ -1,7 +1,13 @@
 import type { InstructionDocument, InstructionLink } from "@tryaura/aura-sdk";
 import { describe, expect, it } from "vitest";
 
-import { buildInstructionGraph, findDepthOverflows, findInstructionCycles } from "./graph.js";
+import { findDepthOverflows } from "./depth.js";
+import {
+  buildInstructionGraph,
+  findInstructionCycles,
+  instructionGraphFor,
+  reachableInstructionPaths,
+} from "./graph.js";
 
 describe("instruction link graph", () => {
   it("finds self, two-node, and three-node cycles with canonical paths", () => {
@@ -81,6 +87,60 @@ describe("instruction link graph", () => {
     ]);
 
     expect(findDepthOverflows(graph, ["/a.md", "/elsewhere.md"], 1)).toEqual([]);
+  });
+
+  it("walks reachable paths once across cycles, duplicate routes, and invalid edges", () => {
+    const graph = buildInstructionGraph([
+      document("/root.md", [link("/a.md"), link("/b.md"), link("/gone.md", false)]),
+      document("/a.md", [link("/shared.md")]),
+      document("/b.md", [link("/shared.md")]),
+      document("/shared.md", [link("/root.md")]),
+      document("/disconnected.md", []),
+    ]);
+
+    expect(reachableInstructionPaths(graph, ["/root.md", "/root.md"])).toEqual([
+      "/a.md",
+      "/b.md",
+      "/root.md",
+      "/shared.md",
+    ]);
+  });
+
+  it("stops reachability at the configured hop boundary", () => {
+    const graph = buildInstructionGraph(chain(3));
+
+    expect(reachableInstructionPaths(graph, ["/0.md"], { maximumHops: 2 })).toEqual([
+      "/0.md",
+      "/1.md",
+      "/2.md",
+    ]);
+  });
+
+  it("treats an excluded document as absent, along with everything only it reaches", () => {
+    const graph = buildInstructionGraph([
+      document("/root.md", [link("/gate.md"), link("/plain.md")]),
+      document("/gate.md", [link("/behind.md")]),
+      document("/behind.md", []),
+      document("/plain.md", []),
+    ]);
+    const excluded = new Set(["/gate.md"]);
+
+    expect(reachableInstructionPaths(graph, ["/root.md"], { excluded })).toEqual([
+      "/plain.md",
+      "/root.md",
+    ]);
+    expect(reachableInstructionPaths(graph, ["/root.md", "/gate.md"], { excluded })).toEqual([
+      "/plain.md",
+      "/root.md",
+    ]);
+  });
+
+  it("hands the same graph to every check reading one document list", () => {
+    const documents = [document("/root.md", [link("/a.md")]), document("/a.md", [])];
+
+    expect(instructionGraphFor(documents)).toBe(instructionGraphFor(documents));
+    expect(instructionGraphFor(documents)).not.toBe(instructionGraphFor([...documents]));
+    expect(instructionGraphFor(documents).edges).toEqual(buildInstructionGraph(documents).edges);
   });
 });
 

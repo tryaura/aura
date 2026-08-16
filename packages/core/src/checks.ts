@@ -81,6 +81,7 @@ function toFinding(check: Check, detected: DetectedFinding): Finding {
     ...(detected.details === undefined ? {} : { details: detected.details }),
     ...(detected.locations === undefined ? {} : { locations: detected.locations }),
     ...(detected.metadata === undefined ? {} : { metadata: detected.metadata }),
+    ...(detected.presentation === undefined ? {} : { presentation: detected.presentation }),
   });
 }
 
