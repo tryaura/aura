@@ -71,8 +71,6 @@ export type {
   AdapterProblem,
   AdapterSnapshot,
   AppModel,
-  GitignoreModel,
-  GitignorePattern,
   HttpMcpTransport,
   InstalledSkill,
   InstructionDocument,
@@ -80,12 +78,12 @@ export type {
   InstructionLinkKind,
   McpServer,
   McpTransport,
-  RepositoryModel,
   ResolvedSharedLink,
   SharedInstructionsState,
   StdioMcpTransport,
   WorkspaceModel,
 } from "./model.js";
+export type { GitignoreModel, GitignorePattern, RepositoryModel } from "./repository.js";
 export {
   collectMcpServers,
   configStringArray,

@@ -1,35 +1,17 @@
-import type {
-  Adapter,
-  AdapterDetection,
-  AdapterFileStatus,
-  AdapterSnapshot,
-  AdapterSourceFile,
-  AppModel,
-  Environment,
-  ResolvedSharedLink,
-  WorkspaceModel,
-} from "@tryaura/aura-sdk";
+import type { Adapter, AppModel, Environment, WorkspaceModel } from "@tryaura/aura-sdk";
 
 import { auraManifestDiagnostics } from "../manifest/diagnostic.js";
 import { resolveAuraManifestPath } from "../manifest/protocol.js";
 import { readAuraManifest } from "../manifest/read.js";
-import {
-  describeAdapterProblems,
-  describeFailure,
-  type ScanDiagnostic,
-  type ScanPhase,
-} from "./diagnostics.js";
-import { type AdapterFileDiscovery, discoverAdapterFiles } from "./discovery.js";
-import { createLinkResolver, type LinkResolver } from "./links.js";
+import { type ScanContext, scanAdapter, type SkippedApp } from "./adapter-scan.js";
+import type { ScanDiagnostic } from "./diagnostics.js";
+import { createLinkResolver } from "./links.js";
 import { findProjectRoot } from "./project-root.js";
 import { createCachingReader, createFileReader, type FileReader } from "./reader.js";
 import { scanRepository } from "./repository.js";
-import {
-  resolveAdapterSharedLink,
-  sharedInstructionsPath,
-  toSharedInstructions,
-} from "./shared-links.js";
-import { evaluateSupport, isComparableRange } from "./support.js";
+import { sharedInstructionsPath, toSharedInstructions } from "./shared-links.js";
+
+export type { SkippedApp } from "./adapter-scan.js";
 
 /** Everything {@link buildWorkspaceModel} needs. */
 export interface WorkspaceScanOptions {
@@ -44,14 +26,6 @@ export interface WorkspaceScanOptions {
   readonly environment: Environment;
   /** Filesystem access. Defaults to the real one. */
   readonly reader?: FileReader | undefined;
-}
-
-/** An application whose adapter ran and reported it absent. */
-export interface SkippedApp {
-  /** The {@link Adapter.id} that reported the application absent. */
-  readonly adapterId: string;
-  /** Human-readable application name. */
-  readonly displayName: string;
 }
 
 /** The outcome of one scan: what the machine looks like, and what went wrong while looking. */
@@ -139,22 +113,6 @@ export async function buildWorkspaceModel(options: WorkspaceScanOptions): Promis
   };
 }
 
-interface ScanContext {
-  readonly environment: Environment;
-  readonly links: LinkResolver;
-  /** Canonical directory project-scoped paths must stay inside. Awaited once per adapter. */
-  readonly projectBoundary: Promise<string | undefined>;
-  readonly projectRoot: Promise<string | undefined>;
-  readonly reader: FileReader;
-}
-
-/** One adapter's contribution to the scan. `app` is absent when the adapter produced nothing. */
-interface AdapterScan {
-  readonly app?: AppModel | undefined;
-  readonly diagnostics: readonly ScanDiagnostic[];
-  readonly skipped?: SkippedApp | undefined;
-}
-
 /**
  * Canonicalizes the directory project-scoped paths are confined to.
  *
@@ -167,143 +125,4 @@ async function resolveProjectBoundary(
   reader: FileReader,
 ): Promise<string | undefined> {
   return reader.realPath((await projectRoot) ?? cwd);
-}
-
-/**
- * Walks one adapter through detect, files, read, and parse.
- *
- * Every plugin call is guarded. A plugin runs with the full privileges of the process and is
- * trusted to that extent, but one that throws must not take the rest of the scan with it: the user
- * still gets findings for the applications that did parse, plus a diagnostic naming the offender.
- */
-async function scanAdapter(adapter: Adapter, context: ScanContext): Promise<AdapterScan> {
-  const diagnostics: ScanDiagnostic[] = [];
-
-  let detection: AdapterDetection;
-  try {
-    detection = await adapter.detect(context.environment);
-  } catch (error) {
-    return { diagnostics: [failure(adapter, "detect", error)] };
-  }
-
-  if (!detection.installed) {
-    return {
-      diagnostics: [],
-      skipped: { adapterId: adapter.id, displayName: adapter.displayName },
-    };
-  }
-
-  let discovery: AdapterFileDiscovery;
-  try {
-    discovery = await discoverAdapterFiles(adapter, {
-      detection,
-      environment: context.environment,
-      projectBoundary: await context.projectBoundary,
-      reader: context.reader,
-    });
-  } catch (error) {
-    return { diagnostics: [failure(adapter, "files", error)] };
-  }
-
-  diagnostics.push(...discovery.diagnostics);
-
-  let sharedLink: ResolvedSharedLink | undefined;
-  try {
-    sharedLink = resolveAdapterSharedLink(adapter, context.environment, discovery.files);
-  } catch (error) {
-    diagnostics.push(failure(adapter, "files", error));
-  }
-
-  const parse = await parseAdapter(adapter, detection, discovery, context);
-  const snapshot = parse.snapshot;
-  diagnostics.push(...parse.diagnostics);
-
-  if (!isComparableRange(adapter.supportedRange)) {
-    diagnostics.push({
-      adapterId: adapter.id,
-      message: `${adapter.displayName} declares an unparsable supported range: ${adapter.supportedRange}`,
-      phase: "support",
-    });
-  }
-
-  return {
-    app: {
-      adapterId: adapter.id,
-      detection,
-      displayName: adapter.displayName,
-      ...(adapter.installHint === undefined ? {} : { installHint: adapter.installHint }),
-      instructionFiles: snapshot.instructionFiles,
-      mcpServers: snapshot.mcpServers,
-      metadata: snapshot.metadata,
-      skills: snapshot.skills,
-      // Contents are dropped here: they were consumed by parse and are not retained beside the
-      // documents parsed out of them.
-      sourceFiles: [...discovery.files.values()].map(toStatus),
-      ...(sharedLink === undefined ? {} : { sharedLink }),
-      support: evaluateSupport(adapter.supportedRange, detection.version),
-    },
-    diagnostics,
-  };
-}
-
-/**
- * Hands one adapter its files and normalizes what it makes of them.
- *
- * Guarded like every other plugin call: an adapter that throws loses its own snapshot and nothing
- * else. The files it read but could not use are a different thing entirely — those are reported as
- * the adapter's own diagnostics, since only it can tell a corrupt config from an empty one.
- */
-async function parseAdapter(
-  adapter: Adapter,
-  detection: AdapterDetection,
-  discovery: AdapterFileDiscovery,
-  context: ScanContext,
-): Promise<{ diagnostics: readonly ScanDiagnostic[]; snapshot: AdapterSnapshot }> {
-  try {
-    const parsed = adapter.parse({
-      cwd: context.environment.cwd,
-      detection,
-      files: discovery.files,
-      homeDir: context.environment.homeDir,
-      projectRoot: await context.projectRoot,
-    });
-    return {
-      diagnostics: describeAdapterProblems(adapter, parsed.problems ?? [], discovery.files),
-      snapshot: {
-        instructionFiles: await context.links.resolve(parsed.instructionFiles),
-        mcpServers: [...parsed.mcpServers],
-        metadata: parsed.metadata,
-        skills: [...parsed.skills],
-      },
-    };
-  } catch (error) {
-    return { diagnostics: [failure(adapter, "parse", error)], snapshot: EMPTY_SNAPSHOT };
-  }
-}
-
-/** What an application contributes when its adapter failed to parse anything. */
-const EMPTY_SNAPSHOT: AdapterSnapshot = Object.freeze({
-  instructionFiles: [],
-  mcpServers: [],
-  skills: [],
-});
-
-function toStatus(file: AdapterSourceFile): AdapterFileStatus {
-  return {
-    exists: file.exists,
-    ...(file.pathKind === undefined ? {} : { pathKind: file.pathKind }),
-    problem: file.problem,
-    spec: file.spec,
-    ...(file.symlinkTarget === undefined ? {} : { symlinkTarget: file.symlinkTarget }),
-  };
-}
-
-/** Records a plugin failure without repeating what the plugin said. */
-function failure(adapter: Adapter, phase: ScanPhase, error: unknown): ScanDiagnostic {
-  return {
-    adapterId: adapter.id,
-    detail: describeFailure(error),
-    message: `${adapter.displayName} failed during ${phase}. This is a bug in the ${adapter.id} adapter; report it to whoever ships the plugin.`,
-    phase,
-  };
 }
