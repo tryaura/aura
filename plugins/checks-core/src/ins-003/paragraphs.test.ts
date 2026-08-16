@@ -1,0 +1,87 @@
+import { describe, expect, it } from "vitest";
+
+import { document } from "../testing.js";
+import { extractParagraphs, normalizeParagraph } from "./paragraphs.js";
+
+describe("INS-003 paragraph extraction", () => {
+  it("normalizes case, whitespace, list markers, and trailing punctuation", () => {
+    expect(normalizeParagraph(["  1.  ALWAYS   run tests", "- Before shipping!!!  "])).toBe(
+      "always run tests before shipping",
+    );
+  });
+
+  it("preserves inclusive line ranges across CRLF paragraphs", () => {
+    const content = [
+      "Short.",
+      "",
+      "Always run the complete verification suite before merging changes",
+      "and investigate every failure before considering the work complete.",
+      "",
+      "Document surprising behavior so future maintainers understand the intended constraint.",
+    ].join("\r\n");
+
+    expect(extractParagraphs([document("/repo/AGENTS.md", content)])).toMatchObject([
+      { endLine: 4, startLine: 3 },
+      { endLine: 6, startLine: 6 },
+    ]);
+  });
+
+  it("masks fenced and inline code without emitting code-only paragraphs", () => {
+    const content = [
+      "```ts",
+      "const privateImplementation = 'must never become guidance';",
+      "```",
+      "",
+      "Always run `pnpm verify` before merging because the complete suite protects every package.",
+    ].join("\n");
+
+    const paragraphs = extractParagraphs([document("/repo/CLAUDE.md", content)]);
+
+    expect(paragraphs).toHaveLength(1);
+    expect(paragraphs[0]?.startLine).toBe(5);
+    expect(paragraphs[0]?.normalized).not.toContain("pnpm verify");
+    expect(paragraphs[0]?.normalized).not.toContain("privateimplementation");
+  });
+
+  it("keeps masked code out of the prose but recoverable for comparison", () => {
+    const [lint, publish] = [
+      "Always run `pnpm lint` before pushing so that every package stays reviewable.",
+      "Always run `pnpm publish --force` before pushing so that every package stays reviewable.",
+    ].map((content) => extractParagraphs([document("/repo/AGENTS.md", content)])[0]);
+
+    expect(lint?.normalized).toBe(publish?.normalized);
+    expect(lint?.code).not.toBe(publish?.code);
+    expect(lint?.hash).not.toBe(publish?.hash);
+    expect(publish?.code).toContain("publish");
+  });
+
+  it.each([
+    [
+      "Markdown table",
+      "| Rule | Description |\n| --- | --- |\n| Verify | Run every test before merging a change |",
+    ],
+    [
+      "license header",
+      "Copyright 2026 Example Corporation. All rights reserved under the applicable license terms.",
+    ],
+    [
+      "SPDX header",
+      "SPDX-License-Identifier: Apache-2.0 with additional explanatory boilerplate for distribution.",
+    ],
+    ["frontmatter", "---\ndescription: Database migration instructions\nalwaysApply: false\n---"],
+    ["short prose", "This instruction is intentionally short."],
+  ])("filters %s noise", (_case, content) => {
+    expect(extractParagraphs([document("/repo/rule.mdc", content)])).toEqual([]);
+  });
+
+  it("deduplicates repeated model entries by resolved absolute path", () => {
+    const content =
+      "Always keep database migrations backward compatible until every deployed service has upgraded.";
+    const documents = [
+      document("/repo/rules/../AGENTS.md", content),
+      document("/repo/AGENTS.md", content),
+    ];
+
+    expect(extractParagraphs(documents)).toHaveLength(1);
+  });
+});
