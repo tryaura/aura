@@ -1,4 +1,4 @@
-import type { TestSeed } from "../types.js";
+import type { ShimResponse, TestSeed } from "../types.js";
 import { createSeedBuilder } from "../seed.js";
 
 /** One version inside the adapter's supported range and one past its ceiling. */
@@ -7,6 +7,18 @@ export type ClaudeCodeFixtureVersion = "2.1.233" | "3.0.0";
 export interface ClaudeCodeSeedOptions {
   readonly authenticated: boolean;
   readonly version: ClaudeCodeFixtureVersion;
+}
+
+/** The `claude` executable's answers, for composing multi-app seeds on one builder. */
+export function claudeCodeShimResponses(options: ClaudeCodeSeedOptions): readonly ShimResponse[] {
+  return [
+    { args: ["--version"], stdout: `${options.version} (Claude Code)\n` },
+    {
+      args: ["auth", "status"],
+      exitCode: options.authenticated ? 0 : 1,
+      stdout: JSON.stringify({ loggedIn: options.authenticated }) + "\n",
+    },
+  ];
 }
 
 /** Builds documented Claude Code global and project configuration against an exact CLI version. */
@@ -60,14 +72,7 @@ export function createClaudeCodeSeed(options: ClaudeCodeSeedOptions): Promise<Te
           2,
         ) + "\n",
       )
-      .shim("claude", [
-        { args: ["--version"], stdout: `${options.version} (Claude Code)\n` },
-        {
-          args: ["auth", "status"],
-          exitCode: options.authenticated ? 0 : 1,
-          stdout: JSON.stringify({ loggedIn: options.authenticated }) + "\n",
-        },
-      ])
+      .shim("claude", claudeCodeShimResponses(options))
       .build()
   );
 }

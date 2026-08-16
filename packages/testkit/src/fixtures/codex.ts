@@ -1,4 +1,4 @@
-import type { TestSeed } from "../types.js";
+import type { ShimResponse, TestSeed } from "../types.js";
 import { createSeedBuilder } from "../seed.js";
 
 /** Verified versions plus the first version outside the adapter's supported range. */
@@ -26,6 +26,20 @@ export interface CodexSeedOptions {
   readonly version: CodexFixtureVersion;
 }
 
+/** The `codex` executable's answers, for composing multi-app seeds on one builder. */
+export function codexShimResponses(
+  options: Pick<CodexSeedOptions, "authenticated" | "version">,
+): readonly ShimResponse[] {
+  return [
+    { args: ["--version"], stdout: `codex-cli ${options.version}\n` },
+    {
+      args: ["login", "status"],
+      exitCode: options.authenticated ? 0 : 1,
+      stdout: options.authenticated ? "Logged in using ChatGPT\n" : "Not logged in\n",
+    },
+  ];
+}
+
 /** Builds one documented Codex configuration against an exact CLI version. */
 export function createCodexSeed(options: CodexSeedOptions): Promise<TestSeed> {
   let builder = createSeedBuilder()
@@ -37,14 +51,7 @@ export function createCodexSeed(options: CodexSeedOptions): Promise<TestSeed> {
       codexConfiguration(workspaceDir, options.projectTrust),
     )
     .homeFile("agents/AGENTS.md", "# Shared agent instructions\n")
-    .shim("codex", [
-      { args: ["--version"], stdout: `codex-cli ${options.version}\n` },
-      {
-        args: ["login", "status"],
-        exitCode: options.authenticated ? 0 : 1,
-        stdout: options.authenticated ? "Logged in using ChatGPT\n" : "Not logged in\n",
-      },
-    ]);
+    .shim("codex", codexShimResponses(options));
 
   if (options.projectInstructions !== undefined) {
     builder = builder.workspaceFile("AGENTS.md", instructions("Project"));

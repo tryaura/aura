@@ -99,6 +99,115 @@ describe("planSetup", () => {
     ]);
   });
 
+  it("folds the app selection into the manifest and preserves extension fields", async () => {
+    const model = await scan(async (homeDir) => {
+      await mkdir(join(homeDir, "agents"), { recursive: true });
+      await writeFile(
+        join(homeDir, "agents", "aura.json"),
+        `${JSON.stringify({
+          apps: { kept: { managed: true, note: "extension" }, stopped: { managed: true } },
+          mcpServers: [],
+          ownership: {},
+          schemaVersion: 1,
+          skills: [],
+          snippets: [],
+        })}\n`,
+        "utf8",
+      );
+    });
+
+    const outcome = planSetup({
+      appCatalog: [],
+      manifest: model.manifest,
+      model,
+      selections: { apps: { managed: ["kept", "added"] } },
+    });
+
+    expect(outcome.manifest.apps).toEqual({
+      added: { managed: true },
+      kept: { managed: true, note: "extension" },
+      stopped: { managed: false },
+    });
+    expect(operationPaths(outcome)).toEqual([join(model.homeDir, "agents", "aura.json")]);
+  });
+
+  it("creates the manifest when apps were selected even without the baseline slice", async () => {
+    const model = await scan();
+
+    const outcome = planSetup({
+      appCatalog: [],
+      manifest: model.manifest,
+      model,
+      selections: { apps: { managed: ["app"] } },
+    });
+
+    expect(operationPaths(outcome)).toEqual([join(model.homeDir, "agents", "aura.json")]);
+    expect(outcome.manifest.apps).toEqual({ app: { managed: true } });
+  });
+
+  it("keeps manifest apps untouched when the apps step did not run", async () => {
+    const model = await scan(async (homeDir) => {
+      await mkdir(join(homeDir, "agents"), { recursive: true });
+      await writeFile(
+        join(homeDir, "agents", "aura.json"),
+        `${JSON.stringify({
+          apps: { existing: { managed: true } },
+          mcpServers: [],
+          ownership: {},
+          schemaVersion: 1,
+          skills: [],
+          snippets: [],
+        })}\n`,
+        "utf8",
+      );
+    });
+
+    const outcome = planSetup(context(model, false, false));
+
+    expect(outcome.manifest.apps).toEqual({ existing: { managed: true } });
+    expect(outcome.plan.manualSteps).toEqual([]);
+  });
+
+  it("queues install instructions and stop-managing notes as manual steps", async () => {
+    const model = await scan(async (homeDir) => {
+      await mkdir(join(homeDir, "agents"), { recursive: true });
+      await writeFile(
+        join(homeDir, "agents", "aura.json"),
+        `${JSON.stringify({
+          apps: { stopped: { managed: true } },
+          mcpServers: [],
+          ownership: {},
+          schemaVersion: 1,
+          skills: [],
+          snippets: [],
+        })}\n`,
+        "utf8",
+      );
+    });
+
+    const outcome = planSetup({
+      appCatalog: [
+        {
+          adapterId: "hinted",
+          displayName: "Hinted",
+          installHint: "brew install hinted",
+          kind: "undetected",
+        },
+        { adapterId: "hintless", displayName: "Hintless", kind: "undetected" },
+        { adapterId: "stopped", displayName: "Stopped", kind: "undetected" },
+      ],
+      manifest: model.manifest,
+      model,
+      selections: { apps: { managed: ["hinted", "hintless"] } },
+    });
+
+    expect(outcome.plan.manualSteps).toEqual([
+      "Install Hinted: brew install hinted",
+      "Install Hintless — its adapter provides no install instructions.",
+      "Aura stops managing Stopped; its existing configuration is left in place.",
+    ]);
+  });
+
   it("reports a shared-file problem even when the wizard cannot select that file", async () => {
     const scanned = await scan();
     const model: WorkspaceModel = {
@@ -134,6 +243,7 @@ function context(
   createSharedInstructions: boolean,
 ): SetupStepContext {
   return {
+    appCatalog: [],
     manifest: model.manifest,
     model,
     selections: { baseline: { createManifest, createSharedInstructions } },
