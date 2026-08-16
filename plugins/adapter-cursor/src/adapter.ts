@@ -34,6 +34,8 @@ export const cursorAdapter = defineAdapter({
   displayName: "Cursor",
   files: cursorFiles,
   id: "cursor",
+  installHint:
+    "Use Help > Check for Updates in Cursor, or install the latest release from https://cursor.com/downloads.",
   parse: ({ files }) => ({
     instructionFiles: [...files.values()]
       .filter(isInstructionSource)

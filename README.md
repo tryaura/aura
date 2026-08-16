@@ -12,9 +12,9 @@ Docs: [tryaura.sh/docs/introduction](https://tryaura.sh/docs/introduction)
 
 ## Status
 
-Pre-release. Core, the CLI shell, and the plugin SDK are in place; the adapter, check, and content
-plugins under `plugins/` are still stubs, so a scan currently has no rules to run and exits `2`
-(`empty`). Every package is at `0.0.0` and nothing is published yet.
+Pre-release. Core, the CLI shell, and the plugin SDK are in place. The Aura distribution ships
+Claude Code, Codex, and Cursor adapters plus the `ENV-001` through `ENV-004` environment checks.
+Content plugins remain under development. Every package is at `0.0.0` and nothing is published yet.
 
 ## How a scan works
 
@@ -47,14 +47,19 @@ the `AURA_INSTALL_DIR` / `AURA_VERSION` options.
 aura check              # inspect the current AI agent setup
 aura check --json       # machine-readable report
 aura check --detail     # include the failing plugin's own error text
+aura check --explain ENV-003 # explain one check without scanning the machine
 ```
 
-| Flag       | Purpose                                                              |
-| ---------- | -------------------------------------------------------------------- |
-| `--json`   | Emit JSON on a stream separate from plugin output.                   |
-| `--detail` | Include a failing plugin's error text. May contain file contents.    |
-| `--home`   | Override the home directory. Must be absolute.                       |
-| `--path`   | Override the executable search path. Must list absolute directories. |
+| Flag        | Purpose                                                                         |
+| ----------- | ------------------------------------------------------------------------------- |
+| `--json`    | Emit JSON on a stream separate from plugin output. Also applies to `--explain`. |
+| `--detail`  | Include a failing plugin's error text. May contain file contents.               |
+| `--explain` | Explain a check by ID without scanning adapters or repository state.            |
+| `--home`    | Override the home directory. Must be absolute.                                  |
+| `--path`    | Override the executable search path. Must list absolute directories.            |
+
+Checks report what they find; nothing applies fixes yet. `--explain` states both what a check is
+capable of fixing and that this build cannot apply it.
 
 Exit codes are stable enough to gate CI on:
 

@@ -1,8 +1,8 @@
 import claudeCodePlugin from "@tryaura/adapter-claude-code";
-import { buildWorkspaceModel, createEnvironment } from "@tryaura/core";
+import { buildWorkspaceModel, createEnvironment, type WorkspaceScan } from "@tryaura/core";
 import { describe, expect, it } from "vitest";
 
-import { createClaudeCodeSeed } from "./index.js";
+import { createClaudeCodeSeed, type TestSeed } from "./index.js";
 
 describe("Claude Code versioned fixtures", () => {
   it.each([
@@ -29,56 +29,9 @@ describe("Claude Code versioned fixtures", () => {
       }),
     });
 
-    expect(scan.diagnostics).toEqual([]);
-    expect(scan.model.apps).toHaveLength(1);
-    expect(scan.model.apps[0]?.detection).toEqual({
-      authenticated: true,
-      executablePath: `${seed.pathDir}/claude`,
-      installed: true,
-      version,
-    });
-    expect(scan.model.apps[0]?.support).toEqual({
-      status: support,
-      supportedRange: ">=2.1.0 <3.0.0",
-      version,
-    });
-    // The mention and the package name in the fixture are prose, not imports.
-    expect(scan.model.instructionFiles[0]?.links).toEqual([
-      { kind: "import", targetPath: `${seed.homeDir}/agents/AGENTS.md`, valid: true },
-      { kind: "import", targetPath: `${seed.homeDir}/.claude/team.md`, valid: true },
-    ]);
-    expect(scan.model.mcpServers.map((server) => server.name)).toEqual([
-      "docs",
-      "legacy",
-      "sentry",
-      "streaming",
-    ]);
-    expect(scan.model.mcpServers.map((server) => server.transport)).toEqual([
-      {
-        args: ["-y", "@example/docs-mcp"],
-        command: "npx",
-        environmentVariables: ["DOCS_TOKEN"],
-        type: "stdio",
-      },
-      {
-        args: ["@example/legacy-mcp", "--api-key", "[redacted]"],
-        command: "npx",
-        type: "stdio",
-      },
-      {
-        headerEnvironmentVariables: ["SENTRY_TOKEN"],
-        type: "http",
-        url: "https://mcp.sentry.dev/",
-      },
-      { type: "sse", url: "https://sse.example.com/mcp?token=[redacted]" },
-    ]);
-    // The one property that has to hold across the whole read path.
-    expect(JSON.stringify(scan.model.mcpServers)).not.toContain("sk-fixture-secret");
-    // settings.json sits in the fixture home and is deliberately not declared.
-    expect(scan.model.apps[0]?.sourceFiles.map((file) => file.spec.path)).toEqual([
-      `${seed.homeDir}/.claude/CLAUDE.md`,
-      `${seed.homeDir}/.claude.json`,
-    ]);
+    expectClaudeApp(scan, seed, version, support);
+    expectClaudeMcp(scan);
+    expectClaudeSources(scan, seed);
     await expect(seed.invocations("claude")).resolves.toEqual([["--version"], ["auth", "status"]]);
   });
 
@@ -104,3 +57,70 @@ describe("Claude Code versioned fixtures", () => {
     await expect(seed.invocations("claude")).resolves.toEqual([["--version"], ["auth", "status"]]);
   });
 });
+
+function expectClaudeApp(
+  scan: WorkspaceScan,
+  seed: TestSeed,
+  version: string,
+  support: string,
+): void {
+  expect(scan.diagnostics).toEqual([]);
+  expect(scan.model.apps).toHaveLength(1);
+  expect(scan.model.apps[0]?.detection).toEqual({
+    authenticated: true,
+    executablePath: `${seed.pathDir}/claude`,
+    installed: true,
+    version,
+  });
+  expect(scan.model.apps[0]?.support).toEqual({
+    status: support,
+    supportedRange: ">=2.1.0 <3.0.0",
+    version,
+  });
+  // The mention and the package name in the fixture are prose, not imports.
+  expect(scan.model.instructionFiles[0]?.links).toEqual([
+    { kind: "import", targetPath: `${seed.homeDir}/agents/AGENTS.md`, valid: true },
+    { kind: "import", targetPath: `${seed.homeDir}/.claude/team.md`, valid: true },
+  ]);
+}
+
+function expectClaudeMcp(scan: WorkspaceScan): void {
+  expect(scan.model.mcpServers.map((server) => server.name)).toEqual([
+    "docs",
+    "legacy",
+    "sentry",
+    "streaming",
+  ]);
+  expect(scan.model.mcpServers.map((server) => server.transport)).toEqual([
+    {
+      args: ["-y", "@example/docs-mcp"],
+      command: "npx",
+      environmentVariables: ["DOCS_TOKEN"],
+      type: "stdio",
+    },
+    {
+      args: ["@example/legacy-mcp", "--api-key", "[redacted]"],
+      command: "npx",
+      type: "stdio",
+    },
+    {
+      headerEnvironmentVariables: ["SENTRY_TOKEN"],
+      type: "http",
+      url: "https://mcp.sentry.dev/",
+    },
+    { type: "sse", url: "https://sse.example.com/mcp?token=[redacted]" },
+  ]);
+  expect(JSON.stringify(scan.model.mcpServers)).not.toContain("sk-fixture-secret");
+}
+
+function expectClaudeSources(scan: WorkspaceScan, seed: TestSeed): void {
+  expect(scan.model.apps[0]?.sourceFiles.map((file) => file.spec.path)).toEqual([
+    `${seed.homeDir}/.claude/CLAUDE.md`,
+    `${seed.homeDir}/.claude.json`,
+    `${seed.homeDir}/.claude/settings.json`,
+    `${seed.workspaceDir}/.claude/settings.json`,
+  ]);
+  expect(scan.model.apps[0]?.metadata).toEqual({
+    claudePermissions: { global: { allowCount: 1 } },
+  });
+}

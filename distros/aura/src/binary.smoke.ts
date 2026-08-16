@@ -40,19 +40,78 @@ describe("compiled Aura distribution", () => {
       stdout: `${EXPECTED_VERSION}\n`,
     });
 
+    for (const checkId of ["ENV-001", "ENV-002", "ENV-003", "ENV-004"]) {
+      const explanation = await execFileAsync(BINARY_PATH, ["check", "--explain", checkId], {
+        cwd: seed.workspaceDir,
+        encoding: "utf8",
+        env: { HOME: seed.homeDir, NO_COLOR: "1", PATH: seed.pathDir },
+      });
+      expect(explanation.stderr).toBe("");
+      expect(explanation.stdout).toContain(`Aura check ${checkId}`);
+      expect(explanation.stdout).toContain("Fixability:");
+
+      const asJson = await execFileAsync(BINARY_PATH, ["check", "--explain", checkId, "--json"], {
+        cwd: seed.workspaceDir,
+        encoding: "utf8",
+        env: { HOME: seed.homeDir, NO_COLOR: "1", PATH: seed.pathDir },
+      });
+      expect(asJson.stderr).toBe("");
+      expect(JSON.parse(asJson.stdout)).toMatchObject({ fixesApplicable: false, id: checkId });
+    }
+
     const result = await runBinaryCheck({ binaryPath: BINARY_PATH, seed });
     expect(result.report).toEqual({
       diagnostics: [],
-      exitCode: 2,
+      exitCode: 0,
       findings: [],
-      passedChecks: [],
-      skipped: [],
-      status: "empty",
-      summary: { errors: 0, informational: 0, passed: 0, warnings: 0 },
+      passedChecks: [
+        { id: "ENV-001", title: "Agent applications use supported versions" },
+        { id: "ENV-002", title: "Agent applications are authenticated" },
+        {
+          id: "ENV-003",
+          title: "Repository ignore rules separate personal and shared agent state",
+        },
+        { id: "ENV-004", title: "Agent settings allow the current project to run normally" },
+      ],
+      skipped: [
+        { adapterId: "claude-code", displayName: "Claude Code" },
+        { adapterId: "codex", displayName: "Codex" },
+        { adapterId: "cursor", displayName: "Cursor" },
+      ],
+      status: "clean",
+      summary: { errors: 0, informational: 0, passed: 4, warnings: 0 },
     });
-    expect(result.exitCode).toBe(2);
+    expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe("");
     expect(result.diffs).toEqual([]);
+  });
+
+  it("ships every environment check and uses only non-interactive status probes", async () => {
+    await using seed = await createSeedBuilder()
+      .workspaceFile(".git/HEAD", "ref: refs/heads/main\n")
+      .workspaceFile(".claude/settings.json", '{"permissions":{"defaultMode":"plan"}}\n')
+      .shim("claude", [
+        { args: ["--version"], stdout: "3.0.0 (Claude Code)\n" },
+        { args: ["auth", "status"], exitCode: 1, stdout: '{"loggedIn":false}\n' },
+      ])
+      .shim("codex", [
+        { args: ["--version"], stdout: "codex-cli 0.147.0\n" },
+        { args: ["login", "status"], stdout: "Logged in using ChatGPT\n" },
+      ])
+      .build();
+
+    const result = await runBinaryCheck({ binaryPath: BINARY_PATH, seed });
+
+    expect(result.findings.map((finding) => [finding.checkId, finding.id])).toEqual([
+      ["ENV-001", "unsupported-version:claude-code"],
+      ["ENV-002", "unauthenticated:claude-code"],
+      ["ENV-003", "gitignore-policy"],
+      ["ENV-004", "claude-permission-mode:plan"],
+      ["ENV-004", "codex-project-trust:unknown"],
+    ]);
+    expect(result.exitCode).toBe(2);
+    await expect(seed.invocations("claude")).resolves.toEqual([["--version"], ["auth", "status"]]);
+    await expect(seed.invocations("codex")).resolves.toEqual([["--version"], ["login", "status"]]);
   });
 
   /**

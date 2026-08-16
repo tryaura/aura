@@ -140,6 +140,66 @@ describe("Codex global model", () => {
       },
     ]);
   });
+
+  it.each([
+    ['[projects."/repo"]\ntrust_level = "trusted"\n', "trusted"],
+    ['[projects."/repo"]\ntrust_level = "untrusted"\n', "untrusted"],
+    ['[projects."/somewhere-else"]\ntrust_level = "trusted"\n', "unknown"],
+    // Codex keys by the directory it was launched in, which is routinely inside the repository.
+    ['[projects."/repo/packages/app"]\ntrust_level = "trusted"\n', "trusted"],
+    ['[projects."/repo/packages"]\ntrust_level = "untrusted"\n', "untrusted"],
+    // A trailing separator is the same directory.
+    ['[projects."/repo/"]\ntrust_level = "trusted"\n', "trusted"],
+    // Above the repository root is a different project, so it is not consulted.
+    ['[projects."/"]\ntrust_level = "trusted"\n', "unknown"],
+  ])("records the current project trust level", (content, expected) => {
+    const config = sourceFile("codex.mcp.global", "mcp", content);
+    const snapshot = codexAdapter.parse({
+      cwd: "/repo/packages/app",
+      detection: { installed: true },
+      files: new Map([[config.spec.id, config]]),
+      homeDir: "/home/dev",
+      projectRoot: "/repo",
+    });
+
+    expect(snapshot.metadata).toEqual({ projectTrust: expected });
+  });
+
+  it("prefers the narrowest recorded directory when several are trusted differently", () => {
+    const config = sourceFile(
+      "codex.mcp.global",
+      "mcp",
+      '[projects."/repo"]\ntrust_level = "trusted"\n' +
+        '[projects."/repo/packages/app"]\ntrust_level = "untrusted"\n',
+    );
+
+    expect(
+      codexAdapter.parse({
+        cwd: "/repo/packages/app",
+        detection: { installed: true },
+        files: new Map([[config.spec.id, config]]),
+        homeDir: "/home/dev",
+        projectRoot: "/repo",
+      }).metadata,
+    ).toEqual({ projectTrust: "untrusted" });
+  });
+
+  it("uses cwd for trust lookup only when no repository root was found", () => {
+    const config = sourceFile(
+      "codex.mcp.global",
+      "mcp",
+      '[projects."/workspace"]\ntrust_level = "trusted"\n',
+    );
+
+    expect(
+      codexAdapter.parse({
+        cwd: "/workspace",
+        detection: { installed: true },
+        files: new Map([[config.spec.id, config]]),
+        homeDir: "/home/dev",
+      }).metadata,
+    ).toEqual({ projectTrust: "trusted" });
+  });
 });
 
 function environmentWithExec(
@@ -164,7 +224,12 @@ function sourceFile(id: string, kind: "instructions" | "mcp", content: string): 
   return {
     content,
     exists: true,
-    spec: { id, kind, path: "/home/dev/.codex/AGENTS.md", scope: "global" },
+    spec: {
+      id,
+      kind,
+      path: kind === "mcp" ? "/home/dev/.codex/config.toml" : "/home/dev/.codex/AGENTS.md",
+      scope: "global",
+    },
   };
 }
 

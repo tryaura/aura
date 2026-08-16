@@ -29,10 +29,13 @@ export interface DetectExecutableOptions {
 /**
  * Walks the search path for an executable that identifies itself as the requested application.
  *
- * A candidate is accepted only once `--version` reports a version Aura can parse. Treating any
- * exit code other than "missing" as success meant an unrelated binary of the same name on the
- * path — or one that hung until the timeout killed it — ended the walk and was reported as an
- * installation, with the authentication probe already run against it.
+ * A candidate with a parseable version is preferred. The first candidate whose version command
+ * exits successfully with unrecognized output is remembered as an installed fallback while the
+ * remaining search-path entries are checked for a usable version.
+ *
+ * The fallback is reported as installed with no version, and no further command runs against it.
+ * Aura could not confirm the binary is the requested application, and an unrelated program of the
+ * same name on the path should not be handed the authentication arguments of the one it shadows.
  *
  * Duplicate path entries are skipped. Nothing here touches the filesystem: an adapter has no
  * reader, so probing an entry means running it, and running it once each is the floor.
@@ -41,11 +44,9 @@ export async function detectExecutable(
   environment: Environment,
   options: DetectExecutableOptions,
 ): Promise<AdapterDetection> {
-  const executableName =
-    environment.platform === "win32"
-      ? (options.windowsBinaryName ?? `${options.binaryName}.exe`)
-      : options.binaryName;
+  const executableName = executableNameFor(environment, options);
   const probed = new Set<string>();
+  let unknownVersionPath: string | undefined;
 
   for (const pathEntry of environment.pathEntries) {
     if (!isAbsolute(pathEntry) || probed.has(pathEntry)) {
@@ -54,33 +55,50 @@ export async function detectExecutable(
     probed.add(pathEntry);
 
     const executablePath = join(pathEntry, executableName);
-    const version = parseVersion(
-      await environment.exec({
-        args: ["--version"],
-        command: executablePath,
-        timeoutMs: PROBE_TIMEOUT_MS,
-      }),
-    );
+    const result = await environment.exec({
+      args: ["--version"],
+      command: executablePath,
+      timeoutMs: PROBE_TIMEOUT_MS,
+    });
+    const version = parseVersion(result);
 
     if (version === undefined) {
+      if (result.exitCode === 0 && unknownVersionPath === undefined) {
+        unknownVersionPath = executablePath;
+      }
       continue;
     }
 
-    const authenticated = await probeAuthentication(
-      environment,
-      executablePath,
-      options.authenticationArgs,
-    );
+    return installedDetection(environment, executablePath, options.authenticationArgs, version);
+  }
 
-    return {
-      executablePath,
-      installed: true,
-      version,
-      ...(authenticated === undefined ? {} : { authenticated }),
-    };
+  if (unknownVersionPath !== undefined) {
+    return { executablePath: unknownVersionPath, installed: true };
   }
 
   return { installed: false };
+}
+
+function executableNameFor(environment: Environment, options: DetectExecutableOptions): string {
+  if (environment.platform !== "win32") {
+    return options.binaryName;
+  }
+  return options.windowsBinaryName ?? `${options.binaryName}.exe`;
+}
+
+async function installedDetection(
+  environment: Environment,
+  executablePath: string,
+  authenticationArgs: readonly string[] | undefined,
+  version: string,
+): Promise<AdapterDetection> {
+  const authenticated = await probeAuthentication(environment, executablePath, authenticationArgs);
+  return {
+    executablePath,
+    installed: true,
+    version,
+    ...(authenticated === undefined ? {} : { authenticated }),
+  };
 }
 
 async function probeAuthentication(

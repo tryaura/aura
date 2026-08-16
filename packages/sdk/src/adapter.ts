@@ -117,6 +117,8 @@ export interface AdapterParseInput {
   readonly files: AdapterFileMap;
   /** The current user's home directory. */
   readonly homeDir: string;
+  /** Repository root containing {@link AdapterParseInput.cwd}, when one was found. */
+  readonly projectRoot?: string | undefined;
 }
 
 /**
@@ -157,6 +159,8 @@ export interface Adapter {
    * teaching Aura to read the same application must collide rather than coexist.
    */
   readonly id: string;
+  /** Short, non-interactive guidance for installing or updating this application. */
+  readonly installHint?: string | undefined;
   /**
    * Normalizes the supplied file contents.
    *

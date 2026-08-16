@@ -1,6 +1,6 @@
 import type { Writable } from "node:stream";
 
-import type { Finding } from "@tryaura/aura-sdk";
+import type { Check, Finding } from "@tryaura/aura-sdk";
 
 import type { CheckReport } from "./report.js";
 import type { CliBranding } from "./types.js";
@@ -10,6 +10,47 @@ const UNICODE_FORMAT_CHARACTER = /\p{Cf}/u;
 
 export function renderJson(report: CheckReport, output: Writable): void {
   output.write(`${JSON.stringify(report)}\n`);
+}
+
+/**
+ * Describes how a check's fix would be applied, and that nothing applies it yet.
+ *
+ * `fixability` states what a check is *capable* of. Printing "auto" on its own reads as a promise
+ * that some command will do it, and this build ships no such command, so the capability and its
+ * availability are reported as two separate facts.
+ */
+const FIXABILITY_DESCRIPTIONS: Readonly<Record<string, string>> = Object.freeze({
+  auto: "auto — Aura can write this fix once fixes can be applied",
+  guided: "guided — Aura describes the edit; you make it",
+  manual: "manual — follow the guidance below",
+});
+
+const FIX_AVAILABILITY = "Applying fixes is not available in this build; checks report only.";
+
+export function renderExplanation(check: Check, branding: CliBranding, output: Writable): void {
+  const fixability = FIXABILITY_DESCRIPTIONS[check.fixability] ?? check.fixability;
+  output.write(`${branding.displayName} check ${safe(check.id)}\n\n`);
+  output.write(`${safe(check.title)}\n`);
+  output.write(`Fixability: ${safe(fixability)}\n`);
+  if (check.fixability !== "manual") {
+    output.write(`${FIX_AVAILABILITY}\n`);
+  }
+  output.write(`\n${safeMultiline(check.explain)}\n`);
+}
+
+/** Emits one explanation as a document another tool can read. */
+export function renderExplanationJson(check: Check, output: Writable): void {
+  output.write(
+    `${JSON.stringify({
+      explain: check.explain,
+      fixability: check.fixability,
+      fixesApplicable: false,
+      id: check.id,
+      scope: check.scope,
+      severity: check.defaultSeverity,
+      title: check.title,
+    })}\n`,
+  );
 }
 
 export function renderHuman(report: CheckReport, branding: CliBranding, output: Writable): void {
@@ -56,6 +97,17 @@ export function renderHuman(report: CheckReport, branding: CliBranding, output: 
       "·",
       `Not found (${String(report.skipped.length)})`,
       report.skipped.map((app) => safe(app.displayName)),
+      output,
+    );
+  }
+
+  // Every finding is printed with its check id, so the way to read more about one is only useful
+  // if it is on screen next to them.
+  if (report.findings.length > 0) {
+    renderGroup(
+      "·",
+      "Explain a check",
+      [`${branding.command} check --explain ${safe(report.findings[0]?.checkId ?? "")}`],
       output,
     );
   }
@@ -137,4 +189,11 @@ function safeFindingText(value: string): string {
       : value;
 
   return safe(truncated);
+}
+
+function safeMultiline(value: string): string {
+  return value
+    .split("\n")
+    .map((line) => safe(line))
+    .join("\n");
 }
