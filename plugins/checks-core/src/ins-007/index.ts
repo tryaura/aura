@@ -68,8 +68,9 @@ const PRESENTATION: FindingMetadataTablePresentation = {
 export const instructionContextBudgetCheck = defineCheck({
   defaultSeverity: "info",
   detect: contextBudgetFindings,
-  explain:
-    "Large always-loaded instruction sets consume context before an agent begins the task, leaving less room for code, tool results, and reasoning. Start with the largest files, remove duplicate guidance reported by INS-003, and repair dead or unnecessary imports reported by INS-006.",
+  explain: `Large always-loaded instruction sets consume context before an agent begins the task, leaving less room for code, tool results, and reasoning. Conditional files matter less because the application loads them only when their activation rules match.
+
+Start with the largest files in the reported table, remove duplicate guidance reported by INS-003, and repair dead or unnecessary imports reported by INS-006. Keep specialized rules conditional when the application supports that distinction.`,
   fixability: "manual",
   id: "INS-007",
   scope: "global",

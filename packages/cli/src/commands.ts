@@ -7,7 +7,6 @@ import {
   buildWorkspaceModel,
   createEnvironment,
   runChecks,
-  type CheckDiagnostic,
   type EnvironmentBootOptions,
   type PluginRegistry,
 } from "@tryaura/core";
@@ -15,13 +14,16 @@ import {
 import {
   environmentOptions,
   homeOption,
+  isTerminal,
   pathOption,
   rejectInvalidPathOptions,
   reportUnexpectedFailure,
   writeOptionRejection,
 } from "./command-support.js";
+import { fixOptionRejection } from "./check-options.js";
+import { selectChecks, type CheckSelection } from "./check-selection.js";
 import { runFixes } from "./fix.js";
-import { createCheckReport } from "./report.js";
+import { createCheckReport, type DiagnosticSource, type ReportFix } from "./report.js";
 import {
   renderExplanation,
   renderExplanationJson,
@@ -52,15 +54,19 @@ export class CheckCommand extends Command<AuraCliContext> {
   // fallow-ignore-next-line unused-class-member -- Clipanion reads command metadata at registration.
   static override usage = Command.Usage({
     description: "Inspect the current AI agent setup.",
+    details:
+      "Exit codes: 0 clean/info, 1 warnings, 2 errors or usage/state conflicts, 3 operational failures.",
     examples: [
       ["Run all checks", "$0 check"],
       ["Emit machine-readable output", "$0 check --json"],
+      ["Run one category for one application", "$0 check --only ENV --only claude"],
       ["Show what a failing plugin reported", "$0 check --detail"],
       ["Explain one check without scanning", "$0 check --explain ENV-001"],
       ["Explain one check as JSON", "$0 check --explain ENV-001 --json"],
       ["See what fixing would change, without writing", "$0 check --fix --dry-run"],
       ["Apply fixes after confirming them", "$0 check --fix"],
       ["Apply fixes without being asked", "$0 check --fix --yes"],
+      ["Choose guided resolutions", "$0 check --fix --interactive"],
     ],
   });
 
@@ -76,6 +82,15 @@ export class CheckCommand extends Command<AuraCliContext> {
   });
   home = homeOption();
   json = Option.Boolean("--json", false, { description: "Emit JSON instead of human output." });
+  jsonVersion = Option.String("--json-version", {
+    description: "Select the machine-readable contract version. Supported: 1.",
+  });
+  only = Option.Array("--only", [], {
+    description: "Run only a check ID, category, or application. Repeatable.",
+  });
+  interactive = Option.Boolean("--interactive", false, {
+    description: "With --fix, walk through guided remediation choices.",
+  });
   pathValue = pathOption();
   yes = Option.Boolean("--yes", false, {
     description: "Apply fixes without asking. Required when stdin is not a terminal.",
@@ -92,23 +107,32 @@ export class CheckCommand extends Command<AuraCliContext> {
       return this.explainCheck(this.explain);
     }
 
+    const selected = this.resolveSelection();
+    if (selected === undefined) {
+      return 2;
+    }
+
     try {
       const environment = createEnvironment(this.environmentOptions());
       let scan = await buildWorkspaceModel({
-        adapters: this.context.registry.adapters,
+        adapters: selected.adapters,
         environment,
         snippets: this.context.registry.snippets,
       });
-      let run = runChecks(this.context.registry.checks, scan.model);
-      let fixDiagnostics: readonly CheckDiagnostic[] = [];
+      let run = runChecks(selected.checks, scan.model);
+      let fixRunDiagnostics: readonly DiagnosticSource[] = [];
+      let fixes: readonly ReportFix[] | undefined;
+      let forcedExitCode: CliExitCode | undefined;
 
       if (this.fix) {
         const outcome = await runFixes({
           branding: this.context.branding,
-          checks: this.context.registry.checks,
+          checks: selected.checks,
+          colorDepth: this.context.colorDepth,
           dryRun: this.dryRun,
           environment,
           findings: run.findings,
+          interactive: this.interactive,
           model: scan.model,
           stderr: this.context.stderr,
           stdin: this.context.stdin,
@@ -117,26 +141,37 @@ export class CheckCommand extends Command<AuraCliContext> {
           withDetail: this.detail,
           yes: this.yes,
         });
-        if (outcome.exitCode !== undefined) {
-          return outcome.exitCode;
-        }
-        fixDiagnostics = outcome.diagnostics;
+        forcedExitCode = outcome.exitCode;
+        fixRunDiagnostics = [
+          ...outcome.diagnostics.map((diagnostic): DiagnosticSource => ({
+            detail: diagnostic.detail,
+            id: diagnostic.checkId,
+            message: diagnostic.message,
+            phase: "fix",
+          })),
+          ...outcome.fixDiagnostics,
+        ];
+        fixes = outcome.fixes;
         if (outcome.applied) {
           scan = await buildWorkspaceModel({
-            adapters: this.context.registry.adapters,
+            adapters: selected.adapters,
             environment,
             snippets: this.context.registry.snippets,
           });
-          run = runChecks(this.context.registry.checks, scan.model);
+          run = runChecks(selected.checks, scan.model);
         }
       }
 
       const report = createCheckReport({
-        checkDiagnostics: [...run.diagnostics, ...fixDiagnostics],
-        checks: this.context.registry.checks,
+        adapters: selected.adapters,
+        apps: scan.model.apps,
+        checkDiagnostics: run.diagnostics,
+        checks: selected.checks,
         findings: run.findings,
+        fixDiagnostics: fixRunDiagnostics,
+        fixes,
+        forcedExitCode,
         scanDiagnostics: scan.diagnostics,
-        skipped: scan.skipped,
         withDetail: this.detail,
       });
 
@@ -146,7 +181,7 @@ export class CheckCommand extends Command<AuraCliContext> {
         renderHuman(report, this.context.branding, this.context.stdout);
       }
 
-      return report.exitCode;
+      return report.summary.exitCode;
     } catch (error) {
       return reportUnexpectedFailure(
         error,
@@ -158,39 +193,67 @@ export class CheckCommand extends Command<AuraCliContext> {
     }
   }
 
-  /** The first reason, if any, that this command line cannot mean what the user intended. */
   private rejectInvalidOptions(): string | undefined {
     return (
+      this.rejectInvalidJsonOptions() ??
       this.rejectInvalidFixOptions() ??
       this.rejectInvalidExplainOptions() ??
       rejectInvalidPathOptions(this.home, this.pathValue)
     );
   }
 
-  /** Refuses scan-only flags alongside `--explain`, which never scans. */
   private rejectInvalidExplainOptions(): string | undefined {
     // `--detail` widens what a *scan* reports about a misbehaving plugin and `--fix` rewrites what
     // one found, and `--explain` never scans, so neither has anything to act on. `--json` is
     // supported: an explanation is exactly the kind of thing another tool wants to read.
-    if (this.explain !== undefined && (this.detail || this.fix)) {
-      return `--explain cannot be combined with ${this.detail ? "--detail" : "--fix"}`;
+    if (
+      this.explain !== undefined &&
+      (this.detail || this.fix || this.interactive || this.only.length > 0)
+    ) {
+      const incompatible = this.detail
+        ? "--detail"
+        : this.fix
+          ? "--fix"
+          : this.interactive
+            ? "--interactive"
+            : "--only";
+      return `--explain cannot be combined with ${incompatible}`;
     }
 
     return undefined;
   }
 
-  /** Refuses flag combinations that would make `--fix` mean two things at once, or nothing. */
   private rejectInvalidFixOptions(): string | undefined {
-    if (this.fix && this.json) {
-      return "--fix cannot be combined with --json yet; JSON fix reporting is tracked by AURA-23.";
-    }
-    if (!this.fix && (this.dryRun || this.yes)) {
-      return `${this.dryRun ? "--dry-run" : "--yes"} only means something with --fix. Add --fix, or drop it.`;
-    }
-    if (this.dryRun && this.yes) {
-      return "--dry-run and --yes contradict each other: one stops at the preview, the other applies without asking.";
-    }
+    return fixOptionRejection({
+      dryRun: this.dryRun,
+      fix: this.fix,
+      interactive: this.interactive,
+      stdinTerminal: isTerminal(this.context.stdin),
+      stdoutTerminal: isTerminal(this.context.stdout),
+      yes: this.yes,
+    });
+  }
 
+  private rejectInvalidJsonOptions(): string | undefined {
+    if (this.jsonVersion !== undefined && !this.json) {
+      return "--json-version only means something with --json. Add --json, or drop it.";
+    }
+    if (this.jsonVersion !== undefined && this.jsonVersion !== "1") {
+      return `unsupported --json-version: ${safe(this.jsonVersion)}. Supported versions: 1`;
+    }
+    return undefined;
+  }
+
+  private resolveSelection(): CheckSelection | undefined {
+    const result = selectChecks(
+      this.context.registry.checks,
+      this.context.registry.adapters,
+      this.only,
+    );
+    if (result.status === "selected") {
+      return result.selection;
+    }
+    this.context.stderr.write(`${this.context.branding.displayName}: ${result.message}\n`);
     return undefined;
   }
 
@@ -227,21 +290,5 @@ export class CheckCommand extends Command<AuraCliContext> {
 
   private environmentOptions(): EnvironmentBootOptions {
     return environmentOptions(this.context, this.home, this.pathValue);
-  }
-}
-
-export class DefaultCommand extends Command<AuraCliContext> {
-  // fallow-ignore-next-line unused-class-member -- Clipanion reads command metadata at registration.
-  static override paths = [Command.Default];
-  // fallow-ignore-next-line unused-class-member -- Clipanion reads command metadata at registration.
-  static override usage = Command.Usage({ description: "Show command help." });
-
-  // fallow-ignore-next-line unused-class-member -- Clipanion invokes registered command handlers.
-  async execute(): Promise<CliExitCode> {
-    this.context.stdout.write(this.cli.usage(null));
-    if (this.context.branding.docsUrl !== undefined) {
-      this.context.stdout.write(`\nDocs: ${this.context.branding.docsUrl}\n`);
-    }
-    return 0;
   }
 }

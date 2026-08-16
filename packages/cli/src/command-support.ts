@@ -108,5 +108,5 @@ export function reportUnexpectedFailure(
       ? `  ${safe(describeFailure(error))}\n`
       : `  Re-run with --detail to see what failed.\n`,
   );
-  return 2;
+  return 3;
 }

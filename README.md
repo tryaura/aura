@@ -13,8 +13,9 @@ Docs: [tryaura.sh/docs/introduction](https://tryaura.sh/docs/introduction)
 ## Status
 
 Pre-release. Core, the CLI shell, and the plugin SDK are in place. The Aura distribution ships
-Claude Code, Codex, and Cursor adapters plus the `ENV-001` through `ENV-004` environment checks.
-Content plugins remain under development. Every package is at `0.0.0` and nothing is published yet.
+Claude Code, Codex, and Cursor adapters plus 13 environment, instruction, and managed-content
+checks. Content plugins remain under development. Every package is at `0.0.0` and nothing is
+published yet.
 
 ## How a scan works
 
@@ -46,28 +47,43 @@ the `AURA_INSTALL_DIR` / `AURA_VERSION` options.
 ```sh
 aura check              # inspect the current AI agent setup
 aura check --json       # machine-readable report
+aura check --only ENV --only claude # environment checks for Claude Code
 aura check --detail     # include the failing plugin's own error text
 aura check --explain ENV-003 # explain one check without scanning the machine
+aura check --fix --dry-run # preview automatic fixes without writing
+aura check --fix --interactive # choose guided resolutions and apply one atomic plan
 ```
 
-| Flag        | Purpose                                                                         |
-| ----------- | ------------------------------------------------------------------------------- |
-| `--json`    | Emit JSON on a stream separate from plugin output. Also applies to `--explain`. |
-| `--detail`  | Include a failing plugin's error text. May contain file contents.               |
-| `--explain` | Explain a check by ID without scanning adapters or repository state.            |
-| `--home`    | Override the home directory. Must be absolute.                                  |
-| `--path`    | Override the executable search path. Must list absolute directories.            |
+| Flag             | Purpose                                                                                          |
+| ---------------- | ------------------------------------------------------------------------------------------------ |
+| `--only`         | Select a check ID, category, or canonical application ID. Repeat to union selectors.             |
+| `--json`         | Emit JSON on a stream separate from prompts and progress. Also applies to `--explain`.           |
+| `--json-version` | Select the JSON contract version; version `1` is supported and remains the default.              |
+| `--detail`       | Include diagnostic detail and fix diffs. May contain file contents.                              |
+| `--explain`      | Explain a check by ID without scanning adapters or repository state.                             |
+| `--fix`          | Preview automatic fixes and apply them after one confirmation.                                   |
+| `--interactive`  | With `--fix`, choose guided remediations before the combined preview. Requires terminal prompts. |
+| `--dry-run`      | With `--fix`, prepare and preview the same plan without confirming or writing.                   |
+| `--yes`          | With `--fix`, apply automatic fixes without confirmation.                                        |
+| `--home`         | Override the home directory. Must be absolute.                                                   |
+| `--path`         | Override the executable search path. Must list absolute directories.                             |
 
-Checks report what they find; nothing applies fixes yet. `--explain` states both what a check is
-capable of fixing and that this build cannot apply it.
+The versioned JSON contract and published schema are documented in the
+[check JSON reference](https://tryaura.sh/docs/reference/check-json/).
+
+`--only` matches case-insensitive exact check IDs first, then check categories and real adapter
+IDs. Categories are the local ID prefix (for example, `SEC` in `acme/SEC-001`). `claude` and
+`claude_code` are aliases for the canonical `claude-code` adapter ID. Repeated selectors are ORed
+within the check and application dimensions, then those dimensions are intersected.
 
 Exit codes are stable enough to gate CI on:
 
-| Code | Meaning                                                             |
-| ---- | ------------------------------------------------------------------- |
-| `0`  | Clean — every check passed.                                         |
-| `1`  | Warnings only.                                                      |
-| `2`  | Errors, a scan or check diagnostic, or no checks registered at all. |
+| Code | Meaning                                                                                       |
+| ---- | --------------------------------------------------------------------------------------------- |
+| `0`  | Clean, or informational findings only.                                                        |
+| `1`  | Warning findings.                                                                             |
+| `2`  | Error findings, invalid usage or selectors, filesystem conflicts, or an empty check registry. |
+| `3`  | Adapter, check, plugin, registry, command, or fix preparation/application failures.           |
 
 ## Repository layout
 

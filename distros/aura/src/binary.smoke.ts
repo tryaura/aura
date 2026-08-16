@@ -56,23 +56,36 @@ describe("compiled Aura distribution", () => {
         env: { HOME: seed.homeDir, NO_COLOR: "1", PATH: seed.pathDir },
       });
       expect(asJson.stderr).toBe("");
-      expect(JSON.parse(asJson.stdout)).toMatchObject({ fixesApplicable: false, id: checkId });
+      expect(JSON.parse(asJson.stdout)).toMatchObject({
+        fixesApplicable: checkId === "ENV-003" || checkId === "ENV-004",
+        id: checkId,
+      });
     }
 
     const result = await runBinaryCheck({ binaryPath: BINARY_PATH, seed });
     expect(result.report).toEqual({
+      apps: [
+        {
+          appId: "claude-code",
+          detection: { installed: false },
+          displayName: "Claude Code",
+        },
+        { appId: "codex", detection: { installed: false }, displayName: "Codex" },
+        { appId: "cursor", detection: { installed: false }, displayName: "Cursor" },
+      ],
       diagnostics: [],
-      exitCode: 2,
       findings: [
         {
           checkId: "INS-001",
-          id: "shared-source",
+          findingId: "shared-source",
+          fixability: "auto",
           locations: [{ path: "<HOME>/agents/AGENTS.md" }],
           message: "The shared instruction source is missing.",
           scope: "global",
           severity: "error",
         },
       ],
+      kind: "check-report",
       passedChecks: [
         { id: "ENV-001", title: "Agent applications use supported versions" },
         { id: "ENV-002", title: "Agent applications are authenticated" },
@@ -82,14 +95,35 @@ describe("compiled Aura distribution", () => {
         },
         { id: "ENV-004", title: "Agent settings allow the current project to run normally" },
         { id: "INS-002", title: "Agent applications load shared instructions" },
+        { id: "INS-003", title: "Instruction guidance is not duplicated" },
+        { id: "INS-004", title: "Legacy instruction files are consolidated" },
+        { id: "INS-005", title: "Instruction guidance does not contradict itself" },
+        { id: "INS-006", title: "Instruction links are valid and supported" },
+        { id: "INS-007", title: "Instruction context stays within a practical budget" },
+        {
+          id: "INS-008",
+          title: "Instruction guidance respects global and project precedence",
+        },
+        {
+          id: "MGD-001",
+          title: "Aura-managed instruction blocks have not changed by hand",
+        },
       ],
-      skipped: [
-        { adapterId: "claude-code", displayName: "Claude Code" },
-        { adapterId: "codex", displayName: "Codex" },
-        { adapterId: "cursor", displayName: "Cursor" },
-      ],
+      schemaVersion: 1,
       status: "error",
-      summary: { errors: 1, informational: 0, passed: 5, warnings: 0 },
+      summary: {
+        categories: {
+          ENV: { errors: 0, informational: 0, passed: 4, warnings: 0 },
+          INS: { errors: 1, informational: 0, passed: 7, warnings: 0 },
+          MGD: { errors: 0, informational: 0, passed: 1, warnings: 0 },
+        },
+        diagnostics: 0,
+        errors: 1,
+        exitCode: 2,
+        informational: 0,
+        passed: 12,
+        warnings: 0,
+      },
     });
     expect(result.exitCode).toBe(2);
     expect(result.stderr).toBe("");
@@ -110,9 +144,13 @@ describe("compiled Aura distribution", () => {
       ])
       .build();
 
-    const result = await runBinaryCheck({ binaryPath: BINARY_PATH, seed });
+    const result = await runBinaryCheck({
+      args: ["--only", "ENV"],
+      binaryPath: BINARY_PATH,
+      seed,
+    });
 
-    expect(result.findings.map((finding) => [finding.checkId, finding.id])).toEqual([
+    expect(result.findings.map((finding) => [finding.checkId, finding.findingId])).toEqual([
       ["ENV-001", "unsupported-version:claude-code"],
       ["ENV-002", "unauthenticated:claude-code"],
       ["ENV-003", "gitignore-policy"],

@@ -1,4 +1,4 @@
-import type { Check, Finding } from "@tryaura/aura-sdk";
+import type { Adapter, Check, Finding } from "@tryaura/aura-sdk";
 import type { CheckDiagnostic, ScanDiagnostic } from "@tryaura/core";
 import { describe, expect, it } from "vitest";
 
@@ -16,28 +16,38 @@ const CHECK: Check = {
 
 describe("createCheckReport", () => {
   it("returns zero for clean and informational-only reports", () => {
-    expect(report().exitCode).toBe(0);
-    expect(report({ findings: [finding("info")] }).exitCode).toBe(0);
+    expect(report().summary.exitCode).toBe(0);
+    expect(report({ findings: [finding("info")] }).summary.exitCode).toBe(0);
   });
 
   it("returns one for warnings and two when any error is present", () => {
-    expect(report({ findings: [finding("warn")] }).exitCode).toBe(1);
-    expect(report({ findings: [finding("warn"), finding("error")] }).exitCode).toBe(2);
+    expect(report({ findings: [finding("warn")] }).summary.exitCode).toBe(1);
+    expect(report({ findings: [finding("warn"), finding("error")] }).summary.exitCode).toBe(2);
   });
 
   it("treats scan diagnostics as errors and omits their untrusted detail", () => {
     const result = report({ scanDiagnostics: [scanDiagnostic()] });
 
-    expect(result.exitCode).toBe(2);
+    expect(result.summary.exitCode).toBe(3);
     expect(result.diagnostics).toEqual([
       { id: "fixture", message: "Fixture failed during detect.", phase: "detect" },
     ]);
   });
 
+  it("gives diagnostics precedence over finding and conflict exit codes", () => {
+    expect(
+      report({
+        findings: [finding("error")],
+        forcedExitCode: 2,
+        scanDiagnostics: [scanDiagnostic()],
+      }).summary.exitCode,
+    ).toBe(3);
+  });
+
   it("treats a check that could not run as an error without reporting it as passed", () => {
     const result = report({ checkDiagnostics: [checkDiagnostic()] });
 
-    expect(result.exitCode).toBe(2);
+    expect(result.summary.exitCode).toBe(3);
     expect(result.diagnostics).toEqual([
       { id: "fixture/CHECK", message: "Fixture check failed and was skipped.", phase: "check" },
     ]);
@@ -62,32 +72,58 @@ describe("createCheckReport", () => {
     const result = report();
 
     expect(result.passedChecks).toEqual([{ id: CHECK.id, title: CHECK.title }]);
-    expect(result.summary).toEqual({ errors: 0, informational: 0, passed: 1, warnings: 0 });
+    expect(result.summary).toEqual({
+      categories: {
+        CHECK: { errors: 0, informational: 0, passed: 1, warnings: 0 },
+      },
+      diagnostics: 0,
+      errors: 0,
+      exitCode: 0,
+      informational: 0,
+      passed: 1,
+      warnings: 0,
+    });
     expect(result.status).toBe("clean");
   });
 
   it("does not call a run that had no checks to run clean", () => {
     expect(report({ checks: [] }).status).toBe("empty");
-    expect(report({ checks: [] }).exitCode).toBe(2);
+    expect(report({ checks: [] }).summary.exitCode).toBe(2);
   });
 
-  it("carries the applications that were looked for and not found", () => {
-    const skipped = [{ adapterId: "cursor", displayName: "Cursor" }];
+  it("carries every real selected application even when detection failed", () => {
+    expect(report({ adapters: [adapter()] }).apps).toEqual([
+      { appId: "cursor", detection: { installed: false }, displayName: "Cursor" },
+    ]);
+  });
 
-    expect(report({ skipped }).skipped).toEqual(skipped);
+  it("omits synthetic inventory adapters", () => {
+    expect(report({ adapters: [{ ...adapter(), synthetic: true }] }).apps).toEqual([]);
   });
 });
 
 function report(overrides: Partial<CheckReportInput> = {}): ReturnType<typeof createCheckReport> {
   return createCheckReport({
+    adapters: [],
+    apps: [],
     checkDiagnostics: [],
     checks: [CHECK],
     findings: [],
     scanDiagnostics: [],
-    skipped: [],
     withDetail: false,
     ...overrides,
   });
+}
+
+function adapter(): Adapter {
+  return {
+    detect: async () => ({ installed: false }),
+    displayName: "Cursor",
+    files: () => [],
+    id: "cursor",
+    parse: () => ({ instructionFiles: [], mcpServers: [], skills: [] }),
+    supportedRange: ">=1",
+  };
 }
 
 function scanDiagnostic(): ScanDiagnostic {

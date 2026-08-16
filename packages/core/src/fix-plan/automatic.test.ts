@@ -61,7 +61,7 @@ describe("prepareAutomaticFixes", () => {
     expect(fixes.manualSteps).toEqual(["Restart the application."]);
   });
 
-  it("merges guided and automatic remediations into one plan", async () => {
+  it("leaves guided remediation for the interactive client", async () => {
     const fixture = await createFixture();
     const guided = createCheck(
       "alpha/GUIDED",
@@ -76,10 +76,9 @@ describe("prepareAutomaticFixes", () => {
       model: fixture.model,
     });
 
-    // One plan, not two: the kernel applies a plan whole or not at all, and one undo entry should
-    // cover everything a single command changed.
-    expect(fixes.prepared?.preview.operations).toHaveLength(2);
-    expect(fixes.prepared?.preview.manualSteps).toEqual(["Sign in again."]);
+    expect(fixes.prepared?.preview.operations).toHaveLength(1);
+    expect(fixes.prepared?.preview.manualSteps).toEqual([]);
+    expect(fixes.candidates.map((candidate) => candidate.checkId)).toEqual(["alpha/AUTO"]);
   });
 
   it("ignores manual checks without asking them for a plan", async () => {
@@ -100,7 +99,7 @@ describe("prepareAutomaticFixes", () => {
       model: fixture.model,
     });
 
-    expect(fixes).toEqual({ diagnostics: [], manualSteps: [] });
+    expect(fixes).toEqual({ candidates: [], diagnostics: [], manualSteps: [] });
   });
 });
 

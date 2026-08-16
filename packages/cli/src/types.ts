@@ -4,7 +4,7 @@ import type { AuraPlugin } from "@tryaura/aura-sdk";
 import type { PluginRegistryOptions } from "@tryaura/core";
 
 /** Process status produced by every Aura CLI command. */
-export type CliExitCode = 0 | 1 | 2;
+export type CliExitCode = 0 | 1 | 2 | 3;
 
 /** Distribution-controlled names and help metadata. */
 export interface CliBranding {

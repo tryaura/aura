@@ -3,7 +3,8 @@
   "version": "0.0.0",
   "license": "Apache-2.0",
   "files": [
-    "dist"
+    "dist",
+    "schema"
   ],
   "type": "module",
   "sideEffects": false,
@@ -12,14 +13,16 @@
       "types": "./src/index.ts",
       "development": "./src/index.ts",
       "default": "./dist/index.js"
-    }
+    },
+    "./schema/check-output-v1.json": "./schema/check-output-v1.schema.json"
   },
   "publishConfig": {
     "exports": {
       ".": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
-      }
+      },
+      "./schema/check-output-v1.json": "./schema/check-output-v1.schema.json"
     },
     "access": "public"
   },
@@ -36,6 +39,7 @@
   },
   "devDependencies": {
     "@types/node": "24.13.3",
+    "ajv": "8.20.0",
     "vitest": "4.1.10"
   }
 }

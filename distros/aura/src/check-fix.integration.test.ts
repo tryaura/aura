@@ -81,7 +81,7 @@ describe("aura check --fix", () => {
     const result = await run(seed, ["check", "--fix"]);
 
     expect(result.exitCode).toBe(2);
-    expect(result.stderr).toContain("stdin is not a terminal");
+    expect(result.stderr).toContain("prompt output must both be terminals");
     expect(result.stderr).toContain("--yes");
     expect(existsSync(sharedPath)).toBe(false);
   });

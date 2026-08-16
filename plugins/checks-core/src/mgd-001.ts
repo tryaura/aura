@@ -8,10 +8,9 @@ const CHECK_ID = "MGD-001";
 export const managedBlockHashCheck = defineCheck({
   defaultSeverity: "warn",
   detect: detectManagedBlockDrift,
-  // Capability and availability are two facts, as in every other fixability description: the three
-  // resolutions are what this check can build, and nothing in this build asks the user to pick one.
-  explain:
-    "Aura hashes each managed snippet so hand edits cannot be overwritten silently. Keep adopts the edit, Restore returns to the registered content, and Merge leaves the file for a manual reconciliation. Picking between them needs an interactive client; no command in this build presents the choice, so Aura reports the drift and leaves the file alone.",
+  explain: `Aura hashes each managed snippet so hand edits cannot be overwritten silently. A mismatch means the installed text no longer matches the registered version, so a later setup run must not guess which side should win.
+
+Re-run the check with \`--fix --interactive\` and choose Keep yours to adopt the edit, Restore to return to registered content, or Merge to review both versions and reconcile them manually. Every executable choice is previewed and backed up before Aura writes.`,
   fix: () => undefined,
   fixability: "guided",
   guidedFixes: guidedFixes,

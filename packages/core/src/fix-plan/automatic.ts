@@ -5,52 +5,52 @@ import { describeFailure } from "../workspace/diagnostics.js";
 
 import { prepareFixPlan, type PreparedFixPlan } from "./execute.js";
 
-/** Everything {@link prepareAutomaticFixes} needs to turn a check run into one plan. */
+/** One finding together with the plan its check produced. */
+export interface FixCandidate {
+  readonly checkId: string;
+  readonly findingId: string;
+  readonly plan: FixPlan;
+}
+
 export interface AutomaticFixOptions {
-  /** The same registry {@link runChecks} was given, so a finding can be traced to its check. */
   readonly checks: readonly Check[];
   readonly findings: readonly Finding[];
   readonly model: WorkspaceModel;
 }
 
-/** One merged remediation for everything the checks reported, rendered but not applied. */
-export interface AutomaticFixes {
-  /** Checks that threw while building a remediation. Empty on a clean run. */
-  readonly diagnostics: readonly CheckDiagnostic[];
-  /** Steps the plan cannot perform, gathered across every contributing check. */
+export interface PreparedFixCandidates {
+  readonly candidates: readonly FixCandidate[];
   readonly manualSteps: readonly string[];
-  /** Absent when no check produced an operation, which is not an error. */
   readonly prepared?: PreparedFixPlan | undefined;
 }
 
-/**
- * Collects every fixable finding's remediation into one plan and renders it.
- *
- * Every `fix` call is guarded, for the same reason {@link runChecks} guards `detect`: a check that
- * throws while building its remediation must be named, not left to surface as an anonymous CLI
- * failure that blames the whole run. The surviving checks still get their fixes.
- *
- * One plan rather than one per check, because the kernel applies a plan whole or not at all — two
- * plans could leave the machine in a state neither check expected, and a single undo entry covers
- * what one command changed.
- */
-export async function prepareAutomaticFixes(options: AutomaticFixOptions): Promise<AutomaticFixes> {
+export interface AutomaticFixes extends PreparedFixCandidates {
+  readonly diagnostics: readonly CheckDiagnostic[];
+}
+
+export interface AutomaticFixCandidates {
+  readonly candidates: readonly FixCandidate[];
+  readonly diagnostics: readonly CheckDiagnostic[];
+}
+
+/** Builds per-finding plans only for checks that promise a complete automatic remediation. */
+export function collectAutomaticFixCandidates(
+  options: AutomaticFixOptions,
+): AutomaticFixCandidates {
   const checks = new Map(options.checks.map((check) => [check.id, check]));
   const diagnostics: CheckDiagnostic[] = [];
-  const plans: FixPlan[] = [];
+  const candidates: FixCandidate[] = [];
 
   for (const finding of options.findings) {
     const check = checks.get(finding.checkId);
-    if (check === undefined || check.fixability === "manual") {
+    if (check?.fixability !== "auto") {
       continue;
     }
 
     try {
-      // `fix` is declared on every non-manual check, but `readonly` is erased at runtime: a plugin
-      // that declares itself fixable without supplying one throws here like any other failure.
       const plan = check.fix(finding, options.model);
       if (plan !== undefined) {
-        plans.push(plan);
+        candidates.push({ checkId: check.id, findingId: finding.id, plan });
       }
     } catch (error) {
       diagnostics.push({
@@ -61,24 +61,45 @@ export async function prepareAutomaticFixes(options: AutomaticFixOptions): Promi
     }
   }
 
-  const manualSteps = Object.freeze([...new Set(plans.flatMap((plan) => plan.manualSteps ?? []))]);
-  const operations = plans.flatMap((plan) => plan.operations);
+  return Object.freeze({
+    candidates: Object.freeze(candidates),
+    diagnostics: Object.freeze(diagnostics),
+  });
+}
+
+/** Builds and merges automatic plans for callers that do not need per-finding selection. */
+export async function prepareAutomaticFixes(options: AutomaticFixOptions): Promise<AutomaticFixes> {
+  const collected = collectAutomaticFixCandidates(options);
+  const prepared = await prepareFixCandidates({
+    candidates: collected.candidates,
+    model: options.model,
+  });
+  return Object.freeze({ ...prepared, diagnostics: collected.diagnostics });
+}
+
+/** Merges selected per-finding plans into the single transaction the kernel will apply. */
+export async function prepareFixCandidates(options: {
+  readonly candidates: readonly FixCandidate[];
+  readonly model: WorkspaceModel;
+}): Promise<PreparedFixCandidates> {
+  const candidates = Object.freeze([...options.candidates]);
+  const manualSteps = Object.freeze([
+    ...new Set(candidates.flatMap((candidate) => candidate.plan.manualSteps ?? [])),
+  ]);
+  const operations = candidates.flatMap((candidate) => candidate.plan.operations);
   if (operations.length === 0) {
-    return Object.freeze({
-      diagnostics: Object.freeze(diagnostics),
-      manualSteps,
-    });
+    return Object.freeze({ candidates, manualSteps });
   }
 
   return Object.freeze({
-    diagnostics: Object.freeze(diagnostics),
+    candidates,
     manualSteps,
     prepared: await prepareFixPlan({
       model: options.model,
       plan: {
         manualSteps: [...manualSteps],
         operations,
-        summary: `Apply ${String(plans.length)} fix(es).`,
+        summary: `Apply ${String(candidates.length)} fix(es).`,
       },
     }),
   });

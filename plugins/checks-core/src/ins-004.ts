@@ -17,8 +17,9 @@ interface LegacyDocument {
 export const legacyInstructionsCheck = defineCheck({
   defaultSeverity: "warn",
   detect: (model) => legacyDocuments(model.instructionFiles).map(toFinding),
-  explain:
-    "Legacy instruction files are easy to forget after changing agent applications or configuration formats. Consolidating them keeps useful guidance in the shared source while preserving the originals in Aura's reversible backup history.",
+  explain: `Legacy instruction files are easy to forget after changing agent applications or configuration formats. They may still be loaded unexpectedly, or hold useful guidance that newer application files never received.
+
+Re-run the check with \`--fix --interactive\` to review the suggested migration steps, then use the \`setup\` command to consolidate selected content. Aura archives originals through its reversible backup history instead of deleting them silently.`,
   fix: guidedFix,
   fixability: "guided",
   id: "INS-004",

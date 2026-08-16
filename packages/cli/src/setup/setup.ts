@@ -222,13 +222,14 @@ function renderConvergedSetup(
 function endOnGreen(request: SetupRequest, scan: WorkspaceScan): CliExitCode {
   const run = runChecks(request.registry.checks, scan.model);
   const report = createCheckReport({
+    adapters: request.registry.adapters,
+    apps: scan.model.apps,
     checkDiagnostics: run.diagnostics,
     checks: request.registry.checks,
     findings: run.findings,
     scanDiagnostics: scan.diagnostics,
-    skipped: scan.skipped,
     withDetail: request.withDetail,
   });
   renderHuman(report, request.branding, request.stdout);
-  return report.exitCode;
+  return report.summary.exitCode;
 }

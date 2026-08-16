@@ -13,8 +13,9 @@ import {
 export const contradictoryInstructionsCheck = defineCheck({
   defaultSeverity: "info",
   detect: detectContradictoryInstructions,
-  explain:
-    "Conflicting instructions leave an agent guessing which rule to follow, and the winner can change with file loading order. Keep one preference for each topic, or make the narrower rule's conditions explicit.",
+  explain: `Conflicting instructions leave an agent guessing which rule to follow, and the winner can change with file loading order. The same request can therefore produce different behavior across applications or repositories.
+
+Inspect the locations in each finding and keep one preference for the topic. When both rules are intentional, rewrite the narrower rule so its scope or conditions are explicit.`,
   fixability: "manual",
   id: "INS-005",
   scope: "global",

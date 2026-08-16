@@ -1,16 +1,9 @@
 import type { CheckReport } from "@tryaura/aura-cli";
 import type { JsonObject, JsonValue } from "@tryaura/aura-sdk";
 
-import { isRecord } from "./guards.js";
+import { deepFreeze, isRecord } from "./guards.js";
 
-/**
- * Reads the whole `check --json` document.
- *
- * The parsed value is returned as it arrived rather than rebuilt field by field, so a field the
- * report grows later reaches the test that snapshots it instead of being silently dropped by a
- * copier that predates it. Validation only proves the fields this package promises are present and
- * well-formed.
- */
+/** Reads and validates the complete `check --json` document without rebuilding it. */
 export function parseReport(stdout: string, fail: (message: string) => Error): CheckReport {
   let document: unknown;
   try {
@@ -72,6 +65,19 @@ function arrayOf(check: FieldCheck): FieldCheck {
   };
 }
 
+function recordOf(check: FieldCheck): FieldCheck {
+  return (value, path, problems) => {
+    if (!isRecord(value)) {
+      return reject(path, "an object", problems);
+    }
+    let valid = true;
+    for (const [key, entry] of Object.entries(value)) {
+      valid = check(entry, `${path}.${key}`, problems) && valid;
+    }
+    return valid;
+  };
+}
+
 function optional(check: FieldCheck): FieldCheck {
   return (value, path, problems) => value === undefined || check(value, path, problems);
 }
@@ -84,6 +90,9 @@ function oneOf(...allowed: readonly (number | string)[]): FieldCheck {
 
 const text: FieldCheck = (value, path, problems) =>
   typeof value === "string" || reject(path, "a string", problems);
+
+const boolean: FieldCheck = (value, path, problems) =>
+  typeof value === "boolean" || reject(path, "a boolean", problems);
 
 const counter: FieldCheck = (value, path, problems) =>
   (typeof value === "number" && Number.isInteger(value) && value >= 0) ||
@@ -105,7 +114,8 @@ const location = shape({
 const findingFields = shape({
   checkId: text,
   details: optional(text),
-  id: text,
+  findingId: text,
+  fixability: oneOf("auto", "guided", "manual"),
   locations: optional(arrayOf(location)),
   message: text,
   metadata: optional(jsonObject),
@@ -190,22 +200,79 @@ function columnKeys(columns: unknown): readonly string[] {
 }
 
 const REPORT: Readonly<Record<string, FieldCheck>> = {
+  apps: arrayOf(
+    shape({
+      appId: text,
+      detection: shape({
+        authenticated: optional(boolean),
+        installed: boolean,
+        version: optional(text),
+      }),
+      displayName: text,
+      support: optional(
+        shape({
+          status: oneOf("supported", "unknown", "unsupported"),
+          supportedRange: text,
+          version: optional(text),
+        }),
+      ),
+    }),
+  ),
   diagnostics: arrayOf(
     shape({
       detail: optional(text),
       id: text,
       message: text,
       path: optional(text),
-      phase: oneOf("check", "detect", "files", "parse", "read", "support"),
+      phase: oneOf("check", "detect", "files", "fix", "parse", "read", "support"),
     }),
   ),
-  exitCode: oneOf(0, 1, 2),
   findings: arrayOf(finding),
+  fixes: optional(
+    arrayOf(
+      shape({
+        checkId: text,
+        findingId: text,
+        manualSteps: arrayOf(text),
+        message: optional(text),
+        operations: arrayOf(
+          shape({
+            conflict: optional(text),
+            diff: optional(text),
+            effect: oneOf(
+              "archive",
+              "conflict",
+              "create",
+              "move",
+              "noop",
+              "remove",
+              "symlink",
+              "update",
+            ),
+            paths: arrayOf(text),
+          }),
+        ),
+        status: oneOf("applied", "failed", "partial", "planned"),
+        summary: text,
+      }),
+    ),
+  ),
+  kind: oneOf("check-report"),
   passedChecks: arrayOf(shape({ id: text, title: text })),
-  skipped: arrayOf(shape({ adapterId: text, displayName: text })),
-  status: oneOf("clean", "empty", "error", "warning"),
+  schemaVersion: oneOf(1),
+  status: oneOf("clean", "empty", "error", "operational-error", "warning"),
   summary: shape({
+    categories: recordOf(
+      shape({
+        errors: counter,
+        informational: counter,
+        passed: counter,
+        warnings: counter,
+      }),
+    ),
+    diagnostics: counter,
     errors: counter,
+    exitCode: oneOf(0, 1, 2, 3),
     informational: counter,
     passed: counter,
     warnings: counter,
@@ -225,15 +292,4 @@ function isJsonValue(value: unknown): value is JsonValue {
     (Array.isArray(value) && value.every(isJsonValue)) ||
     isJsonObject(value)
   );
-}
-
-/** Freezes the report all the way down, so one test cannot edit what the next one asserts on. */
-function deepFreeze<T>(value: T): T {
-  if (!isRecord(value) && !Array.isArray(value)) {
-    return value;
-  }
-  for (const property of Object.values(value)) {
-    deepFreeze(property);
-  }
-  return Object.freeze(value);
 }

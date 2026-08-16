@@ -3,7 +3,7 @@ import type { Writable } from "node:stream";
 import type { Check, Finding } from "@tryaura/aura-sdk";
 
 import { renderFindingPresentation } from "./metadata-table.js";
-import type { CheckReport } from "./report.js";
+import { createCheckExplanation, type CheckReport } from "./report.js";
 import { safe, safeFindingText, safeMultiline } from "./safe-text.js";
 import type { CliBranding } from "./types.js";
 
@@ -13,45 +13,24 @@ export function renderJson(report: CheckReport, output: Writable): void {
   output.write(`${JSON.stringify(report)}\n`);
 }
 
-/**
- * Describes how a check's fix would be applied, and that nothing applies it yet.
- *
- * `fixability` states what a check is *capable* of. Printing "auto" on its own reads as a promise
- * that some command will do it, and this build ships no such command, so the capability and its
- * availability are reported as two separate facts.
- */
+/** Describes the remediation mode and the command that can act on it. */
 const FIXABILITY_DESCRIPTIONS: Readonly<Record<string, string>> = Object.freeze({
-  auto: "auto — Aura can write this fix once fixes can be applied",
-  guided: "guided — Aura describes the edit; you make it",
+  auto: "auto — apply with check --fix",
+  guided: "guided — walk through choices with check --fix --interactive",
   manual: "manual — follow the guidance below",
 });
-
-const FIX_AVAILABILITY = "Applying fixes is not available in this build; checks report only.";
 
 export function renderExplanation(check: Check, branding: CliBranding, output: Writable): void {
   const fixability = FIXABILITY_DESCRIPTIONS[check.fixability] ?? check.fixability;
   output.write(`${branding.displayName} check ${safe(check.id)}\n\n`);
   output.write(`${safe(check.title)}\n`);
   output.write(`Fixability: ${safe(fixability)}\n`);
-  if (check.fixability !== "manual") {
-    output.write(`${FIX_AVAILABILITY}\n`);
-  }
   output.write(`\n${safeMultiline(check.explain)}\n`);
 }
 
 /** Emits one explanation as a document another tool can read. */
 export function renderExplanationJson(check: Check, output: Writable): void {
-  output.write(
-    `${JSON.stringify({
-      explain: check.explain,
-      fixability: check.fixability,
-      fixesApplicable: false,
-      id: check.id,
-      scope: check.scope,
-      severity: check.defaultSeverity,
-      title: check.title,
-    })}\n`,
-  );
+  output.write(`${JSON.stringify(createCheckExplanation(check))}\n`);
 }
 
 export function renderHuman(report: CheckReport, branding: CliBranding, output: Writable): void {
@@ -81,6 +60,8 @@ export function renderHuman(report: CheckReport, branding: CliBranding, output: 
   renderFindingGroup("!", "Warnings", report, "warn", output);
   renderFindingGroup("✗", "Errors", report, "error", output);
 
+  renderRemainingWork(report, branding, output);
+
   if (report.diagnostics.length > 0) {
     renderGroup(
       "✗",
@@ -93,11 +74,12 @@ export function renderHuman(report: CheckReport, branding: CliBranding, output: 
     );
   }
 
-  if (report.skipped.length > 0) {
+  const skipped = report.apps.filter((app) => !app.detection.installed);
+  if (skipped.length > 0) {
     renderGroup(
       "·",
-      `Not found (${String(report.skipped.length)})`,
-      report.skipped.map((app) => safe(app.displayName)),
+      `Not found (${String(skipped.length)})`,
+      skipped.map((app) => safe(app.displayName)),
       output,
     );
   }
@@ -118,6 +100,34 @@ export function renderHuman(report: CheckReport, branding: CliBranding, output: 
   }
 
   output.write(`\n${summaryMessage(report)}\n`);
+}
+
+/**
+ * Says what a `--fix` run could not do for the user, once it has done what it could.
+ *
+ * A count and a command, not the findings again: every one of them was just printed above with its
+ * check id, and repeating them doubles the report exactly when it should be getting shorter.
+ */
+function renderRemainingWork(report: CheckReport, branding: CliBranding, output: Writable): void {
+  const applied = report.fixes?.some((fix) => fix.status === "applied") ?? false;
+  const guided = report.findings.filter((finding) => finding.fixability === "guided").length;
+  const manual = report.findings.filter((finding) => finding.fixability === "manual").length;
+  if (!applied || guided + manual === 0) {
+    return;
+  }
+
+  const lines: string[] = [];
+  if (guided > 0) {
+    lines.push(
+      `${String(guided)} finding(s) offer guided resolutions — run ${branding.command} check --fix --interactive`,
+    );
+  }
+  if (manual > 0) {
+    lines.push(
+      `${String(manual)} finding(s) need a manual edit — run ${branding.command} check --explain <id>`,
+    );
+  }
+  renderGroup("·", `Remaining work (${String(guided + manual)})`, lines, output);
 }
 
 function renderFindingGroup(
