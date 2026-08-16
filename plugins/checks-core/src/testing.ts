@@ -3,7 +3,9 @@ import type {
   DetectedFinding,
   Finding,
   GitignoreModel,
+  InstructionDocument,
   JsonObject,
+  Scope,
   WorkspaceModel,
 } from "@tryaura/aura-sdk";
 
@@ -42,14 +44,39 @@ export function app(options: TestAppOptions = {}): AppModel {
   };
 }
 
+/** One instruction file, with defaults for what a test does not care about. */
+export function document(
+  path: string,
+  content: string,
+  options: { readonly metadata?: JsonObject; readonly scope?: Scope } = {},
+): InstructionDocument {
+  return {
+    content,
+    links: [],
+    metadata: options.metadata,
+    path,
+    scope: options.scope ?? "global",
+    sourceId: `test:${path}`,
+  };
+}
+
 /** A workspace that is not inside a repository, so project-scoped checks stay silent. */
-export function model(options: { readonly apps?: readonly AppModel[] } = {}): WorkspaceModel {
+export function model(
+  options: {
+    readonly apps?: readonly AppModel[];
+    /** Documents the apps do not carry, for checks that read the workspace-wide list directly. */
+    readonly instructionFiles?: readonly InstructionDocument[];
+  } = {},
+): WorkspaceModel {
   const apps = options.apps ?? [];
   return {
     apps,
     cwd: "/workspace",
     homeDir: "/home/dev",
-    instructionFiles: apps.flatMap((candidate) => candidate.instructionFiles),
+    instructionFiles: [
+      ...apps.flatMap((candidate) => candidate.instructionFiles),
+      ...(options.instructionFiles ?? []),
+    ],
     mcpServers: apps.flatMap((candidate) => candidate.mcpServers),
     // Absent by default: the environment checks never read it, and a fixture that claimed a shared
     // source exists would make the INS checks disagree with the one in `fixtures.ts`.
