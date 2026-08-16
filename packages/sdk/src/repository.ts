@@ -22,6 +22,21 @@ export interface GitignoreModel {
   readonly problem?: FileProblem | undefined;
 }
 
+/** Package metadata retained from one tracked repository `package.json`. */
+export interface RepositoryPackageManifest {
+  /**
+   * The declared package name, trimmed, when the manifest declares a non-empty string.
+   *
+   * Not validated against npm's naming rules, so a consumer that builds a pattern from this must
+   * escape it.
+   */
+  readonly name?: string | undefined;
+  /** Repository-root-relative manifest path. */
+  readonly path: string;
+  /** Declared script names, sorted for deterministic checks and reports. */
+  readonly scripts: readonly string[];
+}
+
 /** Repository-specific state checks need without performing their own I/O. */
 export interface RepositoryModel {
   /** Root `.gitignore`, the only ignore file Aura offers to maintain. */
@@ -33,6 +48,15 @@ export interface RepositoryModel {
    * the same rule to everyone else's `.gitignore`. Absent when Git could not be probed.
    */
   readonly infoExclude?: GitignoreModel | undefined;
+  /**
+   * Metadata from tracked `package.json` files, without raw contents or script commands.
+   *
+   * Undefined when Git could not enumerate tracked manifests. Invalid and unreadable manifests
+   * are omitted rather than represented as empty packages. The set is bounded — a repository that
+   * tracks more manifests than Aura reads keeps the first by sorted path — so this is evidence
+   * about the repository, not an inventory of it.
+   */
+  readonly packageManifests?: readonly RepositoryPackageManifest[] | undefined;
   /**
    * Root-relative tracked paths that agent applications are known to write.
    *

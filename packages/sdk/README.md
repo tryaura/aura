@@ -210,6 +210,11 @@ a developer applied only to their own checkout is not mistaken for a missing one
 `trackedAgentPaths` lists tracked paths that agent applications are known to write, not the whole
 checkout: a large repository holds hundreds of thousands of paths, and retaining them all for the
 lifetime of a scan costs far more than any check can use.
+`packageManifests` carries only tracked `package.json` paths, declared package names, and script
+names. Raw manifest contents and script commands are not retained, the set is bounded by path
+order rather than growing with the repository, and the field is absent when Git cannot enumerate
+the repository. A name is trimmed but not validated against npm's rules, so a check that builds a
+pattern from one must escape it.
 
 A check that reads another plugin's contribution — a metadata key, or a source id used to locate a
 file — should import that name from the contributing package rather than retype it as a literal.

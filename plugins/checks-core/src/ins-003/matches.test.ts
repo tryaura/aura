@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { sha256 } from "../hashing.js";
+import type { InstructionParagraph } from "../instruction-paragraphs.js";
 import { clusterMatches } from "./clusters.js";
 import {
   findMatches,
@@ -9,7 +11,6 @@ import {
   tokenShingles,
   type ParagraphMatch,
 } from "./matches.js";
-import { sha256, type InstructionParagraph } from "./paragraphs.js";
 
 describe("INS-003 similarity matching", () => {
   it("includes the 70% length boundary and prunes pairs outside it", () => {

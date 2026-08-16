@@ -152,6 +152,29 @@ describe("INS-003", () => {
     ).toHaveLength(1);
   });
 
+  it("leaves duplication that crosses the global and project tiers to INS-008", () => {
+    expect(
+      run([
+        document("/home/dev/AGENTS.md", GUIDANCE),
+        document("/workspace/AGENTS.md", GUIDANCE, { scope: "project" }),
+      ]),
+    ).toEqual([]);
+  });
+
+  it("still reports the copies one tier duplicates on its own", () => {
+    const findings = run([
+      document("/home/dev/AGENTS.md", GUIDANCE),
+      document("/workspace/AGENTS.md", GUIDANCE, { scope: "project" }),
+      document("/workspace/CLAUDE.md", GUIDANCE, { scope: "project" }),
+    ]);
+
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.locations).toEqual([
+      { line: 1, path: "/workspace/AGENTS.md" },
+      { line: 1, path: "/workspace/CLAUDE.md" },
+    ]);
+  });
+
   it("compares conditional rules only against rules of the same scope", () => {
     const conditional = document("/workspace/.cursor/rules/database.mdc", GUIDANCE, {
       metadata: { alwaysApply: false },

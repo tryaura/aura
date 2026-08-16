@@ -1,4 +1,4 @@
-import type { InstructionParagraph } from "./paragraphs.js";
+import { paragraphHashBuckets, type InstructionParagraph } from "../instruction-paragraphs.js";
 
 const LENGTH_RATIO = 0.7;
 export const NEAR_DUPLICATE_THRESHOLD = 0.85;
@@ -109,22 +109,9 @@ export function jaccard(left: ReadonlySet<string>, right: ReadonlySet<string>): 
 }
 
 function exactMatches(paragraphs: readonly InstructionParagraph[]): ParagraphMatch[] {
-  return [...exactBuckets(paragraphs).values()].flatMap((indexes) =>
+  return [...paragraphHashBuckets(paragraphs).values()].flatMap((indexes) =>
     exactBucketMatches(indexes, paragraphs),
   );
-}
-
-function exactBuckets(paragraphs: readonly InstructionParagraph[]): ReadonlyMap<string, number[]> {
-  const buckets = new Map<string, number[]>();
-  for (let index = 0; index < paragraphs.length; index += 1) {
-    const paragraph = paragraphs[index];
-    if (paragraph !== undefined) {
-      const bucket = buckets.get(paragraph.hash) ?? [];
-      bucket.push(index);
-      buckets.set(paragraph.hash, bucket);
-    }
-  }
-  return buckets;
 }
 
 function exactBucketMatches(

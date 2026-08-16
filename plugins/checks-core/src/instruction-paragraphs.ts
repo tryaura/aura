@@ -1,7 +1,9 @@
-import { createHash } from "node:crypto";
 import { extname, resolve } from "node:path";
 
 import { maskMarkdownCode, type InstructionDocument, type Scope } from "@tryaura/aura-sdk";
+
+import { sha256 } from "./hashing.js";
+import { canonicalInstructionDocuments } from "./instruction-documents.js";
 
 const MINIMUM_PARAGRAPH_LENGTH = 40;
 /** Never appears in prose, so joined parts cannot collide with a value that contains it. */
@@ -32,11 +34,45 @@ export interface InstructionParagraph {
   readonly startLine: number;
 }
 
+/**
+ * Segmentation results keyed by the document list they came from.
+ *
+ * Checks are pure and every check in a run receives the same workspace model, so more than one
+ * check asking for the paragraphs of the same list must not re-segment every instruction file.
+ * The key is held weakly, so nothing survives the scan that produced it.
+ */
+const paragraphCache = new WeakMap<object, readonly InstructionParagraph[]>();
+
 /** Extracts deterministic, prose-like paragraphs from each distinct instruction path. */
 export function extractParagraphs(
   documents: readonly InstructionDocument[],
 ): readonly InstructionParagraph[] {
-  return canonicalDocuments(documents).flatMap(segmentDocument).sort(compareParagraphs);
+  const cached = paragraphCache.get(documents);
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  const paragraphs = canonicalInstructionDocuments(documents)
+    .flatMap(segmentDocument)
+    .sort(compareParagraphs);
+  paragraphCache.set(documents, paragraphs);
+  return paragraphs;
+}
+
+/** Groups extracted paragraphs by exact content hash, for checks that compare identical guidance. */
+export function paragraphHashBuckets(
+  paragraphs: readonly InstructionParagraph[],
+): ReadonlyMap<string, readonly number[]> {
+  const buckets = new Map<string, number[]>();
+  for (let index = 0; index < paragraphs.length; index += 1) {
+    const paragraph = paragraphs[index];
+    if (paragraph !== undefined) {
+      const bucket = buckets.get(paragraph.hash) ?? [];
+      bucket.push(index);
+      buckets.set(paragraph.hash, bucket);
+    }
+  }
+  return buckets;
 }
 
 export function normalizeParagraph(lines: readonly string[]): string {
@@ -48,33 +84,6 @@ export function normalizeParagraph(lines: readonly string[]): string {
     .trim()
     .replace(TRAILING_PUNCTUATION_PATTERN, "")
     .trim();
-}
-
-function canonicalDocuments(
-  documents: readonly InstructionDocument[],
-): readonly InstructionDocument[] {
-  const sorted = [...documents].sort((left, right) => {
-    const pathOrder = resolve(left.path).localeCompare(resolve(right.path));
-    if (pathOrder !== 0) {
-      return pathOrder;
-    }
-    const sourceOrder = left.sourceId.localeCompare(right.sourceId);
-    if (sourceOrder !== 0) {
-      return sourceOrder;
-    }
-    const scopeOrder = left.scope.localeCompare(right.scope);
-    return scopeOrder !== 0 ? scopeOrder : left.content.localeCompare(right.content);
-  });
-  const paths = new Set<string>();
-
-  return sorted.filter((document) => {
-    const path = resolve(document.path);
-    if (paths.has(path)) {
-      return false;
-    }
-    paths.add(path);
-    return true;
-  });
 }
 
 function segmentDocument(document: InstructionDocument): readonly InstructionParagraph[] {
@@ -192,8 +201,4 @@ function compareParagraphs(left: InstructionParagraph, right: InstructionParagra
     return left.endLine - right.endLine;
   }
   return left.hash.localeCompare(right.hash);
-}
-
-export function sha256(value: string): string {
-  return createHash("sha256").update(value).digest("hex");
 }

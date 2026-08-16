@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { document } from "../testing.js";
-import { extractParagraphs, normalizeParagraph } from "./paragraphs.js";
+import { extractParagraphs, normalizeParagraph } from "./instruction-paragraphs.js";
+import { document } from "./testing.js";
 
-describe("INS-003 paragraph extraction", () => {
+describe("instruction paragraph extraction", () => {
   it("normalizes case, whitespace, list markers, and trailing punctuation", () => {
     expect(normalizeParagraph(["  1.  ALWAYS   run tests", "- Before shipping!!!  "])).toBe(
       "always run tests before shipping",
