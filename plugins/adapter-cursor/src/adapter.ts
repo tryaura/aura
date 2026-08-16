@@ -38,10 +38,10 @@ export const cursorAdapter = defineAdapter({
   id: "cursor",
   installHint:
     "Use Help > Check for Updates in Cursor, or install the latest release from https://cursor.com/downloads.",
-  parse: ({ files }) => ({
+  parse: ({ files, homeDir }) => ({
     instructionFiles: [...files.values()]
       .filter(isInstructionSource)
-      .map((file) => parseRuleFile(file)),
+      .map((file) => parseRuleFile(file, homeDir)),
     mcpServers: [SOURCE_IDS.mcpGlobal, SOURCE_IDS.mcpProject].flatMap((id) => {
       const file = files.get(id);
       return file?.content === undefined ? [] : parseMcpServers(file);

@@ -96,6 +96,13 @@ export {
 export { collectJsonMcpServers, parseJsonMcpServers } from "./mcp-config.js";
 export type { JsonMcpConfigOptions } from "./mcp-config.js";
 export { maskMarkdownCode } from "./markdown.js";
+export {
+  isFileReference,
+  isInstructionReference,
+  parseAtImports,
+  referenceTargetPath,
+} from "./imports.js";
+export type { AtImportContext } from "./imports.js";
 export type { AuraPlugin } from "./plugin.js";
 export { detectLineEnding, splitSourceLines } from "./text.js";
 export type { SourceLine } from "./text.js";

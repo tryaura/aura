@@ -6,7 +6,7 @@ import { PassThrough } from "node:stream";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createEnvironment, createPluginRegistry, type PluginRegistry } from "@tryaura/core";
-import type { Environment } from "@tryaura/aura-sdk";
+import { defineAdapter, definePlugin, type AuraPlugin, type Environment } from "@tryaura/aura-sdk";
 
 import { BRANDING, findingPlugin } from "../testing.js";
 import { runSetup, type SetupRequest } from "./setup.js";
@@ -88,6 +88,16 @@ describe("runSetup", () => {
     expect(manifestMode).toBe(0o600);
     expect(fixture.stdout()).toContain("Passed (1)");
     expect(fixture.stdout()).toContain("backup");
+  });
+
+  it("does not name a synthetic inventory adapter among the detected applications", async () => {
+    const fixture = await createFixture();
+    const registry = createPluginRegistry([findingPlugin("info", []), inventoryPlugin()], {});
+
+    await runSetup(fixture.request({}, { registry }));
+
+    expect(fixture.stdout()).toContain("No agent applications detected.");
+    expect(fixture.stdout()).not.toContain("File inventory");
   });
 
   it("converges to a no-op on the second run without touching the journal", async () => {
@@ -194,6 +204,28 @@ describe("runSetup", () => {
     await expect(snapshot(fixture.homeDir)).resolves.toEqual(before);
   });
 });
+
+/** A plugin whose adapter models files rather than an application the user installed. */
+function inventoryPlugin(): AuraPlugin {
+  return definePlugin({
+    adapters: [
+      defineAdapter({
+        detect: async () => ({ installed: true, version: "1.0.0" }),
+        displayName: "File inventory",
+        files: () => [],
+        id: "file-inventory",
+        parse: () => ({ instructionFiles: [], mcpServers: [], skills: [] }),
+        supportedRange: ">=1 <2",
+        synthetic: true,
+      }),
+    ],
+    apiVersion: 1,
+    checks: [],
+    id: "fixture-inventory",
+    name: "Fixture inventory",
+    version: "1.0.0",
+  });
+}
 
 function stubStep(id: string): SetupStep {
   return {

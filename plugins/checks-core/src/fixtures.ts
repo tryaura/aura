@@ -28,6 +28,7 @@ export interface AppOptions {
       }
     | undefined;
   readonly support?: "supported" | "unsupported" | undefined;
+  readonly synthetic?: boolean | undefined;
 }
 
 export function app(options: AppOptions = {}): AppModel {
@@ -56,6 +57,7 @@ export function app(options: AppOptions = {}): AppModel {
       supportedRange: ">=1 <2",
       version: "1.0.0",
     },
+    synthetic: options.synthetic,
   };
 }
 

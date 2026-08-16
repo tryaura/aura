@@ -59,10 +59,13 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
     return 2;
   }
 
+  // Inventory adapters report themselves installed so core reads their paths; naming them here
+  // would claim the user runs an application that does not exist.
+  const detected = model.apps.filter((app) => app.synthetic !== true);
   io.note(
-    model.apps.length === 0
+    detected.length === 0
       ? "No agent applications detected."
-      : `Detected: ${model.apps.map((app) => safe(app.displayName)).join(", ")}`,
+      : `Detected: ${detected.map((app) => safe(app.displayName)).join(", ")}`,
   );
   stdout.write("\n");
 

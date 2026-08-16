@@ -18,6 +18,7 @@ export interface TestAppOptions {
   readonly metadata?: JsonObject;
   readonly sources?: AppModel["sourceFiles"];
   readonly status?: AppModel["support"]["status"];
+  readonly synthetic?: boolean;
   readonly version?: string;
 }
 
@@ -41,6 +42,7 @@ export function app(options: TestAppOptions = {}): AppModel {
       supportedRange: ">=1 <2",
       version: options.version,
     },
+    synthetic: options.synthetic,
   };
 }
 

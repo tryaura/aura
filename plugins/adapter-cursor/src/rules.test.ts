@@ -30,7 +30,7 @@ describe("Cursor rule references", () => {
   it("surfaces activation frontmatter as metadata while keeping the full content", () => {
     const content =
       "---\ndescription: Database conventions\nglobs: migrations/**/*.sql\nalwaysApply: false\n---\n\nRead @schema.sql.\n";
-    const document = parseRuleFile(ruleFile(content));
+    const document = parseRuleFile(ruleFile(content), "/home/dev");
 
     expect(document.metadata).toEqual({
       alwaysApply: false,
@@ -61,7 +61,7 @@ describe("Cursor rule references", () => {
 });
 
 function parse(lines: readonly string[]): ReturnType<typeof parseRuleFile> {
-  return parseRuleFile(ruleFile(lines.join("\n")));
+  return parseRuleFile(ruleFile(lines.join("\n")), "/home/dev");
 }
 
 function ruleFile(content: string): AdapterSourceFile {

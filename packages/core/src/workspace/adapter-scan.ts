@@ -121,6 +121,7 @@ export async function scanAdapter(adapter: Adapter, context: ScanContext): Promi
         .map(toStatus),
       ...(sharedLink === undefined ? {} : { sharedLink }),
       support: evaluateSupport(adapter.supportedRange, detection.version),
+      ...(adapter.synthetic === undefined ? {} : { synthetic: adapter.synthetic }),
     },
     diagnostics,
   };
