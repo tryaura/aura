@@ -156,7 +156,8 @@ function describeStream(value: string): string {
   return `${trimmed.replaceAll("\n", "\n    ")}${suffix}`;
 }
 
-function createNormalizer(seed: TestSeed): (value: string) => string {
+/** Replaces a seed's machine-specific paths with stable labels, longest path first. */
+export function createNormalizer(seed: TestSeed): (value: string) => string {
   const replacements: ReadonlyArray<readonly [string, string]> = [
     [seed.homeDir, "<HOME>"],
     [seed.pathDir, "<PATH>"],

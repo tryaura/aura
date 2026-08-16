@@ -77,11 +77,14 @@ export type FixPlanExecutionOptions = FixPlanPreviewOptions & {
    * not have to satisfy a different shape depending on the flag's value.
    */
   readonly now: () => Date;
+  /** Home used for process-wide Aura state, independent of a command's `--home` override. */
+  readonly stateHomeDir?: string | undefined;
 };
 
 export interface FixPlanApplyOptions {
   /** Injected clock used to identify the durable backup entry. */
   readonly now: () => Date;
+  readonly stateHomeDir?: string | undefined;
 }
 
 /** The outcome of executing or dry-running a plan. */
@@ -108,6 +111,7 @@ export interface FixPlanUndoOptions {
   readonly model: WorkspaceModel;
   /** Injected clock recorded when the journal entry is completed. */
   readonly now: () => Date;
+  readonly stateHomeDir?: string | undefined;
 }
 
 export interface FixPlanBackupListOptions {

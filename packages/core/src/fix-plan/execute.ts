@@ -5,6 +5,7 @@ import { withJournalLock } from "./journal-lock.js";
 import type { JournalHandle } from "./journal-read.js";
 import { ensureBackupRoot, setJournalStatus, stageJournal } from "./journal.js";
 import { prepareOperations } from "./prepare.js";
+import { targetPaths, withTargetLocks } from "./target-lock.js";
 import {
   blockedPlanError,
   isApplicable,
@@ -81,7 +82,7 @@ export async function applyFixPlan(
     throw blockedPlanError(prepared.preview);
   }
 
-  return applyOperations(plan, prepared.preview, options.now);
+  return applyOperations(plan, prepared.preview, options);
 }
 
 /** Restates a manifest problem as the fix-plan failure a caller is already catching. */
@@ -109,13 +110,13 @@ export async function executeFixPlan(
     return Object.freeze({ appliedOperationCount: 0, dryRun: true, preview: prepared.preview });
   }
 
-  return applyFixPlan(prepared, { now: options.now });
+  return applyFixPlan(prepared, options);
 }
 
 async function applyOperations(
   plan: PreparedPlanState,
   preview: FixPlanPreview,
-  now: () => Date,
+  options: FixPlanApplyOptions,
 ): Promise<FixPlanExecutionResult> {
   const operations = plan.operations.filter(isApplicable);
   if (operations.length === 0) {
@@ -123,7 +124,18 @@ async function applyOperations(
   }
 
   const root = await ensureBackupRoot(plan.model.homeDir);
-  return withJournalLock(root, now, async () => applyJournaled(plan, operations, preview, now));
+  const targetRoot = await ensureBackupRoot(options.stateHomeDir ?? plan.model.homeDir);
+  // Target locks use a machine-wide namespace, while the journal lock belongs to this plan's home.
+  // Taking both prevents a run with a different --home from racing the same filesystem paths.
+  const targets = targetPaths(
+    operations.flatMap((operation) => operation.preview.paths),
+    plan.policy.caseInsensitive,
+  );
+  return withJournalLock(root, options.now, async () =>
+    withTargetLocks(targets, targetRoot, options.now, async () =>
+      applyJournaled(plan, operations, preview, options.now),
+    ),
+  );
 }
 
 async function applyJournaled(

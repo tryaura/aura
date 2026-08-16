@@ -1,14 +1,10 @@
-import { PassThrough, Readable } from "node:stream";
+import { Readable } from "node:stream";
 
 import { runCli } from "@tryaura/aura-cli";
 
 import { collectCheckResult } from "./run-result.js";
+import { createTextCapture } from "./text-capture.js";
 import type { RunCheckOptions, TestRunResult } from "./types.js";
-
-interface TextCapture {
-  readonly read: () => string;
-  readonly stream: PassThrough;
-}
 
 /** Runs `check --json` without reading process state and returns snapshot-ready output. */
 export async function runCheck(options: RunCheckOptions): Promise<TestRunResult> {
@@ -38,14 +34,4 @@ export async function runCheck(options: RunCheckOptions): Promise<TestRunResult>
       stdout: stdout.read(),
     };
   });
-}
-
-function createTextCapture(): TextCapture {
-  const chunks: string[] = [];
-  const stream = new PassThrough();
-  stream.setEncoding("utf8");
-  stream.on("data", (chunk: string) => {
-    chunks.push(chunk);
-  });
-  return { read: () => chunks.join(""), stream };
 }

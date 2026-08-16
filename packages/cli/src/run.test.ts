@@ -1,3 +1,5 @@
+import { Readable } from "node:stream";
+
 import { defineCheck, definePlugin, type Environment } from "@tryaura/aura-sdk";
 import { describe, expect, it } from "vitest";
 
@@ -88,6 +90,15 @@ describe("runCli", () => {
     expect(await runCli(distro([findingPlugin("info", [])]), capture.runtime)).toBe(2);
     expect(capture.stdout.text).toBe("");
     expect(capture.stderr.text).toContain("--dry-run and --yes contradict each other");
+  });
+
+  it("refuses an interactive setup when stdout is redirected", async () => {
+    const capture = createCapture(["setup"]);
+    const stdin = Object.assign(Readable.from([]), { isTTY: true });
+
+    expect(await runCli(distro(), { ...capture.runtime, stdin })).toBe(2);
+    expect(capture.stdout.text).toBe("");
+    expect(capture.stderr.text).toContain("stdin and stdout must both be terminals");
   });
 
   it("uses branding in top-level help and version output", async () => {

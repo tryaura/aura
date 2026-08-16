@@ -19,7 +19,22 @@ export async function withJournalLock<Result>(
   now: () => Date,
   action: () => Promise<Result>,
 ): Promise<Result> {
-  const lock = await acquire(join(root, LOCK_NAME), now);
+  return withLockDirectory(join(root, LOCK_NAME), "the undo journal", now, action);
+}
+
+/**
+ * Serializes work behind one on-disk lock directory.
+ *
+ * `subject` names what the lock protects, so a contention error tells the user what another run is
+ * busy with rather than which directory happened to hold the lock.
+ */
+export async function withLockDirectory<Result>(
+  directory: string,
+  subject: string,
+  now: () => Date,
+  action: () => Promise<Result>,
+): Promise<Result> {
+  const lock = await acquire(directory, subject, now);
   try {
     return await action();
   } finally {
@@ -27,14 +42,14 @@ export async function withJournalLock<Result>(
   }
 }
 
-async function acquire(directory: string, now: () => Date): Promise<HeldLock> {
+async function acquire(directory: string, subject: string, now: () => Date): Promise<HeldLock> {
   try {
-    await ensureLockDirectory(directory, now);
+    await ensureLockDirectory(directory, subject, now);
     const lock = await publishLock(directory, now());
     try {
       const contenders = await activeContenders(directory, now, lock.path);
       if (contenders.length > 0) {
-        throw lockedError(directory);
+        throw lockedError(directory, subject);
       }
       return lock;
     } catch (error) {
@@ -45,16 +60,19 @@ async function acquire(directory: string, now: () => Date): Promise<HeldLock> {
     if (error instanceof FixPlanError) {
       throw error;
     }
-    throw new FixPlanError(
-      "backup-error",
-      `could not lock the undo journal: ${errorMessage(error)}`,
-      { cause: error, path: directory },
-    );
+    throw new FixPlanError("backup-error", `could not lock ${subject}: ${errorMessage(error)}`, {
+      cause: error,
+      path: directory,
+    });
   }
 }
 
 /** Unique entries in a permanent directory make stale cleanup ownership-safe. */
-async function ensureLockDirectory(directory: string, now: () => Date): Promise<void> {
+async function ensureLockDirectory(
+  directory: string,
+  subject: string,
+  now: () => Date,
+): Promise<void> {
   while (true) {
     const state = await lockDirectoryState(directory);
     if (state === "ready") {
@@ -66,7 +84,7 @@ async function ensureLockDirectory(directory: string, now: () => Date): Promise<
     // A non-recursive rm cannot delete a directory installed by a competing legacy-lock migrator.
     const observed = await inspectLock(directory, now);
     if (observed.kind !== "stale") {
-      throw lockedError(directory);
+      throw lockedError(directory, subject);
     }
     await removeLegacyLock(directory);
   }
@@ -161,10 +179,10 @@ async function removeOwnedLock(lock: HeldLock): Promise<void> {
   await removeObservedLock(lock.path, lock.owner);
 }
 
-function lockedError(path: string): FixPlanError {
+function lockedError(path: string, subject: string): FixPlanError {
   return new FixPlanError(
     "backup-error",
-    `another Aura run is using the undo journal. Wait for it to finish, or delete ${path} if no Aura process is running.`,
+    `another Aura run is using ${subject}. Wait for it to finish, or delete ${path} if no Aura process is running.`,
     { path },
   );
 }

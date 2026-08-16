@@ -82,6 +82,9 @@ importers:
       '@tryaura/aura-sdk':
         specifier: workspace:*
         version: link:../sdk
+      '@tryaura/content-official':
+        specifier: workspace:*
+        version: link:../../plugins/content-official
       '@tryaura/core':
         specifier: workspace:*
         version: link:../core
