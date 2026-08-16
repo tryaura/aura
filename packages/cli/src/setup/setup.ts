@@ -26,6 +26,8 @@ export interface SetupRequest {
   readonly environment: Environment;
   readonly io: WizardIo;
   readonly registry: PluginRegistry;
+  /** Home captured before `--home`, used for locks shared by every run from this process boundary. */
+  readonly stateHomeDir: string;
   readonly stderr: Writable;
   readonly stdout: Writable;
   /** Overrides the registered steps; tests exercise multi-step flows through this. */
@@ -89,7 +91,7 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
   stdout.write("\n");
   renderSetupSummary(prepared.preview, outcome.blockers, request.withDetail, stdout);
 
-  if (prepared.preview.conflictedOperationCount > 0) {
+  if (prepared.preview.conflictedOperationCount > 0 || outcome.blockers.length > 0) {
     request.stderr.write(
       `${branding.displayName}: the plan is blocked by the current state of these files; nothing was changed.\n`,
     );
@@ -111,7 +113,10 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
     return 0;
   }
 
-  const result = await applyFixPlan(prepared, { now: environment.now });
+  const result = await applyFixPlan(prepared, {
+    now: environment.now,
+    stateHomeDir: request.stateHomeDir,
+  });
   stdout.write(`\nApplied ${String(result.appliedOperationCount)} operation(s).\n`);
   if (result.backupId !== undefined) {
     stdout.write(`The previous contents are saved as backup ${safe(result.backupId)}.\n`);

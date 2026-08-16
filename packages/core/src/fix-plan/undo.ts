@@ -1,8 +1,9 @@
 import { withJournalLock } from "./journal-lock.js";
 import { readJournal, type JournalEntry, type JournalHandle } from "./journal-read.js";
-import type { JournalStatus } from "./journal-schema.js";
-import { openBackupRoot, setJournalStatus } from "./journal.js";
+import type { JournalStatus, StoredOperation } from "./journal-schema.js";
+import { ensureBackupRoot, openBackupRoot, setJournalStatus } from "./journal.js";
 import { createPathPolicy, type PathPolicy } from "./path-policy.js";
+import { targetPaths, withTargetLocks } from "./target-lock.js";
 import { preflightUndo } from "./undo-preflight.js";
 import { restoreOperations, rollForward } from "./undo-restore.js";
 import {
@@ -61,8 +62,28 @@ export async function undoFixPlan(options: FixPlanUndoOptions): Promise<FixPlanU
     if (selection === undefined) {
       return Object.freeze({ status: "nothing-to-undo" });
     }
-    return restore(selection, policy, options.now);
+    const targets = targetPaths(
+      selection.entry.manifest.operations.flatMap(storedOperationPaths),
+      policy.caseInsensitive,
+    );
+    const targetRoot = await ensureBackupRoot(options.stateHomeDir ?? options.model.homeDir);
+    return withTargetLocks(targets, targetRoot, options.now, async () =>
+      restore(selection, policy, options.now),
+    );
   });
+}
+
+function storedOperationPaths(operation: StoredOperation): readonly string[] {
+  switch (operation.type) {
+    case "move": {
+      return [operation.sourcePath, operation.destinationPath];
+    }
+    case "remove":
+    case "symlink":
+    case "write": {
+      return [operation.path];
+    }
+  }
 }
 
 async function restore(

@@ -15,7 +15,11 @@ export const baselineStep: SetupStep = {
   gather: async (context, io) => {
     const options = baselineOptions(context);
     if (options.length === 0) {
-      io.note("The Aura manifest and shared instructions are already in place.");
+      io.note(
+        context.model.sharedInstructions.problem === undefined
+          ? "The Aura manifest and shared instructions are already in place."
+          : "Aura cannot configure shared instructions until their path can be read safely.",
+      );
       return withBaseline(context, []);
     }
 

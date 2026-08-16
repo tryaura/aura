@@ -116,7 +116,7 @@ function renderSubmitBody(
   questions: readonly WizardQuestionView[],
   style: Style,
 ): readonly string[] {
-  const lines = [` ${style.bold("Review your answers, then press ↵ to apply.")}`, ""];
+  const lines = [` ${style.bold("Review your answers, then press ↵ to continue.")}`, ""];
   for (const view of questions) {
     const box = view.answered ? ANSWERED : UNANSWERED;
     const summary = view.answered ? summarizeAnswer(view) : style.dim("(unanswered)");

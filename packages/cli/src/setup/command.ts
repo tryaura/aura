@@ -52,10 +52,11 @@ export class SetupCommand extends Command<AuraCliContext> {
       return writeOptionRejection(this.context, rejection);
     }
 
-    const interactive = !this.yes && isTerminal(this.context.stdin);
+    const interactive =
+      !this.yes && isTerminal(this.context.stdin) && isTerminal(this.context.stdout);
     if (!interactive && !this.yes && !this.dryRun) {
       this.context.stderr.write(
-        `${this.context.branding.displayName}: stdin is not a terminal, so Aura cannot run the setup wizard. Re-run with --yes to accept the proposed defaults, or --dry-run to stop at the plan.\n`,
+        `${this.context.branding.displayName}: stdin and stdout must both be terminals to run the setup wizard. Re-run with --yes to accept the proposed defaults, or --dry-run to stop at the plan.\n`,
       );
       return 2;
     }
@@ -78,6 +79,7 @@ export class SetupCommand extends Command<AuraCliContext> {
         environment,
         io,
         registry: this.context.registry,
+        stateHomeDir: this.context.defaultHomeDir,
         stderr: this.context.stderr,
         stdout: this.context.stdout,
         withDetail: this.detail,

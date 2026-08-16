@@ -38,21 +38,19 @@ export function planSetup(context: SetupStepContext): SetupPlanOutcome {
     operations.push(createAuraManifestWriteOperation(context.manifest, manifest));
   }
 
-  if (baseline?.createSharedInstructions === true) {
-    const shared = context.model.sharedInstructions;
-    if (shared.problem === undefined) {
-      operations.push({
-        content: SHARED_INSTRUCTIONS_TEMPLATE,
-        mode: 0o644,
-        path: shared.path,
-        type: "write",
-      });
-    } else {
-      blockers.push({
-        path: shared.path,
-        reason: `Aura could not safely read this path (${shared.problem}) and will not overwrite it.`,
-      });
-    }
+  const shared = context.model.sharedInstructions;
+  if (shared.problem !== undefined) {
+    blockers.push({
+      path: shared.path,
+      reason: `Aura could not safely read this path (${shared.problem}) and will not overwrite it.`,
+    });
+  } else if (baseline?.createSharedInstructions === true) {
+    operations.push({
+      content: SHARED_INSTRUCTIONS_TEMPLATE,
+      mode: 0o644,
+      path: shared.path,
+      type: "write",
+    });
   }
 
   return Object.freeze({

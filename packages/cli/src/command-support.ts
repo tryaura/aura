@@ -29,13 +29,13 @@ export function writeOptionRejection(
 }
 
 /**
- * Whether Aura can hold a conversation on this input.
+ * Whether Aura can hold a conversation through this stream.
  *
- * `isTTY` is present on the process's own stdin and absent on the plain stream an embedder injects,
- * so the property test doubles as "is anybody there to answer".
+ * `isTTY` is present on the process's terminal streams and absent on plain streams an embedder
+ * injects, so checking both input and output prevents an interactive prompt from being redirected.
  */
-export function isTerminal(stdin: Readable): boolean {
-  return "isTTY" in stdin && stdin.isTTY === true;
+export function isTerminal(stream: Readable | Writable): boolean {
+  return "isTTY" in stream && stream.isTTY === true;
 }
 
 /**

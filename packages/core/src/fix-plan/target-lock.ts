@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { mkdir } from "node:fs/promises";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { join, resolve } from "node:path";
 
 import { comparablePath } from "./claims.js";
 import { withLockDirectory } from "./journal-lock.js";
@@ -8,34 +8,26 @@ import { withLockDirectory } from "./journal-lock.js";
 const TARGET_LOCKS_NAME = ".target-locks";
 
 /**
- * The global files a plan mutates, deduplicated and ordered for lock acquisition.
+ * The files a plan mutates, normalized, deduplicated, and ordered for lock acquisition.
  *
- * Project-scoped paths are excluded: files inside the working tree belong to one repository, so two
- * Aura runs cannot reach the same one from different directories the way they reach `~/.claude.json`.
- * The stable sort order is what lets two runs that share several targets acquire their locks without
- * deadlocking each other.
+ * Every target is included because two runs can use different home overrides while sharing a project.
+ * Resolving before hashing makes syntactic aliases such as `/repo/./file` take the same lock. The
+ * stable sort order lets two runs that share several targets acquire their locks without deadlocking.
  */
-export function globalTargetPaths(
-  paths: readonly string[],
-  projectRoot: string,
-  caseInsensitive: boolean,
-): readonly string[] {
+export function targetPaths(paths: readonly string[], caseInsensitive: boolean): readonly string[] {
   const targets = new Set<string>();
   for (const path of paths) {
-    if (!withinProject(projectRoot, path)) {
-      targets.add(comparablePath(path, caseInsensitive));
-    }
+    targets.add(comparablePath(resolve(path), caseInsensitive));
   }
   return Object.freeze([...targets].sort());
 }
 
 /**
- * Holds one lock per global target file for the duration of `action`.
+ * Holds one lock per target file for the duration of `action`.
  *
- * Each lock is a directory under the backup root named after the target's path digest, using the
- * same publish-then-scan contender protocol as the journal lock — PID-liveness decides staleness,
- * and only the record an owner published is ever removed. Locks live beside the journal rather than
- * beside each target so that taking one can never dirty a directory Aura was only asked to read.
+ * Each lock is a directory in an owner-only shared-state store named after the target's path digest,
+ * using the same publish-then-scan contender protocol as the journal lock. The CLI derives this root
+ * from the home captured before `--home`, so its runs contend on the same target namespace.
  */
 export async function withTargetLocks<Result>(
   targets: readonly string[],
@@ -46,8 +38,9 @@ export async function withTargetLocks<Result>(
   if (targets.length === 0) {
     return action();
   }
-  await mkdir(join(root, TARGET_LOCKS_NAME), { mode: 0o700, recursive: true });
-  return lockNext(targets, 0, root, now, action);
+  const store = join(root, TARGET_LOCKS_NAME);
+  await mkdir(store, { mode: 0o700, recursive: true });
+  return lockNext(targets, 0, store, now, action);
 }
 
 async function lockNext<Result>(
@@ -62,7 +55,7 @@ async function lockNext<Result>(
     return action();
   }
 
-  const directory = join(root, TARGET_LOCKS_NAME, digest(target));
+  const directory = join(root, digest(target));
   return withLockDirectory(directory, target, now, async () =>
     lockNext(targets, index + 1, root, now, action),
   );
@@ -70,13 +63,4 @@ async function lockNext<Result>(
 
 function digest(target: string): string {
   return createHash("sha256").update(target, "utf8").digest("hex");
-}
-
-/** Returns true when `candidate` is the project root or sits inside it. */
-function withinProject(projectRoot: string, candidate: string): boolean {
-  const difference = relative(resolve(projectRoot), resolve(candidate));
-  return (
-    difference === "" ||
-    (difference !== ".." && !difference.startsWith(`..${sep}`) && !isAbsolute(difference))
-  );
 }

@@ -4,7 +4,7 @@ import { join, sep } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { globalTargetPaths, withTargetLocks } from "./target-lock.js";
+import { targetPaths, withTargetLocks } from "./target-lock.js";
 
 const temporaryDirectories: string[] = [];
 const now = (): Date => new Date("2026-08-15T00:00:00.000Z");
@@ -17,39 +17,34 @@ afterEach(async () => {
   );
 });
 
-describe("globalTargetPaths", () => {
-  const project = join(sep, "repo");
-
-  it("keeps home-scope targets and drops project-scoped ones", () => {
-    expect(
-      globalTargetPaths(
-        [join(sep, "home", ".claude.json"), join(project, "CLAUDE.md"), project],
-        project,
-        false,
-      ),
-    ).toEqual([join(sep, "home", ".claude.json")]);
+describe("targetPaths", () => {
+  it("keeps both project and home targets", () => {
+    const project = join(sep, "repo", "CLAUDE.md");
+    const home = join(sep, "home", ".claude.json");
+    expect(targetPaths([project, home], false)).toEqual([home, project].sort());
   });
 
-  it("does not treat a dot-prefixed sibling of the project as project-scoped", () => {
-    const sibling = `${project}.backup`;
-    expect(globalTargetPaths([sibling], project, false)).toEqual([sibling]);
+  it("deduplicates syntactic aliases of one target", () => {
+    const target = join(sep, "home", "config.json");
+    const alias = `${join(sep, "home")}${sep}.${sep}config.json`;
+    expect(targetPaths([target, alias], false)).toEqual([target]);
   });
 
   it("deduplicates targets that differ only by case on a case-insensitive filesystem", () => {
     const paths = [join(sep, "home", "Config.json"), join(sep, "home", "config.json")];
-    expect(globalTargetPaths(paths, project, true)).toHaveLength(1);
-    expect(globalTargetPaths(paths, project, false)).toHaveLength(2);
+    expect(targetPaths(paths, true)).toHaveLength(1);
+    expect(targetPaths(paths, false)).toHaveLength(2);
   });
 
   it("orders targets deterministically for deadlock-free acquisition", () => {
     const first = join(sep, "home", "a.json");
     const second = join(sep, "home", "b.json");
-    expect(globalTargetPaths([second, first], project, false)).toEqual([first, second]);
+    expect(targetPaths([second, first], false)).toEqual([first, second]);
   });
 });
 
 describe("withTargetLocks", () => {
-  it("takes no lock when there is nothing global to protect", async () => {
+  it("takes no lock when there is no target to protect", async () => {
     const root = await createRoot();
 
     await withTargetLocks([], root, now, async () => undefined);

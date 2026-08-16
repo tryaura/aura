@@ -17,6 +17,8 @@ import {
   writeFixPlan,
   type FixPlanFixture,
 } from "./testing.js";
+import { backupRoot } from "./journal-paths.js";
+import { targetPaths, withTargetLocks } from "./target-lock.js";
 
 const temporaryDirectories: string[] = [];
 const now = (): Date => new Date("2026-08-15T00:00:00.000Z");
@@ -144,6 +146,28 @@ describe("durable fix-plan undo", () => {
     });
     await expect(readFile(first, "utf8")).resolves.toBe("after first\n");
     await expect(readFile(second, "utf8")).resolves.toBe("user edit\n");
+  });
+
+  it("refuses to race an undo against another run holding its target", async () => {
+    const fixture = await createFixture();
+    const path = join(fixture.workspace, "config.md");
+    await writeFile(path, "before\n", "utf8");
+    await executeFixPlan({
+      model: fixture.model,
+      now,
+      plan: writeFixPlan(path, "after\n"),
+    });
+    const locks = [
+      ...new Set([...targetPaths([path], false), ...targetPaths([path], true)]),
+    ].sort();
+
+    await withTargetLocks(locks, backupRoot(fixture.home), now, async () => {
+      await expect(undoFixPlan({ model: fixture.model, now })).rejects.toMatchObject({
+        code: "backup-error",
+      });
+    });
+
+    await expect(readFile(path, "utf8")).resolves.toBe("after\n");
   });
 
   it("rolls restored paths forward when directory cleanup fails", async () => {

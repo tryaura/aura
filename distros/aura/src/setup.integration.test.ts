@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { readdir, readFile, readlink } from "node:fs/promises";
+import { mkdir, readdir, readFile, readlink } from "node:fs/promises";
 import { join } from "node:path";
 import { Readable, Writable } from "node:stream";
 
@@ -39,9 +39,21 @@ describe("aura setup", () => {
     const result = await run(seed, ["setup"]);
 
     expect(result.exitCode).toBe(2);
-    expect(result.stderr).toContain("stdin is not a terminal");
+    expect(result.stderr).toContain("stdin and stdout must both be terminals");
     expect(result.stderr).toContain("--yes");
     expect(existsSync(join(seed.homeDir, "agents"))).toBe(false);
+  });
+
+  it("stores target locks outside an overridden managed home", async () => {
+    await using seed = await createSeedBuilder().build();
+    const managedHome = join(seed.workspaceDir, "managed-home");
+    await mkdir(managedHome, { recursive: true });
+
+    const result = await run(seed, ["setup", "--yes", "--home", managedHome]);
+
+    expect(result.exitCode).toBe(0);
+    expect(existsSync(join(seed.homeDir, "agents", ".backups", ".target-locks"))).toBe(true);
+    expect(existsSync(join(managedHome, "agents", ".backups", ".target-locks"))).toBe(false);
   });
 
   it("stops at the plan under --dry-run without writing", async () => {

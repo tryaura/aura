@@ -60,6 +60,7 @@ async function createFixture(seed?: (homeDir: string) => Promise<void>): Promise
       environment,
       io: createScriptedWizardIo({ ...script, output: stdout.stream }),
       registry,
+      stateHomeDir: homeDir,
       stderr: stderr.stream,
       stdout: stdout.stream,
       withDetail: false,
@@ -160,6 +161,36 @@ describe("runSetup", () => {
 
     expect(exitCode).toBe(2);
     expect(fixture.stderr()).toContain("not valid JSON");
+    await expect(snapshot(fixture.homeDir)).resolves.toEqual(before);
+  });
+
+  it("reports an unreadable shared-instructions path as a blocker and writes nothing", async () => {
+    const fixture = await createFixture(async (homeDir) => {
+      await mkdir(join(homeDir, "agents", "AGENTS.md"), { recursive: true });
+      await writeFile(
+        join(homeDir, "agents", "aura.json"),
+        `${JSON.stringify({
+          apps: {},
+          mcpServers: [],
+          ownership: {},
+          schemaVersion: 1,
+          skills: [],
+          snippets: [],
+        })}\n`,
+        "utf8",
+      );
+    });
+    const before = await snapshot(fixture.homeDir);
+
+    const exitCode = await runSetup(fixture.request());
+
+    expect(exitCode).toBe(2);
+    expect(fixture.stdout()).toContain("cannot configure shared instructions");
+    expect(fixture.stdout()).toContain("Blocked, and left out of the plan");
+    expect(fixture.stdout()).toContain("unsupported");
+    expect(fixture.stdout()).not.toContain("already in place");
+    expect(fixture.stdout()).not.toContain("Already converged");
+    expect(fixture.stderr()).toContain("the plan is blocked");
     await expect(snapshot(fixture.homeDir)).resolves.toEqual(before);
   });
 });

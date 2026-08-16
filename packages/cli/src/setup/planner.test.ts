@@ -98,6 +98,28 @@ describe("planSetup", () => {
       },
     ]);
   });
+
+  it("reports a shared-file problem even when the wizard cannot select that file", async () => {
+    const scanned = await scan();
+    const model: WorkspaceModel = {
+      ...scanned,
+      sharedInstructions: {
+        exists: true,
+        path: scanned.sharedInstructions.path,
+        problem: "unsupported",
+      },
+    };
+
+    const outcome = planSetup(context(model, false, false));
+
+    expect(outcome.plan.operations).toEqual([]);
+    expect(outcome.blockers).toEqual([
+      {
+        path: model.sharedInstructions.path,
+        reason: expect.stringContaining("unsupported"),
+      },
+    ]);
+  });
 });
 
 function operationPaths(outcome: ReturnType<typeof planSetup>): readonly string[] {

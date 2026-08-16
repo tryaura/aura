@@ -24,6 +24,8 @@ export interface FixRequest {
   readonly model: WorkspaceModel;
   readonly stderr: Writable;
   readonly stdin: Readable;
+  /** Home captured before `--home`, used for locks shared by every run from this process boundary. */
+  readonly stateHomeDir: string;
   readonly stdout: Writable;
   /** Whether the preview may quote the contents of the files it rewrites. */
   readonly withDetail: boolean;
@@ -89,7 +91,10 @@ export async function runFixes(request: FixRequest): Promise<FixOutcome> {
     return { applied: false, diagnostics };
   }
 
-  const result = await applyFixPlan(prepared, { now: request.environment.now });
+  const result = await applyFixPlan(prepared, {
+    now: request.environment.now,
+    stateHomeDir: request.stateHomeDir,
+  });
   request.stdout.write(`\nApplied ${String(result.appliedOperationCount)} fix operation(s).\n`);
   if (result.backupId !== undefined) {
     request.stdout.write(`The previous contents are saved as backup ${safe(result.backupId)}.\n`);

@@ -111,6 +111,7 @@ export class CheckCommand extends Command<AuraCliContext> {
           model: scan.model,
           stderr: this.context.stderr,
           stdin: this.context.stdin,
+          stateHomeDir: this.context.defaultHomeDir,
           stdout: this.context.stdout,
           withDetail: this.detail,
           yes: this.yes,

@@ -103,7 +103,7 @@ describe("renderWizardFrame", () => {
     expect(renderWizardFrame(frame, 0)).toMatchInlineSnapshot(`
       " ←  ☑ Apps  ☐ MCP  [✔ Submit]  →
 
-       Review your answers, then press ↵ to apply.
+       Review your answers, then press ↵ to continue.
 
        ☑ Apps  Claude Code + Cursor
        ☐ MCP  (unanswered)
