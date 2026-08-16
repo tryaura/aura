@@ -21,7 +21,7 @@ export const appsStep: SetupStep = {
     const catalog = context.appCatalog;
     if (catalog.length === 0) {
       io.note("No agent application adapters are registered.");
-      return withApps(context, []);
+      return context.selections;
     }
 
     const previouslyManaged = previouslyManagedIds(context);

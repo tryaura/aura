@@ -6,6 +6,7 @@ import {
   buildWorkspaceModel,
   prepareFixPlan,
   runChecks,
+  type FixPlanPreview,
   type PluginRegistry,
   type WorkspaceScan,
 } from "@tryaura/core";
@@ -83,7 +84,7 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
     prepared.preview.conflictedOperationCount === 0 &&
     outcome.blockers.length === 0
   ) {
-    stdout.write("\nAlready converged — nothing to change.\n\n");
+    renderConvergedSetup(prepared.preview, request.withDetail, stdout);
     return endOnGreen(request, scan);
   }
 
@@ -128,6 +129,20 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
     environment,
   });
   return endOnGreen(request, rescanned);
+}
+
+function renderConvergedSetup(
+  preview: FixPlanPreview,
+  withDetail: boolean,
+  output: Writable,
+): void {
+  output.write("\n");
+  if (preview.manualSteps.length === 0) {
+    output.write("Already converged — nothing to change.\n\n");
+    return;
+  }
+  renderSetupSummary(preview, [], withDetail, output);
+  output.write("\n");
 }
 
 function endOnGreen(request: SetupRequest, scan: WorkspaceScan): CliExitCode {

@@ -8,7 +8,7 @@ import type {
 import { createAuraManifestWriteOperation, createEmptyAuraManifest } from "@tryaura/core";
 import { SHARED_INSTRUCTIONS_TEMPLATE } from "@tryaura/content-official";
 
-import { catalogEntryId, catalogEntryName } from "./catalog.js";
+import { catalogEntryId, catalogEntryName, type AppCatalogEntry } from "./catalog.js";
 import type { SetupSelections, SetupStepContext } from "./types.js";
 
 /** A file the plan refuses to touch, and the reason the user can act on. */
@@ -37,7 +37,7 @@ export function planSetup(context: SetupStepContext): SetupPlanOutcome {
   const blockers: SetupBlocker[] = [];
   const operations: FileOperation[] = [];
   const apps = context.selections.apps;
-  const manifest = desiredManifest(context.manifest, apps);
+  const manifest = desiredManifest(context.manifest, apps, context.appCatalog);
   const baseline = context.selections.baseline;
 
   if (context.manifest.status === "read-only") {
@@ -76,21 +76,30 @@ export function planSetup(context: SetupStepContext): SetupPlanOutcome {
   });
 }
 
-function desiredManifest(state: AuraManifestState, apps: SetupSelections["apps"]): AuraManifest {
+function desiredManifest(
+  state: AuraManifestState,
+  apps: SetupSelections["apps"],
+  appCatalog: readonly AppCatalogEntry[],
+): AuraManifest {
   const base = state.status === "ready" ? state.value : createEmptyAuraManifest();
   if (apps === undefined) {
     return base;
   }
 
-  // Spread each existing entry so extension fields survive the managed flip.
-  const next: Record<string, AuraManifestApp> = {};
+  const available = new Set(appCatalog.map(catalogEntryId));
+  const managed = new Set(apps.managed.filter((id) => available.has(id)));
+  const next = new Map<string, AuraManifestApp>();
   for (const [id, entry] of Object.entries(base.apps)) {
-    next[id] = { ...entry, managed: apps.managed.includes(id) };
+    // Apps unavailable in this build cannot be selected, so preserve their previous state.
+    next.set(id, { ...entry, managed: available.has(id) ? managed.has(id) : entry.managed });
   }
-  for (const id of apps.managed) {
-    next[id] ??= { managed: true };
+  for (const id of managed) {
+    if (!next.has(id)) {
+      next.set(id, { managed: true });
+    }
   }
-  return { ...base, apps: next };
+  // Object.fromEntries defines special keys such as `__proto__` as own data properties.
+  return { ...base, apps: Object.fromEntries(next) };
 }
 
 /**
@@ -127,12 +136,14 @@ function stopManagingSteps(
   managed: readonly string[],
 ): readonly string[] {
   const previous = context.manifest.status === "ready" ? context.manifest.value.apps : {};
+  const managedIds = new Set(managed);
   const steps: string[] = [];
   for (const [id, app] of Object.entries(previous)) {
-    if (app.managed && !managed.includes(id)) {
-      const entry = context.appCatalog.find((candidate) => catalogEntryId(candidate) === id);
-      const name = entry === undefined ? id : catalogEntryName(entry);
-      steps.push(`Aura stops managing ${name}; its existing configuration is left in place.`);
+    const entry = context.appCatalog.find((candidate) => catalogEntryId(candidate) === id);
+    if (entry !== undefined && app.managed && !managedIds.has(id)) {
+      steps.push(
+        `Aura stops managing ${catalogEntryName(entry)}; its existing configuration is left in place.`,
+      );
     }
   }
   return steps;

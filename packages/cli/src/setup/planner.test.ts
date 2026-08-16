@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { buildWorkspaceModel, createEnvironment } from "@tryaura/core";
 import type { WorkspaceModel } from "@tryaura/aura-sdk";
 
+import type { AppCatalogEntry } from "./catalog.js";
 import { planSetup } from "./planner.js";
 import type { SetupStepContext } from "./types.js";
 
@@ -117,7 +118,7 @@ describe("planSetup", () => {
     });
 
     const outcome = planSetup({
-      appCatalog: [],
+      appCatalog: catalog("added", "kept", "stopped"),
       manifest: model.manifest,
       model,
       selections: { apps: { managed: ["kept", "added"] } },
@@ -135,7 +136,7 @@ describe("planSetup", () => {
     const model = await scan();
 
     const outcome = planSetup({
-      appCatalog: [],
+      appCatalog: catalog("app"),
       manifest: model.manifest,
       model,
       selections: { apps: { managed: ["app"] } },
@@ -235,6 +236,10 @@ function operationPaths(outcome: ReturnType<typeof planSetup>): readonly string[
   return outcome.plan.operations.map((operation) =>
     operation.type === "move" ? operation.destinationPath : operation.path,
   );
+}
+
+function catalog(...ids: readonly string[]): readonly AppCatalogEntry[] {
+  return ids.map((id) => ({ adapterId: id, displayName: id, kind: "undetected" }));
 }
 
 function context(

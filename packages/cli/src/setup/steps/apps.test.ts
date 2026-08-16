@@ -149,13 +149,13 @@ describe("appsStep", () => {
     expect(outcome).toBe(SETUP_ABORTED);
   });
 
-  it("contributes an empty slice without prompting when no adapters are registered", async () => {
+  it("preserves prior selections without prompting when no adapters are registered", async () => {
     const harness = createHarness();
 
     const outcome = await appsStep.gather(context([]), harness.io);
 
     expect(harness.asked).toEqual([]);
-    expect(outcome).toEqual({ apps: { managed: [] } });
+    expect(outcome).toEqual({});
   });
 });
 

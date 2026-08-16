@@ -216,6 +216,9 @@ describe("runSetup", () => {
         "missing-app": { managed: true },
       },
     });
+    await expect(runSetup(fixture.request({}, { registry }))).resolves.toBe(0);
+    expect(fixture.stdout().match(/Steps to take yourself:/gu)).toHaveLength(2);
+    expect(fixture.stdout()).not.toContain("Already converged — nothing to change.");
   });
 
   it("confirms an empty app selection before the plan confirmation", async () => {
