@@ -56,6 +56,8 @@ export type {
 export type {
   AdapterSnapshot,
   AppModel,
+  GitignoreModel,
+  GitignorePattern,
   HttpMcpTransport,
   InstalledSkill,
   InstructionDocument,
@@ -63,6 +65,7 @@ export type {
   InstructionLinkKind,
   McpServer,
   McpTransport,
+  RepositoryModel,
   StdioMcpTransport,
   WorkspaceModel,
 } from "./model.js";
@@ -79,3 +82,5 @@ export { parseJsonMcpServers } from "./mcp-config.js";
 export type { JsonMcpConfigOptions } from "./mcp-config.js";
 export { maskMarkdownCode } from "./markdown.js";
 export type { AuraPlugin } from "./plugin.js";
+export { detectLineEnding, splitSourceLines } from "./text.js";
+export type { SourceLine } from "./text.js";

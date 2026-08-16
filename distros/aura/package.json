@@ -18,7 +18,8 @@
     "@tryaura/adapter-claude-code": "workspace:*",
     "@tryaura/adapter-codex": "workspace:*",
     "@tryaura/adapter-cursor": "workspace:*",
-    "@tryaura/aura-cli": "workspace:*"
+    "@tryaura/aura-cli": "workspace:*",
+    "@tryaura/checks-core": "workspace:*"
   },
   "devDependencies": {
     "@tryaura/aura-testkit": "workspace:*",

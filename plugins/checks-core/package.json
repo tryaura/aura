@@ -4,7 +4,26 @@
   "private": true,
   "license": "Apache-2.0",
   "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "development": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
   "scripts": {
+    "build": "tsc --project tsconfig.build.json",
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@tryaura/adapter-claude-code": "workspace:*",
+    "@tryaura/adapter-codex": "workspace:*",
+    "@tryaura/aura-sdk": "workspace:*",
+    "ignore": "^7.0.6"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "vitest": "4.1.10"
   }
 }

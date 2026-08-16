@@ -188,15 +188,27 @@ export default definePlugin({
 `Environment` contains injected HOME, cwd, PATH entries, platform, command execution, and clock.
 Adapters may use it during asynchronous detection and file discovery. They return file specs;
 Aura core performs the reads and supplies `AdapterSourceFile` values to the synchronous `parse`
-method. Parsing must not read the filesystem.
+method. `AdapterParseInput.projectRoot` identifies the repository containing cwd when one was
+found. Parsing must not read the filesystem.
 
 `ExecRequest.command` is resolved against `Environment.pathEntries` when it is a bare name, which
 a hijacked `PATH` can subvert. Record the resolved path as `AdapterDetection.executablePath` and
 pass that absolute path as `command` on later calls.
 
 Checks are synchronous and pure. They receive a `WorkspaceModel` containing app state, instruction
-documents, MCP servers, installed skills, and source-file metadata. Checks never read from disk or
-inspect process environment directly.
+documents, MCP servers, installed skills, source-file metadata, and an optional repository snapshot.
+Checks never read from disk or inspect process environment directly.
+
+`RepositoryModel` carries the root `.gitignore` and the repository-local `info/exclude`, so a rule
+a developer applied only to their own checkout is not mistaken for a missing one.
+`trackedAgentPaths` lists tracked paths that agent applications are known to write, not the whole
+checkout: a large repository holds hundreds of thousands of paths, and retaining them all for the
+lifetime of a scan costs far more than any check can use.
+
+A check that reads another plugin's contribution — a metadata key, or a source id used to locate a
+file — should import that name from the contributing package rather than retype it as a literal.
+A literal keeps compiling after a rename and silently stops matching, which turns into a check that
+quietly reports nothing.
 
 A check emits `DetectedFinding` values carrying only what is specific to the occurrence — `id`,
 `message`, and optionally `details`, `locations`, `metadata`, and a `severity` override. Aura core
@@ -205,7 +217,8 @@ cannot contradict the check that produced it.
 
 `AppModel.sourceFiles` reports only whether each declared path existed. Contents are consumed by
 `parse` and are not retained alongside the documents parsed out of them, so a large instruction
-file is held once rather than twice.
+file is held once rather than twice. `Adapter.installHint` becomes `AppModel.installHint`, allowing
+checks to give application-specific update guidance without guessing how an adapter was installed.
 
 `SkillSource.resolve` takes every requested id at once and returns a `ReadonlyMap`, so resolving a
 listing costs one round trip instead of one per skill. Ids that cannot be resolved are omitted

@@ -7,21 +7,24 @@ import {
   type Environment,
 } from "@tryaura/aura-sdk";
 
+import {
+  CODEX_ADAPTER_ID,
+  CODEX_PROJECT_TRUST_KEY,
+  CODEX_SOURCE_IDS as SOURCE_IDS,
+} from "./contract.js";
 import { parseInstructionFile } from "./instructions.js";
 import { parseMcpServers } from "./mcp.js";
-
-const SOURCE_IDS = Object.freeze({
-  instructions: "codex.instructions.global",
-  mcp: "codex.mcp.global",
-});
+import { parseProjectTrust } from "./trust.js";
 
 export const codexAdapter = defineAdapter({
   detect: (environment) =>
     detectExecutable(environment, { authenticationArgs: ["login", "status"], binaryName: "codex" }),
   displayName: "Codex",
   files: globalFiles,
-  id: "codex",
-  parse: ({ files, homeDir }) => {
+  id: CODEX_ADAPTER_ID,
+  installHint:
+    "Run `npm install -g @openai/codex@latest`, or update Codex with your package manager.",
+  parse: ({ cwd, files, homeDir, projectRoot }) => {
     const instructions = files.get(SOURCE_IDS.instructions);
     const mcp = files.get(SOURCE_IDS.mcp);
 
@@ -29,6 +32,10 @@ export const codexAdapter = defineAdapter({
       instructionFiles:
         instructions?.content === undefined ? [] : [parseInstructionFile(instructions, homeDir)],
       mcpServers: mcp?.content === undefined ? [] : parseMcpServers(mcp),
+      metadata: {
+        [CODEX_PROJECT_TRUST_KEY]:
+          mcp === undefined ? "unknown" : parseProjectTrust(mcp, { cwd, projectRoot }),
+      },
       skills: [],
     };
   },

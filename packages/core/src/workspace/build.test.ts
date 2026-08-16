@@ -52,6 +52,7 @@ describe("buildWorkspaceModel", () => {
     const alpha = createTestAdapter({
       files: () => [INSTRUCTIONS, SKILLS],
       id: "alpha",
+      installHint: "Update Alpha with its installer.",
       parse: () =>
         createSnapshot({
           instructionFiles: [createDocument("/home/dev/CLAUDE.md")],
@@ -79,6 +80,7 @@ describe("buildWorkspaceModel", () => {
 
     expect(diagnostics).toEqual([]);
     expect(model.apps.map((app) => app.adapterId)).toEqual(["alpha", "beta"]);
+    expect(model.apps[0]?.installHint).toBe("Update Alpha with its installer.");
     expect(model.instructionFiles.map((document) => document.path)).toEqual([
       "/home/dev/CLAUDE.md",
       "/home/dev/AGENTS.md",
@@ -131,6 +133,7 @@ describe("buildWorkspaceModel", () => {
     expect(received?.detection).toEqual({ installed: true, version: "1.0.0" });
     expect(received?.cwd).toBe("/workspace");
     expect(received?.homeDir).toBe("/home/dev");
+    expect(received?.projectRoot).toBeUndefined();
     expect(received?.files).toStrictEqual(
       new Map([
         [

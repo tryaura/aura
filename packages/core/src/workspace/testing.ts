@@ -101,6 +101,7 @@ export interface TestAdapterOptions {
   readonly detect?: (() => Promise<AdapterDetection>) | undefined;
   readonly files?: Adapter["files"] | undefined;
   readonly id?: string | undefined;
+  readonly installHint?: string | undefined;
   readonly parse?: ((input: AdapterParseInput) => AdapterSnapshot) | undefined;
   readonly supportedRange?: string | undefined;
 }
@@ -114,6 +115,7 @@ export function createTestAdapter(options: TestAdapterOptions = {}): Adapter {
     displayName: `Fake ${id}`,
     files: options.files ?? (() => []),
     id,
+    ...(options.installHint === undefined ? {} : { installHint: options.installHint }),
     parse: options.parse ?? (() => createSnapshot()),
     supportedRange: options.supportedRange ?? ">=1 <2",
   };

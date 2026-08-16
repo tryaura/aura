@@ -54,6 +54,49 @@ describe("executable detection", () => {
     expect(requests.map((request) => request.command)).toEqual(["/absolute/agent"]);
   });
 
+  it("retains a zero-exit candidate with an unknown version without probing it further", async () => {
+    const requests: ExecRequest[] = [];
+    const environment = environmentWithExec(requests, (request) => {
+      if (request.command === "/first/agent") {
+        return request.args?.[0] === "--version"
+          ? result(0, "agent development build\n")
+          : result(1);
+      }
+      return result(COMMAND_NOT_FOUND_EXIT_CODE);
+    });
+
+    await expect(detectExecutable(environment, OPTIONS)).resolves.toEqual({
+      executablePath: "/first/agent",
+      installed: true,
+    });
+    // Aura could not confirm this binary is the requested application, so it is never handed the
+    // authentication arguments of the application it might merely be shadowing on the path.
+    expect(requests.map((request) => [request.command, ...(request.args ?? [])])).toEqual([
+      ["/first/agent", "--version"],
+      ["/second/agent", "--version"],
+    ]);
+  });
+
+  it("prefers a later candidate with a parseable version over an unknown fallback", async () => {
+    const environment = environmentWithExec([], (request) =>
+      request.command === "/first/agent"
+        ? result(0, "agent development build\n")
+        : result(0, "agent 2.3.4\n"),
+    );
+
+    await expect(detectExecutable(environment, OPTIONS)).resolves.toMatchObject({
+      executablePath: "/second/agent",
+      installed: true,
+      version: "2.3.4",
+    });
+  });
+
+  it("does not retain a candidate whose unparseable version command failed", async () => {
+    const environment = environmentWithExec([], () => result(2, "agent development build\n"));
+
+    await expect(detectExecutable(environment, OPTIONS)).resolves.toEqual({ installed: false });
+  });
+
   it("uses the Windows executable name", async () => {
     const requests: ExecRequest[] = [];
     const environment = environmentWithExec(

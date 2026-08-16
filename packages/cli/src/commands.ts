@@ -14,7 +14,13 @@ import {
 } from "@tryaura/core";
 
 import { createCheckReport } from "./report.js";
-import { renderHuman, renderJson, safe } from "./render.js";
+import {
+  renderExplanation,
+  renderExplanationJson,
+  renderHuman,
+  renderJson,
+  safe,
+} from "./render.js";
 import type { CliBranding, CliExitCode } from "./types.js";
 
 export interface AuraCliContext extends BaseContext {
@@ -42,12 +48,15 @@ export class CheckCommand extends Command<AuraCliContext> {
       ["Run all checks", "$0 check"],
       ["Emit machine-readable output", "$0 check --json"],
       ["Show what a failing plugin reported", "$0 check --detail"],
+      ["Explain one check without scanning", "$0 check --explain ENV-001"],
+      ["Explain one check as JSON", "$0 check --explain ENV-001 --json"],
     ],
   });
 
   detail = Option.Boolean("--detail", false, {
     description: "Include the failing plugin's own error text. May contain file contents.",
   });
+  explain = Option.String("--explain", { description: "Explain a check without scanning." });
   home = Option.String("--home", { description: "Override the home directory." });
   json = Option.Boolean("--json", false, { description: "Emit JSON instead of human output." });
   pathValue = Option.String("--path", { description: "Override the executable search path." });
@@ -58,6 +67,10 @@ export class CheckCommand extends Command<AuraCliContext> {
     if (rejection !== undefined) {
       this.context.stderr.write(`${this.context.branding.displayName}: ${rejection}\n`);
       return 2;
+    }
+
+    if (this.explain !== undefined) {
+      return this.explainCheck(this.explain);
     }
 
     try {
@@ -96,6 +109,13 @@ export class CheckCommand extends Command<AuraCliContext> {
    * installed application, blaming every plugin for a typo in the command line.
    */
   private rejectInvalidOptions(): string | undefined {
+    // `--detail` widens what a *scan* reports about a misbehaving plugin, and `--explain` never
+    // scans, so the combination has nothing to widen. `--json` is supported: an explanation is
+    // exactly the kind of thing another tool wants to read.
+    if (this.explain !== undefined && this.detail) {
+      return "--explain cannot be combined with --detail";
+    }
+
     if (this.home !== undefined && !isAbsolute(this.home)) {
       return `--home must be an absolute path. Received: ${safe(this.home)}`;
     }
@@ -114,6 +134,37 @@ export class CheckCommand extends Command<AuraCliContext> {
     }
 
     return undefined;
+  }
+
+  /**
+   * Resolves a check id the way a developer typed it.
+   *
+   * Ids are upper-case by convention, so matching them case-sensitively turns `env-001` into an
+   * error for what is unambiguously one check. An exact match still wins, which keeps two ids that
+   * differ only in case resolvable.
+   */
+  private explainCheck(id: string): CliExitCode {
+    const checks = this.context.registry.checks;
+    const check =
+      checks.find((candidate) => candidate.id === id) ??
+      checks.find((candidate) => candidate.id.toLowerCase() === id.toLowerCase());
+    if (check === undefined) {
+      const available = checks.map((candidate) => candidate.id).join(", ");
+      this.context.stderr.write(
+        `${this.context.branding.displayName}: unknown check ID: ${safe(id)}\n`,
+      );
+      if (available !== "") {
+        this.context.stderr.write(`Available check IDs: ${safe(available)}\n`);
+      }
+      return 2;
+    }
+
+    if (this.json) {
+      renderExplanationJson(check, this.context.report);
+    } else {
+      renderExplanation(check, this.context.branding, this.context.stdout);
+    }
+    return 0;
   }
 
   /**

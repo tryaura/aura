@@ -72,3 +72,26 @@ export PATH="$HOME/.aura/bin:$PATH"
 ```
 
 The install script prints the exact line to add for your shell.
+
+## Run the environment doctor
+
+From a repository, run:
+
+```sh
+aura check
+```
+
+The current distribution checks application versions (`ENV-001`), authentication (`ENV-002`),
+repository ignore policy (`ENV-003`), and restrictive project settings (`ENV-004`). To read why a
+check exists without scanning applications or repository state, use:
+
+```sh
+aura check --explain ENV-003
+```
+
+Use `--json` for a machine-readable report, or with `--explain` for a machine-readable explanation.
+`--detail` includes the underlying text for a scan diagnostic, and cannot be combined with
+`--explain`, which never scans.
+
+Checks report what they find; this build applies no fixes. `--explain` says whether a check could
+be fixed automatically, and states plainly that applying it is not available yet.

@@ -54,7 +54,9 @@ describe("Claude Code detection", () => {
     await expect(claudeCodeAdapter.detect(environment)).resolves.toEqual({ installed: false });
     expect(requests.map((request) => request.args)).toEqual([["--version"], ["--version"]]);
   });
+});
 
+describe("Claude Code candidate search", () => {
   it.each([
     ["exits without reporting a version", result(2, "usage: claude [options]\n")],
     ["reports something that is not a version", result(0, "claude, the card game\n")],
@@ -94,7 +96,7 @@ describe("Claude Code detection", () => {
 });
 
 describe("Claude Code file specifications", () => {
-  it("declares only the optional global instruction and MCP files", () => {
+  it("declares global configuration and the project permission settings", () => {
     const environment = environmentWithExec([], () => result(0));
 
     expect(claudeCodeAdapter.files(environment)).toEqual([
@@ -112,11 +114,116 @@ describe("Claude Code file specifications", () => {
         path: "/home/dev/.claude.json",
         scope: "global",
       },
+      {
+        id: "claude-code.settings.global",
+        kind: "config",
+        optional: true,
+        path: "/home/dev/.claude/settings.json",
+        scope: "global",
+      },
+      {
+        id: "claude-code.settings.project",
+        kind: "config",
+        optional: true,
+        path: "/workspace/.claude/settings.json",
+        scope: "project",
+      },
     ]);
   });
 });
 
 describe("Claude Code parsing", () => {
+  it("records global and project permission summaries without permission entries", () => {
+    const snapshot = claudeCodeAdapter.parse({
+      cwd: "/workspace",
+      detection: { installed: true },
+      files: new Map([
+        [
+          "claude-code.settings.global",
+          {
+            content: JSON.stringify({
+              permissions: {
+                allow: ["Bash(secret-command)", "Read"],
+                defaultMode: "dontAsk",
+                deny: ["WebFetch"],
+              },
+            }),
+            exists: true,
+            spec: {
+              id: "claude-code.settings.global",
+              kind: "config",
+              path: "/home/dev/.claude/settings.json",
+              scope: "global",
+            },
+          },
+        ],
+        [
+          "claude-code.settings.project",
+          {
+            content: JSON.stringify({
+              permissions: { allow: ["Edit"], defaultMode: "plan", deny: [] },
+            }),
+            exists: true,
+            spec: {
+              id: "claude-code.settings.project",
+              kind: "config",
+              path: "/workspace/.claude/settings.json",
+              scope: "project",
+            },
+          },
+        ],
+      ]),
+      homeDir: "/home/dev",
+    });
+
+    expect(snapshot.metadata).toEqual({
+      claudePermissions: {
+        global: { allowCount: 2, defaultMode: "dontAsk", denyCount: 1 },
+        project: { allowCount: 1, defaultMode: "plan", denyCount: 0 },
+      },
+    });
+    expect(JSON.stringify(snapshot.metadata)).not.toContain("secret-command");
+  });
+
+  it("drops malformed settings metadata while preserving MCP results", () => {
+    const snapshot = claudeCodeAdapter.parse({
+      cwd: "/workspace",
+      detection: { installed: true },
+      files: new Map([
+        [
+          "claude-code.mcp.global",
+          {
+            content: JSON.stringify({ mcpServers: { docs: { command: "docs-server" } } }),
+            exists: true,
+            spec: {
+              id: "claude-code.mcp.global",
+              kind: "mcp",
+              path: "/home/dev/.claude.json",
+              scope: "global",
+            },
+          },
+        ],
+        [
+          "claude-code.settings.global",
+          {
+            content: '{"permissions":{"defaultMode":"plan","allow":["secret"]}',
+            exists: true,
+            spec: {
+              id: "claude-code.settings.global",
+              kind: "config",
+              path: "/home/dev/.claude/settings.json",
+              scope: "global",
+            },
+          },
+        ],
+      ]),
+      homeDir: "/home/dev",
+    });
+
+    expect(snapshot.metadata).toBeUndefined();
+    expect(snapshot.mcpServers.map((server) => server.name)).toEqual(["docs"]);
+  });
+
   it("resolves home-relative imports against the home directory the spec was built from", () => {
     const snapshot = claudeCodeAdapter.parse({
       cwd: "/workspace",

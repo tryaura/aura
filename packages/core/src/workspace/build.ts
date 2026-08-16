@@ -14,6 +14,7 @@ import { type AdapterFileDiscovery, discoverAdapterFiles } from "./discovery.js"
 import { createLinkResolver, type LinkResolver } from "./links.js";
 import { findProjectRoot } from "./project-root.js";
 import { createCachingReader, createFileReader, type FileReader } from "./reader.js";
+import { scanRepository } from "./repository.js";
 import { evaluateSupport, isComparableRange } from "./support.js";
 
 /** Everything {@link buildWorkspaceModel} needs. */
@@ -72,12 +73,18 @@ export async function buildWorkspaceModel(options: WorkspaceScanOptions): Promis
     environment: options.environment,
     links: createLinkResolver(reader),
     projectBoundary: resolveProjectBoundary(projectRoot, options.environment.cwd, reader),
+    projectRoot,
     reader,
   };
 
-  const [scans, root] = await Promise.all([
+  // The repository scan needs only the project root, so it runs alongside the adapters rather than
+  // after them: its Git probes are latency the scan would otherwise pay end to end.
+  const [scans, root, repository] = await Promise.all([
     Promise.all(options.adapters.map((adapter) => scanAdapter(adapter, context))),
     projectRoot,
+    projectRoot.then((found) =>
+      found === undefined ? undefined : scanRepository(found, options.environment, reader),
+    ),
   ]);
 
   const apps: AppModel[] = [];
@@ -102,6 +109,7 @@ export async function buildWorkspaceModel(options: WorkspaceScanOptions): Promis
       instructionFiles: apps.flatMap((app) => app.instructionFiles),
       mcpServers: apps.flatMap((app) => app.mcpServers),
       projectRoot: root,
+      ...(repository === undefined ? {} : { repository }),
       skills: apps.flatMap((app) => app.skills),
     },
     skipped,
@@ -113,6 +121,7 @@ interface ScanContext {
   readonly links: LinkResolver;
   /** Canonical directory project-scoped paths must stay inside. Awaited once per adapter. */
   readonly projectBoundary: Promise<string | undefined>;
+  readonly projectRoot: Promise<string | undefined>;
   readonly reader: FileReader;
 }
 
@@ -182,6 +191,7 @@ async function scanAdapter(adapter: Adapter, context: ScanContext): Promise<Adap
       detection,
       files: discovery.files,
       homeDir: context.environment.homeDir,
+      projectRoot: await context.projectRoot,
     });
     snapshot = {
       instructionFiles: await context.links.resolve(parsed.instructionFiles),
@@ -206,6 +216,7 @@ async function scanAdapter(adapter: Adapter, context: ScanContext): Promise<Adap
       adapterId: adapter.id,
       detection,
       displayName: adapter.displayName,
+      ...(adapter.installHint === undefined ? {} : { installHint: adapter.installHint }),
       instructionFiles: snapshot.instructionFiles,
       mcpServers: snapshot.mcpServers,
       metadata: snapshot.metadata,
