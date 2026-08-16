@@ -1,10 +1,32 @@
 import { delimiter, isAbsolute } from "node:path";
 import type { Readable, Writable } from "node:stream";
 
+// Deep import on purpose: see the note in run.ts.
+import { Option } from "clipanion/lib/advanced/index.js";
+
 import { describeFailure, type EnvironmentBootOptions } from "@tryaura/core";
 
 import { safe } from "./render.js";
 import type { CliBranding, CliExitCode } from "./types.js";
+
+/** The `--home` override every scanning command shares. */
+export function homeOption(): string | undefined {
+  return Option.String("--home", { description: "Override the home directory." });
+}
+
+/** The `--path` override every scanning command shares. */
+export function pathOption(): string | undefined {
+  return Option.String("--path", { description: "Override the executable search path." });
+}
+
+/** Reports an invalid command line the one way every command does. */
+export function writeOptionRejection(
+  context: { readonly branding: CliBranding; readonly stderr: Writable },
+  rejection: string,
+): CliExitCode {
+  context.stderr.write(`${context.branding.displayName}: ${rejection}\n`);
+  return 2;
+}
 
 /**
  * Whether Aura can hold a conversation on this input.

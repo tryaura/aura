@@ -10,7 +10,8 @@ import {
 import type { Check, Environment, Finding, WorkspaceModel } from "@tryaura/aura-sdk";
 
 import { isTerminal } from "./command-support.js";
-import { safe, safeMultiline } from "./render.js";
+import { renderManualSteps, renderOperationPreviews } from "./preview-render.js";
+import { safe } from "./render.js";
 import type { CliBranding, CliExitCode } from "./types.js";
 
 /** Everything one `--fix` pass needs, so the flow does not reach back into the command object. */
@@ -120,13 +121,7 @@ async function confirmFixes(request: FixRequest): Promise<"accepted" | "declined
   }
 }
 
-/**
- * Shows what applying the plan would do.
- *
- * Only the shape of each change by default. A diff quotes the file it rewrites, and an instruction
- * file is exactly the kind of place a user pastes an API token, so the contents sit behind the same
- * `--detail` flag that gates a plugin's own error text.
- */
+/** Shows what applying the plan would do; only the shape of each change unless `withDetail`. */
 function renderFixPreview(
   prepared: PreparedFixPlan,
   manualSteps: readonly string[],
@@ -134,35 +129,10 @@ function renderFixPreview(
   output: Writable,
 ): void {
   output.write(`Fix preview: ${safe(prepared.preview.summary)}\n`);
-
-  for (const operation of prepared.preview.operations) {
-    if (operation.effect === "noop") {
-      continue;
-    }
-
-    output.write(`  ${operation.effect} ${operation.paths.map(safe).join(" -> ")}\n`);
-    if (operation.conflict !== undefined) {
-      output.write(`    blocked: ${safe(operation.conflict)}\n`);
-    }
-    if (withDetail) {
-      output.write(`\n${safeMultiline(operation.diff)}\n`);
-    }
-  }
+  renderOperationPreviews(prepared.preview.operations, withDetail, output);
 
   if (!withDetail) {
     output.write("\nRe-run with --detail to see the full diff of every change.\n");
   }
   renderManualSteps(manualSteps, output);
-}
-
-/** Prints what the plan cannot do for the user, which is otherwise lost between preview and report. */
-function renderManualSteps(steps: readonly string[], output: Writable): void {
-  if (steps.length === 0) {
-    return;
-  }
-
-  output.write("\nSteps to take yourself:\n");
-  for (const step of steps) {
-    output.write(`  - ${safe(step)}\n`);
-  }
 }

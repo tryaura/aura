@@ -50,33 +50,35 @@ export function createFormSession(questions: readonly WizardQuestion[]): FormSes
   let cursorRow = 0;
 
   const handle = (keypress: Keypress): FormEvent => {
-    const state = states[activeTab];
-
     if (keypress.name === "escape" || (keypress.ctrl && keypress.name === "c")) {
       return "abort";
     }
-
     if (keypress.name === "return" || keypress.name === "enter") {
-      if (state === undefined) {
-        const unanswered = states.findIndex((candidate) => !candidate.answered);
-        if (unanswered === -1) {
-          return "submit";
-        }
-        activeTab = unanswered;
-        cursorRow = 0;
-        return "repaint";
-      }
-      answerActive(state, cursorRow);
-      // A one-question form has nothing left to review, so answering it is submitting it.
-      if (states.length === 1 && state.answered) {
+      return handleEnter();
+    }
+    return applyNavigation(keypress, states[activeTab]) ? "repaint" : "none";
+  };
+
+  const handleEnter = (): FormEvent => {
+    const state = states[activeTab];
+    if (state === undefined) {
+      const unanswered = states.findIndex((candidate) => !candidate.answered);
+      if (unanswered === -1) {
         return "submit";
       }
-      activeTab = nextTab(states, activeTab);
+      activeTab = unanswered;
       cursorRow = 0;
       return "repaint";
     }
 
-    return applyNavigation(keypress, state) ? "repaint" : "none";
+    answerActive(state, cursorRow);
+    // A one-question form has nothing left to review, so answering it is submitting it.
+    if (states.length === 1 && state.answered) {
+      return "submit";
+    }
+    activeTab = nextTab(states, activeTab);
+    cursorRow = 0;
+    return "repaint";
   };
 
   /** Returns true when the key changed the frame. */
@@ -110,41 +112,21 @@ export function createFormSession(questions: readonly WizardQuestion[]): FormSes
   const applyTextOrToggle = (keypress: Keypress, state: QuestionState): boolean => {
     const onFreeText =
       state.question.freeText === true && cursorRow === state.question.options.length;
+    return onFreeText ? editFreeText(keypress, state) : applyOptionKey(keypress, state);
+  };
 
-    if (keypress.name === "space" && !onFreeText) {
-      const option = state.question.options[cursorRow];
-      if (option !== undefined && state.question.kind === "multiselect") {
-        toggle(state.selected, option.value);
-        return true;
-      }
-      return false;
-    }
-
-    if (onFreeText) {
-      if (keypress.name === "backspace") {
-        state.text = state.text.slice(0, -1);
-        return true;
-      }
-      const typed = printable(keypress);
-      if (typed !== undefined) {
-        state.text += typed;
-        return true;
-      }
-      return false;
+  const applyOptionKey = (keypress: Keypress, state: QuestionState): boolean => {
+    if (keypress.name === "space") {
+      return toggleRow(state, cursorRow);
     }
 
     const digit = digitRow(keypress, state.question);
-    if (digit !== undefined) {
-      cursorRow = digit;
-      if (digit < state.question.options.length && state.question.kind === "multiselect") {
-        const option = state.question.options[digit];
-        if (option !== undefined) {
-          toggle(state.selected, option.value);
-        }
-      }
-      return true;
+    if (digit === undefined) {
+      return false;
     }
-    return false;
+    cursorRow = digit;
+    toggleRow(state, digit);
+    return true;
   };
 
   return {
@@ -153,6 +135,31 @@ export function createFormSession(questions: readonly WizardQuestion[]): FormSes
     handle,
     views: () => states.map(toView),
   };
+}
+
+/** Edits the free-text draft; space types a space here rather than toggling anything. */
+function editFreeText(keypress: Keypress, state: QuestionState): boolean {
+  if (keypress.name === "backspace") {
+    state.text = state.text.slice(0, -1);
+    return true;
+  }
+
+  const typed = printable(keypress);
+  if (typed === undefined) {
+    return false;
+  }
+  state.text += typed;
+  return true;
+}
+
+/** Toggles the multi-select option on `row`; a no-op on any other kind of row. */
+function toggleRow(state: QuestionState, row: number): boolean {
+  const option = state.question.options[row];
+  if (option === undefined || state.question.kind !== "multiselect") {
+    return false;
+  }
+  toggle(state.selected, option.value);
+  return true;
 }
 
 const answerActive = (state: QuestionState, row: number): void => {

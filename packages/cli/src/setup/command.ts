@@ -5,9 +5,12 @@ import { createEnvironment } from "@tryaura/core";
 
 import {
   environmentOptions,
+  homeOption,
   isTerminal,
+  pathOption,
   rejectInvalidPathOptions,
   reportUnexpectedFailure,
+  writeOptionRejection,
 } from "../command-support.js";
 import type { AuraCliContext } from "../commands.js";
 import type { CliExitCode } from "../types.js";
@@ -35,8 +38,8 @@ export class SetupCommand extends Command<AuraCliContext> {
   dryRun = Option.Boolean("--dry-run", false, {
     description: "Stop after the plan summary and write nothing.",
   });
-  home = Option.String("--home", { description: "Override the home directory." });
-  pathValue = Option.String("--path", { description: "Override the executable search path." });
+  home = homeOption();
+  pathValue = pathOption();
   yes = Option.Boolean("--yes", false, {
     description:
       "Take every proposed default and apply without asking. Required when stdin is not a terminal.",
@@ -46,8 +49,7 @@ export class SetupCommand extends Command<AuraCliContext> {
   async execute(): Promise<CliExitCode> {
     const rejection = this.rejectInvalidOptions();
     if (rejection !== undefined) {
-      this.context.stderr.write(`${this.context.branding.displayName}: ${rejection}\n`);
-      return 2;
+      return writeOptionRejection(this.context, rejection);
     }
 
     const interactive = !this.yes && isTerminal(this.context.stdin);

@@ -133,18 +133,23 @@ async function runForm(
 }
 
 function toKeypress(sequence: unknown, key: unknown): Keypress {
-  const record = typeof key === "object" && key !== null ? key : {};
+  const fallback = typeof sequence === "string" ? sequence : undefined;
+  if (typeof key !== "object" || key === null) {
+    return { ctrl: false, meta: false, name: undefined, sequence: fallback };
+  }
   return {
-    ctrl: "ctrl" in record && record.ctrl === true,
-    meta: "meta" in record && record.meta === true,
-    name: "name" in record && typeof record.name === "string" ? record.name : undefined,
-    sequence:
-      "sequence" in record && typeof record.sequence === "string"
-        ? record.sequence
-        : typeof sequence === "string"
-          ? sequence
-          : undefined,
+    ctrl: "ctrl" in key && key.ctrl === true,
+    meta: "meta" in key && key.meta === true,
+    name: keyText(key, "name"),
+    sequence: keyText(key, "sequence") ?? fallback,
   };
+}
+
+function keyText(key: object, field: "name" | "sequence"): string | undefined {
+  if (field === "name") {
+    return "name" in key && typeof key.name === "string" ? key.name : undefined;
+  }
+  return "sequence" in key && typeof key.sequence === "string" ? key.sequence : undefined;
 }
 
 function erasure(lines: number): string {

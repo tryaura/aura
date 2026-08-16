@@ -1,9 +1,10 @@
-import { PassThrough, Readable } from "node:stream";
+import { Readable } from "node:stream";
 
 import { runCli, type CliDistro } from "@tryaura/aura-cli";
 
 import { captureFilesystem, diffFilesystem } from "./filesystem.js";
 import { createNormalizer } from "./run-result.js";
+import { createTextCapture } from "./text-capture.js";
 import type { TestFileDiff, TestSeed } from "./types.js";
 
 export interface RunSetupOptions {
@@ -56,14 +57,4 @@ export async function runSetup(options: RunSetupOptions): Promise<SetupRunResult
     stderr: normalize(stderr.read()),
     stdout: normalize(stdout.read()),
   });
-}
-
-function createTextCapture(): { readonly read: () => string; readonly stream: PassThrough } {
-  const chunks: string[] = [];
-  const stream = new PassThrough();
-  stream.setEncoding("utf8");
-  stream.on("data", (chunk: string) => {
-    chunks.push(chunk);
-  });
-  return { read: () => chunks.join(""), stream };
 }

@@ -14,8 +14,11 @@ import {
 
 import {
   environmentOptions,
+  homeOption,
+  pathOption,
   rejectInvalidPathOptions,
   reportUnexpectedFailure,
+  writeOptionRejection,
 } from "./command-support.js";
 import { runFixes } from "./fix.js";
 import { createCheckReport } from "./report.js";
@@ -71,9 +74,9 @@ export class CheckCommand extends Command<AuraCliContext> {
   fix = Option.Boolean("--fix", false, {
     description: "Preview fixes and apply them after confirmation.",
   });
-  home = Option.String("--home", { description: "Override the home directory." });
+  home = homeOption();
   json = Option.Boolean("--json", false, { description: "Emit JSON instead of human output." });
-  pathValue = Option.String("--path", { description: "Override the executable search path." });
+  pathValue = pathOption();
   yes = Option.Boolean("--yes", false, {
     description: "Apply fixes without asking. Required when stdin is not a terminal.",
   });
@@ -82,8 +85,7 @@ export class CheckCommand extends Command<AuraCliContext> {
   async execute(): Promise<CliExitCode> {
     const rejection = this.rejectInvalidOptions();
     if (rejection !== undefined) {
-      this.context.stderr.write(`${this.context.branding.displayName}: ${rejection}\n`);
-      return 2;
+      return writeOptionRejection(this.context, rejection);
     }
 
     if (this.explain !== undefined) {
