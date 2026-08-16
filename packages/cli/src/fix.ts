@@ -9,7 +9,8 @@ import {
 } from "@tryaura/core";
 import type { Check, Environment, Finding, WorkspaceModel } from "@tryaura/aura-sdk";
 
-import { safe } from "./render.js";
+import { isTerminal } from "./command-support.js";
+import { safe, safeMultiline } from "./render.js";
 import type { CliBranding, CliExitCode } from "./types.js";
 
 /** Everything one `--fix` pass needs, so the flow does not reach back into the command object. */
@@ -164,18 +165,4 @@ function renderManualSteps(steps: readonly string[], output: Writable): void {
   for (const step of steps) {
     output.write(`  - ${safe(step)}\n`);
   }
-}
-
-function safeMultiline(value: string): string {
-  return value.split("\n").map(safe).join("\n");
-}
-
-/**
- * Whether Aura can hold a conversation on this input.
- *
- * `isTTY` is present on the process's own stdin and absent on the plain stream an embedder injects,
- * so the property test doubles as "is anybody there to answer".
- */
-function isTerminal(stdin: Readable): boolean {
-  return "isTTY" in stdin && stdin.isTTY === true;
 }

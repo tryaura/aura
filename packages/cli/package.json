@@ -29,6 +29,7 @@
   },
   "dependencies": {
     "@tryaura/aura-sdk": "workspace:*",
+    "@tryaura/content-official": "workspace:*",
     "@tryaura/core": "workspace:*",
     "clipanion": "3.2.1",
     "typanion": "3.14.0"

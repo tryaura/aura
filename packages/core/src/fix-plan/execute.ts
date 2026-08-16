@@ -5,6 +5,7 @@ import { withJournalLock } from "./journal-lock.js";
 import type { JournalHandle } from "./journal-read.js";
 import { ensureBackupRoot, setJournalStatus, stageJournal } from "./journal.js";
 import { prepareOperations } from "./prepare.js";
+import { globalTargetPaths, withTargetLocks } from "./target-lock.js";
 import {
   blockedPlanError,
   isApplicable,
@@ -123,7 +124,16 @@ async function applyOperations(
   }
 
   const root = await ensureBackupRoot(plan.model.homeDir);
-  return withJournalLock(root, now, async () => applyJournaled(plan, operations, preview, now));
+  // Global files are lockable by any Aura run on this machine, so each one is held individually:
+  // two runs started in different repositories serialize on exactly the home files they share.
+  const targets = globalTargetPaths(
+    operations.flatMap((operation) => operation.preview.paths),
+    plan.model.projectRoot ?? plan.model.cwd,
+    plan.policy.caseInsensitive,
+  );
+  return withJournalLock(root, now, async () =>
+    withTargetLocks(targets, root, now, async () => applyJournaled(plan, operations, preview, now)),
+  );
 }
 
 async function applyJournaled(

@@ -191,7 +191,8 @@ function safeFindingText(value: string): string {
   return safe(truncated);
 }
 
-function safeMultiline(value: string): string {
+/** {@link safe}, preserving the line structure of a multi-line value. */
+export function safeMultiline(value: string): string {
   return value
     .split("\n")
     .map((line) => safe(line))

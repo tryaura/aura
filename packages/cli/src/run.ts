@@ -8,6 +8,7 @@ import { Builtins, Cli, type Command } from "clipanion/lib/advanced/index.js";
 import { createPluginRegistry } from "@tryaura/core";
 
 import { CheckCommand, DefaultCommand, type AuraCliContext } from "./commands.js";
+import { SetupCommand } from "./setup/command.js";
 import type { CliDistro, CliExitCode, CliRuntime } from "./types.js";
 
 /** Runs one build-time-composed Aura distribution. */
@@ -149,6 +150,7 @@ function createCli(distro: CliDistro, enableColors: boolean): Cli<AuraCliContext
 
   cli.register(DefaultCommand);
   cli.register(CheckCommand);
+  cli.register(SetupCommand);
   cli.register(Builtins.HelpCommand);
   if (branding.version !== undefined) {
     cli.register(Builtins.VersionCommand);

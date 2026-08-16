@@ -1,4 +1,3 @@
-import { delimiter, isAbsolute } from "node:path";
 import type { Writable } from "node:stream";
 
 // Deep import on purpose: see the note in run.ts.
@@ -7,13 +6,17 @@ import { Command, Option, type BaseContext } from "clipanion/lib/advanced/index.
 import {
   buildWorkspaceModel,
   createEnvironment,
-  describeFailure,
   runChecks,
   type CheckDiagnostic,
   type EnvironmentBootOptions,
   type PluginRegistry,
 } from "@tryaura/core";
 
+import {
+  environmentOptions,
+  rejectInvalidPathOptions,
+  reportUnexpectedFailure,
+} from "./command-support.js";
 import { runFixes } from "./fix.js";
 import { createCheckReport } from "./report.js";
 import {
@@ -140,7 +143,13 @@ export class CheckCommand extends Command<AuraCliContext> {
 
       return report.exitCode;
     } catch (error) {
-      return this.reportUnexpectedFailure(error);
+      return reportUnexpectedFailure(
+        error,
+        "check",
+        this.context.branding,
+        this.detail,
+        this.context.stderr,
+      );
     }
   }
 
@@ -149,7 +158,7 @@ export class CheckCommand extends Command<AuraCliContext> {
     return (
       this.rejectInvalidFixOptions() ??
       this.rejectInvalidExplainOptions() ??
-      this.rejectInvalidPathOptions()
+      rejectInvalidPathOptions(this.home, this.pathValue)
     );
   }
 
@@ -160,34 +169,6 @@ export class CheckCommand extends Command<AuraCliContext> {
     // supported: an explanation is exactly the kind of thing another tool wants to read.
     if (this.explain !== undefined && (this.detail || this.fix)) {
       return `--explain cannot be combined with ${this.detail ? "--detail" : "--fix"}`;
-    }
-
-    return undefined;
-  }
-
-  /**
-   * Refuses a path override that cannot mean what the user intended.
-   *
-   * Both flags are handed to adapters, which build the paths Aura reads out of them. A relative
-   * `--home` would otherwise surface much later as one "this is a bug in the adapter" diagnostic per
-   * installed application, blaming every plugin for a typo in the command line.
-   */
-  private rejectInvalidPathOptions(): string | undefined {
-    if (this.home !== undefined && !isAbsolute(this.home)) {
-      return `--home must be an absolute path. Received: ${safe(this.home)}`;
-    }
-
-    if (this.pathValue !== undefined) {
-      // An empty entry means "the current directory" to most tools, which is how a search path
-      // starts resolving executables out of whatever directory Aura happened to be run from.
-      const loose = this.pathValue
-        .split(delimiter)
-        .filter((entry) => !isAbsolute(entry))
-        .map((entry) => (entry === "" ? "(empty)" : safe(entry)));
-
-      if (loose.length > 0) {
-        return `--path must list absolute directories separated by "${delimiter}". Not absolute: ${loose.join(", ")}`;
-      }
     }
 
     return undefined;
@@ -239,31 +220,8 @@ export class CheckCommand extends Command<AuraCliContext> {
     return 0;
   }
 
-  /**
-   * Reports a failure that is not a plugin misbehaving in a way core already models.
-   *
-   * The thrown text is withheld by default for the same reason a scan diagnostic withholds it: it
-   * may quote the contents of a file that holds an API token.
-   */
-  private reportUnexpectedFailure(error: unknown): CliExitCode {
-    this.context.stderr.write(
-      `${this.context.branding.displayName}: check failed unexpectedly. This is a bug in a plugin or the CLI.\n`,
-    );
-    this.context.stderr.write(
-      this.detail
-        ? `  ${safe(describeFailure(error))}\n`
-        : `  Re-run with --detail to see what failed.\n`,
-    );
-    return 2;
-  }
-
   private environmentOptions(): EnvironmentBootOptions {
-    return {
-      cwd: this.context.cwd,
-      environmentVariables: this.context.env,
-      homeDir: this.home ?? this.context.defaultHomeDir,
-      ...(this.pathValue === undefined ? {} : { path: this.pathValue }),
-    };
+    return environmentOptions(this.context, this.home, this.pathValue);
   }
 }
 
