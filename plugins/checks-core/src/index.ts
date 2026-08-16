@@ -12,6 +12,7 @@ import { instructionContextBudgetCheck } from "./ins-007/index.js";
 import { instructionPrecedenceCheck } from "./ins-008/index.js";
 import { sharedInstructionLinksCheck, sharedInstructionsCheck } from "./instructions.js";
 import { legacyInstructionsAdapter } from "./legacy-adapter.js";
+import { managedBlockHashCheck } from "./mgd-001.js";
 
 export default definePlugin({
   adapters: [legacyInstructionsAdapter],
@@ -29,6 +30,7 @@ export default definePlugin({
     instructionLinkIntegrityCheck,
     instructionContextBudgetCheck,
     instructionPrecedenceCheck,
+    managedBlockHashCheck,
   ],
   id: "checks-core",
   name: "Aura Core Checks",

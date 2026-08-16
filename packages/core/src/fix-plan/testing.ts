@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { AdapterFileStatus, FixPlan, WorkspaceModel } from "@tryaura/aura-sdk";
+import { createWorkspaceModel } from "@tryaura/aura-sdk/testing";
 
 import { backupRoot } from "./journal-paths.js";
 
@@ -47,7 +48,7 @@ export async function createFixPlanFixture(): Promise<FixPlanFixture> {
 
   return {
     home,
-    model: {
+    model: createWorkspaceModel({
       apps: [
         {
           adapterId: "fixture",
@@ -65,17 +66,14 @@ export async function createFixPlanFixture(): Promise<FixPlanFixture> {
       ],
       cwd: workspace,
       homeDir: home,
-      instructionFiles: [],
       manifest: {
         exists: false,
         path: join(home, "agents", "aura.json"),
         status: "missing",
       },
-      mcpServers: [],
       projectRoot: workspace,
       sharedInstructions: { exists: false, path: join(home, "agents", "AGENTS.md") },
-      skills: [],
-    },
+    }),
     root,
     workspace,
   };

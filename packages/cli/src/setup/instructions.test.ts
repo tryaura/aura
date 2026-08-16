@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { parseAuraManifest } from "@tryaura/core";
 import type { InstructionDocument, Scope, WorkspaceModel } from "@tryaura/aura-sdk";
+import { createWorkspaceModel } from "@tryaura/aura-sdk/testing";
 
 import {
   composeConsolidatedInstructions,
@@ -177,19 +178,15 @@ function workspaceModel(instructionFiles: readonly InstructionDocument[]): Works
     }),
     "/home/dev/agents/aura.json",
   );
-  return {
-    apps: [],
+  return createWorkspaceModel({
     cwd: "/repo/fallback",
-    homeDir: "/home/dev",
     instructionFiles,
     manifest,
-    mcpServers: [],
     projectRoot: "/repo/project",
     sharedInstructions: {
       content: "generated\n",
       exists: true,
       path: "/home/dev/agents/AGENTS.md",
     },
-    skills: [],
-  };
+  });
 }

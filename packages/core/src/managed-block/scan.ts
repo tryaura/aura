@@ -1,8 +1,9 @@
 import { parseMarker } from "./markers.js";
 import { AURA_MANAGED_BLOCK_NOTICE } from "./protocol.js";
 import { advanceFence, type MarkdownFence, splitSourceLines } from "./source-lines.js";
+import type { ManagedBlockProblem } from "./types.js";
 
-export interface MarkerScan {
+interface MarkerScan {
   /** One-based line of the first marker the reader would honour, if any. */
   readonly markerLine: number | undefined;
   /** Whether the text ends inside a fence the reader would still consider open. */
@@ -13,7 +14,7 @@ export interface MarkerScan {
  * Finds protocol markers the reader would honour, applying the same fence rules as
  * {@link readManagedBlock} so fenced marker examples stay ordinary text.
  */
-export function scanForMarkers(text: string): MarkerScan {
+function scanForMarkers(text: string): MarkerScan {
   let fence: MarkdownFence | undefined;
   let markerLine: number | undefined;
 
@@ -29,6 +30,38 @@ export function scanForMarkers(text: string): MarkerScan {
   }
 
   return { markerLine, unterminatedFence: fence !== undefined };
+}
+
+/**
+ * Rejects content that would escape its own snippet. Written verbatim, a marker inside a snippet
+ * body reopens or closes the protocol, and the resulting file parses as invalid forever — so the
+ * damage has to be caught before the write, not after.
+ *
+ * Every write path shares this guard. A narrower path that skipped it would be a way to write the
+ * exact bytes the wider one refuses, and the file it corrupts is the same file either way.
+ */
+export function managedSnippetContentProblems(
+  id: string,
+  canonical: string,
+): readonly ManagedBlockProblem[] {
+  const scan = scanForMarkers(canonical);
+  if (scan.markerLine !== undefined) {
+    return Object.freeze([
+      Object.freeze({
+        code: "invalid-snippet-content" as const,
+        message: `Snippet "${id}" declares an Aura marker on content line ${String(scan.markerLine)}. Wrap marker examples in a Markdown fence.`,
+      }),
+    ]);
+  }
+  if (scan.unterminatedFence) {
+    return Object.freeze([
+      Object.freeze({
+        code: "invalid-snippet-content" as const,
+        message: `Snippet "${id}" ends inside an unclosed Markdown fence, which would hide every marker after it. Close the fence.`,
+      }),
+    ]);
+  }
+  return Object.freeze([]);
 }
 
 /**

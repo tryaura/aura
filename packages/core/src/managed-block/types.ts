@@ -10,12 +10,20 @@ export interface ManagedSnippet {
   readonly computedHash: string;
   /** Exact text between the snippet marker lines. */
   readonly content: string;
+  /** Exclusive source offset where the snippet body ends. */
+  readonly contentEndOffset: number;
+  /** Inclusive source offset where the snippet body starts. */
+  readonly contentStartOffset: number;
+  /** Exclusive source offset after the closing marker line. */
+  readonly endOffset: number;
   /** One-based line containing the closing marker. */
   readonly endLine: number;
   readonly hashMatches: boolean;
   readonly id: string;
   /** One-based line containing the opening marker. */
   readonly startLine: number;
+  /** Inclusive source offset at the opening marker. */
+  readonly startOffset: number;
   /** Hash declared by the opening marker. */
   readonly storedHash: string;
 }
@@ -44,6 +52,7 @@ export type ManagedBlockProblemCode =
   | "invalid-snippet-id"
   | "malformed-marker"
   | "mismatched-snippet-end"
+  | "missing-snippet"
   | "nested-block"
   | "nested-snippet"
   | "orphan-outer-end"
@@ -95,6 +104,11 @@ export interface ManagedBlockReconcileOptions {
    */
   readonly onInvalid?: "fail" | "repair";
 }
+
+/** One targeted resolution for a parsed managed snippet. */
+export type ManagedSnippetResolution =
+  | { readonly kind: "keep" }
+  | { readonly content: string; readonly kind: "restore" };
 
 /** Result of reconciling a source string with a complete desired snippet set. */
 export type ManagedBlockWriteResult =

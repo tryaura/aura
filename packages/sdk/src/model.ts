@@ -9,6 +9,18 @@ import type { JsonObject, Scope } from "./common.js";
 import type { AuraManifestState } from "./manifest.js";
 import type { RepositoryModel } from "./repository.js";
 
+/** A plugin snippet whose bundled source was resolved during the workspace scan. */
+export interface ResolvedSnippet {
+  /** Canonical Markdown contents used by the managed-block protocol. */
+  readonly content: string;
+  readonly description: string;
+  /** SHA-256 of {@link content}. */
+  readonly hash: string;
+  readonly id: string;
+  readonly name: string;
+  readonly version: string;
+}
+
 /** How one instruction document pulls in another. */
 export type InstructionLinkKind = "import" | "native" | "symlink";
 
@@ -247,6 +259,8 @@ export interface AppModel extends Omit<AdapterSnapshot, "problems"> {
  * so a check sees configuration contributed by adapters from other plugins.
  */
 export interface WorkspaceModel {
+  /** Registry snippets whose bundled Markdown sources were readable in this run. */
+  readonly availableSnippets: readonly ResolvedSnippet[];
   /** Every detected application. */
   readonly apps: readonly AppModel[];
   /** Directory Aura was invoked from. */
