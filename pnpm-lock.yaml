@@ -66,6 +66,9 @@ importers:
       '@tryaura/checks-core':
         specifier: workspace:*
         version: link:../../plugins/checks-core
+      '@tryaura/content-official':
+        specifier: workspace:*
+        version: link:../../plugins/content-official
     devDependencies:
       '@tryaura/aura-testkit':
         specifier: workspace:*
@@ -234,7 +237,21 @@ importers:
         specifier: 4.1.10
         version: 4.1.10(@types/node@24.13.3)(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0))
 
-  plugins/content-official: {}
+  plugins/content-official:
+    dependencies:
+      '@tryaura/aura-sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+    devDependencies:
+      '@tryaura/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@types/node':
+        specifier: 24.13.3
+        version: 24.13.3
+      vitest:
+        specifier: 4.1.10
+        version: 4.1.10(@types/node@24.13.3)(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0))
 
 packages:
 

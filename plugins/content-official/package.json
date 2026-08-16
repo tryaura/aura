@@ -3,6 +3,10 @@
   "version": "0.0.0",
   "private": true,
   "license": "Apache-2.0",
+  "files": [
+    "dist",
+    "content"
+  ],
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -13,7 +17,15 @@
     }
   },
   "scripts": {
-    "build": "tsc --project tsconfig.json",
+    "build": "tsc --project tsconfig.build.json",
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@tryaura/aura-sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@tryaura/core": "workspace:*",
+    "@types/node": "24.13.3",
+    "vitest": "4.1.10"
   }
 }
