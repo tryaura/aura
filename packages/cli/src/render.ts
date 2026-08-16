@@ -2,11 +2,12 @@ import type { Writable } from "node:stream";
 
 import type { Check, Finding } from "@tryaura/aura-sdk";
 
+import { renderFindingPresentation } from "./metadata-table.js";
 import type { CheckReport } from "./report.js";
+import { safe, safeFindingText, safeMultiline } from "./safe-text.js";
 import type { CliBranding } from "./types.js";
 
-const MAX_FINDING_TEXT_CHARACTERS = 500;
-const UNICODE_FORMAT_CHARACTER = /\p{Cf}/u;
+export { safe, safeMultiline } from "./safe-text.js";
 
 export function renderJson(report: CheckReport, output: Writable): void {
   output.write(`${JSON.stringify(report)}\n`);
@@ -137,6 +138,7 @@ function renderFindingGroup(
     findings.flatMap((finding) => [
       `[${safe(finding.checkId)}] ${safeFindingText(finding.message)}`,
       ...(finding.details === undefined ? [] : [`  ${safeFindingText(finding.details)}`]),
+      ...renderFindingPresentation(finding).map((line) => `  ${line}`),
     ]),
     output,
   );
@@ -157,44 +159,4 @@ function renderGroup(
 function summaryMessage(report: CheckReport): string {
   const { errors, informational, passed, warnings } = report.summary;
   return `${String(passed)} passed, ${String(informational)} informational, ${String(warnings)} warnings, ${String(errors)} errors`;
-}
-
-/**
- * Neutralizes control and Unicode format characters in text Aura did not write itself.
- *
- * Findings and diagnostics quote what was read out of third-party agent configuration, so their
- * text is attacker-influenced in the same way a filename is. An escape sequence reaching the
- * terminal can repaint the report — turning an error line into a passing one — or drive the
- * terminal itself. Unicode format characters can similarly reorder or conceal text, so both kinds
- * are replaced before they are written.
- */
-export function safe(value: string): string {
-  let result = "";
-
-  for (const character of value) {
-    const code = character.codePointAt(0) ?? 0;
-    result +=
-      code < 0x20 || (code >= 0x7f && code <= 0x9f) || UNICODE_FORMAT_CHARACTER.test(character)
-        ? " "
-        : character;
-  }
-
-  return result;
-}
-
-function safeFindingText(value: string): string {
-  const truncated =
-    value.length > MAX_FINDING_TEXT_CHARACTERS
-      ? `${value.slice(0, MAX_FINDING_TEXT_CHARACTERS)}…`
-      : value;
-
-  return safe(truncated);
-}
-
-/** {@link safe}, preserving the line structure of a multi-line value. */
-export function safeMultiline(value: string): string {
-  return value
-    .split("\n")
-    .map((line) => safe(line))
-    .join("\n");
 }

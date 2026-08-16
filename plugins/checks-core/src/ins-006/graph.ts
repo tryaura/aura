@@ -6,9 +6,36 @@ export interface InstructionGraph {
   readonly edges: ReadonlyMap<string, readonly string[]>;
 }
 
-export interface DepthOverflow {
-  readonly paths: readonly string[];
-  readonly rootPath: string;
+export interface ReachableInstructionOptions {
+  /**
+   * Paths the walk neither returns nor passes through.
+   *
+   * Excluding a document excludes what only it reaches: a file an application loads on a condition
+   * carries its own imports behind that same condition, so treating the document as absent is the
+   * only reading that keeps everything behind it out too.
+   */
+  readonly excluded?: ReadonlySet<string> | undefined;
+  /** Maximum number of edges followed from any root. Omit for an unbounded walk. */
+  readonly maximumHops?: number | undefined;
+}
+
+const graphs = new WeakMap<readonly InstructionDocument[], InstructionGraph>();
+
+/**
+ * {@link buildInstructionGraph}, built once per document list.
+ *
+ * Every check receives the same `WorkspaceModel`, so the checks that walk instruction links all
+ * ask for the same graph over the same array within one run. Keying on that array keeps the build
+ * to once per run without any check having to know another one exists.
+ */
+export function instructionGraphFor(documents: readonly InstructionDocument[]): InstructionGraph {
+  const cached = graphs.get(documents);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const graph = buildInstructionGraph(documents);
+  graphs.set(documents, graph);
+  return graph;
 }
 
 /** Builds a deterministic graph from valid links whose targets are also modeled documents. */
@@ -42,6 +69,45 @@ export function buildInstructionGraph(documents: readonly InstructionDocument[])
     );
   }
   return Object.freeze({ edges });
+}
+
+/** Returns every modeled path reachable from the roots, once, without using the call stack. */
+export function reachableInstructionPaths(
+  graph: InstructionGraph,
+  roots: readonly string[],
+  options: ReachableInstructionOptions = {},
+): readonly string[] {
+  const maximumHops = options.maximumHops ?? Number.POSITIVE_INFINITY;
+  const excluded = options.excluded ?? new Set<string>();
+  const queued = [...new Set(roots.map((path) => resolve(path)))]
+    .filter((path) => graph.edges.has(path) && !excluded.has(path))
+    .sort((left, right) => left.localeCompare(right))
+    .map((path) => ({ hops: 0, path }));
+  const seen = new Set<string>();
+
+  for (let index = 0; index < queued.length; index += 1) {
+    const current = queued[index];
+    if (current === undefined || seen.has(current.path)) {
+      continue;
+    }
+    seen.add(current.path);
+    if (current.hops >= maximumHops) {
+      continue;
+    }
+    for (const target of graph.edges.get(current.path) ?? []) {
+      if (!seen.has(target) && !excluded.has(target)) {
+        queued.push({ hops: current.hops + 1, path: target });
+      }
+    }
+  }
+
+  return [...seen].sort((left, right) => left.localeCompare(right));
+}
+
+/** One node on an explicit walk stack, standing in for a call frame the walks refuse to use. */
+export interface GraphFrame {
+  nextEdge: number;
+  readonly path: string;
 }
 
 /** Finds directed cycles without using the JavaScript call stack. */
@@ -122,117 +188,6 @@ function visitTarget(
   }
   const cycle = canonicalCycle([...path.slice(start), target]);
   cycles.set(cycleKey(cycle), cycle);
-}
-
-/** Returns one deterministic over-limit chain per modeled entry document. */
-export function findDepthOverflows(
-  graph: InstructionGraph,
-  roots: readonly string[],
-  maximumHops: number,
-): readonly DepthOverflow[] {
-  const overflows: DepthOverflow[] = [];
-  const normalizedRoots = [...new Set(roots.map((path) => resolve(path)))].sort((left, right) =>
-    left.localeCompare(right),
-  );
-  for (const rootPath of normalizedRoots) {
-    if (!graph.edges.has(rootPath)) {
-      continue;
-    }
-    const paths = firstOverflow(graph, rootPath, maximumHops);
-    if (paths !== undefined) {
-      overflows.push({ paths, rootPath });
-    }
-  }
-  return overflows;
-}
-
-interface GraphFrame {
-  nextEdge: number;
-  readonly path: string;
-}
-
-/** A {@link GraphFrame} carrying what {@link firstOverflow} needs to memoize the walk. */
-interface OverflowFrame extends GraphFrame {
-  /** Hops still available when this node was entered, which is what clearing it vouches for. */
-  readonly budget: number;
-  /** Whether anything under this node was skipped for already being on the path. */
-  routeDependent: boolean;
-}
-
-/**
- * Walks one root, remembering how much budget each node has already been cleared for.
- *
- * Without that memory the walk enumerates every simple path within the limit, which is exponential
- * in the graph's fan-out — and the documents feeding it arrive with whatever repository the user
- * checked out, so a few dozen mutually-importing files are enough to stall the scan. A node
- * explored with `n` hops left and found clean is clean for any `n` or fewer, so re-entering it with
- * no more budget than last time can only retrace the same ground.
- *
- * A node is only recorded as clean when nothing under it was skipped for already being on the
- * path. Such a skip is a judgement about this route rather than about the node, and the same node
- * reached another way may well have that edge available — so the taint travels up to every
- * ancestor whose own result depended on it.
- */
-function firstOverflow(
-  graph: InstructionGraph,
-  root: string,
-  maximumHops: number,
-): readonly string[] | undefined {
-  const path: string[] = [root];
-  const active = new Set(path);
-  const frames: OverflowFrame[] = [
-    { budget: maximumHops, nextEdge: 0, path: root, routeDependent: false },
-  ];
-  const cleared = new Map<string, number>();
-
-  while (frames.length > 0) {
-    const frame = frames[frames.length - 1];
-    if (frame === undefined) {
-      return undefined;
-    }
-    const targets = graph.edges.get(frame.path) ?? [];
-    const target = targets[frame.nextEdge];
-    if (target === undefined) {
-      finishOverflowFrame(frame, frames, path, active, cleared);
-      continue;
-    }
-    frame.nextEdge += 1;
-    if (active.has(target)) {
-      frame.routeDependent = true;
-      continue;
-    }
-    if (path.length > maximumHops) {
-      return [...path, target];
-    }
-    const budget = maximumHops - path.length;
-    if ((cleared.get(target) ?? -1) >= budget) {
-      continue;
-    }
-    path.push(target);
-    active.add(target);
-    frames.push({ budget, nextEdge: 0, path: target, routeDependent: false });
-  }
-  return undefined;
-}
-
-function finishOverflowFrame(
-  frame: OverflowFrame,
-  frames: OverflowFrame[],
-  path: string[],
-  active: Set<string>,
-  cleared: Map<string, number>,
-): void {
-  frames.pop();
-  active.delete(frame.path);
-  path.pop();
-  if (!frame.routeDependent) {
-    cleared.set(frame.path, Math.max(cleared.get(frame.path) ?? -1, frame.budget));
-    return;
-  }
-  const parent = frames[frames.length - 1];
-  if (parent !== undefined) {
-    parent.routeDependent = true;
-  }
 }
 
 function canonicalCycle(cycle: readonly string[]): readonly string[] {

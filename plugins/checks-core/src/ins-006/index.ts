@@ -8,19 +8,19 @@ import {
 } from "@tryaura/aura-sdk";
 
 import { guidedFix } from "./fix.js";
-import { buildInstructionGraph, findDepthOverflows, findInstructionCycles } from "./graph.js";
+import { findDepthOverflows } from "./depth.js";
+import { findInstructionCycles, instructionGraphFor, type InstructionGraph } from "./graph.js";
 import {
   isWithin,
   linkReporting,
   observedLinks,
   perSource,
   structuralId,
+  DEPTH_LIMITS,
   IMPORT_SUPPORT,
   type LinkReporting,
   type ObservedLink,
 } from "./links.js";
-
-const DEPTH_LIMITS: ReadonlyMap<string, number> = new Map([["claude-code", 5]]);
 
 /** How many paths one finding carries, so a hostile chain cannot inflate the report. */
 const MAX_REPORTED_PATHS = 100;
@@ -38,7 +38,7 @@ export const instructionLinkIntegrityCheck = defineCheck({
 });
 
 function detectLinkProblems(model: WorkspaceModel): readonly DetectedFinding[] {
-  const graph = buildInstructionGraph(model.instructionFiles);
+  const graph = instructionGraphFor(model.instructionFiles);
   const reporting = linkReporting(model);
   return [
     ...targetFindings(model, reporting),
@@ -130,10 +130,7 @@ function cycleFinding(paths: readonly string[]): DetectedFinding {
   };
 }
 
-function depthFindings(
-  app: AppModel,
-  graph: ReturnType<typeof buildInstructionGraph>,
-): readonly DetectedFinding[] {
+function depthFindings(app: AppModel, graph: InstructionGraph): readonly DetectedFinding[] {
   const limit = DEPTH_LIMITS.get(app.adapterId);
   if (limit === undefined) {
     return [];

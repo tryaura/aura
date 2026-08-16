@@ -102,16 +102,92 @@ const location = shape({
   path: text,
 });
 
-const finding = shape({
+const findingFields = shape({
   checkId: text,
   details: optional(text),
   id: text,
   locations: optional(arrayOf(location)),
   message: text,
   metadata: optional(jsonObject),
+  presentation: optional(
+    shape({
+      columns: arrayOf(
+        shape({
+          align: optional(oneOf("left", "right")),
+          falseLabel: optional(text),
+          format: optional(oneOf("boolean", "integer", "percentage", "text")),
+          heading: text,
+          key: text,
+          trueLabel: optional(text),
+        }),
+      ),
+      kind: oneOf("metadata-table"),
+      rowsKey: text,
+    }),
+  ),
   scope: oneOf("global", "project"),
   severity: oneOf("error", "info", "warn"),
 });
+
+/**
+ * A finding, plus the one thing about a metadata table its own shape cannot say.
+ *
+ * `rowsKey` and every column `key` name something in `metadata`, and a name that matches nothing
+ * fails quietly where it is meant to be read: the table vanishes from human output, or a column
+ * renders blank down its whole length, while the JSON stays perfectly well-formed. A column that
+ * only some rows carry is ordinary — the check that reports one file per row need not give every
+ * file every property — so what is demanded here is that each row answer to at least one column.
+ */
+const finding: FieldCheck = (value, path, problems) => {
+  const valid = findingFields(value, path, problems);
+  return isRecord(value) ? tableRowsAreReadable(value, path, problems) && valid : valid;
+};
+
+function tableRowsAreReadable(
+  value: Readonly<Record<string, unknown>>,
+  path: string,
+  problems: string[],
+): boolean {
+  const presentation = value["presentation"];
+  if (!isRecord(presentation) || presentation["kind"] !== "metadata-table") {
+    return true;
+  }
+
+  const rowsKey = presentation["rowsKey"];
+  const metadata = value["metadata"];
+  const rows = typeof rowsKey === "string" && isRecord(metadata) ? metadata[rowsKey] : undefined;
+  if (!Array.isArray(rows) || !rows.every(isRecord)) {
+    return reject(
+      `${path}.metadata.${typeof rowsKey === "string" ? rowsKey : "?"}`,
+      "an array of objects, because presentation.rowsKey names it",
+      problems,
+    );
+  }
+
+  const keys = columnKeys(presentation["columns"]);
+  if (keys.length === 0) {
+    return true;
+  }
+  return rows.every((row, index) =>
+    keys.some((key) => row[key] !== undefined)
+      ? true
+      : reject(
+          `${path}.metadata.${String(rowsKey)}[${String(index)}]`,
+          `a row carrying at least one column key (${keys.join(", ")})`,
+          problems,
+        ),
+  );
+}
+
+function columnKeys(columns: unknown): readonly string[] {
+  if (!Array.isArray(columns)) {
+    return [];
+  }
+  return columns.flatMap((column) => {
+    const key = isRecord(column) ? column["key"] : undefined;
+    return typeof key === "string" ? [key] : [];
+  });
+}
 
 const REPORT: Readonly<Record<string, FieldCheck>> = {
   diagnostics: arrayOf(

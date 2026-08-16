@@ -91,6 +91,71 @@ describe("parseReport", () => {
     expect(report.findings[0]?.locations).toBeUndefined();
   });
 
+  it("accepts and preserves a metadata-table presentation", () => {
+    const presentation = {
+      columns: [{ align: "right", format: "integer", heading: "Bytes", key: "bytes" }],
+      kind: "metadata-table",
+      rowsKey: "files",
+    };
+    const report = parse({
+      ...VALID,
+      findings: [
+        {
+          ...VALID.findings[0],
+          metadata: { files: [{ bytes: 32_001 }] },
+          presentation,
+        },
+      ],
+    });
+
+    expect(report.findings[0]?.presentation).toEqual(presentation);
+  });
+
+  it("rejects a metadata table pointing at rows that are not there", () => {
+    const presentation = {
+      columns: [{ heading: "File", key: "path" }],
+      kind: "metadata-table",
+      rowsKey: "files",
+    };
+
+    expect(() =>
+      parse({
+        ...VALID,
+        findings: [{ ...VALID.findings[0], metadata: { paths: [] }, presentation }],
+      }),
+    ).toThrow("report.findings[0].metadata.files: expected an array of objects");
+    expect(() =>
+      parse({
+        ...VALID,
+        findings: [
+          { ...VALID.findings[0], metadata: { files: [{ location: "a" }] }, presentation },
+        ],
+      }),
+    ).toThrow("report.findings[0].metadata.files[0]: expected a row carrying at least one column");
+  });
+
+  it("accepts a column only some rows carry", () => {
+    const report = parse({
+      ...VALID,
+      findings: [
+        {
+          ...VALID.findings[0],
+          metadata: { files: [{ bytes: 1, conditional: true }, { bytes: 2 }] },
+          presentation: {
+            columns: [
+              { format: "integer", heading: "Bytes", key: "bytes" },
+              { format: "boolean", heading: "Loading", key: "conditional" },
+            ],
+            kind: "metadata-table",
+            rowsKey: "files",
+          },
+        },
+      ],
+    });
+
+    expect(report.findings[0]?.metadata).toHaveProperty("files");
+  });
+
   it("explains that stdout held no report at all", () => {
     expect(() => parseReport("", fail)).toThrow("Check runner expected one JSON report on stdout.");
     expect(() => parseReport("[]", fail)).toThrow("report: expected an object");

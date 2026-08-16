@@ -12,6 +12,55 @@ export interface FindingLocation {
   readonly path: string;
 }
 
+/** How a metadata-table column should render its values in human output. */
+export type FindingMetadataColumnFormat = "boolean" | "integer" | "percentage" | "text";
+
+/** What every metadata-table column declares, whatever it holds. */
+interface FindingMetadataColumnBase {
+  /** Aligns the rendered cell within the column. */
+  readonly align?: "left" | "right" | undefined;
+  /** User-facing column heading. */
+  readonly heading: string;
+  /** Object key read from every metadata row. */
+  readonly key: string;
+}
+
+/** A column of booleans, rendered as labels rather than as `true` and `false`. */
+export interface FindingMetadataBooleanColumn extends FindingMetadataColumnBase {
+  /** Text used when the value is false. Defaults to `false`. */
+  readonly falseLabel?: string | undefined;
+  readonly format: "boolean";
+  /** Text used when the value is true. Defaults to `true`. */
+  readonly trueLabel?: string | undefined;
+}
+
+/**
+ * A column formatted straight from its value.
+ *
+ * The label fields are declared as `never` so that a column carrying them without asking for
+ * `"boolean"` fails to compile rather than passing labels the renderer will never read.
+ */
+export interface FindingMetadataValueColumn extends FindingMetadataColumnBase {
+  readonly falseLabel?: never;
+  /** Converts the JSON value into human-readable text. Defaults to `"text"`. */
+  readonly format?: Exclude<FindingMetadataColumnFormat, "boolean"> | undefined;
+  readonly trueLabel?: never;
+}
+
+/** One column in a generic table backed by finding metadata. Discriminate on `format`. */
+export type FindingMetadataTableColumn = FindingMetadataBooleanColumn | FindingMetadataValueColumn;
+
+/** A generic request for the CLI to render one metadata array as a table. */
+export interface FindingMetadataTablePresentation {
+  readonly columns: readonly FindingMetadataTableColumn[];
+  readonly kind: "metadata-table";
+  /** Top-level key of the array in {@link DetectedFinding.metadata}. */
+  readonly rowsKey: string;
+}
+
+/** Optional human-output presentation attached to a finding. */
+export type FindingPresentation = FindingMetadataTablePresentation;
+
 /**
  * What a {@link Check} emits for one problem it found.
  *
@@ -38,6 +87,8 @@ export interface DetectedFinding {
    * Rendered in user-visible output. Never place credentials or file contents here.
    */
   readonly metadata?: JsonObject | undefined;
+  /** Generic guidance for presenting the structured metadata in human output. */
+  readonly presentation?: FindingPresentation | undefined;
   /** Overrides {@link Check.defaultSeverity} for this occurrence only. */
   readonly severity?: Severity | undefined;
 }

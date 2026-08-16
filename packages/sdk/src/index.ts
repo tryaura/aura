@@ -15,7 +15,18 @@ export type {
   FileProblem,
 } from "./adapter.js";
 export { SHARED_INSTRUCTIONS_TEMPLATE_TOKEN } from "./adapter.js";
-export type { Check, DetectedFinding, Finding, FindingLocation } from "./check.js";
+export type {
+  Check,
+  DetectedFinding,
+  Finding,
+  FindingLocation,
+  FindingMetadataBooleanColumn,
+  FindingMetadataColumnFormat,
+  FindingMetadataTableColumn,
+  FindingMetadataTablePresentation,
+  FindingMetadataValueColumn,
+  FindingPresentation,
+} from "./check.js";
 export type {
   Fixability,
   JsonObject,

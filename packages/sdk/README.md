@@ -222,9 +222,11 @@ A literal keeps compiling after a rename and silently stops matching, which turn
 quietly reports nothing.
 
 A check emits `DetectedFinding` values carrying only what is specific to the occurrence — `id`,
-`message`, and optionally `details`, `locations`, `metadata`, and a `severity` override. Aura core
-stamps on `checkId`, `scope`, and the resolved `severity` from the owning check, so a finding
-cannot contradict the check that produced it.
+`message`, and optionally `details`, `locations`, `metadata`, `presentation`, and a `severity`
+override. `presentation` can ask a human renderer to display a metadata array as a generic table;
+the structured metadata remains the source of truth in JSON output. Aura core stamps on `checkId`,
+`scope`, and the resolved `severity` from the owning check, so a finding cannot contradict the
+check that produced it.
 
 `AppModel.sourceFiles` reports only whether each declared path existed. Contents are consumed by
 `parse` and are not retained alongside the documents parsed out of them, so a large instruction
