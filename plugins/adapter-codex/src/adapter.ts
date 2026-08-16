@@ -20,7 +20,7 @@ export const codexAdapter = defineAdapter({
   detect: (environment) =>
     detectExecutable(environment, { authenticationArgs: ["login", "status"], binaryName: "codex" }),
   displayName: "Codex",
-  files: globalFiles,
+  files: codexFiles,
   id: CODEX_ADAPTER_ID,
   installHint:
     "Run `npm install -g @openai/codex@latest`, or update Codex with your package manager.",
@@ -33,10 +33,9 @@ export const codexAdapter = defineAdapter({
       // instruction file, and modelling it as one asserts the user wrote nothing where nobody
       // looked. A dangling symlink carries no `problem` and is still worth a document: the broken
       // link itself is the thing INS-002 needs to see.
-      instructionFiles:
-        instructions?.exists !== true || instructions.problem !== undefined
-          ? []
-          : [parseInstructionFile(instructions)],
+      instructionFiles: [instructions, files.get(SOURCE_IDS.instructionsProject)].flatMap((file) =>
+        file?.exists !== true || file.problem !== undefined ? [] : [parseInstructionFile(file)],
+      ),
       mcpServers: mcp?.content === undefined ? [] : parseMcpServers(mcp),
       metadata: {
         [CODEX_PROJECT_TRUST_KEY]:
@@ -54,7 +53,15 @@ export const codexAdapter = defineAdapter({
   supportedRange: ">=0.146.0 <0.148.0",
 });
 
-function globalFiles(environment: Environment): readonly AdapterFileSpec[] {
+/**
+ * Declares the global and project configuration Codex reads.
+ *
+ * Project instructions are rooted at the invocation directory, not the repository root, because
+ * that is where Codex starts its own lookup. Codex also merges `AGENTS.md` files from nested
+ * subdirectories, but discovering those would mean walking the whole tree, so they are a
+ * documented non-goal — the same restraint as the Cursor adapter's nested-rules decision.
+ */
+function codexFiles(environment: Environment): readonly AdapterFileSpec[] {
   return [
     {
       id: SOURCE_IDS.instructions,
@@ -62,6 +69,13 @@ function globalFiles(environment: Environment): readonly AdapterFileSpec[] {
       optional: true,
       path: join(environment.homeDir, ".codex", "AGENTS.md"),
       scope: "global",
+    },
+    {
+      id: SOURCE_IDS.instructionsProject,
+      kind: "instructions",
+      optional: true,
+      path: join(environment.cwd, "AGENTS.md"),
+      scope: "project",
     },
     {
       id: SOURCE_IDS.mcp,
