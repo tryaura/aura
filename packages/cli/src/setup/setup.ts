@@ -6,6 +6,7 @@ import {
   buildWorkspaceModel,
   prepareFixPlan,
   runChecks,
+  type FixPlanPreview,
   type PluginRegistry,
   type WorkspaceScan,
 } from "@tryaura/core";
@@ -13,6 +14,7 @@ import {
 import { createCheckReport } from "../report.js";
 import { renderHuman, safe } from "../render.js";
 import type { CliBranding, CliExitCode } from "../types.js";
+import { buildAppCatalog } from "./catalog.js";
 import { planSetup } from "./planner.js";
 import { SETUP_STEPS } from "./steps/index.js";
 import { renderSetupSummary } from "./summary.js";
@@ -59,19 +61,14 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
     return 2;
   }
 
-  // Inventory adapters report themselves installed so core reads their paths; naming them here
-  // would claim the user runs an application that does not exist.
-  const detected = model.apps.filter((app) => app.synthetic !== true);
-  io.note(
-    detected.length === 0
-      ? "No agent applications detected."
-      : `Detected: ${detected.map((app) => safe(app.displayName)).join(", ")}`,
-  );
-  stdout.write("\n");
+  const appCatalog = buildAppCatalog(request.registry.adapters, model);
 
   let selections: SetupSelections = {};
   for (const step of request.steps ?? SETUP_STEPS) {
-    const outcome = await step.gather({ manifest: model.manifest, model, selections }, io);
+    const outcome = await step.gather(
+      { appCatalog, manifest: model.manifest, model, selections },
+      io,
+    );
     if (outcome === SETUP_ABORTED) {
       stdout.write("\nLeft everything as it was.\n");
       return 1;
@@ -79,7 +76,7 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
     selections = outcome;
   }
 
-  const outcome = planSetup({ manifest: model.manifest, model, selections });
+  const outcome = planSetup({ appCatalog, manifest: model.manifest, model, selections });
   const prepared = await prepareFixPlan({ model, plan: outcome.plan });
 
   if (
@@ -87,7 +84,7 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
     prepared.preview.conflictedOperationCount === 0 &&
     outcome.blockers.length === 0
   ) {
-    stdout.write("\nAlready converged — nothing to change.\n\n");
+    renderConvergedSetup(prepared.preview, request.withDetail, stdout);
     return endOnGreen(request, scan);
   }
 
@@ -132,6 +129,20 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
     environment,
   });
   return endOnGreen(request, rescanned);
+}
+
+function renderConvergedSetup(
+  preview: FixPlanPreview,
+  withDetail: boolean,
+  output: Writable,
+): void {
+  output.write("\n");
+  if (preview.manualSteps.length === 0) {
+    output.write("Already converged — nothing to change.\n\n");
+    return;
+  }
+  renderSetupSummary(preview, [], withDetail, output);
+  output.write("\n");
 }
 
 function endOnGreen(request: SetupRequest, scan: WorkspaceScan): CliExitCode {

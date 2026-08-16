@@ -1,6 +1,13 @@
 import type { AuraManifestState, WorkspaceModel } from "@tryaura/aura-sdk";
 
+import type { AppCatalogEntry } from "./catalog.js";
 import type { WizardIo } from "./wizard-types.js";
+
+/** What the apps step decided; see `steps/apps.ts`. */
+interface AppSelections {
+  /** Adapter ids the user chose to manage, in catalog order. */
+  readonly managed: readonly string[];
+}
 
 /** What the baseline step decided; see `steps/baseline.ts`. */
 interface BaselineSelections {
@@ -16,10 +23,13 @@ interface BaselineSelections {
  * planner resolves as "keep the current state for that concern".
  */
 export interface SetupSelections {
+  readonly apps?: AppSelections | undefined;
   readonly baseline?: BaselineSelections | undefined;
 }
 
 export interface SetupStepContext {
+  /** Every registered adapter, detected or not, in registry order. */
+  readonly appCatalog: readonly AppCatalogEntry[];
   readonly manifest: AuraManifestState;
   readonly model: WorkspaceModel;
   readonly selections: SetupSelections;

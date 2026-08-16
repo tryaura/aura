@@ -40,6 +40,35 @@ export function fixtureAdapter(
   });
 }
 
+/** A plugin with one detectable adapter and one that no machine has installed. */
+export function appsPlugin(): AuraPlugin {
+  return definePlugin({
+    adapters: [
+      defineAdapter({
+        detect: () => Promise.resolve({ installed: true, version: "1.2.3" }),
+        displayName: "Installed App",
+        files: () => [],
+        id: "installed-app",
+        parse: () => ({ instructionFiles: [], mcpServers: [], skills: [] }),
+        supportedRange: ">=1 <2",
+      }),
+      defineAdapter({
+        detect: () => Promise.resolve({ installed: false }),
+        displayName: "Missing App",
+        files: () => [],
+        id: "missing-app",
+        installHint: "brew install missing-app",
+        parse: () => ({ instructionFiles: [], mcpServers: [], skills: [] }),
+        supportedRange: ">=1",
+      }),
+    ],
+    apiVersion: 1,
+    id: "fixture-apps",
+    name: "Fixture Apps",
+    version: "1.0.0",
+  });
+}
+
 /** A plugin whose check throws the kind of message that quotes the file that broke it. */
 export function throwingPlugin(): AuraPlugin {
   return definePlugin({
