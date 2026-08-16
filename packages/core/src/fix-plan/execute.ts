@@ -1,3 +1,5 @@
+import { AuraManifestError } from "../manifest/error.js";
+import { assertAuraManifestWritable } from "../manifest/write.js";
 import { applyPreparedOperation, type UndoStep } from "./apply.js";
 import { withJournalLock } from "./journal-lock.js";
 import type { JournalHandle } from "./journal-read.js";
@@ -70,11 +72,32 @@ export async function applyFixPlan(
   prepared: PreparedFixPlan,
   options: FixPlanApplyOptions,
 ): Promise<FixPlanExecutionResult> {
+  const plan = prepared[PREPARED_STATE];
+
+  // Ahead of the conflict guard, because unreadable desired state is why those conflicts are there:
+  // reporting it as a generic blocked plan would bury the one thing the user has to fix.
+  assertManifestWritable(plan);
   if (prepared.preview.conflictedOperationCount > 0) {
     throw blockedPlanError(prepared.preview);
   }
 
-  return applyOperations(prepared[PREPARED_STATE], prepared.preview, options.now);
+  return applyOperations(plan, prepared.preview, options.now);
+}
+
+/** Restates a manifest problem as the fix-plan failure a caller is already catching. */
+function assertManifestWritable(plan: PreparedPlanState): void {
+  try {
+    assertAuraManifestWritable(plan.model.manifest);
+  } catch (error) {
+    if (error instanceof AuraManifestError) {
+      throw new FixPlanError("manifest-read-only", error.message, {
+        cause: error,
+        manifestProblem: error.problem,
+        path: error.path,
+      });
+    }
+    throw error;
+  }
 }
 
 /** Validates, previews, and optionally applies a plan through the kernel's single write path. */

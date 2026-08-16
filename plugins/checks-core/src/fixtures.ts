@@ -80,6 +80,7 @@ export function workspace(
     cwd: "/workspace",
     homeDir: "/home/dev",
     instructionFiles: apps.flatMap((application) => application.instructionFiles),
+    manifest: { exists: false, path: "/home/dev/agents/aura.json", status: "missing" },
     mcpServers: [],
     sharedInstructions: {
       content,

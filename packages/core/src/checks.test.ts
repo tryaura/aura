@@ -8,6 +8,7 @@ const MODEL: WorkspaceModel = {
   cwd: "/workspace",
   homeDir: "/home/dev",
   instructionFiles: [],
+  manifest: { exists: false, path: "/home/dev/agents/aura.json", status: "missing" },
   mcpServers: [],
   sharedInstructions: { exists: false, path: "/home/dev/agents/AGENTS.md" },
   skills: [],

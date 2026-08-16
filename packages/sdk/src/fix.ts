@@ -16,6 +16,9 @@ export interface WriteFileOperation {
    * A file that already exists keeps the mode it has — a user who tightened permissions on their
    * own config should not have a fix loosen them again. The preview says so when the two differ,
    * so the outcome is visible rather than silent.
+   *
+   * No plan can opt out of that. Core enforces an exact mode on the handful of files it owns as
+   * protocol, and it decides which those are by path; a plan cannot nominate one.
    */
   readonly mode?: FileMode | undefined;
   /** Absolute path to write. */

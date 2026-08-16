@@ -25,3 +25,12 @@ export const MAX_DIFF_BYTES = 256 * 1024;
 
 /** The mode a {@link WriteFileOperation} gets when it does not ask for one. */
 export const DEFAULT_FILE_MODE = 0o644;
+
+/**
+ * Every mode a plan may request.
+ *
+ * `FileMode` already closes this set, but a type is erased at runtime and plugins ship as compiled
+ * JavaScript. Since the mode reaches `chmod` unchanged, checking it here is what actually keeps a
+ * plan from asking for a world-writable or setuid file.
+ */
+export const FILE_MODES: ReadonlySet<number> = new Set([0o600, 0o644, 0o700, 0o755]);

@@ -13,8 +13,9 @@ export function renderWriteDiff(
   before: PathState,
   content: string,
   requestedMode: FileMode | undefined,
+  mode: number,
 ): string {
-  const note = modeNote(before, requestedMode);
+  const note = modeNote(before, requestedMode, mode);
   const previous = textOf(before);
   if (previous === undefined) {
     return renderSummary("write", path, "Binary or oversized file would change.") + note;
@@ -104,17 +105,25 @@ function renderSummary(operation: string, path: string, detail: string): string 
 }
 
 /**
- * Notes a mode a plan asked for but will not get.
+ * Says what happens to an existing file's permissions.
  *
- * `mode` applies to a file Aura creates; an existing file keeps whatever the user set. Saying so in
- * the preview is the difference between a deliberate choice and a silent one.
+ * Two cases are worth a line. A mode that changes is a change the diff itself cannot show, and core
+ * only does that to files it owns as protocol. A `mode` a plan asked for and will not get is the
+ * commoner one: an existing file keeps whatever the user set, and saying so is the difference
+ * between a deliberate choice and a silent one.
  */
-function modeNote(before: PathState, requestedMode: FileMode | undefined): string {
-  if (requestedMode === undefined || before.kind !== "file" || before.mode === requestedMode) {
+function modeNote(before: PathState, requestedMode: FileMode | undefined, mode: number): string {
+  if (before.kind !== "file") {
     return "";
   }
+  if (before.mode !== mode) {
+    return `mode ${formatMode(before.mode)} changes to ${formatMode(mode)}\n`;
+  }
+  if (requestedMode !== undefined && requestedMode !== before.mode) {
+    return `mode ${formatMode(requestedMode)} requested; existing mode ${formatMode(before.mode)} is preserved\n`;
+  }
 
-  return `mode ${formatMode(requestedMode)} requested; existing mode ${formatMode(before.mode)} is preserved\n`;
+  return "";
 }
 
 function formatMode(mode: number): string {

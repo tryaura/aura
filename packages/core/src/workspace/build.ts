@@ -11,6 +11,9 @@ import type {
   WorkspaceModel,
 } from "@tryaura/aura-sdk";
 
+import { auraManifestDiagnostics } from "../manifest/diagnostic.js";
+import { resolveAuraManifestPath } from "../manifest/protocol.js";
+import { readAuraManifest } from "../manifest/read.js";
 import { describeFailure, type ScanDiagnostic, type ScanPhase } from "./diagnostics.js";
 import { type AdapterFileDiscovery, discoverAdapterFiles } from "./discovery.js";
 import { createLinkResolver, type LinkResolver } from "./links.js";
@@ -80,16 +83,18 @@ export async function buildWorkspaceModel(options: WorkspaceScanOptions): Promis
     reader,
   };
   const sharedPath = sharedInstructionsPath(options.environment);
+  const manifestPath = resolveAuraManifestPath(options.environment.homeDir);
 
   // The repository scan needs only the project root, so it runs alongside the adapters rather than
   // after them: its Git probes are latency the scan would otherwise pay end to end.
-  const [scans, root, repository, sharedContents] = await Promise.all([
+  const [scans, root, repository, sharedContents, manifestContents] = await Promise.all([
     Promise.all(options.adapters.map((adapter) => scanAdapter(adapter, context))),
     projectRoot,
     projectRoot.then((found) =>
       found === undefined ? undefined : scanRepository(found, options.environment, reader),
     ),
     reader.read(sharedPath),
+    reader.read(manifestPath),
   ]);
 
   const apps: AppModel[] = [];
@@ -105,6 +110,9 @@ export async function buildWorkspaceModel(options: WorkspaceScanOptions): Promis
     diagnostics.push(...scan.diagnostics);
   }
 
+  const manifest = readAuraManifest(manifestPath, manifestContents);
+  diagnostics.push(...auraManifestDiagnostics(manifest));
+
   return {
     diagnostics,
     model: {
@@ -112,6 +120,7 @@ export async function buildWorkspaceModel(options: WorkspaceScanOptions): Promis
       cwd: options.environment.cwd,
       homeDir: options.environment.homeDir,
       instructionFiles: apps.flatMap((app) => app.instructionFiles),
+      manifest,
       mcpServers: apps.flatMap((app) => app.mcpServers),
       projectRoot: root,
       ...(repository === undefined ? {} : { repository }),

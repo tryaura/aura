@@ -50,6 +50,7 @@ export function model(options: { readonly apps?: readonly AppModel[] } = {}): Wo
     cwd: "/workspace",
     homeDir: "/home/dev",
     instructionFiles: apps.flatMap((candidate) => candidate.instructionFiles),
+    manifest: { exists: false, path: "/home/dev/agents/aura.json", status: "missing" },
     mcpServers: apps.flatMap((candidate) => candidate.mcpServers),
     // Absent by default: the environment checks never read it, and a fixture that claimed a shared
     // source exists would make the INS checks disagree with the one in `fixtures.ts`.

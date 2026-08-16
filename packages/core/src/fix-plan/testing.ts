@@ -66,6 +66,11 @@ export async function createFixPlanFixture(): Promise<FixPlanFixture> {
       cwd: workspace,
       homeDir: home,
       instructionFiles: [],
+      manifest: {
+        exists: false,
+        path: join(home, "agents", "aura.json"),
+        status: "missing",
+      },
       mcpServers: [],
       projectRoot: workspace,
       sharedInstructions: { exists: false, path: join(home, "agents", "AGENTS.md") },

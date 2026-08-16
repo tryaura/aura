@@ -76,6 +76,11 @@ function workspaceModel(homeDir: string, cwd: string, shared: string): Workspace
     cwd,
     homeDir,
     instructionFiles: [],
+    manifest: {
+      exists: false,
+      path: join(homeDir, "agents", "aura.json"),
+      status: "missing",
+    },
     mcpServers: [],
     sharedInstructions: { content: "after\n", exists: true, path: shared },
     projectRoot: cwd,

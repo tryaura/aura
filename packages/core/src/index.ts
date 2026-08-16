@@ -3,6 +3,17 @@ export type { EnvironmentBootOptions } from "./environment.js";
 export { runChecks } from "./checks.js";
 export type { CheckDiagnostic } from "./checks.js";
 export {
+  createEmptyAuraManifest,
+  parseAuraManifest,
+  serializeAuraManifest,
+} from "./manifest/codec.js";
+export {
+  AURA_MANIFEST_PATH,
+  AURA_MANIFEST_SCHEMA_VERSION,
+  resolveAuraManifestPath,
+} from "./manifest/protocol.js";
+export { assertAuraManifestWritable, createAuraManifestWriteOperation } from "./manifest/write.js";
+export {
   applyFixPlan,
   executeFixPlan,
   prepareFixPlan,

@@ -6,6 +6,7 @@ import type {
   FileProblem,
 } from "./adapter.js";
 import type { JsonObject, Scope } from "./common.js";
+import type { AuraManifestState } from "./manifest.js";
 
 /** How one instruction document pulls in another. */
 export type InstructionLinkKind = "import" | "native" | "symlink";
@@ -255,6 +256,8 @@ export interface WorkspaceModel {
   readonly homeDir: string;
   /** Instruction documents across every application. */
   readonly instructionFiles: readonly InstructionDocument[];
+  /** Desired Aura-managed state loaded from the distribution-independent manifest. */
+  readonly manifest: AuraManifestState;
   /** MCP servers across every application. */
   readonly mcpServers: readonly McpServer[];
   /** Repository root, when `cwd` is inside one. */

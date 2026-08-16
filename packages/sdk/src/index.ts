@@ -58,6 +58,16 @@ export type {
   WriteFileOperation,
 } from "./fix.js";
 export type {
+  AuraManifest,
+  AuraManifestApp,
+  AuraManifestEntry,
+  AuraManifestOwnership,
+  AuraManifestProblem,
+  AuraManifestSnippet,
+  AuraManifestState,
+  AuraManifestV1,
+} from "./manifest.js";
+export type {
   AdapterSnapshot,
   AppModel,
   GitignoreModel,

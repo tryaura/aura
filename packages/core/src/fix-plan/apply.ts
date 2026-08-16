@@ -12,7 +12,6 @@ import {
 import { dirname } from "node:path";
 
 import { removeCreatedDirectories, replaceFile, replaceLink } from "./filesystem.js";
-import { DEFAULT_FILE_MODE } from "./limits.js";
 import { revalidateMutationPath, revalidateSymlinkTarget } from "./path-policy.js";
 import type {
   ApplicableOperation,
@@ -139,6 +138,8 @@ async function applyWrite(
   const path = prepared.operation.path;
   const index = prepared.preview.index;
   const before = prepared.before;
+  // Decided in `prepareWrite`, so what lands on disk is what the preview showed.
+  const mode = prepared.mode;
 
   await verifyPath(path, before, index, plan);
   const undoDirectory = await ensureDirectory(dirname(path));
@@ -146,7 +147,6 @@ async function applyWrite(
   if (before.kind === "missing") {
     // `wx` is O_CREAT|O_EXCL: it neither follows a symbolic link that appeared since the check nor
     // clobbers a file that did.
-    const mode = prepared.operation.mode ?? DEFAULT_FILE_MODE;
     await writeFile(path, prepared.operation.content, { encoding: "utf8", flag: "wx", mode });
     // `mode` on create is masked by the process umask, and the modes a plan may ask for are a
     // closed, deliberate set. Set it exactly.
@@ -157,15 +157,13 @@ async function applyWrite(
   }
 
   if (before.kind === "file") {
-    // The existing file keeps its own mode; `operation.mode` describes a file Aura creates, and the
-    // preview says so when the two differ.
-    await replaceFile(path, prepared.operation.content, before.mode);
+    await replaceFile(path, prepared.operation.content, mode);
     return undoStep(index, undoDirectory, async () => {
       await restoreFile(path, before);
     });
   }
 
-  await replaceFile(path, prepared.operation.content, prepared.operation.mode ?? DEFAULT_FILE_MODE);
+  await replaceFile(path, prepared.operation.content, mode);
   return undoStep(index, undoDirectory, async () => {
     await replaceLink(path, before.target);
   });
