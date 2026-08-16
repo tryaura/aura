@@ -1,3 +1,8 @@
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+
+import { hashManagedSnippet } from "@tryaura/core";
 import { defineCheck, definePlugin } from "@tryaura/aura-sdk";
 import type { CliDistro } from "@tryaura/aura-cli";
 import { describe, expect, it } from "vitest";
@@ -37,6 +42,45 @@ describe("seeded setup integration", () => {
     expect(result.stderr).toContain("--dry-run and --yes contradict each other");
     expect(result.diffs).toEqual([]);
   });
+
+  it("installs a third-party snippet through the standard contribution path", async () => {
+    const snippetContent = "# Fixture rules\n\n- Keep fixture behavior deterministic.\n";
+    const snippetId = "fixture-content/rules";
+    const snippetHash = hashManagedSnippet(snippetContent);
+    await using seed = await createSeedBuilder()
+      .homeFile("agents/AGENTS.md", "# Shared agent instructions\n")
+      .homeFile(
+        "agents/aura.json",
+        JSON.stringify(
+          {
+            apps: {},
+            mcpServers: [],
+            ownership: {},
+            schemaVersion: 1,
+            skills: [],
+            snippets: [{ hash: snippetHash, id: snippetId, pinned: false, version: "1.0.0" }],
+          },
+          undefined,
+          2,
+        ) + "\n",
+      )
+      .workspaceFile("fixture-snippet.md", snippetContent)
+      .build();
+
+    const result = await runSetup({ distro: snippetDistro(seed.workspaceDir), seed });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
+    const instructions = await readFile(join(seed.homeDir, "agents", "AGENTS.md"), "utf8");
+    expect(instructions).toContain(`<!-- aura:begin id=${snippetId} sha256=${snippetHash} -->`);
+    expect(instructions).toContain(snippetContent);
+    const manifest: unknown = JSON.parse(
+      await readFile(join(seed.homeDir, "agents", "aura.json"), "utf8"),
+    );
+    expect(manifest).toMatchObject({
+      snippets: [{ hash: snippetHash, id: snippetId, pinned: false, version: "1.0.0" }],
+    });
+  });
 });
 
 function distro(): CliDistro {
@@ -58,6 +102,36 @@ function distro(): CliDistro {
         ],
         id: "fixture",
         name: "Fixture",
+        version: "1.0.0",
+      }),
+    ],
+  };
+}
+
+function snippetDistro(workspaceDir: string): CliDistro {
+  const base = distro();
+  return {
+    ...base,
+    plugins: [
+      ...base.plugins,
+      definePlugin({
+        apiVersion: 1,
+        id: "fixture-content",
+        name: "Fixture content",
+        snippets: [
+          {
+            category: "fixture",
+            description: "Provides deterministic fixture rules.",
+            id: "fixture-content/rules",
+            kind: "snippet",
+            name: "Fixture rules",
+            source: {
+              type: "file",
+              url: pathToFileURL(join(workspaceDir, "fixture-snippet.md")).href,
+            },
+            version: "1.0.0",
+          },
+        ],
         version: "1.0.0",
       }),
     ],

@@ -19,7 +19,8 @@
     "@tryaura/adapter-codex": "workspace:*",
     "@tryaura/adapter-cursor": "workspace:*",
     "@tryaura/aura-cli": "workspace:*",
-    "@tryaura/checks-core": "workspace:*"
+    "@tryaura/checks-core": "workspace:*",
+    "@tryaura/content-official": "workspace:*"
   },
   "devDependencies": {
     "@tryaura/aura-testkit": "workspace:*",
