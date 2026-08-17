@@ -25,7 +25,7 @@ export function readAuraManifest(path: string, contents: PathContents): AuraMani
   if (contents.content === undefined || contents.isDirectory) {
     return fileProblem(path, true, "unsupported");
   }
-  return parseAuraManifest(contents.content, path);
+  return parseAuraManifest(contents.content, path, contents.mode);
 }
 
 function fileProblem(path: string, exists: boolean, reason: FileProblem): AuraManifestState {

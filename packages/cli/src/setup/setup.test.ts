@@ -98,7 +98,7 @@ describe("runSetup", () => {
     const exitCode = await runSetup(fixture.request());
 
     expect(exitCode).toBe(0);
-    expect(fixture.stdout()).toContain("Already converged — nothing to change.");
+    expect(fixture.stdout()).toContain("Already converged — nothing to do.");
     await expect(snapshot(fixture.homeDir)).resolves.toEqual(before);
   });
 
@@ -220,7 +220,7 @@ describe("runSetup", () => {
     });
     await expect(runSetup(fixture.request({}, { registry }))).resolves.toBe(0);
     expect(fixture.stdout().match(/Steps to take yourself:/gu)).toHaveLength(2);
-    expect(fixture.stdout()).not.toContain("Already converged — nothing to change.");
+    expect(fixture.stdout()).not.toContain("Already converged — nothing to do.");
   });
 
   it("confirms an empty app selection before the plan confirmation", async () => {

@@ -98,6 +98,24 @@ await using cursorSeed = await createCursorSeed({
 When a run produces no readable report, the failure carries the exit code and the CLI's own stderr,
 which is where the actual explanation lives.
 
+## Proving convergence
+
+`expectConvergedTwice` runs a setup or fix callback twice and asserts that the second run reports
+convergence, changes no captured path, and creates no undo-journal entry:
+
+```ts
+import { expectConvergedTwice, runSetup } from "@tryaura/aura-testkit";
+
+const { first, second } = await expectConvergedTwice(seed, () => runSetup({ distro, seed }));
+```
+
+Paths under `agents/.backups/` are excluded from the diff comparisons and asserted separately by
+journal entry name. Convergence is a claim about the machine's configuration, and the journal is
+where a run records what it replaced — it also holds a target-lock directory a run touches whether
+or not it writes anything, so comparing it byte for byte makes the assertion fail on timing.
+
+The helper is test-runner independent and returns both results for additional assertions.
+
 ## Running a compiled distribution
 
 `runBinaryCheck` applies the same seed and returns the same result shape while launching a compiled

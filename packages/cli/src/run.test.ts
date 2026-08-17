@@ -225,6 +225,50 @@ describe("runCli", () => {
     expect(capture.stderr.text).toContain("stdin and stdout must both be terminals");
   });
 
+  it("validates --add kinds before scanning", async () => {
+    let invoked = false;
+    const plugin = definePlugin({
+      adapters: [
+        fixtureAdapter(() => {
+          invoked = true;
+          return { installed: false };
+        }),
+      ],
+      apiVersion: 1,
+      id: "fixture",
+      name: "Fixture",
+      version: "1.0.0",
+    });
+    const capture = createCapture(["setup", "--add", "unknown", "--yes"]);
+
+    expect(await runCli(distro([plugin]), capture.runtime)).toBe(2);
+    expect(capture.stderr.text).toContain("unknown --add kind: unknown");
+    expect(capture.stderr.text).toContain("Valid kinds: snippet");
+    expect(invoked).toBe(false);
+  });
+
+  // The rejected kind is quoted back from argv, so it reaches the terminal as text Aura did not
+  // write. An escape sequence surviving that trip can repaint the line into one that reads green.
+  it("neutralizes control characters in a rejected --add kind", async () => {
+    const hostile = `snippet[2K\rall checks passed`;
+    const capture = createCapture(["setup", "--add", hostile, "--yes"]);
+
+    expect(await runCli(distro(), capture.runtime)).toBe(2);
+    expect(capture.stderr.text).not.toContain("");
+    expect(capture.stderr.text).not.toContain("\r");
+    expect(capture.stderr.text).toContain("unknown --add kind: snippet [2K all checks passed");
+  });
+
+  it("reports the full-setup prerequisite for --add snippet", async () => {
+    const capture = createCapture(["setup", "--add", "snippet", "--yes"]);
+
+    expect(await runCli(distro(), capture.runtime)).toBe(2);
+    expect(capture.stderr.text).toContain(
+      "the Snippets step needs a readable shared instruction file",
+    );
+    expect(capture.stderr.text).toContain("Run acme setup to establish it");
+  });
+
   it("uses branding in top-level help and version output", async () => {
     const help = createCapture([]);
     const version = createCapture(["--version"]);

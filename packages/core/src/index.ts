@@ -9,6 +9,7 @@ export {
   serializeAuraManifest,
 } from "./manifest/codec.js";
 export {
+  AURA_MANIFEST_FILE_MODE,
   AURA_MANIFEST_PATH,
   AURA_MANIFEST_SCHEMA_VERSION,
   resolveAuraManifestPath,

@@ -9,6 +9,7 @@ import {
   composeConsolidatedInstructions,
   duplicateClusters,
   instructionInventory,
+  instructionTargetContent,
   instructionTargetSource,
 } from "./instructions.js";
 import type { SetupBlocker } from "./planner.js";
@@ -102,12 +103,17 @@ function planScope(
   const existing = instructionTargetSource(context.model, selection.scope, selection.targetPath);
 
   if (selection.action === "template") {
-    state.operations.push({
-      content: SHARED_INSTRUCTIONS_TEMPLATE,
-      mode: COMPOSED_INSTRUCTIONS_MODE,
-      path: selection.targetPath,
-      type: "write",
-    });
+    if (
+      instructionTargetContent(context.model, selection.scope, selection.targetPath) !==
+      SHARED_INSTRUCTIONS_TEMPLATE
+    ) {
+      state.operations.push({
+        content: SHARED_INSTRUCTIONS_TEMPLATE,
+        mode: COMPOSED_INSTRUCTIONS_MODE,
+        path: selection.targetPath,
+        type: "write",
+      });
+    }
     return;
   }
   if (selection.action !== "consolidate") {
@@ -149,7 +155,9 @@ function planConsolidatedTarget(
         type: "archive",
       });
     }
-  } else {
+  } else if (
+    instructionTargetContent(context.model, selection.scope, selection.targetPath) !== content
+  ) {
     state.operations.push({
       content,
       mode: COMPOSED_INSTRUCTIONS_MODE,

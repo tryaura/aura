@@ -104,6 +104,25 @@ export function instructionTargetSource(
   return { content, path: resolve(path), scope };
 }
 
+/**
+ * Exact current contents of one setup target, including an empty file.
+ *
+ * Scoped like {@link instructionTargetSource}, which it is read beside in the planner: only the
+ * global target is the shared-instruction source, and matching on path alone would hand a project
+ * selection the global file's contents on a machine where the two paths coincide.
+ */
+export function instructionTargetContent(
+  model: WorkspaceModel,
+  scope: Scope,
+  path: string,
+): string | undefined {
+  if (scope === "global" && resolve(path) === resolve(model.sharedInstructions.path)) {
+    return model.sharedInstructions.content;
+  }
+  return model.instructionFiles.find((document) => resolve(document.path) === resolve(path))
+    ?.content;
+}
+
 export function duplicateClusters(findings: readonly Finding[]): readonly DuplicateCluster[] {
   return findings
     .filter((finding) => finding.checkId === "INS-003")

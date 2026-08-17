@@ -5,7 +5,17 @@ import type { Environment, ExecResult } from "./environment.js";
 
 const VERSION_PATTERN = /(?:^|\s|v)(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)/u;
 
-const PROBE_TIMEOUT_MS = 5_000;
+/**
+ * Bound on one `--version` or authentication probe.
+ *
+ * A probe that times out is indistinguishable from an application that is not installed — the loop
+ * below simply moves on — so this has to clear the worst honest spawn, not the typical one.
+ * Process creation alone reaches several seconds when a machine is busy enough to be running many
+ * probes at once, which is exactly when a false "not found" is most likely and least expected.
+ * Still below the default exec timeout, because a probe is bounded work and every entry on the
+ * search path pays this once.
+ */
+const PROBE_TIMEOUT_MS = 20_000;
 
 /** How {@link detectExecutable} identifies one agent application on the search path. */
 export interface DetectExecutableOptions {

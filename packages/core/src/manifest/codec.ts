@@ -20,8 +20,17 @@ export function createEmptyAuraManifest(): AuraManifest {
   });
 }
 
-/** Parses manifest JSON into a ready or read-only model without exposing source contents. */
-export function parseAuraManifest(text: string, path: string): AuraManifestState {
+/**
+ * Parses manifest JSON into a ready or read-only model without exposing source contents.
+ *
+ * `mode` is the file's observed permission bits, carried through so a caller can tell a manifest
+ * that only needs its mode repaired from one that needs nothing at all.
+ */
+export function parseAuraManifest(
+  text: string,
+  path: string,
+  mode?: number | undefined,
+): AuraManifestState {
   let value: unknown;
   try {
     value = JSON.parse(text);
@@ -39,6 +48,7 @@ export function parseAuraManifest(text: string, path: string): AuraManifestState
   try {
     return Object.freeze({
       exists: true,
+      ...(mode === undefined ? {} : { mode }),
       path,
       status: "ready",
       value: validateAuraManifest(value),

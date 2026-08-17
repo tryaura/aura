@@ -78,6 +78,48 @@ export const SETUP_ABORTED: unique symbol = Symbol("aura.setup.aborted");
 
 type SetupStepOutcome = SetupSelections | typeof SETUP_ABORTED;
 
+/** State another setup step must have established before this one can run by itself. */
+interface SetupStepPrerequisite {
+  readonly id: string;
+  readonly isSatisfied: (context: SetupStepContext) => boolean;
+  /** What is missing, in the words a user reads — never the step id. */
+  readonly title: string;
+}
+
+interface SetupStepBase {
+  readonly gather: (context: SetupStepContext, io: WizardIo) => Promise<SetupStepOutcome>;
+  readonly id: string;
+  /**
+   * Whether this step reads {@link SetupStepContext.findings}.
+   *
+   * Producing them means running every check up front, and the duplicate scan among them is
+   * quadratic in the paragraphs it compares. A run that selected no step needing findings — `setup
+   * --add snippet`, for one — should not pay for a scan nothing reads.
+   */
+  readonly needsFindings?: boolean | undefined;
+  readonly title: string;
+}
+
+/**
+ * Whether a step can be named by `setup --add`, and what it needs when it is.
+ *
+ * Opting into standalone execution forces the question "against what state?" to be answered: a step
+ * that declares `addKind` must also say what must already exist, even if the answer is the empty
+ * list. Without the pairing a future step could take `--add` and run unguarded against a machine
+ * the full setup has never touched.
+ */
+type SetupStepStandalone =
+  | {
+      readonly addKind?: undefined;
+      /** Prior steps whose result must exist either in this run or in the observed machine state. */
+      readonly prerequisites?: readonly SetupStepPrerequisite[] | undefined;
+    }
+  | {
+      /** Public singular name accepted by `setup --add`. */
+      readonly addKind: string;
+      readonly prerequisites: readonly SetupStepPrerequisite[];
+    };
+
 /**
  * One wizard step.
  *
@@ -86,10 +128,4 @@ type SetupStepOutcome = SetupSelections | typeof SETUP_ABORTED;
  * that is what makes "abort at any step leaves the machine untouched" structural rather than
  * something each step has to get right.
  */
-export interface SetupStep {
-  /** Step ids that must have completed earlier in this run. */
-  readonly dependsOn?: readonly string[] | undefined;
-  readonly gather: (context: SetupStepContext, io: WizardIo) => Promise<SetupStepOutcome>;
-  readonly id: string;
-  readonly title: string;
-}
+export type SetupStep = SetupStepBase & SetupStepStandalone;

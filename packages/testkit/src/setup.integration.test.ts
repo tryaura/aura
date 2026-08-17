@@ -7,13 +7,15 @@ import { defineCheck, definePlugin } from "@tryaura/aura-sdk";
 import type { CliDistro } from "@tryaura/aura-cli";
 import { describe, expect, it } from "vitest";
 
-import { createSeedBuilder, runSetup } from "./index.js";
+import { createSeedBuilder, expectConvergedTwice, runSetup } from "./index.js";
 
 describe("seeded setup integration", () => {
   it("creates the baseline on the first run and converges on the second", async () => {
     await using seed = await createSeedBuilder().build();
 
-    const first = await runSetup({ distro: distro(), seed });
+    const { first, second } = await expectConvergedTwice(seed, () =>
+      runSetup({ distro: distro(), seed }),
+    );
 
     expect(first.exitCode).toBe(0);
     expect(first.stdout).toContain("Applied 2 operation(s).");
@@ -24,11 +26,7 @@ describe("seeded setup integration", () => {
     const manifestDiff = first.diffs.find((diff) => diff.path === "<HOME>/agents/aura.json");
     expect(manifestDiff?.patch).toContain("600");
 
-    const second = await runSetup({ distro: distro(), seed });
-
-    expect(second.exitCode).toBe(0);
-    expect(second.stdout).toContain("Already converged — nothing to change.");
-    expect(second.diffs.filter((diff) => !diff.path.includes(".backups"))).toEqual([]);
+    expect(second.stdout).toContain("Already converged — nothing to do.");
   });
 
   it("stops at the plan under --dry-run and changes nothing", async () => {
@@ -67,7 +65,9 @@ describe("seeded setup integration", () => {
       .workspaceFile("fixture-snippet.md", snippetContent)
       .build();
 
-    const result = await runSetup({ distro: snippetDistro(seed.workspaceDir), seed });
+    const { first: result } = await expectConvergedTwice(seed, () =>
+      runSetup({ distro: snippetDistro(seed.workspaceDir), seed }),
+    );
 
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe("");
