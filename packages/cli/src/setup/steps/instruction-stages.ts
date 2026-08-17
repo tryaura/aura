@@ -53,6 +53,7 @@ export function scopeStages(input: ScopeInput): readonly ChainStage<ChainState>[
 
   return [
     {
+      isApplicable: () => !input.blocked,
       label: input.scope === "global" ? "Global" : "Project",
       apply: (state, answers) =>
         update(state, { action: selectedValues(answers[actionId])[0] ?? fallback }),
@@ -71,6 +72,7 @@ export function scopeStages(input: ScopeInput): readonly ChainStage<ChainState>[
             ],
     },
     {
+      isApplicable: consolidating,
       label: "Sources",
       apply: (state, answers) =>
         update(state, { selectedSources: selectedValues(answers[sourcesId]) }),
@@ -94,6 +96,11 @@ export function scopeStages(input: ScopeInput): readonly ChainStage<ChainState>[
     },
     {
       compactLabel: "Dups",
+      isApplicable: (state) =>
+        consolidating(state) &&
+        relevantDuplicateClusters(draft(state).selectedSources ?? [], input.clusters).some(
+          (cluster) => !cluster.identical,
+        ),
       label: "Duplicates",
       apply: (state, answers) =>
         update(state, {
@@ -121,6 +128,7 @@ export function scopeStages(input: ScopeInput): readonly ChainStage<ChainState>[
       },
     },
     {
+      isApplicable: consolidating,
       label: "Archive",
       apply: (state, answers) =>
         update(state, {

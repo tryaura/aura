@@ -34,6 +34,8 @@ export interface WizardQuestion {
    * initial selection, so what they accept is exactly what the form would have proposed.
    */
   readonly initial?: readonly string[] | undefined;
+  /** Draft seeded into the free-text row when the form opens; how a text answer is re-seeded. */
+  readonly initialText?: string | undefined;
   readonly kind: "multiselect" | "select";
   /** Short name shown in the tab bar. */
   readonly label: string;

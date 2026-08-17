@@ -1,3 +1,4 @@
+import { safe } from "./safe-text.js";
 import type { CliBranding } from "./types.js";
 
 /**
@@ -97,8 +98,9 @@ export function renderCheckHelp(branding: CliBranding): string {
   );
 }
 
-export function renderSetupHelp(branding: CliBranding): string {
+export function renderSetupHelp(branding: CliBranding, addKinds: readonly string[]): string {
   const bin = branding.command;
+  const supportedAddKinds = addKinds.length === 0 ? "none" : addKinds.join(", ");
   return renderHelpScreen(
     `${bin} setup — Set up this machine interactively and converge it`,
     [
@@ -116,6 +118,10 @@ export function renderSetupHelp(branding: CliBranding): string {
             text: "Accept every proposed default; required when stdin is not a terminal",
           },
           { term: "--detail", text: "Include the full diff of every planned change" },
+          {
+            term: "--add <kind>",
+            text: `Run one setup addition (supported: ${supportedAddKinds})`,
+          },
         ],
         title: "Options",
       },
@@ -125,11 +131,45 @@ export function renderSetupHelp(branding: CliBranding): string {
   );
 }
 
+export function renderUndoHelp(branding: CliBranding): string {
+  const bin = branding.command;
+  return renderHelpScreen(
+    `${bin} undo — Restore files from an Aura backup`,
+    [
+      {
+        rows: [
+          { term: `${bin} undo`, text: "Restore the most recent backup" },
+          { term: `${bin} undo --list`, text: "List every available backup" },
+          { term: `${bin} undo <backup-id>`, text: "Restore one backup by name" },
+          {
+            term: `${bin} undo --dry-run`,
+            text: "Show which backup would be restored, write nothing",
+          },
+        ],
+        title: "Everyday use",
+      },
+      {
+        rows: [
+          { term: "--yes", text: "Restore without asking; required when stdin is not a terminal" },
+          { term: "--detail", text: "Include the underlying error when restoration fails" },
+        ],
+        title: "Options",
+      },
+      { rows: advancedRows(), title: "Advanced" },
+    ],
+    [
+      "Exit codes: 0 restored or nothing to undo · 1 aborted · 2 conflicts · 3 operational failures",
+    ],
+  );
+}
+
 /** The unknown-command screen redirects to what exists instead of dumping a parser trace. */
 export function renderUnknownCommand(branding: CliBranding, input: string): string {
   const bin = branding.command;
+  // The input is echoed argv, which a wrapper script can fill with untrusted text; neutralize it
+  // like any other text Aura did not write itself.
   return renderHelpScreen(
-    `${bin}: unknown command '${input}'`,
+    `${bin}: unknown command '${safe(input)}'`,
     [
       {
         rows: [

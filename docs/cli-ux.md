@@ -35,7 +35,9 @@ Rendered by `packages/cli/src/help.ts`; exact layouts pinned in `help.test.ts`.
   `Docs:` footer when branding defines one.
 - `aura check --help` — Everyday use, Narrow it down, Fixing behavior, Scripting, Advanced, then
   the exit-code footer.
-- `aura setup --help` — Everyday use, Options, Advanced, then a footer pointing at `check`.
+- `aura setup --help` — Everyday use, Options (including every registered `--add` kind),
+  Advanced, then a footer pointing at `check`.
+- `aura undo --help` — Everyday use, Options, Advanced, then the restore exit-code footer.
 - `aura <typo>` — `aura: unknown command '<typo>'`, the command list, and a pointer to `--help`.
   Exit code 2. A bad _flag_ on a real command keeps clipanion's own message, which names the
   offending flag.
@@ -58,6 +60,8 @@ Every command returns one of these; `runCli` normalizes anything else to 2.
 | `✔`   | Completed step                                   |
 | `☐`   | Pending step, or an unchecked multiselect option |
 | `☑`   | A checked multiselect option                     |
+| `●`   | The currently selected option of a select        |
+| `○`   | An unselected select option                      |
 | `❯`   | Cursor row inside a question body                |
 | `│`   | Tab separator                                    |
 | `└`   | Sub-row connector under the active step          |
@@ -122,10 +126,12 @@ Tab states, in either row:
   backward opens on its **last** form (← from Snippets lands on Archive, not Global), a step with
   nothing to ask passes ← straight through, and the final confirmation backs out into the last
   step the same way. Informational banners print only on a step's first visit.
-- Re-entering a completed form shows its current answers and allows changing them. An answer kept
-  the same preserves everything answered after it; a changed answer regrows the chain from that
-  point (a conditional step whose precondition no longer holds disappears, one newly triggered
-  appears).
+- Re-entering a completed form shows its current answers and allows changing them: a select marks
+  its standing answer with `●` and opens with the cursor on it, a multiselect keeps its `☑`
+  checks, a free-text draft is re-seeded. → never re-answers — it commits the form exactly as it
+  stands. An answer kept the same preserves everything answered after it; a changed answer
+  regrows the chain from that point (a conditional step whose precondition no longer holds
+  disappears, one newly triggered appears).
 - Submit resolves the form only when every required step is `✔`; until then it renders dimmed,
   ←/→ can still focus it, and ↵ is a no-op — the Submit body explains what is missing
   ("Submit unlocks once every step below is answered." plus the `☐` list).
@@ -152,8 +158,9 @@ bar, so compact tabs lose no information.
   (↑/↓ move, space toggles, digits jump, ↵ answers and advances).
 - Footer hint line: `↑/↓ move · space toggle · ←/→ steps · ↵ select · esc cancel` (segments
   appear only when applicable; a locked Submit drops `↵ submit`).
-- Once a form resolves, it collapses to one `✔ <step>  <answer>` line per step — printed only on
-  the form's first completion, so back-and-forth navigation never stacks duplicate lines.
+- Once a form resolves, it collapses to one `✔ <step>  <answer>` line per step — printed on the
+  form's first completion and again only when a re-answer changed it, so back-and-forth
+  navigation never stacks duplicate lines and the scrollback's last word is never a stale answer.
 
 ### Implementation status
 
@@ -171,7 +178,9 @@ selections, and the confirmation's back re-runs the last step before re-planning
 Frames are also windowed to the terminal: a question body taller than the viewport is clipped
 around the cursor with dim `↑/↓ N more` markers (capacity is the viewport minus four chrome rows
 minus one per bar line), because the engine repaints by cursor-up erasure and an overflowing
-frame would leak rows into the scrollback.
+frame would leak rows into the scrollback. Width arithmetic counts display columns, not code
+points (East Asian and emoji characters occupy two), and a terminal resize repaints immediately
+against the new viewport.
 
 One refinement remains open: a _multi-question_ form reopened via back lands on its first
 question tab (← from Archive opens the duplicates form on Duplicate 1, not Duplicate 4).

@@ -2,6 +2,7 @@ import { emitKeypressEvents } from "node:readline";
 import type { Readable, Writable } from "node:stream";
 
 import { safe } from "../safe-text.js";
+import { characterWidth } from "./text-width.js";
 import { createFormSession } from "./wizard-form.js";
 import {
   DEFAULT_WIZARD_VIEWPORT,
@@ -35,15 +36,16 @@ const SHOW_CURSOR = "\u001b[?25h";
  * behaves identically under a captured stream.
  */
 export function createInteractiveWizardIo(options: InteractiveWizardOptions): WizardIo {
-  // Back navigation re-runs forms; their collapsed summary prints only the first time each form
-  // completes, or every re-answer would stack another copy of the same line in the scrollback.
-  const summarized = new Set<string>();
-  const summarizeOnce: SummaryGate = (questions) => {
+  // Back navigation re-runs forms; a form's collapsed summary prints on its first completion and
+  // again only when a re-answer changed it — repeating an unchanged answer must not stack another
+  // copy of the same line, and a changed answer must not leave the stale line as the last word.
+  const summarized = new Map<string, string>();
+  const summarizeOnce: SummaryGate = (questions, summary) => {
     const key = questions.map((question) => question.id).join(" ");
-    if (summarized.has(key)) {
+    if (summarized.get(key) === summary) {
       return false;
     }
-    summarized.add(key);
+    summarized.set(key, summary);
     return true;
   };
 
@@ -57,7 +59,7 @@ export function createInteractiveWizardIo(options: InteractiveWizardOptions): Wi
 }
 
 /** Decides at completion time whether a form's collapsed summary should print. */
-type SummaryGate = (questions: readonly WizardQuestion[]) => boolean;
+type SummaryGate = (questions: readonly WizardQuestion[], summary: string) => boolean;
 
 async function runConfirm(
   prompt: string,
@@ -122,18 +124,28 @@ async function runForm(
     const finish = (result: WizardFormResult): void => {
       stdin.off("keypress", onKeypress);
       stdin.off("end", onEnd);
+      stdout.off("resize", onResize);
       stdin.pause();
       if (raw) {
         stdin.setRawMode(false);
         stdout.write(SHOW_CURSOR);
       }
       stdout.write(erasure(renderedLines));
-      // Only a completed form leaves its collapsed summary behind — and only its first
-      // completion; a backed-out, aborted, or re-answered form vanishes without a trace.
-      if (result !== "aborted" && result !== "back" && (summarize?.(questions) ?? true)) {
-        stdout.write(renderAnsweredSummary(session.views()));
+      // Only a completed form leaves its collapsed summary behind, and only when the summary
+      // gate lets it through; a backed-out or aborted form vanishes without a trace.
+      if (result !== "aborted" && result !== "back") {
+        const summary = renderAnsweredSummary(session.views());
+        if (summarize?.(questions, summary) ?? true) {
+          stdout.write(summary);
+        }
       }
       resolveForm(result);
+    };
+
+    // A resize rewraps what is on screen, so the frame is repainted against the new viewport
+    // immediately instead of waiting for the next keypress to notice.
+    const onResize = (): void => {
+      paint();
     };
 
     const onEnd = (): void => {
@@ -166,6 +178,7 @@ async function runForm(
 
     stdin.on("keypress", onKeypress);
     stdin.once("end", onEnd);
+    stdout.on("resize", onResize);
     paint();
   });
 }
@@ -222,7 +235,7 @@ function visibleWidth(line: string): number {
     } else if (character === ESCAPE) {
       inSequence = true;
     } else {
-      width += 1;
+      width += characterWidth(character);
     }
   }
   return width;

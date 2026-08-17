@@ -58,9 +58,9 @@ describe("renderWizardFrame", () => {
 
        Which apps should Aura manage?
 
-      ❯ 1. Claude Code + Cursor
+      ❯ 1. ○ Claude Code + Cursor
             Both installed and authed.
-        2. Claude Code only
+        2. ○ Claude Code only
         3. Type something.
 
        ↑/↓ move · ←/→ steps · ↵ select · esc cancel

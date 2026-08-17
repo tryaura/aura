@@ -1,13 +1,17 @@
-import { digitRow, printable, rowCount, tabDelta } from "./wizard-keys.js";
+import { digitRow, rowCount, tabDelta } from "./wizard-keys.js";
 import { handlePreviewKeypress, openPreview, type PreviewState } from "./wizard-preview.js";
+import {
+  answerActive,
+  collectAnswers,
+  createQuestionState,
+  editFreeText,
+  initialCursorRow,
+  toggleRow,
+  toView,
+  type QuestionState,
+} from "./wizard-question.js";
 import type { WizardFrame, WizardQuestionView } from "./wizard-render.js";
-import type {
-  Keypress,
-  WizardAnswer,
-  WizardAnswers,
-  WizardFlowContext,
-  WizardQuestion,
-} from "./wizard-types.js";
+import type { Keypress, WizardAnswers, WizardFlowContext, WizardQuestion } from "./wizard-types.js";
 
 /** What one key did to the form. */
 type FormEvent = "abort" | "back" | "none" | "repaint" | "submit";
@@ -28,32 +32,17 @@ export interface FormSession {
   readonly views: () => readonly WizardQuestionView[];
 }
 
-interface QuestionState {
-  answered: boolean;
-  /** Whether the recorded answer is the free-text draft rather than the selection. */
-  answeredWithText: boolean;
-  readonly question: WizardQuestion;
-  readonly selected: Set<string>;
-  text: string;
-}
-
 export function createFormSession(
   questions: readonly WizardQuestion[],
   flow?: WizardFlowContext,
 ): FormSession {
-  const states: readonly QuestionState[] = questions.map((question) => ({
-    answered: false,
-    answeredWithText: false,
-    question,
-    selected: new Set(question.initial ?? []),
-    text: "",
-  }));
+  const states: readonly QuestionState[] = questions.map(createQuestionState);
   // With a flow the trailing Submit belongs to the whole wizard, not this form, so the form's
   // navigable tabs are its questions alone and answering the last one resolves it.
   const ownSubmitTab = flow === undefined;
   const tabCount = questions.length + (ownSubmitTab ? 1 : 0);
   let activeTab = 0;
-  let cursorRow = 0;
+  let cursorRow = initialCursorRow(states[0]);
   let preview: PreviewState | undefined;
 
   /** ← on the first tab leaves the form for the one before it in the flow. */
@@ -80,8 +69,11 @@ export function createFormSession(
     if (keypress.name === "escape") {
       return "abort";
     }
-    if (keypress.name === "return" || keypress.name === "enter" || commitsForward(keypress)) {
-      return handleEnter();
+    if (keypress.name === "return" || keypress.name === "enter") {
+      return handleEnter(false);
+    }
+    if (commitsForward(keypress)) {
+      return handleEnter(true);
     }
     if (leavesBackward(keypress)) {
       return "back";
@@ -89,14 +81,18 @@ export function createFormSession(
     return applyNavigation(keypress, states[activeTab]) ? "repaint" : "none";
   };
 
-  const handleEnter = (): FormEvent => {
+  const handleEnter = (commit: boolean): FormEvent => {
     const state = states[activeTab];
     if (state === undefined) {
       // A locked Submit swallows ↵; the body already lists exactly which steps are missing.
       return states.every((candidate) => candidate.answered) ? "submit" : "none";
     }
 
-    answerActive(state, cursorRow);
+    if (commit) {
+      commitActive(state);
+    } else {
+      answerActive(state, cursorRow);
+    }
     // A flow form and a one-question form have nothing left to review, so answering the last
     // open question is submitting.
     const allAnswered = states.every((candidate) => candidate.answered);
@@ -104,8 +100,29 @@ export function createFormSession(
       return "submit";
     }
     activeTab = ownSubmitTab ? nextTab(states, activeTab) : nextUnanswered(states, activeTab);
-    cursorRow = 0;
+    cursorRow = initialCursorRow(states[activeTab]);
     return "repaint";
+  };
+
+  /**
+   * Answers the question exactly as it stands, without touching its selection.
+   *
+   * This is what makes → an honest "commit and move on": a re-seeded select keeps the answer it
+   * was re-seeded with instead of re-answering with the row under the cursor. Only a select with
+   * nothing standing yet falls back to answering like ↵ would.
+   */
+  const commitActive = (state: QuestionState): void => {
+    if (state.question.freeText === true && state.selected.size === 0 && state.text !== "") {
+      state.answered = true;
+      state.answeredWithText = true;
+      return;
+    }
+    if (state.question.kind === "select" && state.selected.size === 0) {
+      answerActive(state, cursorRow);
+      return;
+    }
+    state.answered = true;
+    state.answeredWithText = false;
   };
 
   /** Whether ← past the first tab has somewhere to go: an earlier form of the same flow. */
@@ -120,7 +137,7 @@ export function createFormSession(
       return false;
     }
     activeTab = target;
-    cursorRow = 0;
+    cursorRow = initialCursorRow(states[target]);
     return true;
   };
 
@@ -182,81 +199,6 @@ export function createFormSession(
   };
 }
 
-/** Edits the free-text draft; space types a space here rather than toggling anything. */
-function editFreeText(keypress: Keypress, state: QuestionState): boolean {
-  if (keypress.name === "backspace") {
-    state.text = state.text.slice(0, -1);
-    return true;
-  }
-
-  const typed = printable(keypress);
-  if (typed === undefined) {
-    return false;
-  }
-  state.text += typed;
-  return true;
-}
-
-/**
- * Toggles the multi-select option on `row`; a no-op on any other kind of row.
- *
- * A disabled option can be cleared but never selected. Refusing both directions would strand any
- * selection that was seeded before the option became unavailable, with no way to give it up.
- */
-function toggleRow(state: QuestionState, row: number): boolean {
-  const option = state.question.options[row];
-  if (option === undefined || state.question.kind !== "multiselect") {
-    return false;
-  }
-  if (option.disabled === true && !state.selected.has(option.value)) {
-    return false;
-  }
-  toggle(state.selected, option.value);
-  return true;
-}
-
-const answerActive = (state: QuestionState, row: number): void => {
-  if (state.question.freeText === true && row === state.question.options.length) {
-    state.answered = state.text !== "";
-    state.answeredWithText = state.answered;
-    return;
-  }
-  if (state.question.kind === "select") {
-    const option = state.question.options[row];
-    if (option === undefined || option.disabled === true) {
-      return;
-    }
-    state.selected.clear();
-    state.selected.add(option.value);
-  }
-  state.answered = true;
-  state.answeredWithText = false;
-};
-
-function collectAnswers(states: readonly QuestionState[]): WizardAnswers {
-  const answers: Record<string, WizardAnswer> = {};
-  for (const state of states) {
-    answers[state.question.id] = state.answeredWithText
-      ? { kind: "text", text: state.text }
-      : {
-          kind: "options",
-          values: state.question.options
-            .map((option) => option.value)
-            .filter((value) => state.selected.has(value)),
-        };
-  }
-  return Object.freeze(answers);
-}
-
-function toView(state: QuestionState): WizardQuestionView {
-  return {
-    answered: state.answered,
-    question: state.question,
-    selected: state.answeredWithText ? new Set() : state.selected,
-    text: state.text,
-  };
-}
-
 /** The next unanswered question after `activeTab`, or the Submit tab. */
 function nextTab(states: readonly QuestionState[], activeTab: number): number {
   for (let index = activeTab + 1; index < states.length; index += 1) {
@@ -276,12 +218,4 @@ function nextUnanswered(states: readonly QuestionState[], activeTab: number): nu
     }
   }
   return activeTab;
-}
-
-function toggle(selected: Set<string>, value: string): void {
-  if (selected.has(value)) {
-    selected.delete(value);
-  } else {
-    selected.add(value);
-  }
 }

@@ -349,10 +349,12 @@ describe("runCli", () => {
     const root = createCapture(["--help"]);
     const check = createCapture(["check", "-h"]);
     const setup = createCapture(["setup", "--help"]);
+    const undo = createCapture(["undo", "--help"]);
 
     expect(await runCli(distro(), root.runtime)).toBe(0);
     expect(await runCli(distro(), check.runtime)).toBe(0);
     expect(await runCli(distro(), setup.runtime)).toBe(0);
+    expect(await runCli(distro(), undo.runtime)).toBe(0);
 
     expect(root.stdout.text).toContain("Everyday use");
     expect(root.stdout.text).toContain("acme setup");
@@ -361,7 +363,11 @@ describe("runCli", () => {
     expect(check.stdout.text).toContain("Exit codes:");
     expect(setup.stdout.text).toContain("acme setup — Set up this machine interactively");
     expect(setup.stdout.text).toContain("--dry-run");
+    expect(setup.stdout.text).toContain("--add <kind>");
     expect(setup.stderr.text).toBe("");
+    expect(undo.stdout.text).toContain("acme undo — Restore files from an Aura backup");
+    expect(undo.stdout.text).toContain("--list");
+    expect(undo.stdout.text).toContain("<backup-id>");
   });
 
   it("passes --home and --path overrides into the environment", async () => {

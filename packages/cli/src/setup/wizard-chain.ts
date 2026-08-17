@@ -1,5 +1,6 @@
 import { SETUP_ABORTED, SETUP_BACK } from "./types.js";
 import type {
+  WizardAnswer,
   WizardAnswers,
   WizardFlowContext,
   WizardFlowStep,
@@ -18,6 +19,13 @@ export interface ChainStage<S> {
   readonly apply: (state: S, answers: WizardAnswers) => S;
   /** Shorter sub-row label used when the full labels would overflow the terminal. */
   readonly compactLabel?: string | undefined;
+  /**
+   * Cheap test for whether this stage currently has questions.
+   *
+   * Progress rendering uses this instead of materializing full question previews for every
+   * upcoming stage. When omitted, it falls back to calling {@link questions}.
+   */
+  readonly isApplicable?: ((state: S) => boolean) | undefined;
   /** Sub-row tab for this stage when it is not the live form. */
   readonly label: string;
   readonly questions: (state: S) => readonly WizardQuestion[] | undefined;
@@ -52,15 +60,14 @@ export async function runFormChain<S>(
   options: ChainOptions = {},
 ): Promise<S | typeof SETUP_ABORTED | typeof SETUP_BACK> {
   const history: { index: number; state: S }[] = [];
-  const remembered = new Map<string, readonly string[]>();
+  const remembered = new Map<string, WizardAnswer>();
   let state = initial;
   let index = 0;
 
   if (options.entry === "end") {
-    const asked = stages.flatMap((stage, position) => {
-      const questions = stage.questions(state);
-      return questions === undefined || questions.length === 0 ? [] : [position];
-    });
+    const asked = stages.flatMap((stage, position) =>
+      hasQuestions(stage, state) ? [position] : [],
+    );
     const last = asked.at(-1);
     if (last === undefined) {
       return SETUP_BACK;
@@ -129,33 +136,40 @@ function askFlow<S>(
       }),
       upcoming: stages
         .slice(index + 1)
-        .filter((stage) => (stage.questions(state)?.length ?? 0) > 0)
+        .filter((stage) => hasQuestions(stage, state))
         .map(toStageStep),
     },
   };
+}
+
+function hasQuestions<S>(stage: ChainStage<S>, state: S): boolean {
+  return stage.isApplicable?.(state) ?? (stage.questions(state)?.length ?? 0) > 0;
 }
 
 function toStageStep<S>(stage: ChainStage<S>): WizardFlowStep {
   return { compactLabel: stage.compactLabel, label: stage.label };
 }
 
-function remember(remembered: Map<string, readonly string[]>, answers: WizardAnswers): void {
+function remember(remembered: Map<string, WizardAnswer>, answers: WizardAnswers): void {
   for (const [id, answer] of Object.entries(answers)) {
-    if (answer.kind === "options") {
-      remembered.set(id, answer.values);
-    }
+    remembered.set(id, answer);
   }
 }
 
 /** Re-seeds a re-asked question with the answer it got last time, when it still fits. */
 function reseed(
   question: WizardQuestion,
-  remembered: ReadonlyMap<string, readonly string[]>,
+  remembered: ReadonlyMap<string, WizardAnswer>,
 ): WizardQuestion {
-  const values = remembered.get(question.id);
-  if (values === undefined) {
+  const answer = remembered.get(question.id);
+  if (answer === undefined) {
     return question;
   }
+  if (answer.kind === "text") {
+    return { ...question, initialText: answer.text };
+  }
   const offered = new Set(question.options.map((option) => option.value));
-  return values.every((value) => offered.has(value)) ? { ...question, initial: values } : question;
+  return answer.values.every((value) => offered.has(value))
+    ? { ...question, initial: answer.values }
+    : question;
 }

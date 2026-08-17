@@ -13,8 +13,15 @@ import { createPluginRegistry } from "@tryaura/core";
 
 import { CheckCommand, type AuraCliContext } from "./commands.js";
 import { DefaultCommand } from "./default-command.js";
-import { renderCheckHelp, renderRootHelp, renderSetupHelp, renderUnknownCommand } from "./help.js";
+import {
+  renderCheckHelp,
+  renderRootHelp,
+  renderSetupHelp,
+  renderUndoHelp,
+  renderUnknownCommand,
+} from "./help.js";
 import { SetupCommand } from "./setup/command.js";
+import { setupAddKinds } from "./setup/steps/index.js";
 import { UndoCommand } from "./undo/command.js";
 import type { CliBranding, CliDistro, CliExitCode, CliRuntime } from "./types.js";
 
@@ -155,7 +162,10 @@ function helpScreen(argv: readonly string[], branding: CliBranding): string {
     return renderCheckHelp(branding);
   }
   if (command === "setup") {
-    return renderSetupHelp(branding);
+    return renderSetupHelp(branding, setupAddKinds());
+  }
+  if (command === "undo") {
+    return renderUndoHelp(branding);
   }
   return renderRootHelp(branding);
 }

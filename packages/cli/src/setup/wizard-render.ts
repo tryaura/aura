@@ -1,5 +1,6 @@
-import { safe, safeMultiline } from "../safe-text.js";
+import { safe } from "../safe-text.js";
 import { createStyle, type Style } from "../style.js";
+import { wrapPreviewLines } from "./text-width.js";
 import { DONE, renderTabBar, UNANSWERED } from "./wizard-tabs.js";
 import type { WizardFlowContext, WizardQuestion } from "./wizard-types.js";
 
@@ -52,6 +53,8 @@ const PREVIEW_MIN_COLUMNS = 40;
 
 const ANSWERED = "☑";
 const CURSOR = "❯";
+const SELECTED = "●";
+const UNSELECTED = "○";
 
 /**
  * Renders one full wizard frame as plain lines.
@@ -184,10 +187,12 @@ function optionLines(
   style: Style,
 ): readonly string[] {
   const cursor = index === cursorRow ? CURSOR : " ";
+  // A select marks what currently stands — the `initial` a fresh form proposes (which is what
+  // `--yes` accepts) or a re-seeded answer — since unlike a multiselect it has no checkboxes.
   const marker =
     view.question.kind === "multiselect"
       ? `${view.selected.has(option.value) ? ANSWERED : UNANSWERED} `
-      : "";
+      : `${view.selected.has(option.value) ? SELECTED : UNSELECTED} `;
   const unavailable = option.disabled === true ? style.dim(" — unavailable") : "";
   const rows = [`${cursor} ${String(index + 1)}. ${marker}${safe(option.label)}${unavailable}`];
   if (option.description !== undefined) {
@@ -241,25 +246,6 @@ function renderPreview(preview: WizardPreview, style: Style, viewport: WizardVie
   const more = hidden > 0 ? ` · ${String(hidden)} more line${hidden === 1 ? "" : "s"}` : "";
   const hint = ` ↑/↓ scroll${more} · esc/↵ return to picker`;
   return `${style.bold(safe(preview.title))}\n\n${visible.join("\n")}\n\n${style.dim(hint)}\n`;
-}
-
-/** Sanitizes the body and hard-wraps it, so one entry here is exactly one terminal row. */
-export function wrapPreviewLines(content: string, columns: number): readonly string[] {
-  return safeMultiline(content)
-    .split("\n")
-    .flatMap((line) => wrapLine(line, columns));
-}
-
-function wrapLine(line: string, columns: number): readonly string[] {
-  const characters = [...line];
-  if (characters.length <= columns) {
-    return [line];
-  }
-  const wrapped: string[] = [];
-  for (let index = 0; index < characters.length; index += columns) {
-    wrapped.push(characters.slice(index, index + columns).join(""));
-  }
-  return wrapped;
 }
 
 function clamp(value: number, maximum: number): number {

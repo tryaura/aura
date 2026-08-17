@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { renderCheckHelp, renderRootHelp, renderSetupHelp, renderUnknownCommand } from "./help.js";
+import {
+  renderCheckHelp,
+  renderRootHelp,
+  renderSetupHelp,
+  renderUndoHelp,
+  renderUnknownCommand,
+} from "./help.js";
 import { BRANDING } from "./testing.js";
 import type { CliBranding } from "./types.js";
 
@@ -65,7 +71,7 @@ describe("help screens", () => {
   });
 
   it("renders the setup screen and points at check afterwards", () => {
-    expect(renderSetupHelp(BRANDING)).toMatchInlineSnapshot(`
+    expect(renderSetupHelp(BRANDING, ["snippet"])).toMatchInlineSnapshot(`
       "acme setup — Set up this machine interactively and converge it
 
         Everyday use
@@ -75,12 +81,36 @@ describe("help screens", () => {
         Options
           --yes                   Accept every proposed default; required when stdin is not a terminal
           --detail                Include the full diff of every planned change
+          --add <kind>            Run one setup addition (supported: snippet)
 
         Advanced
           --home <dir>            Override the home directory
           --path <dir>            Override the executable search path
 
         After setup, run 'acme check' to verify the machine converged
+      "
+    `);
+  });
+
+  it("renders the undo screen with every restore mode", () => {
+    expect(renderUndoHelp(BRANDING)).toMatchInlineSnapshot(`
+      "acme undo — Restore files from an Aura backup
+
+        Everyday use
+          acme undo                Restore the most recent backup
+          acme undo --list         List every available backup
+          acme undo <backup-id>    Restore one backup by name
+          acme undo --dry-run      Show which backup would be restored, write nothing
+
+        Options
+          --yes                    Restore without asking; required when stdin is not a terminal
+          --detail                 Include the underlying error when restoration fails
+
+        Advanced
+          --home <dir>             Override the home directory
+          --path <dir>             Override the executable search path
+
+        Exit codes: 0 restored or nothing to undo · 1 aborted · 2 conflicts · 3 operational failures
       "
     `);
   });
@@ -97,5 +127,12 @@ describe("help screens", () => {
         Run 'acme --help' for more
       "
     `);
+  });
+
+  it("neutralizes control characters in the echoed unknown command", () => {
+    const screen = renderUnknownCommand(BRANDING, "bad\u001b[2Jcmd");
+
+    expect(screen).not.toContain("\u001b");
+    expect(screen).toContain("unknown command 'bad [2Jcmd'");
   });
 });

@@ -29,16 +29,7 @@ export const baselineStep: SetupStep = {
         compactLabel: "Base",
         id: "baseline",
         // A re-entered step shows the answer this run already gave it, not its cold-start proposal.
-        initial:
-          context.selections.baseline === undefined
-            ? options.map((option) => option.value)
-            : options
-                .map((option) => option.value)
-                .filter(
-                  (value) =>
-                    value !== MANIFEST_VALUE ||
-                    context.selections.baseline?.createManifest === true,
-                ),
+        initial: context.selections.baseline?.selected ?? options.map((option) => option.value),
         kind: "multiselect",
         label: "Baseline",
         options,
@@ -65,7 +56,7 @@ function withBaseline(
 ): SetupStepContext["selections"] {
   return {
     ...context.selections,
-    baseline: { createManifest: values.includes(MANIFEST_VALUE) },
+    baseline: { createManifest: values.includes(MANIFEST_VALUE), selected: values },
   };
 }
 

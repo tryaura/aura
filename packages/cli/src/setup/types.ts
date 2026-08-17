@@ -13,6 +13,8 @@ interface AppSelections {
 /** What the baseline step decided; see `steps/baseline.ts`. */
 interface BaselineSelections {
   readonly createManifest: boolean;
+  /** Raw option values as chosen, so a re-entered form re-seeds exactly what was answered. */
+  readonly selected: readonly string[];
 }
 
 /**

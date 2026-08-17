@@ -302,6 +302,63 @@ describe("interactive wizard", () => {
     await expect(form).resolves.toEqual({ mcp: { kind: "options", values: ["linear"] } });
   });
 
+  it("→ commits a re-seeded select answer without re-answering it", async () => {
+    const session = createSession();
+    const io = createInteractiveWizardIo({
+      colorDepth: 0,
+      stdin: session.stdin,
+      stdout: session.stdout,
+    });
+
+    // The remembered answer is the second option; the cursor must not re-answer with the first.
+    const form = io.ask(
+      [
+        {
+          id: "archive",
+          initial: ["archive"],
+          kind: "select",
+          label: "Archive",
+          options: [
+            { label: "Keep originals in place", value: "keep" },
+            { label: "Archive originals", value: "archive" },
+          ],
+          prompt: "What should Aura do with the originals?",
+        },
+      ],
+      { completed: [{ label: "Global" }], upcoming: [] },
+    );
+    session.press("right");
+
+    await expect(form).resolves.toEqual({ archive: { kind: "options", values: ["archive"] } });
+  });
+
+  it("opens a select with the cursor on its current answer", async () => {
+    const session = createSession();
+    const io = createInteractiveWizardIo({
+      colorDepth: 0,
+      stdin: session.stdin,
+      stdout: session.stdout,
+    });
+
+    const form = io.ask([
+      {
+        id: "pick",
+        initial: ["second"],
+        kind: "select",
+        label: "Pick",
+        options: [
+          { label: "First", value: "first" },
+          { label: "Second", value: "second" },
+        ],
+        prompt: "Pick one",
+      },
+    ]);
+    expect(session.output()).toContain("❯ 2. ● Second");
+    session.press("return");
+
+    await expect(form).resolves.toEqual({ pick: { kind: "options", values: ["second"] } });
+  });
+
   it("keeps → away from the Submit form's answer", async () => {
     const session = createSession();
     const io = createInteractiveWizardIo({
@@ -344,6 +401,52 @@ describe("interactive wizard", () => {
       .split("\n")
       .filter((line) => line.includes("✔ MCP"));
     expect(summaries).toHaveLength(1);
+  });
+
+  it("reprints the collapsed summary when a re-answer changed it", async () => {
+    const session = createSession();
+    const io = createInteractiveWizardIo({
+      colorDepth: 0,
+      stdin: session.stdin,
+      stdout: session.stdout,
+    });
+    const flow = { completed: [{ label: "Baseline" }], upcoming: [] };
+
+    const first = io.ask([MCP_QUESTION], flow);
+    session.press("return");
+    await first;
+    const second = io.ask([MCP_QUESTION], flow);
+    session.press("down");
+    session.press("space", { sequence: " " });
+    session.press("return");
+    await second;
+
+    // The stale "linear" line must not be the scrollback's last word about this step.
+    const summaries = session
+      .output()
+      .split("\n")
+      .filter((line) => line.includes("✔ MCP"));
+    expect(summaries).toHaveLength(2);
+    expect(summaries[1]).toContain("linear, context7");
+  });
+
+  it("repaints against the new viewport when the terminal resizes", async () => {
+    const session = createSession();
+    const io = createInteractiveWizardIo({
+      colorDepth: 0,
+      stdin: session.stdin,
+      stdout: session.stdout,
+    });
+
+    const form = io.ask([MCP_QUESTION]);
+    const framesBefore = session.output().split("Which MCP servers").length - 1;
+    session.stdout.emit("resize");
+    const framesAfter = session.output().split("Which MCP servers").length - 1;
+    expect(framesAfter).toBe(framesBefore + 1);
+
+    session.press("return");
+    session.press("return");
+    await form;
   });
 
   it("aborts on ctrl+c and restores the terminal", async () => {

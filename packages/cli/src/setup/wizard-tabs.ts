@@ -1,5 +1,6 @@
 import { safe } from "../safe-text.js";
 import type { Style } from "../style.js";
+import { displayWidth } from "./text-width.js";
 import type { WizardFrame, WizardQuestionView } from "./wizard-render.js";
 import type { WizardFlowStep } from "./wizard-types.js";
 
@@ -204,6 +205,6 @@ function stateLabel(label: string, answered: boolean): string {
 
 /** Width of one row as plain text; styling adds only zero-width escape sequences. */
 function rowWidth(tabs: readonly string[], prefix: string): number {
-  const labels = tabs.reduce((sum, tab) => sum + [...tab].length, 0);
-  return [...prefix].length + labels + (tabs.length - 1) * TAB_SEPARATOR.length;
+  const labels = tabs.reduce((sum, tab) => sum + displayWidth(tab), 0);
+  return displayWidth(prefix) + labels + (tabs.length - 1) * TAB_SEPARATOR.length;
 }

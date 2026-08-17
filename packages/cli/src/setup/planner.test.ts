@@ -242,7 +242,7 @@ function context(model: WorkspaceModel, createManifest: boolean): SetupStepConte
     appCatalog: [],
     manifest: model.manifest,
     model,
-    selections: { baseline: { createManifest } },
+    selections: { baseline: { createManifest, selected: createManifest ? ["manifest"] : [] } },
     snippetCatalog: emptySnippetCatalog(),
   };
 }

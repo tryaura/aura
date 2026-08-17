@@ -163,6 +163,25 @@ describe("runFormChain", () => {
     expect(flows).toEqual([undefined]);
   });
 
+  it("uses applicability checks instead of materializing upcoming questions", async () => {
+    const materialized: string[] = [];
+    const stages: readonly ChainStage<State>[] = ["first", "second", "third"].map((id) => ({
+      apply: (state) => state,
+      isApplicable: () => true,
+      label: id,
+      questions: () => {
+        materialized.push(id);
+        return [question(id, ["done"])];
+      },
+    }));
+
+    await runFormChain(stages, {}, createScriptedWizardIo(), {
+      flow: { completed: [], upcoming: [] },
+    });
+
+    expect(materialized).toEqual(["first", "second", "third"]);
+  });
+
   it("propagates an abort from any stage", async () => {
     const io = createScriptedWizardIo({
       forms: [{ kind: { kind: "options", values: ["fancy"] } }, "aborted"],
@@ -200,5 +219,46 @@ describe("runFormChain", () => {
     // The re-asked "extra" form (4th ask) proposes the silver it was answered with.
     expect(seen[3]).toEqual(["silver"]);
     expect(result).toEqual({ kind: "fancy", extra: "silver" });
+  });
+
+  it("re-seeds a re-asked free-text answer as the row's draft", async () => {
+    const nameStage: ChainStage<State> = {
+      apply: (state, answers) => {
+        const answer = answers["name"];
+        return answer?.kind === "text" ? { ...state, extra: answer.text } : state;
+      },
+      label: "Name",
+      questions: () => [
+        {
+          freeText: true,
+          id: "name",
+          kind: "select",
+          label: "Name",
+          options: [],
+          prompt: "Name it",
+        },
+      ],
+    };
+    const third: ChainStage<State> = {
+      apply: (state) => state,
+      label: "Third",
+      questions: () => [question("third", ["done"])],
+    };
+    const seen: (string | undefined)[] = [];
+    const base = createScriptedWizardIo({
+      forms: [{ name: { kind: "text", text: "codex" } }, "back", {}, {}],
+    });
+    const io = {
+      ...base,
+      ask: async (questions: readonly WizardQuestion[]) => {
+        seen.push(questions[0]?.initialText);
+        return base.ask(questions);
+      },
+    };
+
+    // name(codex) → back from "third" → name re-asked with the draft seeded.
+    await runFormChain([nameStage, third], {}, io);
+
+    expect(seen[2]).toBe("codex");
   });
 });
