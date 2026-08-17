@@ -9,7 +9,8 @@ permissions:
 
 jobs:
   # A tag can point at any commit, so releases re-run the full verify chain rather than trusting
-  # that the commit went through pull-request CI. Mirrors the Checks job in ci.yml.
+  # that the commit went through pull-request CI. Mirrors both jobs in ci.yml, including the
+  # clean-room packaging check that pull requests skip.
   verify:
     name: Verify
     runs-on: ubuntu-latest
@@ -25,10 +26,16 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: pnpm
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Verify
         run: pnpm run verify
+      - name: Verify release packages
+        run: pnpm verify:packages
 
   # Each target builds on its own runner rather than cross-compiling, so the smoke suite
   # exercises the binary on the platform it ships to.

@@ -15,8 +15,11 @@ permissions:
   contents: read
 
 jobs:
+  # Only a packaging change can regress this, so pull requests skip it. Merge-queue entries and
+  # pushes to main still run it, and release.yml re-runs it before any tag is built.
   packages:
     name: Release packages
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
