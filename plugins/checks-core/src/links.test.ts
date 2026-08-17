@@ -1,7 +1,15 @@
-import type { ResolvedSharedLink } from "@tryaura/aura-sdk";
+import type { InstructionDocument, ResolvedSharedLink } from "@tryaura/aura-sdk";
 import { describe, expect, it } from "vitest";
 
-import { app, linkedDocument, onlyFinding, READY, SHARED_PATH, workspace } from "./testing.js";
+import {
+  app,
+  document,
+  linkedDocument,
+  onlyFinding,
+  READY,
+  SHARED_PATH,
+  workspace,
+} from "./testing.js";
 import { sharedInstructionLinksCheck } from "./instructions.js";
 
 describe("INS-002", () => {
@@ -12,6 +20,28 @@ describe("INS-002", () => {
     });
 
     expect(sharedInstructionLinksCheck.detect(workspace([application], "# Shared\n"))).toEqual([]);
+  });
+
+  it.each([
+    {
+      document: importedDocument("/repo/CLAUDE.md", "project"),
+      name: "a project-scoped document",
+    },
+    {
+      document: importedDocument("/home/dev/.claude/PROJECT.md", "global"),
+      name: "an alternate global document",
+    },
+  ])("does not accept a shared link from $name", ({ document }) => {
+    const entryPath = "/home/dev/.claude/CLAUDE.md";
+    const application = app({
+      adapterId: "claude-code",
+      instructionFiles: [document],
+      link: { content: `@${SHARED_PATH}`, entryPath, kind: "import-line", scope: "global" },
+    });
+
+    expect(sharedInstructionLinksCheck.detect(workspace([application], "# Shared\n"))).toEqual([
+      expect.objectContaining({ locations: [{ path: entryPath }] }),
+    ]);
   });
 
   it("creates or corrects an absent or broken Codex symlink", () => {
@@ -182,6 +212,9 @@ describe("INS-002", () => {
       const model = workspace([application], "# Shared\n");
       const finding = onlyFinding(sharedInstructionLinksCheck, model);
       expect(sharedInstructionLinksCheck.fix(finding, model)).toBeUndefined();
+      // Report-only has to be visible in the finding too, or the report offers a `--fix` that
+      // cannot run.
+      expect(finding.fixability).toBe("manual");
     }
   });
 
@@ -229,3 +262,10 @@ describe("INS-002", () => {
     expect(sharedInstructionLinksCheck.fix(finding, model)).toBeUndefined();
   });
 });
+
+function importedDocument(path: string, scope: InstructionDocument["scope"]): InstructionDocument {
+  return {
+    ...document(path, `@${SHARED_PATH}\n`, { scope }),
+    links: [{ kind: "import", targetPath: SHARED_PATH, valid: true }],
+  };
+}

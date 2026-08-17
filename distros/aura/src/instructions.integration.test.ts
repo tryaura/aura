@@ -15,14 +15,31 @@ describe("Aura instruction integrity fixtures", () => {
   it("discovers legacy files without requiring their applications", async () => {
     await using seed = await createSeedBuilder()
       .homeFile(".windsurfrules", "# Personal Windsurf rules\n")
-      .workspaceFile("GEMINI.md", "# Project Gemini rules\n")
+      .workspaceFile(".clinerules", "# Project Cline rules\n")
       .build();
 
     const result = await runCheck({ distro: AURA_DISTRO, seed });
     const findings = result.findings.filter((finding) => finding.checkId === "INS-004");
 
     expect(findings).toHaveLength(2);
-    expect(findings.map((finding) => finding.metadata?.["tool"])).toEqual(["windsurf", "gemini"]);
+    expect(findings.map((finding) => finding.metadata?.["tool"])).toEqual(["windsurf", "cline"]);
+    expect(result.diffs).toEqual([]);
+  });
+
+  // The files stay in the inventory so every other instruction check still sees them; only the
+  // legacy flag INS-004 reads is off. That the specs are still declared is covered by
+  // plugins/checks-core/src/legacy-adapter.test.ts, which the JSON report cannot show here.
+  it("does not report current instruction formats as legacy", async () => {
+    await using seed = await createSeedBuilder()
+      .homeFile("GEMINI.md", "# Gemini rules\n")
+      .homeFile("CRUSH.md", "# Crush rules\n")
+      .workspaceFile("WARP.md", "# Warp rules\n")
+      .workspaceFile(".github/copilot-instructions.md", "# Copilot rules\n")
+      .build();
+
+    const result = await runCheck({ distro: AURA_DISTRO, seed });
+
+    expect(result.findings.filter((finding) => finding.checkId === "INS-004")).toEqual([]);
     expect(result.diffs).toEqual([]);
   });
 
