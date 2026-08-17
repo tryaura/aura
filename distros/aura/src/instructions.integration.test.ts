@@ -1,3 +1,6 @@
+import { mkdir, symlink } from "node:fs/promises";
+import { join } from "node:path";
+
 import {
   createSeedBuilder,
   runCheck,
@@ -88,6 +91,72 @@ describe("Aura instruction integrity fixtures", () => {
     );
     expect(unsupported).toHaveLength(1);
     expect(unsupported[0]).toMatchObject({ severity: "warn" });
+  });
+});
+
+describe("aura instruction duplication checks", () => {
+  it("does not report one symlinked file as duplicating itself across applications", async () => {
+    // The dotfile setup this covers: one shared file, symlinked into each application's location,
+    // so both applications read the same bytes under two names.
+    await using seed = await createSeedBuilder()
+      .homeFile(
+        ".agents/AGENTS.md",
+        [
+          "# Global preferences",
+          "",
+          "Always run the complete verification suite before merging changes because every package must remain healthy.",
+          "",
+          "Document surprising behavior in a comment so the next maintainer understands the constraint.",
+          "",
+        ].join("\n"),
+      )
+      .homeFile(".codex/config.toml", "")
+      .shim("claude", [
+        { args: ["--version"], stdout: "2.1.233 (Claude Code)\n" },
+        { args: ["auth", "status"], stdout: '{"loggedIn":true}\n' },
+      ])
+      .shim("codex", [
+        { args: ["--version"], stdout: "codex-cli 0.147.0\n" },
+        { args: ["login", "status"], stdout: "Logged in using ChatGPT\n" },
+      ])
+      .build();
+    const shared = join(seed.homeDir, ".agents", "AGENTS.md");
+    await mkdir(join(seed.homeDir, ".claude"), { recursive: true });
+    await symlink(shared, join(seed.homeDir, ".claude", "CLAUDE.md"));
+    await symlink(shared, join(seed.homeDir, ".codex", "AGENTS.md"));
+
+    const result = await runCheck({ distro: AURA_DISTRO, seed });
+
+    expect(result.findings.map((finding) => finding.checkId)).not.toContain("INS-003");
+    expect(result.diffs).toEqual([]);
+  });
+
+  it("marks two byte-identical real files as identical, not merely similar", async () => {
+    // The same dotfile setup without the symlinks: two real files with the same bytes. These are
+    // still two files that can drift apart, so INS-003 must report them — but as identical, which
+    // is what lets setup consolidate them without asking a question that has only one answer.
+    const guidance =
+      "Always run the complete verification suite before merging changes because every package must remain healthy.\n";
+    await using seed = await createSeedBuilder()
+      .homeFile(".claude/CLAUDE.md", guidance)
+      .homeFile(".codex/AGENTS.md", guidance)
+      .homeFile(".codex/config.toml", "")
+      .shim("claude", [
+        { args: ["--version"], stdout: "2.1.233 (Claude Code)\n" },
+        { args: ["auth", "status"], stdout: '{"loggedIn":true}\n' },
+      ])
+      .shim("codex", [
+        { args: ["--version"], stdout: "codex-cli 0.147.0\n" },
+        { args: ["login", "status"], stdout: "Logged in using ChatGPT\n" },
+      ])
+      .build();
+
+    const result = await runCheck({ distro: AURA_DISTRO, seed });
+    const duplicates = result.findings.filter((finding) => finding.checkId === "INS-003");
+
+    expect(duplicates).toHaveLength(1);
+    expect(duplicates[0]?.message).toContain("Identical guidance appears in");
+    expect(duplicates[0]?.metadata?.["identical"]).toBe(true);
   });
 });
 

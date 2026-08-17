@@ -10,10 +10,13 @@ import { selectedValues, type WizardIo, type WizardQuestion } from "../wizard-ty
 const EXCERPT_LIMIT = 120;
 
 /**
- * Asks which copy of each duplicated paragraph survives consolidation.
+ * Decides which copy of each duplicated paragraph survives consolidation.
  *
- * Only clusters with more than one selected copy are worth a question: once the sources are
+ * Only clusters with more than one selected copy are worth deciding: once the sources are
  * narrowed, a cluster whose other members were deselected has nothing left to choose between.
+ * Identical clusters are settled without a question — every option holds the same bytes, so the
+ * first member in sorted order wins, which is the answer the question's `initial` would propose.
+ * Only genuinely divergent copies reach the user.
  */
 export async function gatherDuplicateWinners(
   scope: Scope,
@@ -29,11 +32,17 @@ export async function gatherDuplicateWinners(
       members: cluster.members.filter((member) => selected.has(resolve(member.path))),
     }))
     .filter((cluster) => cluster.members.length > 1);
-  if (relevant.length === 0) {
-    return {};
+  const settled = relevant.flatMap((cluster) =>
+    cluster.identical && cluster.members[0] !== undefined
+      ? [[cluster.id, cluster.members[0].id]]
+      : [],
+  );
+  const divergent = relevant.filter((cluster) => !cluster.identical);
+  if (divergent.length === 0) {
+    return Object.fromEntries(settled);
   }
 
-  const questions: WizardQuestion[] = relevant.map((cluster, index) => ({
+  const questions: WizardQuestion[] = divergent.map((cluster, index) => ({
     id: `${scope}-duplicate-${String(index)}`,
     initial: cluster.members[0] === undefined ? [] : [cluster.members[0].id],
     kind: "select",
@@ -49,12 +58,13 @@ export async function gatherDuplicateWinners(
   if (result === "aborted") {
     return SETUP_ABORTED;
   }
-  return Object.fromEntries(
-    relevant.flatMap((cluster, index) => {
+  return Object.fromEntries([
+    ...settled,
+    ...divergent.flatMap((cluster, index) => {
       const winner = selectedValues(result[`${scope}-duplicate-${String(index)}`])[0];
       return winner === undefined ? [] : [[cluster.id, winner]];
     }),
-  );
+  ]);
 }
 
 function excerpt(
