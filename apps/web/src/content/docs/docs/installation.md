@@ -1,7 +1,11 @@
 ---
 title: Installation
-description: Install the Aura CLI with the install script, npm, or a prebuilt binary.
+description: Prepare Aura locally before registry and binary publication.
 ---
+
+> **Pre-release:** the install script, npm package, and prebuilt binaries below are planned release
+> channels. They are not published yet. The currently executable walkthrough is the local-tarball
+> verification at the end of this page.
 
 ## Install script
 
@@ -72,6 +76,21 @@ export PATH="$HOME/.aura/bin:$PATH"
 ```
 
 The install script prints the exact line to add for your shell.
+
+## Current local-tarball walkthrough
+
+From an Aura checkout, run:
+
+```sh
+pnpm install --frozen-lockfile
+pnpm verify:packages
+```
+
+This builds and packs `@tryaura/aura-sdk`, `@tryaura/aura-cli`, and
+`@tryaura/aura-testkit` at `0.1.0`; validates their contents; installs only those tarballs into a
+temporary consumer with an isolated pnpm store; typechecks a plugin and branded distribution;
+checks the installed `aura --version`; and compiles and executes the distribution with Bun. It
+does not publish, authenticate to, or modify an npm registry.
 
 ## Run the environment doctor
 

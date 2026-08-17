@@ -20,6 +20,7 @@ import { managedSnippetContentProblems } from "../managed-block/scan.js";
 import { type ScanContext, scanAdapter, type SkippedApp } from "./adapter-scan.js";
 import type { ScanDiagnostic } from "./diagnostics.js";
 import { createDocumentResolver } from "./documents.js";
+import { isEmbeddedAssetPath } from "./embedded-assets.js";
 import { findProjectRoot } from "./project-root.js";
 import {
   createCachingReader,
@@ -208,7 +209,8 @@ async function resolveSnippet(snippet: Snippet, reader: FileReader): Promise<Sni
     );
   }
 
-  const read = readSnippetSource(snippet, await reader.read(path, { maxBytes: MAX_SNIPPET_BYTES }));
+  const contents = await reader.read(path, { maxBytes: MAX_SNIPPET_BYTES });
+  const read = readSnippetSource(snippet, path, contents);
   if (read.message !== undefined) {
     return failedSnippet(read.message, "read", path);
   }
@@ -237,10 +239,14 @@ type SnippetSource =
   | { readonly content: string; readonly message?: undefined }
   | { readonly content?: undefined; readonly message: string };
 
-function readSnippetSource(snippet: Snippet, source: PathContents): SnippetSource {
+function readSnippetSource(snippet: Snippet, path: string, source: PathContents): SnippetSource {
   if (!source.exists) {
+    // Inside a compiled executable a missing snippet is a build mistake, not a broken machine:
+    // the Markdown was never embedded. Say which flags embed it rather than blaming the filesystem.
     return {
-      message: `Snippet "${snippet.id}" points at a file that does not exist, so its content is unavailable.`,
+      message: isEmbeddedAssetPath(path)
+        ? `Snippet "${snippet.id}" was not embedded in this executable, so its content is unavailable. Compile it with the snippet Markdown as extra "bun build" entrypoints, "--loader .md:file", and "--asset-naming=content/snippets/[name].[ext]".`
+        : `Snippet "${snippet.id}" points at a file that does not exist, so its content is unavailable.`,
     };
   }
   if (source.isDirectory) {

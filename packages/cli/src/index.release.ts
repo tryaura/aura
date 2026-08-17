@@ -1,10 +1,12 @@
-export { runCli } from "./run.js";
+import type { CliDistro, CliExitCode, CliRuntime } from "./types.js";
+
+export declare function runCli(distro: CliDistro, runtime?: CliRuntime): Promise<CliExitCode>;
 export type {
-  CheckReport,
-  CheckReportV1,
   CheckCounts,
   CheckExplanation,
   CheckExplanationV1,
+  CheckReport,
+  CheckReportV1,
   CheckSummary,
   PassedCheck,
   ReportApp,

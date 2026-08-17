@@ -1,8 +1,26 @@
 {
   "name": "@tryaura/aura-cli",
-  "version": "0.0.0",
+  "version": "0.1.0",
+  "description": "The composable Aura CLI runtime and official plugin distribution.",
+  "keywords": [
+    "agent",
+    "aura",
+    "cli",
+    "plugin"
+  ],
+  "homepage": "https://github.com/tryaura/aura/tree/main/packages/cli#readme",
+  "bugs": "https://github.com/tryaura/aura/issues",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tryaura/aura.git",
+    "directory": "packages/cli"
+  },
+  "bin": {
+    "aura": "./dist/bin/aura.js"
+  },
   "files": [
+    "content",
     "dist",
     "schema"
   ],
@@ -14,6 +32,11 @@
       "development": "./src/index.ts",
       "default": "./dist/index.js"
     },
+    "./plugins": {
+      "types": "./src/plugins.ts",
+      "development": "./src/plugins.ts",
+      "default": "./dist/plugins/index.js"
+    },
     "./schema/check-output-v1.json": "./schema/check-output-v1.schema.json"
   },
   "publishConfig": {
@@ -22,25 +45,41 @@
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
       },
+      "./plugins": {
+        "types": "./dist/plugins/index.d.ts",
+        "default": "./dist/plugins/index.js"
+      },
       "./schema/check-output-v1.json": "./schema/check-output-v1.schema.json"
     },
     "access": "public"
   },
   "scripts": {
-    "build": "tsc --project tsconfig.build.json",
-    "typecheck": "tsc --noEmit"
+    "build": "tsdown && tsdown --config tsdown.types.config.ts",
+    "prepack": "pnpm build",
+    "typecheck": "tsc --noEmit && tsc --project tsconfig.type-tests.json"
   },
   "dependencies": {
     "@tryaura/aura-sdk": "workspace:*",
-    "@tryaura/content-official": "workspace:*",
-    "@tryaura/core": "workspace:*",
     "clipanion": "3.2.1",
+    "diff": "9.0.0",
+    "ignore": "7.0.6",
+    "semver": "7.8.5",
+    "smol-toml": "1.8.0",
     "string-width": "4.2.3",
     "typanion": "3.14.0"
   },
   "devDependencies": {
+    "@tryaura/adapter-claude-code": "workspace:*",
+    "@tryaura/adapter-codex": "workspace:*",
+    "@tryaura/adapter-cursor": "workspace:*",
+    "@tryaura/checks-core": "workspace:*",
+    "@tryaura/content-official": "workspace:*",
+    "@tryaura/core": "workspace:*",
     "@types/node": "24.13.3",
     "ajv": "8.20.0",
     "vitest": "4.1.10"
+  },
+  "engines": {
+    "node": ">=24"
   }
 }

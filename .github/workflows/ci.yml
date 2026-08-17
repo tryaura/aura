@@ -8,6 +8,28 @@ permissions:
   contents: read
 
 jobs:
+  packages:
+    name: Release packages
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Verify release packages
+        run: pnpm verify:packages
+
   checks:
     name: Checks
     runs-on: ubuntu-latest

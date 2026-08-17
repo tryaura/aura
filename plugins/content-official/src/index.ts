@@ -3,10 +3,28 @@ import { definePlugin, type FileContentSource } from "@tryaura/aura-sdk";
 /** Neutral starter content used when Aura creates the canonical shared instruction source. */
 export const SHARED_INSTRUCTIONS_TEMPLATE = "# Shared agent instructions\n";
 
+/**
+ * Bun's virtual filesystem root, as it appears in a module URL inside a compiled executable.
+ *
+ * Core owns the same constant for path reads in `workspace/embedded-assets`; this plugin depends
+ * on the SDK alone, so the URL-shaped spelling stays here rather than importing it.
+ */
+const EMBEDDED_MODULE_PREFIX = "file:///$bunfs/";
+
+/**
+ * In a normal install the snippet Markdown sits one directory above the built module, at
+ * `<package>/content/snippets`. A `bun build --compile` executable instead places every asset at
+ * the path `--asset-naming` dictates, relative to the bundle's own root — so the same file is a
+ * sibling directory rather than a parent one.
+ */
 function snippetSource(filename: string): FileContentSource {
+  const relativePath = import.meta.url.startsWith(EMBEDDED_MODULE_PREFIX)
+    ? `./content/snippets/${filename}`
+    : `../content/snippets/${filename}`;
+
   return {
     type: "file",
-    url: new URL(`../content/snippets/${filename}`, import.meta.url).href,
+    url: new URL(relativePath, import.meta.url).href,
   };
 }
 

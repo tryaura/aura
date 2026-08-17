@@ -1,7 +1,6 @@
 import type { Readable, Writable } from "node:stream";
 
 import type { AuraPlugin } from "@tryaura/aura-sdk";
-import type { PluginRegistryOptions } from "@tryaura/core";
 
 /** Process status produced by every Aura CLI command. */
 export type CliExitCode = 0 | 1 | 2 | 3;
@@ -20,6 +19,12 @@ export interface CliBranding {
   readonly version?: string | undefined;
 }
 
+/** Distribution-owned plugin registry policy exposed without leaking Aura's private core package. */
+export interface CliRegistryOptions {
+  /** Plugins allowed to contribute bare check ids such as `INS-001`. */
+  readonly bareCheckIdPlugins?: readonly string[] | undefined;
+}
+
 /** Build-time composition of one Aura distribution. */
 export interface CliDistro {
   readonly branding: CliBranding;
@@ -30,7 +35,7 @@ export interface CliDistro {
    * Distribution-owned rather than plugin-owned: the grant is only meaningful because `plugins` is
    * a build-time list this distribution controls.
    */
-  readonly registry?: PluginRegistryOptions | undefined;
+  readonly registry?: CliRegistryOptions | undefined;
 }
 
 /**

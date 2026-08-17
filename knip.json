@@ -7,6 +7,13 @@
     "optionalPeerDependencies": "warn"
   },
   "workspaces": {
+    ".": {
+      "entry": [
+        "scripts/fixtures/distro-consumer/smoke.mjs",
+        "scripts/fixtures/distro-consumer/src/main.ts",
+        "scripts/fixtures/distro-consumer/src/plugin.ts"
+      ]
+    },
     "distros/*": {
       "entry": ["src/**/*.test.ts", "src/**/*.smoke.ts"],
       "includeEntryExports": true
@@ -16,6 +23,10 @@
     },
     "packages/core": {
       "includeEntryExports": true
+    },
+    "packages/cli": {
+      "entry": ["type-tests/*.ts"],
+      "ignoreDependencies": ["diff", "ignore", "semver", "smol-toml"]
     },
     "plugins/*": {
       "includeEntryExports": true
