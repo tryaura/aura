@@ -78,7 +78,7 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
     );
   }
 
-  const appCatalog = buildAppCatalog(request.registry.adapters, model);
+  const appCatalog = buildAppCatalog(request.registry.adapters, model, scan.skipped);
   const snippetCatalog = createSnippetCatalog(request.registry.snippets, model.manifest);
 
   const gathered = await gatherSelections(
@@ -228,6 +228,7 @@ function endOnGreen(request: SetupRequest, scan: WorkspaceScan): CliExitCode {
     checks: request.registry.checks,
     findings: run.findings,
     scanDiagnostics: scan.diagnostics,
+    skipped: scan.skipped,
     withDetail: request.withDetail,
   });
   renderHuman(report, request.branding, request.stdout);

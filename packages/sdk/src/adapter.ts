@@ -185,6 +185,21 @@ export interface Adapter {
    * May run commands via {@link Environment.exec}. Must not write to disk.
    */
   readonly detect: (environment: Environment) => Promise<AdapterDetection>;
+  /**
+   * Names what {@link Adapter.detect} looks at, completing `<displayName> — looked for <scope>`
+   * wherever Aura lists applications it did not find, for example
+   * `"the codex CLI on PATH (the desktop app is not checked)"`.
+   *
+   * Detection typically probes one artifact, and the application often exists in other forms the
+   * probe cannot see — a desktop app alongside a CLI. Naming the probe keeps "not found" from
+   * claiming more than was checked.
+   *
+   * State the scope, never the outcome: Aura supplies the outcome, and only where it holds. A
+   * `detect` that threw establishes nothing about the machine, so no scope is shown for it — a
+   * value phrased as `"the codex CLI was not found"` would smuggle a claim past that guard.
+   * Listings fall back to a bare "not found" when this is omitted.
+   */
+  readonly detectionScope?: string | undefined;
   /** Human-readable application name, shown in reports. */
   readonly displayName: string;
   /**

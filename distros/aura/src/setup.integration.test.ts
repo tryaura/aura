@@ -69,9 +69,15 @@ describe("aura setup", () => {
     const result = await run(seed, ["setup", "--yes"]);
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("✗ Claude Code — not found");
-    expect(result.stdout).toContain("✗ Codex — not found");
-    expect(result.stdout).toContain("✗ Cursor — not found");
+    expect(result.stdout).toContain(
+      "✗ Claude Code — looked for the claude CLI on PATH (the desktop app is not checked)",
+    );
+    expect(result.stdout).toContain(
+      "✗ Codex — looked for the codex CLI on PATH (the desktop app is not checked)",
+    );
+    expect(result.stdout).toContain(
+      "✗ Cursor — looked for the cursor shell command on PATH (the editor itself is not checked)",
+    );
     expect(result.stdout).toContain("No agent applications were detected.");
     const manifest = await readFile(join(seed.homeDir, "agents", "aura.json"), "utf8");
     expect(JSON.parse(manifest)).toMatchObject({ apps: {} });
@@ -83,7 +89,9 @@ describe("aura setup", () => {
     const result = await run(seed, ["setup", "--yes"]);
 
     expect(result.stdout).toContain("✓ Claude Code 2.1.233 (authenticated)");
-    expect(result.stdout).toContain("✗ Codex — not found");
+    expect(result.stdout).toContain(
+      "✗ Codex — looked for the codex CLI on PATH (the desktop app is not checked)",
+    );
     expect(result.stdout).not.toContain("Steps to take yourself:");
     const manifest = await readFile(join(seed.homeDir, "agents", "aura.json"), "utf8");
     expect(JSON.parse(manifest)).toMatchObject({ apps: { "claude-code": { managed: true } } });

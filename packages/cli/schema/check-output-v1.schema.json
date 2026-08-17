@@ -78,6 +78,7 @@
             "version": { "type": "string" }
           }
         },
+        "detectionScope": { "type": "string" },
         "displayName": { "type": "string" },
         "support": { "$ref": "#/$defs/support" }
       }

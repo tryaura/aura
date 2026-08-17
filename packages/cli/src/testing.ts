@@ -32,6 +32,7 @@ export function fixtureAdapter(
 ): Adapter {
   return defineAdapter({
     detect: (environment) => Promise.resolve(detect(environment)),
+    detectionScope: "the fixture CLI on PATH",
     displayName: "Fixture App",
     files: () => [],
     id: "fixture",
@@ -54,6 +55,7 @@ export function appsPlugin(): AuraPlugin {
       }),
       defineAdapter({
         detect: () => Promise.resolve({ installed: false }),
+        detectionScope: "the missing-app CLI on PATH",
         displayName: "Missing App",
         files: () => [],
         id: "missing-app",

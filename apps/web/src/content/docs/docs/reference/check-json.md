@@ -23,6 +23,13 @@ The `CheckReportV1` envelope has `kind: "check-report"` and `schemaVersion: 1`. 
 - `diagnostics`, `passedChecks`, and `findings`; and
 - optional `fixes` when `--fix` was requested.
 
+An app record carries `detectionScope` only when its adapter looked for the application, did not
+find it, and declares one. Treat the field as absent otherwise: an adapter that failed during
+`detect` establishes nothing about the machine, and reports it as not installed with no scope
+alongside a `diagnostics` entry naming the failure. The value names what the probe looked at — for
+example `the codex CLI on PATH (the desktop app is not checked)` — so a consumer supplies its own
+wording for the outcome.
+
 Each finding includes `checkId`, `findingId`, severity, scope, fixability, and message. Details,
 locations, metadata, and presentation are present only when supplied by the check.
 

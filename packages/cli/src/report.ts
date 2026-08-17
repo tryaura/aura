@@ -1,21 +1,27 @@
 import type {
   Adapter,
-  AdapterSupport,
   AppModel,
   Check,
   Finding,
-  FindingLocation,
-  FindingPresentation,
   Fixability,
-  JsonObject,
   Scope,
   Severity,
 } from "@tryaura/aura-sdk";
-import type { CheckDiagnostic, FixOperationEffect, ScanDiagnostic, ScanPhase } from "@tryaura/core";
+import type {
+  CheckDiagnostic,
+  FixOperationEffect,
+  ScanDiagnostic,
+  ScanPhase,
+  SkippedApp,
+} from "@tryaura/core";
 
 import { checkCategory } from "./check-selection.js";
-import { reportApps, reportFinding } from "./report-shapes.js";
+import { reportApps, reportFinding, type ReportApp, type ReportFinding } from "./report-shapes.js";
 import type { CliExitCode } from "./types.js";
+
+// The per-item shapes and the functions that build them live together in report-shapes; this module
+// owns the envelope around them. Re-exported here because the envelope is the published entry point.
+export type { ReportApp, ReportFinding } from "./report-shapes.js";
 
 const CHECK_JSON_SCHEMA_VERSION = 1;
 
@@ -47,32 +53,6 @@ export interface ReportDiagnostic {
 }
 
 export type ReportStatus = "clean" | "empty" | "error" | "operational-error" | "warning";
-
-interface ReportAppDetection {
-  readonly authenticated?: boolean | undefined;
-  readonly installed: boolean;
-  readonly version?: string | undefined;
-}
-
-export interface ReportApp {
-  readonly appId: string;
-  readonly detection: ReportAppDetection;
-  readonly displayName: string;
-  readonly support?: AdapterSupport | undefined;
-}
-
-export interface ReportFinding {
-  readonly checkId: string;
-  readonly details?: string | undefined;
-  readonly findingId: string;
-  readonly fixability: Fixability;
-  readonly locations?: readonly FindingLocation[] | undefined;
-  readonly message: string;
-  readonly metadata?: JsonObject | undefined;
-  readonly presentation?: FindingPresentation | undefined;
-  readonly scope: Scope;
-  readonly severity: Severity;
-}
 
 export interface ReportFixOperation {
   readonly conflict?: string | undefined;
@@ -151,6 +131,8 @@ export interface CheckReportInput {
   readonly fixes?: readonly ReportFix[] | undefined;
   readonly forcedExitCode?: CliExitCode | undefined;
   readonly scanDiagnostics: readonly ScanDiagnostic[];
+  /** The scan's record of adapters that looked for their application and did not find it. */
+  readonly skipped: readonly SkippedApp[];
   readonly withDetail: boolean;
 }
 
@@ -178,7 +160,7 @@ export function createCheckReport(input: CheckReportInput): CheckReport {
   });
 
   return Object.freeze({
-    apps: Object.freeze(reportApps(input.adapters, input.apps)),
+    apps: Object.freeze(reportApps(input.adapters, input.apps, input.skipped)),
     diagnostics: Object.freeze(diagnostics),
     findings: Object.freeze(input.findings.map((finding) => reportFinding(finding, input.checks))),
     ...(input.fixes === undefined ? {} : { fixes: Object.freeze([...input.fixes]) }),

@@ -94,6 +94,7 @@ const adapter = defineAdapter({
       version: result.stdout.trim(),
     };
   },
+  detectionScope: "the acme-agent CLI on PATH",
   displayName: "Acme Agent",
   files(environment, detection) {
     if (!detection.installed) {
@@ -232,6 +233,12 @@ check that produced it.
 `parse` and are not retained alongside the documents parsed out of them, so a large instruction
 file is held once rather than twice. `Adapter.installHint` becomes `AppModel.installHint`, allowing
 checks to give application-specific update guidance without guessing how an adapter was installed.
+
+`Adapter.detectionScope` names what `detect` looks at, so a listing can say `Acme Agent — looked
+for the acme-agent CLI on PATH` instead of a bare "not found" that claims more than was checked.
+Write the scope, not the outcome: Aura adds the outcome itself, and only for an adapter whose
+`detect` returned `installed: false`. One that threw is reported with no scope at all, beside a
+diagnostic naming the failure, because it never established where the application was not.
 
 `SkillSource.resolve` takes every requested id at once and returns a `ReadonlyMap`, so resolving a
 listing costs one round trip instead of one per skill. Ids that cannot be resolved are omitted

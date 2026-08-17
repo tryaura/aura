@@ -342,7 +342,17 @@ describe("runCli", () => {
 
   it("lists the applications that were looked for and not found", async () => {
     const plugin = definePlugin({
-      adapters: [fixtureAdapter(() => ({ installed: false }))],
+      adapters: [
+        fixtureAdapter(() => ({ installed: false })),
+        defineAdapter({
+          detect: () => Promise.resolve({ installed: false }),
+          displayName: "Scopeless App",
+          files: () => [],
+          id: "scopeless",
+          parse: () => ({ instructionFiles: [], mcpServers: [], skills: [] }),
+          supportedRange: ">=1",
+        }),
+      ],
       apiVersion: 1,
       checks: [],
       id: "fixture",
@@ -353,8 +363,38 @@ describe("runCli", () => {
 
     await runCli(distro([plugin]), capture.runtime);
 
-    expect(capture.stdout.text).toContain("Not found (1)");
-    expect(capture.stdout.text).toContain("Fixture App");
+    expect(capture.stdout.text).toContain("Not found (2)");
+    expect(capture.stdout.text).toContain("Fixture App — looked for the fixture CLI on PATH");
+    expect(capture.stdout.text).toContain("Scopeless App — not found");
+    expect(capture.stdout.text).toContain("Run acme setup to install and manage any of them");
+  });
+
+  it("does not claim where it looked for an adapter whose detection threw", async () => {
+    const plugin = definePlugin({
+      adapters: [
+        defineAdapter({
+          detect: () => Promise.reject(new Error("adapter exploded")),
+          detectionScope: "the broken CLI on PATH",
+          displayName: "Broken App",
+          files: () => [],
+          id: "broken-app",
+          parse: () => ({ instructionFiles: [], mcpServers: [], skills: [] }),
+          supportedRange: ">=1",
+        }),
+      ],
+      apiVersion: 1,
+      checks: [],
+      id: "fixture",
+      name: "Fixture",
+      version: "1.0.0",
+    });
+    const capture = createCapture(["check"]);
+
+    await runCli(distro([plugin]), capture.runtime);
+
+    expect(capture.stdout.text).toContain("Broken App failed during detect");
+    expect(capture.stdout.text).toContain("Broken App — not found");
+    expect(capture.stdout.text).not.toContain("looked for");
   });
 
   it("maps invalid invocations to exit code two and stderr", async () => {
