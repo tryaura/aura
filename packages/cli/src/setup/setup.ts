@@ -63,6 +63,7 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
   const scan = await buildWorkspaceModel({
     adapters: request.registry.adapters,
     environment,
+    mcpCatalog: request.registry.mcpServers,
     snippets: request.registry.snippets,
     skills: request.registry.skills,
   });
@@ -126,6 +127,7 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
   const rescanned = await buildWorkspaceModel({
     adapters: request.registry.adapters,
     environment,
+    mcpCatalog: request.registry.mcpServers,
     snippets: request.registry.snippets,
     skills: request.registry.skills,
   });

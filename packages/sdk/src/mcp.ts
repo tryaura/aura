@@ -14,6 +14,13 @@ const SECRET_NAME_PATTERN =
 const SECRET_VALUE_PATTERN =
   /^(?:sk|pk|rk)[-_]|^(?:gh[opsur]|github_pat)_|^xox[abpsr]-|^AKIA[0-9A-Z]{16}$/u;
 
+/** Whether a string contains a token recognizable by Aura's MCP redaction boundary. */
+export function isMcpCredentialLiteral(value: string): boolean {
+  return value
+    .split(/[\s:=/?&#,]+/u)
+    .some((candidate) => candidate.length > 0 && SECRET_VALUE_PATTERN.test(candidate));
+}
+
 /** A bearer scheme with its token attached, however the argument reached the command line. */
 const BEARER_VALUE_PATTERN = /^bearer\s+\S/iu;
 

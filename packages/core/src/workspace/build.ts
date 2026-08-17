@@ -1,4 +1,11 @@
-import type { Adapter, AppModel, Environment, Snippet, WorkspaceModel } from "@tryaura/aura-sdk";
+import type {
+  Adapter,
+  AppModel,
+  Environment,
+  McpServerDef,
+  Snippet,
+  WorkspaceModel,
+} from "@tryaura/aura-sdk";
 
 import { auraManifestDiagnostics } from "../manifest/diagnostic.js";
 import type { RegisteredSkillPack } from "../plugin-registry.js";
@@ -7,12 +14,13 @@ import { readAuraManifest } from "../manifest/read.js";
 import { type ScanContext, scanAdapter, type SkippedApp } from "./adapter-scan.js";
 import type { ScanDiagnostic } from "./diagnostics.js";
 import { createDocumentResolver } from "./documents.js";
+import { resolveMcpCatalog } from "./mcp-catalog.js";
 import { findProjectRoot } from "./project-root.js";
 import { createCachingReader, createFileReader, type FileReader } from "./reader.js";
 import { scanRepository } from "./repository.js";
 import { sharedInstructionsPath, toSharedInstructions } from "./shared-links.js";
 import { resolveBundledSkills, scanSharedSkills } from "./skills.js";
-import { resolveSnippets } from "./snippets.js";
+import { resolveSnippets } from "./snippet-catalog.js";
 
 export type { SkippedApp } from "./adapter-scan.js";
 
@@ -27,9 +35,19 @@ export interface WorkspaceScanOptions {
   readonly adapters: readonly Adapter[];
   /** Ambient state captured at boot. */
   readonly environment: Environment;
+  /**
+   * Registry MCP catalog contributions to load during the same read pass, each bounded by
+   * `MAX_MCP_CATALOG_BYTES`. An entry that cannot be loaded is reported as a diagnostic and left
+   * out of the model rather than surfaced as a partial one.
+   */
+  readonly mcpCatalog?: readonly McpServerDef[] | undefined;
   /** Filesystem access. Defaults to the real one. */
   readonly reader?: FileReader | undefined;
-  /** Registry snippets to resolve during the same read pass. */
+  /**
+   * Registry snippets to resolve during the same read pass, each bounded by `MAX_SNIPPET_BYTES`.
+   * A snippet that cannot be resolved is reported as a diagnostic and left out of the model rather
+   * than surfaced as a partial one.
+   */
   readonly snippets?: readonly Snippet[] | undefined;
   /** Bundled skills paired with their owning plugin source. */
   readonly skills?: readonly RegisteredSkillPack[] | undefined;
@@ -85,6 +103,7 @@ export async function buildWorkspaceModel(options: WorkspaceScanOptions): Promis
   const sharedContentsPending = reader.read(sharedPath);
   const manifestContentsPending = reader.read(manifestPath);
   const resolvedSnippetsPending = resolveSnippets(options.snippets ?? [], reader);
+  const resolvedCatalogPending = resolveMcpCatalog(options.mcpCatalog ?? [], reader);
   const resolvedSkillsPending = resolveBundledSkills(options.skills ?? [], reader);
   const sharedSkillsPending = scanSharedSkills(environment, reader);
   const scans = await scansPending;
@@ -93,6 +112,7 @@ export async function buildWorkspaceModel(options: WorkspaceScanOptions): Promis
   const sharedContents = await sharedContentsPending;
   const manifestContents = await manifestContentsPending;
   const resolvedSnippets = await resolvedSnippetsPending;
+  const resolvedCatalog = await resolvedCatalogPending;
   const resolvedSkills = await resolvedSkillsPending;
   const sharedSkills = await sharedSkillsPending;
 
@@ -112,13 +132,15 @@ export async function buildWorkspaceModel(options: WorkspaceScanOptions): Promis
   const manifest = readAuraManifest(manifestPath, manifestContents);
   diagnostics.push(...auraManifestDiagnostics(manifest));
   diagnostics.push(...resolvedSnippets.diagnostics);
+  diagnostics.push(...resolvedCatalog.diagnostics);
   diagnostics.push(...resolvedSkills.diagnostics);
 
   return {
     diagnostics,
     model: {
+      availableMcpServers: resolvedCatalog.values,
       availableSkills: resolvedSkills.skills,
-      availableSnippets: resolvedSnippets.snippets,
+      availableSnippets: resolvedSnippets.values,
       apps,
       cwd: environment.cwd,
       homeDir: environment.homeDir,

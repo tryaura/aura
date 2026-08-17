@@ -35,7 +35,21 @@ describe("Aura manifest protocol", () => {
     const source = {
       apps: { codex: { channel: "nightly", managed: true } },
       future: { enabled: true },
-      mcpServers: [{ endpoint: { url: "https://example.test" }, name: "future" }],
+      mcpServers: [
+        {
+          apps: ["codex"],
+          catalogId: "official/docs",
+          name: "docs",
+          note: "keep",
+          scope: "global",
+          transport: {
+            headers: { Authorization: "Bearer ${DOCS_TOKEN}" },
+            retry: true,
+            type: "http",
+            url: "https://example.test/mcp",
+          },
+        },
+      ],
       ownership: {
         codex: {
           files: ["~/.codex/AGENTS.md#aura-block"],

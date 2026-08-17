@@ -109,12 +109,14 @@ export class CheckCommand extends Command<AuraCliContext> {
 
     try {
       const environment = createEnvironment(this.environmentOptions());
-      let scan = await buildWorkspaceModel({
+      const scanOptions = {
         adapters: selected.adapters,
         environment,
-        snippets: this.context.registry.snippets,
+        mcpCatalog: this.context.registry.mcpServers,
         skills: this.context.registry.skills,
-      });
+        snippets: this.context.registry.snippets,
+      };
+      let scan = await buildWorkspaceModel(scanOptions);
       let run = runChecks(selected.checks, scan.model);
       let fixRunDiagnostics: readonly DiagnosticSource[] = [];
       let fixes: readonly ReportFix[] | undefined;
@@ -149,12 +151,7 @@ export class CheckCommand extends Command<AuraCliContext> {
         ];
         fixes = outcome.fixes;
         if (outcome.applied) {
-          scan = await buildWorkspaceModel({
-            adapters: selected.adapters,
-            environment,
-            snippets: this.context.registry.snippets,
-            skills: this.context.registry.skills,
-          });
+          scan = await buildWorkspaceModel(scanOptions);
           run = runChecks(selected.checks, scan.model);
         }
       }

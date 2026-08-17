@@ -1,6 +1,6 @@
 import type { JsonObject, Scope, Severity } from "./common.js";
 import type { FixPlan } from "./fix.js";
-import type { WorkspaceModel } from "./model.js";
+import type { WorkspaceModel } from "./workspace-model.js";
 
 /** One named remediation a guided check can offer for a specific finding. */
 export interface GuidedFixChoice {

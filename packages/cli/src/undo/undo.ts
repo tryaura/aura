@@ -122,6 +122,7 @@ async function restoreBackup(request: UndoRequest, backup: ReadableBackup): Prom
   const scan = await buildWorkspaceModel({
     adapters: request.registry.adapters,
     environment: request.environment,
+    mcpCatalog: request.registry.mcpServers,
     snippets: request.registry.snippets,
     skills: request.registry.skills,
   });
