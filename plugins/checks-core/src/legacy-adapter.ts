@@ -12,27 +12,35 @@ import {
 
 export const LEGACY_INSTRUCTIONS_ADAPTER_ID = "legacy-instructions";
 
-interface LegacyInstructionFile {
+interface InventoryInstructionFile {
+  /**
+   * Whether the format has been superseded by the one its application now reads.
+   *
+   * Only the superseded ones are something to consolidate, so this is what INS-004 reports on. The
+   * rest are inventoried without being flagged: no adapter models them, and dropping them from the
+   * workspace entirely would take them out of every other instruction check too.
+   */
+  readonly legacy: boolean;
   readonly segments: readonly string[];
   readonly tool: string;
 }
 
-const LEGACY_FILES: readonly LegacyInstructionFile[] = Object.freeze([
-  { segments: [".cursorrules"], tool: "cursor" },
-  { segments: [".windsurfrules"], tool: "windsurf" },
-  { segments: [".clinerules"], tool: "cline" },
-  { segments: ["GEMINI.md"], tool: "gemini" },
-  { segments: ["CRUSH.md"], tool: "crush" },
-  { segments: ["WARP.md"], tool: "warp" },
-  { segments: ["AMPCODE.md"], tool: "amp" },
-  { segments: [".goosehints"], tool: "goose" },
-  { segments: [".github", "copilot-instructions.md"], tool: "github-copilot" },
+const INVENTORY_FILES: readonly InventoryInstructionFile[] = Object.freeze([
+  { legacy: true, segments: [".cursorrules"], tool: "cursor" },
+  { legacy: true, segments: [".windsurfrules"], tool: "windsurf" },
+  { legacy: true, segments: [".clinerules"], tool: "cline" },
+  { legacy: true, segments: ["AMPCODE.md"], tool: "amp" },
+  { legacy: true, segments: [".goosehints"], tool: "goose" },
+  { legacy: false, segments: ["GEMINI.md"], tool: "gemini" },
+  { legacy: false, segments: ["CRUSH.md"], tool: "crush" },
+  { legacy: false, segments: ["WARP.md"], tool: "warp" },
+  { legacy: false, segments: [".github", "copilot-instructions.md"], tool: "github-copilot" },
 ]);
 const SCOPES: readonly Scope[] = Object.freeze(["global", "project"]);
 
 export const legacyInstructionsAdapter = defineAdapter({
   detect: async () => ({ installed: true, version: "1.0.0" }),
-  displayName: "Legacy instruction inventory",
+  displayName: "Unmanaged instruction inventory",
   files: legacyFiles,
   id: LEGACY_INSTRUCTIONS_ADAPTER_ID,
   parse: ({ files }) => ({
@@ -45,7 +53,8 @@ export const legacyInstructionsAdapter = defineAdapter({
 });
 
 /**
- * Declares every legacy filename at home, at the repository root, and at the invocation directory.
+ * Declares every inventoried filename at home, at the repository root, and at the invocation
+ * directory.
  *
  * The last of those is not redundant: adapters mirror the application they model, and the ones
  * that read a project file read it beside the directory Aura was invoked from rather than at the
@@ -74,7 +83,7 @@ function isBase(base: string | undefined): base is string {
 }
 
 function specsForScope(base: string, scope: Scope, suffix: string): readonly AdapterFileSpec[] {
-  return LEGACY_FILES.map((file) => ({
+  return INVENTORY_FILES.map((file) => ({
     id: `${sourceId(scope, file.tool)}${suffix}`,
     kind: "instructions",
     optional: true,
@@ -84,8 +93,8 @@ function specsForScope(base: string, scope: Scope, suffix: string): readonly Ada
 }
 
 function toInstructionDocument(file: AdapterSourceFile): readonly InstructionDocument[] {
-  const tool = toolForSourceId(file.spec.id);
-  if (file.content === undefined || tool === undefined) {
+  const entry = entryForSourceId(file.spec.id);
+  if (file.content === undefined || entry === undefined) {
     return [];
   }
 
@@ -93,7 +102,7 @@ function toInstructionDocument(file: AdapterSourceFile): readonly InstructionDoc
     {
       content: file.content,
       links: [],
-      metadata: { legacy: true, tool },
+      metadata: { legacy: entry.legacy, tool: entry.tool },
       path: file.spec.path,
       scope: file.spec.scope,
       sourceId: file.spec.id,
@@ -106,12 +115,12 @@ function sourceId(scope: Scope, tool: string): string {
 }
 
 /** Reads back {@link sourceId}, ignoring the index {@link legacyFiles} appends per project base. */
-function toolForSourceId(id: string): string | undefined {
+function entryForSourceId(id: string): InventoryInstructionFile | undefined {
   const [prefix, scope, tool] = id.split(".");
   if (prefix !== LEGACY_INSTRUCTIONS_ADAPTER_ID || !isScope(scope)) {
     return undefined;
   }
-  return LEGACY_FILES.find((file) => file.tool === tool)?.tool;
+  return INVENTORY_FILES.find((file) => file.tool === tool);
 }
 
 function isScope(value: string | undefined): value is Scope {

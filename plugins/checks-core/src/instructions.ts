@@ -2,11 +2,13 @@ import { resolve } from "node:path";
 
 import {
   defineCheck,
+  type AdapterSharedLinkKind,
   type AppModel,
   type DetectedFinding,
   type Finding,
   type FixPlan,
   type InstructionDocument,
+  type ResolvedSharedLink,
   type WorkspaceModel,
 } from "@tryaura/aura-sdk";
 import { SHARED_INSTRUCTIONS_TEMPLATE } from "@tryaura/content-official";
@@ -94,44 +96,57 @@ function detectMissingLink(app: AppModel, model: WorkspaceModel): readonly Detec
   if (app.synthetic === true) {
     return [];
   }
+  const shared = app.sharedLink;
   const sharedPath = resolve(model.sharedInstructions.path);
-  const valid = app.instructionFiles.some((document) =>
-    document.links.some(
-      (link) =>
-        link.valid && compatibleLink(app, link.kind) && resolve(link.targetPath) === sharedPath,
-    ),
-  );
-  if (valid) {
+  if (shared !== undefined && linksToShared(app, shared, sharedPath)) {
     return [];
   }
 
   const outcome = planSharedInstructionLink(app, model);
-  const entry = app.sharedLink?.entryPath;
+  const blocked = "blocked" in outcome;
   return [
     {
-      details: "blocked" in outcome ? outcome.blocked : READY,
+      details: blocked ? outcome.blocked : READY,
+      // A blocked outcome has no plan behind it — an unverifiable version, an undeclared
+      // mechanism, a file Aura will not overwrite. `fix` returns nothing for those, so the
+      // finding must not carry the check's `auto` fixability into a report that then offers a
+      // remediation which never arrives.
+      ...(blocked ? { fixability: "manual" as const } : {}),
       id: app.adapterId,
-      ...(entry === undefined ? {} : { locations: [{ path: entry }] }),
+      ...(shared === undefined ? {} : { locations: [{ path: shared.entryPath }] }),
       message: `${app.displayName} does not load the shared instruction source.`,
       metadata: { appId: app.adapterId },
     },
   ];
 }
 
+/** Whether the declared entry already carries a link the declared mechanism would have written. */
+function linksToShared(app: AppModel, shared: ResolvedSharedLink, sharedPath: string): boolean {
+  const entryPath = resolve(shared.entryPath);
+  return app.instructionFiles.some(
+    (document) =>
+      resolve(document.path) === entryPath &&
+      document.links.some(
+        (link) =>
+          link.valid &&
+          compatibleLink(shared.kind, link.kind) &&
+          resolve(link.targetPath) === sharedPath,
+      ),
+  );
+}
+
+/** Which parsed link kinds each declared mechanism can be satisfied by. */
 function compatibleLink(
-  app: AppModel,
-  kind: InstructionDocument["links"][number]["kind"],
+  declared: AdapterSharedLinkKind,
+  found: InstructionDocument["links"][number]["kind"],
 ): boolean {
-  switch (app.sharedLink?.kind) {
+  switch (declared) {
     case "symlink": {
-      return kind === "symlink";
+      return found === "symlink";
     }
     case "import-line":
     case "native-copy": {
-      return kind === "import" || kind === "native";
-    }
-    case undefined: {
-      return true;
+      return found === "import" || found === "native";
     }
   }
 }
