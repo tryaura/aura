@@ -172,6 +172,7 @@ export class CheckCommand extends Command<AuraCliContext> {
         fixes,
         forcedExitCode,
         scanDiagnostics: scan.diagnostics,
+        skipped: scan.skipped,
         withDetail: this.detail,
       });
 

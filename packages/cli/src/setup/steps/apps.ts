@@ -1,3 +1,4 @@
+import { notFoundLine } from "../../not-found-line.js";
 import { safe } from "../../render.js";
 import { catalogEntryId, catalogEntryName, type AppCatalogEntry } from "../catalog.js";
 import { SETUP_ABORTED, type SetupStep, type SetupStepContext } from "../types.js";
@@ -114,7 +115,7 @@ function previouslyManagedIds(context: SetupStepContext): ReadonlySet<string> {
 
 function statusLine(entry: AppCatalogEntry): string {
   if (entry.kind === "undetected") {
-    return `✗ ${safe(entry.displayName)} — not found`;
+    return `✗ ${notFoundLine(entry.displayName, entry.detectionScope)}`;
   }
 
   const app = entry.app;

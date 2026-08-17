@@ -3,6 +3,7 @@ import type { Writable } from "node:stream";
 import type { Check, Finding } from "@tryaura/aura-sdk";
 
 import { renderFindingPresentation } from "./metadata-table.js";
+import { notFoundLine } from "./not-found-line.js";
 import { createCheckExplanation, type CheckReport } from "./report.js";
 import { safe, safeFindingText, safeMultiline } from "./safe-text.js";
 import type { CliBranding } from "./types.js";
@@ -74,12 +75,17 @@ export function renderHuman(report: CheckReport, branding: CliBranding, output: 
     );
   }
 
+  // What was looked for, then the one command that can act on it — the install instructions
+  // themselves belong to the app the user picks, not to every app they have never wanted.
   const skipped = report.apps.filter((app) => !app.detection.installed);
   if (skipped.length > 0) {
     renderGroup(
       "·",
       `Not found (${String(skipped.length)})`,
-      skipped.map((app) => safe(app.displayName)),
+      [
+        ...skipped.map((app) => notFoundLine(app.displayName, app.detectionScope)),
+        `Run ${branding.command} setup to install and manage any of them`,
+      ],
       output,
     );
   }

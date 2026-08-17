@@ -27,6 +27,7 @@ import { parseProjectTrust } from "./trust.js";
 export const codexAdapter = defineAdapter({
   detect: (environment) =>
     detectExecutable(environment, { authenticationArgs: ["login", "status"], binaryName: "codex" }),
+  detectionScope: "the codex CLI on PATH (the desktop app is not checked)",
   displayName: "Codex",
   files: codexFiles,
   id: CODEX_ADAPTER_ID,

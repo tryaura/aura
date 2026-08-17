@@ -20,9 +20,18 @@ describe("check-output-v1.schema.json", () => {
       checks: [],
       findings: [],
       scanDiagnostics: [],
+      skipped: [{ adapterId: "fixture", displayName: "Fixture App" }],
       withDetail: false,
     });
 
+    expect(report.apps).toEqual([
+      {
+        appId: "fixture",
+        detection: { installed: false },
+        detectionScope: "the fixture CLI on PATH",
+        displayName: "Fixture App",
+      },
+    ]);
     expect(validate(report), JSON.stringify(validate.errors)).toBe(true);
   });
 

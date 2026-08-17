@@ -4,8 +4,8 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { buildWorkspaceModel, createEnvironment } from "@tryaura/core";
-import { defineAdapter, type Adapter, type WorkspaceModel } from "@tryaura/aura-sdk";
+import { buildWorkspaceModel, createEnvironment, type WorkspaceScan } from "@tryaura/core";
+import { defineAdapter, type Adapter } from "@tryaura/aura-sdk";
 
 import { buildAppCatalog, catalogEntryId, catalogEntryName } from "./catalog.js";
 
@@ -22,13 +22,43 @@ afterEach(async () => {
 describe("buildAppCatalog", () => {
   it("keeps registry order and marks an absent application undetected", async () => {
     const adapters = [adapter("here", "Here", true), adapter("gone", "Gone", false)];
-    const model = await scan(adapters);
+    const scanned = await scan(adapters);
 
-    const catalog = buildAppCatalog(adapters, model);
+    const catalog = buildAppCatalog(adapters, scanned.model, scanned.skipped);
 
     expect(catalog.map(catalogEntryId)).toEqual(["here", "gone"]);
     expect(catalog.map(catalogEntryName)).toEqual(["Here", "Gone"]);
     expect(catalog.map((entry) => entry.kind)).toEqual(["detected", "undetected"]);
+  });
+
+  it("carries the detection scope of an application that was looked for and not found", async () => {
+    const adapters = [
+      { ...adapter("gone", "Gone", false), detectionScope: "the gone CLI on PATH" },
+    ];
+    const scanned = await scan(adapters);
+
+    const catalog = buildAppCatalog(adapters, scanned.model, scanned.skipped);
+
+    expect(catalog[0]).toMatchObject({
+      detectionScope: "the gone CLI on PATH",
+      kind: "undetected",
+    });
+  });
+
+  it("drops the detection scope of an adapter that threw before it could look", async () => {
+    const adapters = [
+      {
+        ...adapter("broken", "Broken", false),
+        detect: () => Promise.reject(new Error("adapter exploded")),
+        detectionScope: "the broken CLI on PATH",
+      },
+    ];
+    const scanned = await scan(adapters);
+
+    const catalog = buildAppCatalog(adapters, scanned.model, scanned.skipped);
+
+    expect(scanned.diagnostics.map((diagnostic) => diagnostic.phase)).toEqual(["detect"]);
+    expect(catalog[0]).toMatchObject({ detectionScope: undefined, kind: "undetected" });
   });
 
   it("omits a synthetic inventory adapter even though it reports itself installed", async () => {
@@ -36,11 +66,11 @@ describe("buildAppCatalog", () => {
       adapter("real", "Real App", true),
       { ...adapter("file-inventory", "File inventory", true), synthetic: true },
     ];
-    const model = await scan(adapters);
+    const scanned = await scan(adapters);
 
-    const catalog = buildAppCatalog(adapters, model);
+    const catalog = buildAppCatalog(adapters, scanned.model, scanned.skipped);
 
-    expect(model.apps.map((app) => app.adapterId)).toContain("file-inventory");
+    expect(scanned.model.apps.map((app) => app.adapterId)).toContain("file-inventory");
     expect(catalog.map(catalogEntryId)).toEqual(["real"]);
   });
 });
@@ -56,7 +86,7 @@ function adapter(id: string, displayName: string, installed: boolean): Adapter {
   });
 }
 
-async function scan(adapters: readonly Adapter[]): Promise<WorkspaceModel> {
+async function scan(adapters: readonly Adapter[]): Promise<WorkspaceScan> {
   const root = await mkdtemp(join(tmpdir(), "aura-setup-catalog-"));
   temporaryDirectories.push(root);
   const homeDir = join(root, "home");
@@ -65,5 +95,5 @@ async function scan(adapters: readonly Adapter[]): Promise<WorkspaceModel> {
   await mkdir(workspace, { recursive: true });
 
   const environment = createEnvironment({ cwd: workspace, environmentVariables: {}, homeDir });
-  return (await buildWorkspaceModel({ adapters, environment })).model;
+  return buildWorkspaceModel({ adapters, environment });
 }

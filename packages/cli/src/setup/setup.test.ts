@@ -208,7 +208,7 @@ describe("runSetup", () => {
 
     expect(exitCode).toBe(0);
     expect(fixture.stdout()).toContain("✓ Installed App 1.2.3");
-    expect(fixture.stdout()).toContain("✗ Missing App — not found");
+    expect(fixture.stdout()).toContain("✗ Missing App — looked for the missing-app CLI on PATH");
     expect(fixture.stdout()).toContain("Steps to take yourself:");
     expect(fixture.stdout()).toContain("Install Missing App: brew install missing-app");
     const manifest = await readFile(join(fixture.homeDir, "agents", "aura.json"), "utf8");

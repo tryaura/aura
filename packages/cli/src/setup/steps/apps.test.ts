@@ -29,8 +29,8 @@ describe("appsStep", () => {
   it("offers a not-installed application and keeps it selectable", async () => {
     const catalog = [
       detected({ adapterId: "here", displayName: "Here", version: "1.0.0" }),
-      undetected("missing", "Missing", "brew install missing"),
-      undetected("hintless", "Hintless"),
+      undetected("missing", "Missing", "brew install missing", "the missing CLI on PATH"),
+      undetected("scopeless", "Scopeless"),
     ];
     const harness = createHarness({
       forms: [{ apps: { kind: "options", values: ["here", "missing"] } }],
@@ -38,13 +38,13 @@ describe("appsStep", () => {
 
     const outcome = await appsStep.gather(context(catalog), harness.io);
 
-    expect(harness.io.notes).toContain("✗ Missing — not found");
-    expect(harness.io.notes).toContain("✗ Hintless — not found");
+    expect(harness.io.notes).toContain("✗ Missing — looked for the missing CLI on PATH");
+    expect(harness.io.notes).toContain("✗ Scopeless — not found");
     expect(question(harness).initial).toEqual(["here"]);
     expect(labels(harness)).toEqual([
       "Here 1.0.0",
       "Missing (not installed)",
-      "Hintless (not installed)",
+      "Scopeless (not installed)",
     ]);
     expect(outcome).toEqual({ apps: { managed: ["here", "missing"] } });
   });
@@ -234,8 +234,13 @@ function detected(options: {
   };
 }
 
-function undetected(adapterId: string, displayName: string, installHint?: string): AppCatalogEntry {
-  return { adapterId, displayName, installHint, kind: "undetected" };
+function undetected(
+  adapterId: string,
+  displayName: string,
+  installHint?: string,
+  detectionScope?: string,
+): AppCatalogEntry {
+  return { adapterId, detectionScope, displayName, installHint, kind: "undetected" };
 }
 
 function manifestWith(managed: readonly string[]): AuraManifestState {

@@ -33,6 +33,7 @@ export const cursorAdapter = defineAdapter({
    */
   detect: (environment) =>
     detectExecutable(environment, { binaryName: "cursor", windowsBinaryName: "cursor.cmd" }),
+  detectionScope: "the cursor shell command on PATH (the editor itself is not checked)",
   displayName: "Cursor",
   files: cursorFiles,
   id: "cursor",

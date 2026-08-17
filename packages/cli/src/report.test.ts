@@ -97,6 +97,34 @@ describe("createCheckReport", () => {
     ]);
   });
 
+  it("carries the detection scope of an application the scan looked for and skipped", () => {
+    const scoped = { ...adapter(), detectionScope: "the cursor shell command on PATH" };
+
+    expect(
+      report({
+        adapters: [scoped],
+        skipped: [{ adapterId: "cursor", displayName: "Cursor" }],
+      }).apps,
+    ).toEqual([
+      {
+        appId: "cursor",
+        detection: { installed: false },
+        detectionScope: "the cursor shell command on PATH",
+        displayName: "Cursor",
+      },
+    ]);
+  });
+
+  // A crashed adapter is absent from both `apps` and `skipped`. Its scope describes a probe that
+  // never ran, so repeating it would contradict the diagnostic the same run prints.
+  it("drops the detection scope of an adapter that never reported a result", () => {
+    const scoped = { ...adapter(), detectionScope: "the cursor shell command on PATH" };
+
+    expect(report({ adapters: [scoped] }).apps).toEqual([
+      { appId: "cursor", detection: { installed: false }, displayName: "Cursor" },
+    ]);
+  });
+
   it("omits synthetic inventory adapters", () => {
     expect(report({ adapters: [{ ...adapter(), synthetic: true }] }).apps).toEqual([]);
   });
@@ -110,6 +138,7 @@ function report(overrides: Partial<CheckReportInput> = {}): ReturnType<typeof cr
     checks: [CHECK],
     findings: [],
     scanDiagnostics: [],
+    skipped: [],
     withDetail: false,
     ...overrides,
   });

@@ -26,6 +26,7 @@ const GLOBAL_INSTRUCTIONS_SEGMENTS = Object.freeze([".claude", "CLAUDE.md"]);
 export const claudeCodeAdapter = defineAdapter({
   detect: (environment) =>
     detectExecutable(environment, { authenticationArgs: ["auth", "status"], binaryName: "claude" }),
+  detectionScope: "the claude CLI on PATH (the desktop app is not checked)",
   displayName: "Claude Code",
   files: claudeFiles,
   id: CLAUDE_CODE_ADAPTER_ID,
