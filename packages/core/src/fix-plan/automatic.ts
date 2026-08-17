@@ -61,7 +61,7 @@ export function collectAutomaticFixCandidates(
 
   for (const finding of options.findings) {
     const check = checks.get(finding.checkId);
-    if (check?.fixability !== "auto") {
+    if (check?.fixability !== "auto" || finding.fixability === "manual") {
       continue;
     }
 

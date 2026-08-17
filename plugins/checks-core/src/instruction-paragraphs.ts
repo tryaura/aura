@@ -4,12 +4,14 @@ import { maskMarkdownCode, type InstructionDocument, type Scope } from "@tryaura
 
 import { sha256 } from "./hashing.js";
 import { canonicalInstructionDocuments } from "./instruction-documents.js";
+import { compareCodePoints } from "./ordering.js";
 
 const MINIMUM_PARAGRAPH_LENGTH = 40;
 /** Never appears in prose, so joined parts cannot collide with a value that contains it. */
 const CODE_SEPARATOR = "\u0000";
 
 const LIST_MARKER_PATTERN = /^\s*(?:[-*+]|\d+[.)])\s+/u;
+const SETEXT_HEADING_PATTERN = /^\s{0,3}(?:=+|-+)\s*$/u;
 const TRAILING_PUNCTUATION_PATTERN = /\p{P}+$/u;
 const TABLE_DIVIDER_PATTERN = /^\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?$/u;
 const LICENSE_START_PATTERN =
@@ -90,43 +92,42 @@ function segmentDocument(document: InstructionDocument): readonly InstructionPar
   const path = resolve(document.path);
   const lines = maskMarkdownCode(document.content).split(/\r?\n/u);
   const rawLines = document.content.split(/\r?\n/u);
+  const startIndex = (frontmatterEndIndex(lines) ?? -1) + 1;
   const paragraphs: InstructionParagraph[] = [];
   let startLine: number | undefined;
   let paragraphLines: string[] = [];
   let paragraphCode: string[] = [];
 
-  const finishParagraph = (endLine: number): void => {
-    if (startLine === undefined) {
-      return;
-    }
-    const normalized = normalizeParagraph(paragraphLines);
-    if (
-      normalized.length >= MINIMUM_PARAGRAPH_LENGTH &&
-      !isMarkdownTable(paragraphLines) &&
-      !isLicenseBoilerplate(paragraphLines) &&
-      !isFrontmatter(paragraphLines)
-    ) {
-      const code = paragraphCode.join(CODE_SEPARATOR);
-      paragraphs.push({
-        code,
-        conditional: isConditionalRule(document),
-        endLine,
-        hash: sha256(`${normalized}${CODE_SEPARATOR}${code}`),
-        normalized,
-        path,
-        scope: document.scope,
-        startLine,
-      });
-    }
+  const resetParagraph = (): void => {
     startLine = undefined;
     paragraphLines = [];
     paragraphCode = [];
   };
 
-  for (let index = 0; index < lines.length; index += 1) {
+  const finishParagraph = (endLine: number): void => {
+    const paragraph =
+      startLine === undefined
+        ? undefined
+        : buildParagraph(document, path, startLine, endLine, paragraphLines, paragraphCode);
+    if (paragraph !== undefined) {
+      paragraphs.push(paragraph);
+    }
+    resetParagraph();
+  };
+
+  for (let index = startIndex; index < lines.length; index += 1) {
     const line = lines[index] ?? "";
     if (line.trim().length === 0) {
       finishParagraph(index);
+      continue;
+    }
+    const rule = classifyRuleLine(line, paragraphLines);
+    if (rule === "break") {
+      finishParagraph(index);
+      continue;
+    }
+    if (rule === "underline") {
+      resetParagraph();
       continue;
     }
     startLine ??= index + 1;
@@ -136,6 +137,52 @@ function segmentDocument(document: InstructionDocument): readonly InstructionPar
   finishParagraph(lines.length);
 
   return paragraphs;
+}
+
+/**
+ * How a rule of dashes or equals signs relates to the lines above it.
+ *
+ * It underlines them into a heading, which is not guidance and is dropped. After list items the
+ * same rule is a thematic break instead, and the list above it is guidance the report needs — so
+ * that paragraph is closed rather than discarded.
+ */
+function classifyRuleLine(
+  line: string,
+  above: readonly string[],
+): "break" | "underline" | undefined {
+  if (above.length === 0 || !SETEXT_HEADING_PATTERN.test(line)) {
+    return undefined;
+  }
+  return above.some((accumulated) => LIST_MARKER_PATTERN.test(accumulated)) ? "break" : "underline";
+}
+
+function buildParagraph(
+  document: InstructionDocument,
+  path: string,
+  startLine: number,
+  endLine: number,
+  paragraphLines: readonly string[],
+  paragraphCode: readonly string[],
+): InstructionParagraph | undefined {
+  const normalized = normalizeParagraph(paragraphLines);
+  if (
+    normalized.length < MINIMUM_PARAGRAPH_LENGTH ||
+    isMarkdownTable(paragraphLines) ||
+    isLicenseBoilerplate(paragraphLines)
+  ) {
+    return undefined;
+  }
+  const code = paragraphCode.filter((signature) => signature.length > 0).join(CODE_SEPARATOR);
+  return {
+    code,
+    conditional: isConditionalRule(document),
+    endLine,
+    hash: sha256(`${normalized}${CODE_SEPARATOR}${code}`),
+    normalized,
+    path,
+    scope: document.scope,
+    startLine,
+  };
 }
 
 /**
@@ -164,7 +211,19 @@ function codeSignature(raw: string, masked: string): string {
     runs.push(current);
   }
 
-  return runs.join(CODE_SEPARATOR);
+  return runs.filter((run) => !/^`+$/u.test(run)).join(CODE_SEPARATOR);
+}
+
+function frontmatterEndIndex(lines: readonly string[]): number | undefined {
+  if (lines[0]?.trim() !== "---") {
+    return undefined;
+  }
+  for (let index = 1; index < lines.length; index += 1) {
+    if (lines[index]?.trim() === "---") {
+      return index;
+    }
+  }
+  return undefined;
 }
 
 function isMarkdownTable(lines: readonly string[]): boolean {
@@ -179,10 +238,6 @@ function isLicenseBoilerplate(lines: readonly string[]): boolean {
   return LICENSE_START_PATTERN.test(lines.join(" ").trim());
 }
 
-function isFrontmatter(lines: readonly string[]): boolean {
-  return lines.length >= 2 && lines[0]?.trim() === "---" && lines.at(-1)?.trim() === "---";
-}
-
 function isConditionalRule(document: InstructionDocument): boolean {
   return (
     extname(document.path).toLowerCase() === ".mdc" && document.metadata?.["alwaysApply"] === false
@@ -190,7 +245,7 @@ function isConditionalRule(document: InstructionDocument): boolean {
 }
 
 function compareParagraphs(left: InstructionParagraph, right: InstructionParagraph): number {
-  const pathOrder = left.path.localeCompare(right.path);
+  const pathOrder = compareCodePoints(left.path, right.path);
   if (pathOrder !== 0) {
     return pathOrder;
   }
@@ -200,5 +255,5 @@ function compareParagraphs(left: InstructionParagraph, right: InstructionParagra
   if (left.endLine !== right.endLine) {
     return left.endLine - right.endLine;
   }
-  return left.hash.localeCompare(right.hash);
+  return compareCodePoints(left.hash, right.hash);
 }

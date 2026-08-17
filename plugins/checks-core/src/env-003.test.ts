@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import type { GitignoreModel } from "@tryaura/aura-sdk";
+
 import { env003 } from "./env-003.js";
 import { reconcileGitignoreBlock } from "./gitignore-block.js";
 import { gitignore, projectModel, requireFinding } from "./testing.js";
@@ -47,6 +49,66 @@ describe("ENV-003", () => {
     expect(env003.detect(projectModel(shared))).toHaveLength(1);
   });
 
+  it("gives root .gitignore precedence over info/exclude and converges after fixing", () => {
+    const local = gitignore("/AGENTS.md\n", true, "/repo/.git/info/exclude");
+    const completeShared = gitignore(
+      "/.claude/settings.local.json\n!/AGENTS.md\n!/CLAUDE.md\n!/.mcp.json\n",
+    );
+    expect(env003.detect(projectModel(completeShared, { infoExclude: local }))).toEqual([]);
+
+    const incompleteShared = gitignore("/.claude/settings.local.json\n!/CLAUDE.md\n!/.mcp.json\n");
+    const workspace = projectModel(incompleteShared, { infoExclude: local });
+    const detected = env003.detect(workspace)[0];
+    const finding = requireFinding(detected, "ENV-003", "project", "warn");
+    const operation = env003.fix(finding, workspace)?.operations[0];
+    if (operation?.type !== "write") {
+      throw new Error("expected a .gitignore write");
+    }
+
+    expect(
+      env003.detect(projectModel(gitignore(operation.content), { infoExclude: local })),
+    ).toEqual([]);
+  });
+
+  it("lets root .gitignore override a negation from info/exclude", () => {
+    const shared = gitignore(
+      "/.claude/settings.local.json\n/AGENTS.md\n!/CLAUDE.md\n!/.mcp.json\n",
+    );
+    const local = gitignore("!/AGENTS.md\n", true, "/repo/.git/info/exclude");
+
+    expect(env003.detect(projectModel(shared, { infoExclude: local }))[0]).toMatchObject({
+      id: "gitignore-policy",
+      metadata: { shareableIgnored: ["AGENTS.md"] },
+    });
+  });
+
+  it("matches ignore patterns case-sensitively", () => {
+    const content =
+      "agents.md\n/.claude/settings.local.json\n!/AGENTS.md\n!/CLAUDE.md\n!/.mcp.json\n";
+
+    expect(env003.detect(projectModel(gitignore(content)))).toEqual([]);
+  });
+
+  it("reports an unreadable info/exclude without inferring policy state", () => {
+    const local: GitignoreModel = {
+      exists: true,
+      path: "/repo/.git/info/exclude",
+      patterns: [],
+      problem: "denied",
+    };
+
+    expect(env003.detect(projectModel(gitignore(""), { infoExclude: local }))).toEqual([
+      {
+        details:
+          "Aura could not read /repo/.git/info/exclude: denied. Ignore-policy findings are omitted because the effective Git rules are unknown.",
+        fixability: "manual",
+        id: "info-exclude-unreadable",
+        locations: [{ path: "/repo/.git/info/exclude" }],
+        message: "The repository-local Git exclude file could not be inspected.",
+      },
+    ]);
+  });
+
   it("reports ignored personal paths already tracked without running Git", () => {
     const content = "/.claude/settings.local.json\n!/AGENTS.md\n!/CLAUDE.md\n!/.mcp.json\n";
     const findings = env003.detect(
@@ -56,10 +118,26 @@ describe("ENV-003", () => {
     );
 
     expect(findings.map((finding) => finding.id)).toEqual([
-      "ignored-but-tracked:.claude/settings.local.json",
+      "tracked-personal-path:.claude/settings.local.json",
     ]);
     expect(findings[0]?.severity).toBe("info");
     expect(findings[0]?.details).toContain("git rm --cached -- .claude/settings.local.json");
+  });
+
+  it("reports a tracked personal path before it is ignored", () => {
+    const findings = env003.detect(
+      projectModel(gitignore("!/AGENTS.md\n!/CLAUDE.md\n!/.mcp.json\n"), {
+        trackedAgentPaths: [".claude/settings.local.json"],
+      }),
+    );
+
+    expect(findings.map((finding) => finding.id)).toEqual([
+      "gitignore-policy",
+      "tracked-personal-path:.claude/settings.local.json",
+    ]);
+    expect(findings[1]?.message).toBe(
+      ".claude/settings.local.json is already tracked by Git but should remain personal.",
+    );
   });
 
   it("fixes a missing gitignore with one write operation", () => {
@@ -109,6 +187,13 @@ describe("ENV-003", () => {
     expect(mostlyLf).not.toContain("settings.local.json\r\n");
   });
 
+  it("separates and converges a managed block after a file without a trailing newline", () => {
+    const once = reconcileGitignoreBlock("node_modules/");
+
+    expect(once?.startsWith("node_modules/\n# aura:begin ENV-003\n")).toBe(true);
+    expect(once === undefined ? undefined : reconcileGitignoreBlock(once)).toBe(once);
+  });
+
   it.each([
     ["duplicate begin", "# aura:begin ENV-003\n# aura:begin ENV-003\n# aura:end ENV-003\n"],
     ["missing end", "# aura:begin ENV-003\n"],
@@ -117,10 +202,19 @@ describe("ENV-003", () => {
     ["indented marker", " # aura:begin ENV-003\n# aura:end ENV-003\n"],
   ])("fails closed for %s markers", (_case, content) => {
     const workspace = projectModel(gitignore(content));
-    const detected = env003.detect(workspace)[0];
+    const findings = env003.detect(workspace);
+    const detected = findings.find((finding) => finding.id === "gitignore-policy");
     const finding = requireFinding(detected, "ENV-003", "project", "warn");
 
     expect(env003.fix(finding, workspace)).toBeUndefined();
+    expect(findings).toContainEqual({
+      details:
+        "Repair the duplicate, incomplete, reversed, suffixed, or indented ENV-003 markers before running the automatic fix again.",
+      fixability: "manual",
+      id: "managed-block-malformed",
+      locations: [{ path: "/repo/.gitignore" }],
+      message: "Aura's managed ENV-003 block has malformed markers.",
+    });
   });
 
   it("reports an unreadable gitignore without offering a fix", () => {

@@ -90,6 +90,15 @@ describe("ENV-004", () => {
     expect(env004.detect(projectModel(gitignore(""), { apps: [counted] }))).toEqual([]);
   });
 
+  it("accepts Claude Code auto mode", () => {
+    const automatic = app({
+      adapterId: "claude-code",
+      metadata: { claudePermissions: { project: { defaultMode: "auto" } } },
+    });
+
+    expect(env004.detect(projectModel(gitignore(""), { apps: [automatic] }))).toEqual([]);
+  });
+
   it.each([
     ["trusted", 0],
     ["untrusted", 1],
@@ -98,6 +107,16 @@ describe("ENV-004", () => {
     const codex = app({ adapterId: "codex", metadata: { projectTrust: trust } });
 
     expect(env004.detect(projectModel(gitignore(""), { apps: [codex] }))).toHaveLength(count);
+  });
+
+  it("includes the Codex config source in finding metadata", () => {
+    const codex = app({ adapterId: "codex", metadata: { projectTrust: "unknown" } });
+
+    expect(env004.detect(projectModel(gitignore(""), { apps: [codex] }))[0]?.metadata).toEqual({
+      appId: "codex",
+      sourceId: "codex.mcp.global",
+      trust: "unknown",
+    });
   });
 
   it("returns zero-operation guided plans with exact manual edits", () => {
@@ -110,6 +129,7 @@ describe("ENV-004", () => {
     expect(plan?.operations).toEqual([]);
     expect(plan?.manualSteps?.[0]).toContain('[projects."/repo"]');
     expect(plan?.manualSteps?.[0]).toContain('trust_level = "trusted"');
+    expect(env004.explain).toContain('[projects."<project-root>"]');
   });
 
   it("does not inspect project settings outside a repository", () => {

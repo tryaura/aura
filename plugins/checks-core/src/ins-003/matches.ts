@@ -1,4 +1,5 @@
 import { paragraphHashBuckets, type InstructionParagraph } from "../instruction-paragraphs.js";
+import { compareCodePoints } from "../ordering.js";
 
 const LENGTH_RATIO = 0.7;
 export const NEAR_DUPLICATE_THRESHOLD = 0.85;
@@ -179,7 +180,7 @@ function compareMatches(left: ParagraphMatch, right: ParagraphMatch): number {
   return (
     left.left - right.left ||
     left.right - right.right ||
-    left.kind.localeCompare(right.kind) ||
+    compareCodePoints(left.kind, right.kind) ||
     left.similarity - right.similarity
   );
 }

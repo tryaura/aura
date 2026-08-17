@@ -18,7 +18,7 @@ const RESTRICTIVE_MODES = new Set(["plan", "dontAsk"]);
 
 const EXPLAIN = `Claude Code can appear unable to work when its effective default permission mode is plan or dontAsk. Codex skips project-scoped configuration when a project is untrusted, so Aura also reports projects that are not explicitly trusted.
 
-Claude Code: edit the settings file named by the finding and choose default, acceptEdits, or auto as appropriate. Codex: edit ~/.codex/config.toml and set \`projects."<project-root>".trust_level = "trusted"\` after reviewing the repository.`;
+Claude Code: edit the settings file named by the finding and choose default, acceptEdits, or auto as appropriate. Codex: edit ~/.codex/config.toml and add a \`[projects."<project-root>"]\` section with \`trust_level = "trusted"\` after reviewing the repository.`;
 
 export const env004 = defineCheck({
   defaultSeverity: "warn",
@@ -86,7 +86,7 @@ function codexFindings(app: AppModel): readonly DetectedFinding[] {
         trust === "untrusted"
           ? "Codex marks this project as untrusted."
           : "Codex does not mark this project as trusted.",
-      metadata: { appId: app.adapterId, trust },
+      metadata: { appId: app.adapterId, sourceId: CODEX_SOURCE_IDS.mcp, trust },
     },
   ];
 }
@@ -114,6 +114,8 @@ function guidedFix(finding: Finding, model: WorkspaceModel): FixPlan | undefined
   if (appId === CODEX_ADAPTER_ID && model.projectRoot !== undefined) {
     return {
       manualSteps: [
+        // A section header rather than a dotted key: a bare `projects."…".trust_level = …` appended
+        // to the file lands inside whichever table is open above it, and Codex never sees it.
         `After reviewing the repository, add [projects.${JSON.stringify(model.projectRoot)}] with trust_level = "trusted" in ~/.codex/config.toml.`,
         "Restart Codex in the project and run `aura check` again.",
       ],

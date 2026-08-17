@@ -55,7 +55,7 @@ export function reportFinding(finding: Finding, checks: readonly Check[]): Repor
     checkId: finding.checkId,
     ...(finding.details === undefined ? {} : { details: finding.details }),
     findingId: finding.id,
-    fixability: check.fixability,
+    fixability: finding.fixability ?? check.fixability,
     ...(finding.locations === undefined ? {} : { locations: finding.locations }),
     message: finding.message,
     ...(finding.metadata === undefined ? {} : { metadata: finding.metadata }),

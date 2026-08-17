@@ -8,7 +8,7 @@ export const env002 = defineCheck({
   defaultSeverity: "error",
   detect: (model) =>
     model.apps.flatMap((app) =>
-      app.detection.authenticated === false
+      app.synthetic !== true && app.detection.authenticated === false
         ? [
             {
               details: authenticationHint(app.adapterId, app.displayName),

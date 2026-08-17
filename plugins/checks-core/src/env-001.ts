@@ -8,7 +8,7 @@ export const env001 = defineCheck({
   defaultSeverity: "warn",
   detect: (model) =>
     model.apps.flatMap((app) => {
-      if (app.support.status === "supported") {
+      if (app.synthetic === true || app.support.status === "supported") {
         return [];
       }
 

@@ -90,19 +90,20 @@ describe("INS-003", () => {
     );
   });
 
-  it("keeps a finding's ID when one copy is reworded", () => {
-    const original = numberedGuidance(40);
+  it("keeps a finding's ID when an unrelated duplicate is inserted earlier", () => {
+    const earlier =
+      "Document surprising behavior in a comment so the next maintainer understands the constraint.";
     const before = run([
-      document("/workspace/AGENTS.md", original),
-      document("/workspace/CLAUDE.md", original),
+      document("/workspace/AGENTS.md", GUIDANCE),
+      document("/workspace/CLAUDE.md", GUIDANCE),
     ]);
     const after = run([
-      document("/workspace/AGENTS.md", original),
-      document("/workspace/CLAUDE.md", original.replace("instruction20", "replacement")),
+      document("/workspace/AGENTS.md", `${earlier}\n\n${GUIDANCE}`),
+      document("/workspace/CLAUDE.md", `${earlier}\n\n${GUIDANCE}`),
     ]);
+    const guidanceFinding = after.find((finding) => finding.locations?.[0]?.line === 3);
 
-    expect(after).toHaveLength(1);
-    expect(after[0]?.id).toBe(before[0]?.id);
+    expect(guidanceFinding?.id).toBe(before[0]?.id);
   });
 
   it("gives each cluster between the same files its own ID", () => {
@@ -116,8 +117,8 @@ describe("INS-003", () => {
     expect(findings).toHaveLength(2);
     expect(findings[0]?.id).not.toBe(findings[1]?.id);
     expect(findings.map((finding) => finding.id)).toEqual([
-      expect.stringMatching(/:1$/u),
-      expect.stringMatching(/:2$/u),
+      expect.stringMatching(/^cluster:[a-f0-9]{64}$/u),
+      expect.stringMatching(/^cluster:[a-f0-9]{64}$/u),
     ]);
   });
 
@@ -152,6 +153,19 @@ describe("INS-003", () => {
     ).toHaveLength(1);
   });
 
+  it("reports re-wrapped prose and a copy with an unmatched backtick", () => {
+    const rewrapped = GUIDANCE.replace(" before merging", "\nbefore merging");
+    const unmatched = GUIDANCE.replace("run the", "`run the");
+
+    expect(
+      run([
+        document("/workspace/AGENTS.md", GUIDANCE),
+        document("/workspace/CLAUDE.md", rewrapped),
+        document("/workspace/rules.md", unmatched),
+      ]),
+    ).toHaveLength(1);
+  });
+
   it("leaves duplication that crosses the global and project tiers to INS-008", () => {
     expect(
       run([
@@ -173,6 +187,34 @@ describe("INS-003", () => {
       { line: 1, path: "/workspace/AGENTS.md" },
       { line: 1, path: "/workspace/CLAUDE.md" },
     ]);
+  });
+
+  it("drops a scoped cluster connected only through a cross-scope member", () => {
+    const bridge = numberedGuidance(40);
+    const first = bridge.replace("instruction10", "replacement-a");
+    const second = bridge.replace("instruction30", "replacement-b");
+
+    expect(
+      run([
+        document("/home/dev/AGENTS.md", first),
+        document("/home/dev/CLAUDE.md", second),
+        document("/workspace/AGENTS.md", bridge, { scope: "project" }),
+      ]),
+    ).toEqual([]);
+  });
+
+  it("caps match metadata and detail locations while retaining totals", () => {
+    const findings = run(
+      Array.from({ length: 15 }, (_value, index) =>
+        document(`/workspace/package-${String(index).padStart(2, "0")}/AGENTS.md`, GUIDANCE),
+      ),
+    );
+
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.metadata?.["matchCount"]).toBe(105);
+    expect(findings[0]?.metadata?.["matches"]).toHaveLength(100);
+    expect(findings[0]?.metadata?.["members"]).toHaveLength(15);
+    expect(findings[0]?.details).toContain("and 9 more");
   });
 
   it("compares conditional rules only against rules of the same scope", () => {
