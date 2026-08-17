@@ -50,15 +50,26 @@ export function createFormSession(
     keypress.name === "left" && activeTab === 0 && canGoBack;
 
   /**
+   * Whether the flow has another form ahead of this one: a later stage of the same step, or a
+   * later step.
+   *
+   * Submit is an action, not a step, so the flow's last form has nothing ahead of it — → stops
+   * there rather than committing into the Submit the bar shows after it, the same way → is inert
+   * on the Submit form itself. Reaching Submit is always an explicit ↵.
+   */
+  const hasFormAhead =
+    flow !== undefined &&
+    flow.submit !== true &&
+    ((flow.sub?.upcoming.length ?? 0) > 0 || flow.upcoming.length > 0);
+
+  /**
    * → past the last tab commits the form as it stands and moves on, so a re-entered flow
-   * retraces forward without re-answering. Never on the Submit form — applying a plan must stay
-   * an explicit ↵.
+   * retraces forward without re-answering.
    */
   const commitsForward = (keypress: Keypress): boolean =>
     (keypress.name === "right" || keypress.name === "tab") &&
     activeTab === tabCount - 1 &&
-    flow !== undefined &&
-    flow.submit !== true;
+    hasFormAhead;
 
   const handle = (keypress: Keypress): FormEvent => {
     const previewResult = handlePreviewKeypress(preview, keypress);

@@ -121,8 +121,9 @@ Tab states, in either row:
 - ←/→ (and tab) move focus across the live form's tabs, and past its ends they move through the
   flow: ← past the first tab _backs out of the form_ — the previous form reopens with the answers
   it was given, all the way back to the first step — and → past the last tab _commits the form as
-  it stands and advances_, so a backed-into flow retraces forward without re-answering. On the
-  Submit confirmation → is inert; applying a plan is always an explicit ↵. A step re-entered
+  it stands and advances_, so a backed-into flow retraces forward without re-answering. → never
+  reaches Submit: it stops on the flow's last form, and on the Submit confirmation it is inert.
+  Submit is an action, not a step, so getting there is always an explicit ↵. A step re-entered
   backward opens on its **last** form (← from Snippets lands on Archive, not Global), a step with
   nothing to ask passes ← straight through, and the final confirmation backs out into the last
   step the same way. Informational banners print only on a step's first visit.
