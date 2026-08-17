@@ -10,9 +10,11 @@ import {
   type PluginRegistry,
   type WorkspaceScan,
 } from "@tryaura/core";
+import { pluralize } from "@tryaura/core/pluralize";
 
 import { createCheckReport } from "../report.js";
-import { renderHuman, safe } from "../render.js";
+import { renderHuman } from "../render.js";
+import { safe } from "../safe-text.js";
 import type { CliBranding, CliExitCode } from "../types.js";
 import { buildAppCatalog } from "./catalog.js";
 import { planSetup, type SetupNotice } from "./planner.js";
@@ -162,7 +164,9 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
     now: environment.now,
     stateHomeDir: request.stateHomeDir,
   });
-  stdout.write(`\nApplied ${String(result.appliedOperationCount)} operation(s).\n`);
+  stdout.write(
+    `\nApplied ${String(result.appliedOperationCount)} ${pluralize(result.appliedOperationCount, "operation")}.\n`,
+  );
   if (result.backupId !== undefined) {
     stdout.write(
       `The previous contents are saved as backup ${safe(result.backupId)}. Run ${branding.command} undo to restore them.\n`,

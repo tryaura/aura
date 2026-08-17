@@ -40,7 +40,7 @@ describe("aura check --fix", () => {
     expect(previewCount).toBe(4);
     expect(changedBeforeEveryPreviewFinished).toBe(false);
     expect(first.stdout.indexOf("Fix preview")).toBeLessThan(
-      first.stdout.indexOf("Applied 4 fix operation(s)."),
+      first.stdout.indexOf("Applied 4 fix operations."),
     );
     expect(first.stdout).toContain("13 passed, 0 informational, 0 warnings, 0 errors");
     await expect(readFile(sharedPath, "utf8")).resolves.toBe(SHARED_TEMPLATE);

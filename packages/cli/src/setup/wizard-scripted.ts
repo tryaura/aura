@@ -1,6 +1,6 @@
 import type { Writable } from "node:stream";
 
-import { safe } from "../render.js";
+import { safe } from "../safe-text.js";
 import {
   defaultAnswer,
   type WizardAnswer,

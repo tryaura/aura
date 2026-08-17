@@ -1,5 +1,5 @@
 import { notFoundLine } from "../../not-found-line.js";
-import { safe } from "../../render.js";
+import { safe } from "../../safe-text.js";
 import { catalogEntryId, catalogEntryName, type AppCatalogEntry } from "../catalog.js";
 import { SETUP_ABORTED, type SetupStep, type SetupStepContext } from "../types.js";
 import {

@@ -3,7 +3,7 @@ import type { Writable } from "node:stream";
 import type { FixOperationPreview, PreparedFixPlan, prepareFixCandidates } from "@tryaura/core";
 import type { Check, Finding } from "@tryaura/aura-sdk";
 
-import { safe, safeMultiline } from "./render.js";
+import { safe, safeMultiline } from "./safe-text.js";
 import type { CliBranding } from "./types.js";
 
 /** A prepared plan that still knows which physical preview belongs to which candidate. */

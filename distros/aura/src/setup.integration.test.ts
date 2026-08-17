@@ -29,7 +29,7 @@ describe("aura setup", () => {
 
     expect(first.exitCode).toBe(0);
     expect(first.stderr).toBe("");
-    expect(first.stdout).toContain("Applied 2 operation(s).");
+    expect(first.stdout).toContain("Applied 2 operations.");
     expect(first.stdout).toContain("0 warnings, 0 errors");
     await expect(readFile(manifestPath, "utf8")).resolves.toContain('"schemaVersion": 1');
     await expect(readFile(sharedPath, "utf8")).resolves.toBe("# Shared agent instructions\n");

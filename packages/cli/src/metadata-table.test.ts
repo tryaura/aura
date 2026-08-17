@@ -2,6 +2,8 @@ import type { FindingMetadataTablePresentation } from "@tryaura/aura-sdk";
 import { describe, expect, it } from "vitest";
 
 import { runCli } from "./index.js";
+import { renderFindingPresentation } from "./metadata-table.js";
+import { parseCheckReport } from "./test-support/check-output-schema.js";
 import { createCapture, distro, findingPlugin } from "./testing.js";
 
 const ESCAPE = String.fromCharCode(27);
@@ -57,7 +59,7 @@ describe("finding metadata tables", () => {
     expect(human.stdout.text).not.toContain(ESCAPE);
 
     expect(await runCli(distro([plugin]), json.runtime)).toBe(0);
-    expect(JSON.parse(json.stdout.text)).toMatchObject({
+    expect(parseCheckReport(json.stdout.text)).toMatchObject({
       findings: [{ metadata: { files: expect.any(Array) }, presentation }],
     });
   });
@@ -84,7 +86,7 @@ describe("finding metadata tables", () => {
     expect(await runCli(distro([plugin]), capture.runtime)).toBe(0);
     expect(capture.stdout.text).toContain("/workspace/rule-99.md");
     expect(capture.stdout.text).not.toContain("/workspace/rule-100.md");
-    expect(capture.stdout.text).toContain("… 150 more row(s) not shown");
+    expect(capture.stdout.text).toContain("… 150 more rows not shown");
   });
 
   it("ignores a metadata-table hint whose rows are not an array", async () => {
@@ -105,5 +107,43 @@ describe("finding metadata tables", () => {
     expect(await runCli(distro([plugin]), capture.runtime)).toBe(0);
     expect(capture.stdout.text).toContain("Finding remains visible.");
     expect(capture.stdout.text).not.toContain("File\n");
+  });
+
+  it("aligns CJK and emoji cells by terminal display width", () => {
+    const lines = renderFindingPresentation({
+      metadata: {
+        rows: [
+          { left: "界", right: "🙂" },
+          { left: "ab", right: "x" },
+        ],
+      },
+      presentation: {
+        columns: [
+          { heading: "Name", key: "left" },
+          { align: "right", heading: "Value", key: "right" },
+        ],
+        kind: "metadata-table",
+        rowsKey: "rows",
+      },
+    });
+
+    expect(lines).toEqual(["Name  Value", "----  -----", "界       🙂", "ab        x"]);
+  });
+
+  it("caps columns at 80 cells without splitting grapheme clusters", () => {
+    const combined = "e\u0301".repeat(100);
+    const lines = renderFindingPresentation({
+      metadata: { rows: [{ value: "a".repeat(300) }, { value: combined }] },
+      presentation: {
+        columns: [{ heading: "Value", key: "value" }],
+        kind: "metadata-table",
+        rowsKey: "rows",
+      },
+    });
+
+    expect(lines[1]).toBe("-".repeat(80));
+    expect(lines[2]).toBe(`${"a".repeat(79)}…`);
+    expect(lines[3]).toBe(`${"e\u0301".repeat(79)}…`);
+    expect(lines[3]).not.toContain("e…");
   });
 });

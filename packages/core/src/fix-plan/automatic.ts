@@ -1,6 +1,7 @@
 import type { Check, Finding, FixPlan, WorkspaceModel } from "@tryaura/aura-sdk";
 
 import type { CheckDiagnostic } from "../checks.js";
+import { pluralize } from "../pluralize.js";
 import { describeFailure } from "../workspace/diagnostics.js";
 
 import { prepareFixPlan, type PreparedFixPlan, preparedPreviewIndexes } from "./execute.js";
@@ -114,7 +115,7 @@ export async function prepareFixCandidates(options: {
     plan: {
       manualSteps: [...manualSteps],
       operations,
-      summary: `Apply ${String(candidates.length)} fix(es).`,
+      summary: `Apply ${String(candidates.length)} ${pluralize(candidates.length, "fix", "fixes")}.`,
     },
   });
   const previewIndexes = preparedPreviewIndexes(prepared);

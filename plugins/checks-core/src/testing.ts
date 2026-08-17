@@ -2,16 +2,26 @@ import { resolve } from "node:path";
 
 import type {
   AppModel,
+  Check,
   DetectedFinding,
+  FileProblem,
   Finding,
   GitignoreModel,
   InstructionDocument,
   JsonObject,
   RepositoryPackageManifest,
+  ResolvedSharedLink,
   Scope,
   WorkspaceModel,
 } from "@tryaura/aura-sdk";
 import { createWorkspaceModel } from "@tryaura/aura-sdk/testing";
+import { runChecks } from "@tryaura/core";
+
+/** Canonical shared instruction path every fixture in this package agrees on. */
+export const SHARED_PATH = "/home/dev/agents/AGENTS.md";
+
+/** The one detail line INS-002 may only use when a plan really exists. */
+export const READY = "Aura can add the missing link with check --fix.";
 
 /** Everything a check reads off one application, with defaults for what a test does not care about. */
 export interface TestAppOptions {
@@ -19,7 +29,17 @@ export interface TestAppOptions {
   readonly authenticated?: boolean;
   readonly displayName?: string;
   readonly installHint?: string;
+  readonly instructionFiles?: readonly InstructionDocument[];
+  readonly link?: ResolvedSharedLink;
   readonly metadata?: JsonObject;
+  readonly source?:
+    | {
+        readonly exists: boolean;
+        readonly pathKind?: "directory" | "file" | "symlink";
+        readonly problem?: FileProblem;
+        readonly symlinkTarget?: string;
+      }
+    | undefined;
   readonly sources?: AppModel["sourceFiles"];
   readonly status?: AppModel["support"]["status"];
   readonly synthetic?: boolean;
@@ -27,8 +47,27 @@ export interface TestAppOptions {
 }
 
 export function app(options: TestAppOptions = {}): AppModel {
+  const adapterId = options.adapterId ?? "alpha";
+  const source = options.source;
+  const sourceFiles: AppModel["sourceFiles"] =
+    source === undefined
+      ? (options.sources ?? [])
+      : [
+          {
+            exists: source.exists,
+            pathKind: source.pathKind,
+            problem: source.problem,
+            spec: {
+              id: `${adapterId}.instructions`,
+              kind: "instructions",
+              path: options.link?.entryPath ?? `/home/dev/.${adapterId}/AGENTS.md`,
+              scope: "global",
+            },
+            symlinkTarget: source.symlinkTarget,
+          },
+        ];
   return {
-    adapterId: options.adapterId ?? "alpha",
+    adapterId,
     detection: {
       authenticated: options.authenticated,
       installed: true,
@@ -36,11 +75,12 @@ export function app(options: TestAppOptions = {}): AppModel {
     },
     displayName: options.displayName ?? "Alpha",
     installHint: options.installHint,
-    instructionFiles: [],
+    instructionFiles: options.instructionFiles ?? [],
     mcpServers: [],
     metadata: options.metadata,
     skills: [],
-    sourceFiles: options.sources ?? [],
+    ...(options.link === undefined ? {} : { sharedLink: options.link }),
+    sourceFiles,
     support: {
       status: options.status ?? "supported",
       supportedRange: ">=1 <2",
@@ -50,16 +90,19 @@ export function app(options: TestAppOptions = {}): AppModel {
   };
 }
 
+/** Everything the fixture fills in for what a test does not say about an instruction file. */
+export interface TestDocumentOptions {
+  /** What core resolved `path` to. Defaults to the resolved `path`, as a regular file does. */
+  readonly canonicalPath?: string;
+  readonly metadata?: JsonObject;
+  readonly scope?: Scope;
+}
+
 /** One instruction file, with defaults for what a test does not care about. */
 export function document(
   path: string,
   content: string,
-  options: {
-    /** What core resolved `path` to. Defaults to the resolved `path`, as a regular file does. */
-    readonly canonicalPath?: string;
-    readonly metadata?: JsonObject;
-    readonly scope?: Scope;
-  } = {},
+  options: TestDocumentOptions = {},
 ): InstructionDocument {
   return {
     canonicalPath: options.canonicalPath ?? resolve(path),
@@ -72,12 +115,29 @@ export function document(
   };
 }
 
+/** {@link document}, carrying a symlink to {@link SHARED_PATH} that either resolved or broke. */
+export function linkedDocument(
+  path: string,
+  valid: boolean,
+  options: TestDocumentOptions = {},
+): InstructionDocument {
+  return {
+    ...document(path, "", options),
+    links: [{ kind: "symlink", targetPath: SHARED_PATH, valid }],
+  };
+}
+
 /** A workspace that is not inside a repository, so project-scoped checks stay silent. */
 export function model(
   options: {
     readonly apps?: readonly AppModel[];
     /** Documents the apps do not carry, for checks that read the workspace-wide list directly. */
     readonly instructionFiles?: readonly InstructionDocument[];
+    readonly sharedInstructions?: {
+      readonly content?: string | undefined;
+      readonly exists: boolean;
+      readonly problem?: FileProblem | undefined;
+    };
   } = {},
 ): WorkspaceModel {
   const apps = options.apps ?? [];
@@ -90,10 +150,43 @@ export function model(
     manifest: { exists: false, path: "/home/dev/agents/aura.json", status: "missing" },
     mcpServers: apps.flatMap((candidate) => candidate.mcpServers),
     // Absent by default: the environment checks never read it, and a fixture that claimed a shared
-    // source exists would make the INS checks disagree with the one in `fixtures.ts`.
-    sharedInstructions: { exists: false, path: "/home/dev/agents/AGENTS.md" },
+    // source exists would make unrelated INS checks inherit state they did not ask for.
+    sharedInstructions: {
+      exists: options.sharedInstructions?.exists ?? false,
+      path: SHARED_PATH,
+      ...(options.sharedInstructions?.content === undefined
+        ? {}
+        : { content: options.sharedInstructions.content }),
+      ...(options.sharedInstructions?.problem === undefined
+        ? {}
+        : { problem: options.sharedInstructions.problem }),
+    },
     skills: apps.flatMap((candidate) => candidate.skills),
   });
+}
+
+/** Builds the shared-instruction workspace shape used by INS-001 and INS-002 tests. */
+export function workspace(
+  apps: readonly AppModel[],
+  content: string | undefined,
+  options: { readonly exists?: boolean; readonly problem?: FileProblem } = {},
+): WorkspaceModel {
+  return model({
+    apps,
+    sharedInstructions: {
+      content,
+      exists: options.exists ?? content !== undefined,
+      problem: options.problem,
+    },
+  });
+}
+
+export function onlyFinding(check: Check, workspaceModel: WorkspaceModel): Finding {
+  const finding = runChecks([check], workspaceModel).findings[0];
+  if (finding === undefined) {
+    throw new Error(`Expected ${check.id} to report one finding.`);
+  }
+  return finding;
 }
 
 /** Where the repository state a project-scoped check reads comes from. */

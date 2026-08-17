@@ -1,5 +1,5 @@
 import type { Buffer } from "node:buffer";
-import { lstat, readFile, readdir } from "node:fs/promises";
+import { lstat, readFile, readdir, realpath } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 import { parseManifest } from "./journal-parse.js";
@@ -114,8 +114,21 @@ async function readEntry(directory: string, id: string, homeDir: string): Promis
     return { id, kind: "unreadable", reason: errorMessage(error) };
   }
 
-  if (manifest.id !== id || resolve(manifest.homeDir) !== resolve(homeDir)) {
+  const [manifestHomeDir, requestedHomeDir] = await Promise.all([
+    canonicalPath(manifest.homeDir),
+    canonicalPath(homeDir),
+  ]);
+  if (manifest.id !== id || manifestHomeDir !== requestedHomeDir) {
     return { id, kind: "unreadable", reason: "recorded with an identity that is not its own" };
   }
   return { handle: { directory, manifest }, id, kind: "readable" };
+}
+
+/** Treats two filesystem spellings of the same home directory as one journal identity. */
+async function canonicalPath(path: string): Promise<string> {
+  try {
+    return await realpath(path);
+  } catch {
+    return resolve(path);
+  }
 }

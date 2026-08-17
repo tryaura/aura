@@ -8,6 +8,7 @@ import {
   prepareFixCandidates,
   type CheckDiagnostic,
 } from "@tryaura/core";
+import { pluralize } from "@tryaura/core/pluralize";
 import type { Check, Environment, Finding, WorkspaceModel } from "@tryaura/aura-sdk";
 
 import { confirmFixes } from "./fix-confirmation.js";
@@ -15,7 +16,7 @@ import { reportFixes, reportUnpreparedFixes } from "./fix-report.js";
 import { gatherGuidedFixes, orderCandidates } from "./guided-fix.js";
 import { renderFixPreview, renderGuidedHint, renderManualSteps } from "./preview-render.js";
 import type { DiagnosticSource, ReportFix } from "./report.js";
-import { safe } from "./render.js";
+import { safe } from "./safe-text.js";
 import { createInteractiveWizardIo } from "./setup/wizard-prompt.js";
 import type { WizardIo } from "./setup/wizard-types.js";
 import type { CliBranding, CliExitCode } from "./types.js";
@@ -65,6 +66,7 @@ export async function runFixes(request: FixRequest): Promise<FixOutcome> {
   const fixDiagnostics: DiagnosticSource[] = [];
   let candidates = [...automatic.candidates];
   let wizard = request.wizard;
+  let guidedAborted = false;
 
   if (request.interactive) {
     wizard ??= createInteractiveWizardIo({
@@ -75,37 +77,10 @@ export async function runFixes(request: FixRequest): Promise<FixOutcome> {
     const guided = await gatherGuidedFixes(request, wizard, fixDiagnostics);
     if (guided === "aborted") {
       request.stdout.write("\nLeft everything as it was.\n\n");
-      let prepared: Awaited<ReturnType<typeof prepareFixCandidates>>;
-      try {
-        prepared = await prepareFixCandidates({ candidates, model: request.model });
-      } catch (error) {
-        fixDiagnostics.push({
-          detail: describeFailure(error),
-          id: "core/fix-plan",
-          message: "The automatic fix plan could not be prepared. Nothing was changed.",
-          phase: "fix",
-        });
-        return {
-          applied: false,
-          diagnostics: automatic.diagnostics,
-          exitCode: 3,
-          fixDiagnostics,
-          fixes: reportUnpreparedFixes(candidates),
-        };
-      }
-      return {
-        applied: false,
-        diagnostics: automatic.diagnostics,
-        fixDiagnostics,
-        fixes: reportFixes(
-          prepared,
-          "planned",
-          request.withDetail,
-          "Aborted before confirmation. Nothing was changed.",
-        ),
-      };
+      guidedAborted = true;
+    } else {
+      candidates = orderCandidates([...candidates, ...guided], request.findings);
     }
-    candidates = orderCandidates([...candidates, ...guided], request.findings);
   }
 
   let prepared: Awaited<ReturnType<typeof prepareFixCandidates>>;
@@ -115,7 +90,7 @@ export async function runFixes(request: FixRequest): Promise<FixOutcome> {
     fixDiagnostics.push({
       detail: describeFailure(error),
       id: "core/fix-plan",
-      message: "The combined fix plan could not be prepared. Nothing was changed.",
+      message: `The ${guidedAborted ? "automatic" : "combined"} fix plan could not be prepared. Nothing was changed.`,
       phase: "fix",
     });
     return {
@@ -126,22 +101,44 @@ export async function runFixes(request: FixRequest): Promise<FixOutcome> {
       fixes: reportUnpreparedFixes(candidates),
     };
   }
-  if (prepared.prepared === undefined) {
-    request.stdout.write(
-      request.findings.length === 0
-        ? "Nothing to fix.\n\n"
-        : "No executable fixes are available for the findings below.\n\n",
-    );
-    renderManualSteps(prepared.manualSteps, request.stdout);
-    if (!request.interactive) {
-      renderGuidedHint(request.checks, request.findings, request.branding, request.stdout);
-    }
+  if (guidedAborted) {
     return {
       applied: false,
       diagnostics: automatic.diagnostics,
       fixDiagnostics,
-      fixes: [],
+      fixes: reportFixes(
+        prepared,
+        "planned",
+        request.withDetail,
+        "Aborted before confirmation. Nothing was changed.",
+      ),
     };
+  }
+  if (prepared.prepared === undefined) {
+    return finishWithoutFixes(
+      request,
+      automatic.diagnostics,
+      fixDiagnostics,
+      prepared.manualSteps,
+      request.findings.length === 0
+        ? "Nothing to fix.\n\n"
+        : "No executable fixes are available for the findings below.\n\n",
+    );
+  }
+
+  if (
+    prepared.prepared.preview.changedOperationCount === 0 &&
+    prepared.prepared.preview.conflictedOperationCount === 0
+  ) {
+    // A plan exists only when findings produced candidates, so this is convergence, not absence:
+    // the files already read the way every planned operation would leave them.
+    return finishWithoutFixes(
+      request,
+      automatic.diagnostics,
+      fixDiagnostics,
+      prepared.manualSteps,
+      "The planned fixes already match the current file contents.\n\n",
+    );
   }
 
   renderFixPreview(prepared, request.withDetail, request.stdout);
@@ -172,7 +169,7 @@ export async function runFixes(request: FixRequest): Promise<FixOutcome> {
   const confirmation = await confirmFixes(request, wizard);
   if (confirmation === "unavailable") {
     request.stderr.write(
-      `${request.branding.displayName}: stdin and the prompt output must both be terminals before Aura can ask to write. Re-run with --yes, or --dry-run to stop at the preview.\n`,
+      `${request.branding.displayName}: stdin and the prompt output must both be terminals before fixes can be confirmed. Re-run with --yes, or --dry-run to stop at the preview.\n`,
     );
     return {
       applied: false,
@@ -202,7 +199,9 @@ export async function runFixes(request: FixRequest): Promise<FixOutcome> {
       now: request.environment.now,
       stateHomeDir: request.stateHomeDir,
     });
-    request.stdout.write(`\nApplied ${String(result.appliedOperationCount)} fix operation(s).\n`);
+    request.stdout.write(
+      `\nApplied ${String(result.appliedOperationCount)} fix ${pluralize(result.appliedOperationCount, "operation")}.\n`,
+    );
     if (result.backupId !== undefined) {
       request.stdout.write(
         `The previous contents are saved as backup ${safe(result.backupId)}. Run ${request.branding.command} undo to restore them.\n`,
@@ -241,14 +240,14 @@ export async function runFixes(request: FixRequest): Promise<FixOutcome> {
     // would be the one wrong thing to tell someone whose home directory is half-rewritten, so the
     // two outcomes are reported as two outcomes.
     if (error instanceof FixPlanApplyError && error.rollback === "failed") {
-      const stranded = String(error.appliedOperationCount);
+      const stranded = error.appliedOperationCount;
       request.stderr.write(
-        `${request.branding.displayName}: the fix failed and ${stranded} operation(s) could not be undone. Your files are partly changed; review them before re-running.\n`,
+        `${request.branding.displayName}: the fix failed and ${String(stranded)} ${pluralize(stranded, "operation")} could not be undone. Your files are partly changed; review them before re-running.\n`,
       );
       fixDiagnostics.push({
         detail: describeFailure(error),
         id: "core/fix-plan",
-        message: `The fix plan failed and ${stranded} completed operation(s) could not be rolled back. The filesystem is partly changed.`,
+        message: `The fix plan failed and ${String(stranded)} completed ${pluralize(stranded, "operation")} could not be rolled back. The filesystem is partly changed.`,
         phase: "fix",
       });
       // Applied, so the report re-scans: after a partial write the only useful report is one that
@@ -281,4 +280,19 @@ export async function runFixes(request: FixRequest): Promise<FixOutcome> {
       fixes: reportFixes(prepared, "failed", request.withDetail, "Apply failed and rolled back."),
     };
   }
+}
+
+function finishWithoutFixes(
+  request: FixRequest,
+  diagnostics: readonly CheckDiagnostic[],
+  fixDiagnostics: readonly DiagnosticSource[],
+  manualSteps: readonly string[],
+  message: string,
+): FixOutcome {
+  request.stdout.write(message);
+  renderManualSteps(manualSteps, request.stdout);
+  if (!request.interactive) {
+    renderGuidedHint(request.checks, request.findings, request.branding, request.stdout);
+  }
+  return { applied: false, diagnostics, fixDiagnostics, fixes: [] };
 }

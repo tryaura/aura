@@ -24,13 +24,8 @@ import { fixOptionRejection } from "./check-options.js";
 import { selectChecks, type CheckSelection } from "./check-selection.js";
 import { runFixes } from "./fix.js";
 import { createCheckReport, type DiagnosticSource, type ReportFix } from "./report.js";
-import {
-  renderExplanation,
-  renderExplanationJson,
-  renderHuman,
-  renderJson,
-  safe,
-} from "./render.js";
+import { renderExplanation, renderExplanationJson, renderHuman, renderJson } from "./render.js";
+import { safe } from "./safe-text.js";
 import type { CliBranding, CliExitCode } from "./types.js";
 
 export interface AuraCliContext extends BaseContext {
@@ -55,7 +50,7 @@ export class CheckCommand extends Command<AuraCliContext> {
   static override usage = Command.Usage({
     description: "Inspect the current AI agent setup.",
     details:
-      "Exit codes: 0 clean/info, 1 warnings, 2 errors or usage/state conflicts, 3 operational failures.",
+      "Exit codes: 0 clean/info, 1 warning, 2 errors or usage/state conflicts, 3 operational failures.",
     examples: [
       ["Run all checks", "$0 check"],
       ["Emit machine-readable output", "$0 check --json"],

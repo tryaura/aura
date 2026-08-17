@@ -68,10 +68,10 @@ describe("renderHuman through a check run", () => {
     expect(capture.stdout.text).toContain("[fixture-guided/GUIDED] guided finding (guided fix)");
     expect(capture.stdout.text).toContain("· Next steps (2)");
     expect(capture.stdout.text).toContain(
-      "1 finding(s) can be fixed automatically — run acme check --fix",
+      "1 finding can be fixed automatically — run acme check --fix",
     );
     expect(capture.stdout.text).toContain(
-      "1 finding(s) offer guided resolutions — run acme check --fix --interactive",
+      "1 finding offers guided resolutions — run acme check --fix --interactive",
     );
   });
 

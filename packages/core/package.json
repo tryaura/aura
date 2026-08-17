@@ -10,6 +10,11 @@
       "types": "./src/index.ts",
       "development": "./src/index.ts",
       "default": "./dist/index.js"
+    },
+    "./pluralize": {
+      "types": "./src/pluralize.ts",
+      "development": "./src/pluralize.ts",
+      "default": "./dist/pluralize.js"
     }
   },
   "scripts": {

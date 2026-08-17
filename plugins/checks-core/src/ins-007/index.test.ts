@@ -114,7 +114,7 @@ describe("INS-007", () => {
 
     const finding = run(cursor)[0];
     expect(finding?.metadata).toMatchObject({ approxTokens: 8_501, totalBytes: 34_001 });
-    expect(finding?.message).toContain("across 2 file(s), and lists 1 conditional file(s)");
+    expect(finding?.message).toContain("across 2 files, and lists 1 conditional file");
     // The conditional rule carries no share: it is not part of the total every share divides by.
     expect(metadataFiles(finding?.metadata)).toEqual([
       {
@@ -178,7 +178,7 @@ describe("INS-007", () => {
     const reported = metadataFiles(finding?.metadata);
     expect(Array.isArray(reported) && reported.length).toBe(100);
     expect(finding?.metadata).toMatchObject({ omittedFiles: 21 });
-    expect(finding?.details).toContain("Listing the 100 largest of 121 file(s).");
+    expect(finding?.details).toContain("Listing the 100 largest of 121 files.");
   });
 
   it("escalates copy without severity and skips synthetic adapters", () => {

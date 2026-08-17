@@ -2,6 +2,9 @@ import { createHash } from "node:crypto";
 import { dirname, resolve, sep } from "node:path";
 
 import type { DetectedFinding, InstructionDocument, WorkspaceModel } from "@tryaura/aura-sdk";
+import { pluralize } from "@tryaura/core/pluralize";
+
+import { displayInstructionPath } from "../instruction-paths.js";
 
 /** Which applications activate an `@` import in a file they read, and which read it as prose. */
 export const IMPORT_SUPPORT: ReadonlyMap<string, boolean> = new Map([
@@ -128,6 +131,7 @@ export function perSource(
   links: readonly ObservedLink[],
   describe: (link: ObservedLink) => DetectedFinding | undefined,
   overflowKind: FailureKind,
+  model: WorkspaceModel,
 ): readonly DetectedFinding[] {
   const findings: DetectedFinding[] = [];
   const reported = new Map<string, number>();
@@ -152,7 +156,7 @@ export function perSource(
       details: `Aura reports the first ${String(MAX_FINDINGS_PER_SOURCE)} link problems in a file. Fix those and run \`aura check\` again to see the rest.`,
       id: structuralId(overflowKind, [sourcePath, "overflow"]),
       locations: [{ path: sourcePath }],
-      message: `${sourcePath} has ${String(count)} further link problem(s) not listed.`,
+      message: `${displayInstructionPath(sourcePath, model)} has ${String(count)} further link ${pluralize(count, "problem")} not listed.`,
       metadata: { failure: overflowKind, hidden: count, sourcePath },
       severity: "warn",
     });

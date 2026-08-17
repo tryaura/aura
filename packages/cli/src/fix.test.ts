@@ -1,4 +1,4 @@
-/* eslint-disable max-lines -- the guided and automatic CLI flow matrix shares one request fixture. */
+/* eslint-disable max-lines -- one fix-state matrix shares the same injected request fixtures. */
 import { writeFileSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -108,6 +108,7 @@ describe("runFixes guided remediation", () => {
 
   it("supports Skip, abort, and the legacy suggested resolution", async () => {
     const guided = guidedCheck({ fix: () => writePlan("legacy.md", "legacy") });
+    const automatic = automaticCheck();
     const skipped = await runFixes(
       request({
         checks: [guided],
@@ -118,8 +119,8 @@ describe("runFixes guided remediation", () => {
     );
     const aborted = await runFixes(
       request({
-        checks: [guided],
-        findings: [finding(guided, "guided")],
+        checks: [automatic, guided],
+        findings: [finding(automatic, "automatic"), finding(guided, "guided")],
         interactive: true,
         wizard: scriptedWizard(["aborted"]),
       }),
@@ -136,33 +137,56 @@ describe("runFixes guided remediation", () => {
     );
 
     expect(skipped.fixes).toEqual([]);
-    expect(aborted.fixes).toEqual([]);
+    expect(aborted.fixes).toMatchObject([{ findingId: "automatic", status: "planned" }]);
     expect(legacy.fixes).toHaveLength(1);
     expect(legacyWizard.questions[0]?.[0]?.options[0]?.label).toBe("Use suggested resolution");
     expect(legacyWizard.questions[0]?.[0]?.options.at(-1)?.label).toBe("Skip");
   });
 
-  it("reports guided choice construction failures instead of silently hiding choices", async () => {
-    const guided = guidedCheck({
+  it("reports guided-choice construction and preview failures without aborting", async () => {
+    const brokenChoices = guidedCheck({
       guidedFixes: () => {
-        throw new Error("resolution context disappeared");
+        throw new Error("choice construction failed");
       },
     });
-
-    const outcome = await runFixes(
+    const construction = await runFixes(
       request({
-        checks: [guided],
-        findings: [finding(guided, "guided")],
+        checks: [brokenChoices],
+        findings: [finding(brokenChoices, "construction")],
         interactive: true,
         wizard: scriptedWizard([]),
       }),
     );
-
-    expect(outcome.fixDiagnostics).toEqual([
-      expect.objectContaining({
-        detail: "resolution context disappeared",
-        message: expect.stringContaining("failed while building guided choices"),
+    const brokenPreview = guidedCheck({
+      guidedFixes: () => [
+        {
+          id: "outside",
+          label: "Write outside managed roots",
+          plan: {
+            operations: [{ content: "blocked", path: "/outside-aura-roots", type: "write" }],
+            summary: "Write outside managed roots.",
+          },
+        },
+      ],
+    });
+    const previewWizard = scriptedWizard([answer("guided-0", "skip")]);
+    const preview = await runFixes(
+      request({
+        checks: [brokenPreview],
+        findings: [finding(brokenPreview, "preview")],
+        interactive: true,
+        wizard: previewWizard,
       }),
+    );
+
+    expect(construction.fixDiagnostics).toMatchObject([
+      { id: "fixture/GUIDED", message: expect.stringContaining("building guided choices") },
+    ]);
+    expect(preview.fixDiagnostics).toMatchObject([
+      { id: "fixture/GUIDED", message: expect.stringContaining("previewing guided choice") },
+    ]);
+    expect(previewWizard.questions[0]?.[0]?.options.map((option) => option.label)).toEqual([
+      "Skip",
     ]);
   });
 
@@ -234,6 +258,95 @@ describe("runFixes guided remediation", () => {
     }
   });
 
+  it("stops on a prepare-time conflict before confirmation", async () => {
+    const fixtureModel = model();
+    const check = automaticCheck({
+      operations: [
+        {
+          path: join(fixtureModel.cwd, "conflicted.md"),
+          relativePath: "../escape.md",
+          type: "archive",
+        },
+      ],
+      summary: "Archive a fixture.",
+    });
+    const wizard = scriptedWizard([], "accepted");
+    const stderr = new TextOutput();
+
+    const outcome = await runFixes(
+      request({
+        checks: [check],
+        findings: [finding(check, "conflict")],
+        model: fixtureModel,
+        stderr,
+        wizard,
+      }),
+    );
+
+    expect(outcome).toMatchObject({ applied: false, exitCode: 2, fixes: [{ status: "failed" }] });
+    expect(wizard.confirmations).toBe(0);
+    expect(stderr.text).toContain("fixes are blocked");
+  });
+
+  it("reports unavailable and declined confirmations as planned fixes", async () => {
+    const check = automaticCheck();
+    const unavailableStderr = new TextOutput();
+    const unavailable = await runFixes(
+      request({
+        checks: [check],
+        findings: [finding(check, "unavailable")],
+        stderr: unavailableStderr,
+      }),
+    );
+    const wizard = scriptedWizard([], "declined");
+    const declined = await runFixes(
+      request({ checks: [check], findings: [finding(check, "declined")], wizard }),
+    );
+
+    expect(unavailable).toMatchObject({
+      applied: false,
+      exitCode: 2,
+      fixes: [{ status: "planned" }],
+    });
+    expect(unavailableStderr.text).toContain("before fixes can be confirmed");
+    expect(unavailableStderr.text).not.toContain("Aura");
+    expect(declined).toMatchObject({ applied: false, fixes: [{ status: "planned" }] });
+    expect(wizard.confirmations).toBe(1);
+  });
+
+  it("omits an all-noop plan without confirming or applying", async () => {
+    const root = await mkdtemp(join(tmpdir(), "aura-noop-fix-"));
+    const path = join(root, "existing.md");
+    try {
+      await writeFile(path, "already current", "utf8");
+      const check = automaticCheck(writePlanAt(root, "existing.md", "already current"));
+      const wizard = scriptedWizard([], "accepted");
+      const stdout = new TextOutput();
+      let applyCalls = 0;
+
+      const outcome = await runFixes(
+        request({
+          applyPlan: () => {
+            applyCalls += 1;
+            return Promise.reject(new Error("noop plan must not be applied"));
+          },
+          checks: [check],
+          findings: [finding(check, "noop")],
+          model: model(root),
+          stdout,
+          wizard,
+        }),
+      );
+
+      expect(outcome).toMatchObject({ applied: false, fixes: [] });
+      expect(stdout.text).toContain("The planned fixes already match the current file contents.");
+      expect(wizard.confirmations).toBe(0);
+      expect(applyCalls).toBe(0);
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
   it("says the plan was rolled back only when it was", async () => {
     const check = automaticCheck();
     const stderr = new TextOutput();
@@ -272,7 +385,7 @@ describe("runFixes guided remediation", () => {
     expect(outcome.fixes).toMatchObject([{ status: "partial" }]);
     // The re-scan matters: after a partial write the report must describe the machine as it is.
     expect(outcome.applied).toBe(true);
-    expect(outcome.fixDiagnostics[0]?.message).toContain("2 completed operation(s)");
+    expect(outcome.fixDiagnostics[0]?.message).toContain("2 completed operations");
     expect(outcome.fixDiagnostics[0]?.message).not.toContain("were rolled back");
     expect(stderr.text).toContain("could not be undone");
   });

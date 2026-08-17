@@ -1,4 +1,6 @@
 /* eslint-disable max-lines -- one end-to-end CLI matrix shares the same injected runtime fixtures. */
+import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
 
@@ -6,6 +8,7 @@ import { defineAdapter, defineCheck, definePlugin, type Environment } from "@try
 import { describe, expect, it } from "vitest";
 
 import { runCli } from "./index.js";
+import { parseCheckReport } from "./test-support/check-output-schema.js";
 import {
   BRANDING,
   createCapture,
@@ -49,7 +52,7 @@ describe("runCli", () => {
     const exitCode = await runCli(distro([findingPlugin("info", [])]), capture.runtime);
 
     expect(exitCode).toBe(0);
-    expect(JSON.parse(capture.stdout.text)).toEqual({
+    expect(parseCheckReport(capture.stdout.text)).toEqual({
       apps: [],
       diagnostics: [],
       findings: [],
@@ -83,8 +86,65 @@ describe("runCli", () => {
     const capture = createCapture(["check", "--fix", "--json"]);
 
     expect(await runCli(distro([findingPlugin("info", [])]), capture.runtime)).toBe(0);
-    expect(JSON.parse(capture.stdout.text)).toMatchObject({ fixes: [], kind: "check-report" });
+    expect(parseCheckReport(capture.stdout.text)).toMatchObject({
+      fixes: [],
+      kind: "check-report",
+    });
     expect(capture.stderr.text).toContain("Nothing to fix");
+  });
+
+  it("omits all-noop JSON fixes without rescanning", async () => {
+    const temporaryRoot = await mkdtemp(join(tmpdir(), "aura-cli-noop-"));
+    const root = await realpath(temporaryRoot);
+    const path = join(root, "current.md");
+    try {
+      await writeFile(path, "current", "utf8");
+      let detections = 0;
+      const plugin = definePlugin({
+        adapters: [
+          fixtureAdapter(() => {
+            detections += 1;
+            return { installed: true };
+          }),
+        ],
+        apiVersion: 1,
+        checks: [
+          defineCheck({
+            defaultSeverity: "warn",
+            detect: () => [{ id: "noop", message: "Already current." }],
+            explain: "Why this matters.\n\nRun the automatic fix.",
+            fix: () => ({
+              operations: [{ content: "current", path, type: "write" }],
+              summary: "Keep the fixture current.",
+            }),
+            fixability: "auto",
+            id: "fixture-noop/NOOP",
+            scope: "project",
+            title: "No-op fixture",
+          }),
+        ],
+        id: "fixture-noop",
+        name: "Fixture No-op",
+        version: "1.0.0",
+      });
+      const capture = createCapture(["check", "--fix", "--yes", "--json"]);
+
+      const exitCode = await runCli(distro([plugin]), {
+        ...capture.runtime,
+        cwd: root,
+        homeDir: root,
+      });
+
+      expect(exitCode).toBe(1);
+
+      expect(parseCheckReport(capture.stdout.text).fixes).toEqual([]);
+      expect(capture.stderr.text).toContain(
+        "The planned fixes already match the current file contents.",
+      );
+      expect(detections).toBe(1);
+    } finally {
+      await rm(temporaryRoot, { force: true, recursive: true });
+    }
   });
 
   it("redacts JSON fix diffs unless --detail is requested", async () => {
@@ -119,10 +179,12 @@ describe("runCli", () => {
     const detailed = createCapture(["check", "--fix", "--dry-run", "--json", "--detail"]);
 
     expect(await runCli(distro([plugin]), redacted.runtime)).toBe(1);
-    expect(JSON.parse(redacted.stdout.text).fixes[0].operations[0]).not.toHaveProperty("diff");
+    const redactedReport = parseCheckReport(redacted.stdout.text);
+    expect(redactedReport.fixes?.[0]?.operations[0]).not.toHaveProperty("diff");
     expect(redacted.stdout.text).not.toContain("potentially secret contents");
     expect(await runCli(distro([plugin]), detailed.runtime)).toBe(1);
-    expect(JSON.parse(detailed.stdout.text).fixes[0].operations[0].diff).toContain("diff --aura");
+    const detailedReport = parseCheckReport(detailed.stdout.text);
+    expect(detailedReport.fixes?.[0]?.operations[0]?.diff).toContain("diff --aura");
     expect(detailed.stdout.text).toContain("potentially secret contents");
   });
 
@@ -132,7 +194,7 @@ describe("runCli", () => {
     const unsupported = createCapture(["check", "--json", "--json-version", "2"]);
 
     expect(await runCli(distro([findingPlugin("info", [])]), pinned.runtime)).toBe(0);
-    expect(JSON.parse(pinned.stdout.text)).toMatchObject({ schemaVersion: 1 });
+    expect(parseCheckReport(pinned.stdout.text)).toMatchObject({ schemaVersion: 1 });
     expect(await runCli(distro(), missingJson.runtime)).toBe(2);
     expect(missingJson.stderr.text).toContain("--json-version only means something with --json");
     expect(await runCli(distro(), unsupported.runtime)).toBe(2);
@@ -176,7 +238,7 @@ describe("runCli", () => {
     expect(await runCli(distro([findingPlugin("info", [])]), { ...capture.runtime, stdin })).toBe(
       0,
     );
-    expect(JSON.parse(capture.stdout.text)).toMatchObject({ kind: "check-report" });
+    expect(parseCheckReport(capture.stdout.text)).toMatchObject({ kind: "check-report" });
     expect(capture.stderr.text).toContain("Nothing to fix");
   });
 
@@ -464,7 +526,7 @@ describe("runCli", () => {
     expect(capture.stdout.text).toContain("Run errors (1)");
     expect(capture.stdout.text).toContain("[throwing/CHECK:check]");
     expect(capture.stdout.text).not.toContain("✓ Passed");
-    expect(capture.stdout.text).toContain("0 passed, 0 informational, 1 warnings, 0 errors");
+    expect(capture.stdout.text).toContain("0 passed, 0 informational, 1 warning, 0 errors");
     expect(capture.stdout.text).not.toContain("secret source contents");
     expect(capture.stderr.text).toBe("");
   });
@@ -500,7 +562,7 @@ describe("runCli", () => {
     const capture = createCapture(["check", "--json"]);
 
     expect(await runCli(distro([plugin]), capture.runtime)).toBe(3);
-    expect(JSON.parse(capture.stdout.text)).toMatchObject({
+    expect(parseCheckReport(capture.stdout.text)).toMatchObject({
       apps: [{ appId: "broken-app", detection: { installed: false }, displayName: "Broken App" }],
       status: "operational-error",
       summary: { exitCode: 3 },
@@ -532,7 +594,7 @@ describe("runCli", () => {
     const capture = createCapture(["check", "--fix", "--yes", "--json"]);
 
     expect(await runCli(distro([plugin]), capture.runtime)).toBe(3);
-    expect(JSON.parse(capture.stdout.text)).toMatchObject({
+    expect(parseCheckReport(capture.stdout.text)).toMatchObject({
       diagnostics: [{ id: "core/fix-plan", phase: "fix" }],
       fixes: [
         {
@@ -582,6 +644,16 @@ describe("runCli", () => {
     expect(capture.stdout.text).toContain(`${"d".repeat(500)}…`);
     expect(capture.stdout.text).not.toContain(message);
     expect(capture.stdout.text).not.toContain(details);
+  });
+
+  it("does not split a surrogate pair at the finding-text limit", async () => {
+    const capture = createCapture(["check"]);
+    const message = `${"m".repeat(499)}🙂tail`;
+
+    await runCli(distro([findingPlugin("warn", [{ id: "unicode", message }])]), capture.runtime);
+
+    expect(capture.stdout.text).toContain(`${"m".repeat(499)}🙂…`);
+    expect(capture.stdout.text).not.toContain("�");
   });
 
   it("grants bare check ids only where the distribution said so", async () => {

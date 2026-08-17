@@ -1,13 +1,13 @@
 import type { ResolvedSharedLink } from "@tryaura/aura-sdk";
 import { describe, expect, it } from "vitest";
 
-import { app, document, onlyFinding, READY, SHARED_PATH, workspace } from "./fixtures.js";
+import { app, linkedDocument, onlyFinding, READY, SHARED_PATH, workspace } from "./testing.js";
 import { sharedInstructionLinksCheck } from "./instructions.js";
 
 describe("INS-002", () => {
   it("passes when the parsed entry has a valid link to the shared source", () => {
     const application = app({
-      instructionFiles: [document("/home/dev/.codex/AGENTS.md", true)],
+      instructionFiles: [linkedDocument("/home/dev/.codex/AGENTS.md", true)],
       link: { entryPath: "/home/dev/.codex/AGENTS.md", kind: "symlink", scope: "global" },
     });
 
@@ -19,7 +19,7 @@ describe("INS-002", () => {
       link: { entryPath: "/home/dev/.codex/AGENTS.md", kind: "symlink", scope: "global" },
     });
     const broken = app({
-      instructionFiles: [document("/home/dev/.codex/AGENTS.md", false)],
+      instructionFiles: [linkedDocument("/home/dev/.codex/AGENTS.md", false)],
       link: { entryPath: "/home/dev/.codex/AGENTS.md", kind: "symlink", scope: "global" },
       source: { exists: true, pathKind: "symlink", symlinkTarget: "/wrong/AGENTS.md" },
     });
@@ -60,14 +60,14 @@ describe("INS-002", () => {
       kind: "native-copy",
       scope: "project",
     };
-    const absentModel = workspace([app({ id: "cursor", link })], "# Shared\n");
+    const absentModel = workspace([app({ adapterId: "cursor", link })], "# Shared\n");
     const changedModel = workspace(
       [
         app({
-          id: "cursor",
+          adapterId: "cursor",
           instructionFiles: [
             {
-              ...document(link.entryPath, false),
+              ...linkedDocument(link.entryPath, false),
               content: "# My rule\n",
             },
           ],
@@ -92,10 +92,10 @@ describe("INS-002", () => {
     const model = workspace(
       [
         app({
-          id: "claude-code",
+          adapterId: "claude-code",
           instructionFiles: [
             {
-              ...document(path, false),
+              ...linkedDocument(path, false),
               content: "handwritten\n<!-- aura:begin -->\n",
             },
           ],
@@ -124,7 +124,7 @@ describe("INS-002", () => {
     const model = workspace(
       [
         app({
-          id: "claude-code",
+          adapterId: "claude-code",
           link: {
             content: "@~/agents/AGENTS.md",
             entryPath: path,
@@ -150,7 +150,7 @@ describe("INS-002", () => {
       kind: "native-copy",
       scope: "project",
     };
-    const model = workspace([app({ id: "cursor", link })], "# Shared\n");
+    const model = workspace([app({ adapterId: "cursor", link })], "# Shared\n");
     const finding = onlyFinding(sharedInstructionLinksCheck, model);
 
     expect(sharedInstructionLinksCheck.fix(finding, model)?.manualSteps).toEqual([
@@ -165,7 +165,7 @@ describe("INS-002", () => {
       kind: "import-line",
       scope: "global",
     };
-    const model = workspace([app({ id: "claude-code", link })], "# Shared\n");
+    const model = workspace([app({ adapterId: "claude-code", link })], "# Shared\n");
     const finding = onlyFinding(sharedInstructionLinksCheck, model);
 
     expect(sharedInstructionLinksCheck.fix(finding, model)?.manualSteps).toBeUndefined();
@@ -174,9 +174,9 @@ describe("INS-002", () => {
   it("keeps unsupported versions and undeclared mechanisms report-only", () => {
     const unsupported = app({
       link: { entryPath: "/home/dev/.codex/AGENTS.md", kind: "symlink", scope: "global" },
-      support: "unsupported",
+      status: "unsupported",
     });
-    const undeclared = app({ id: "third-party" });
+    const undeclared = app({ adapterId: "third-party" });
 
     for (const application of [unsupported, undeclared]) {
       const model = workspace([application], "# Shared\n");
@@ -188,7 +188,7 @@ describe("INS-002", () => {
   it("does not accept an import as Codex's native symlink mechanism", () => {
     const path = "/home/dev/.codex/AGENTS.md";
     const application = app({
-      id: "codex",
+      adapterId: "codex",
       instructionFiles: [
         {
           content: `@${SHARED_PATH}\n`,
@@ -208,7 +208,7 @@ describe("INS-002", () => {
   });
 
   it("ignores any synthetic inventory adapter, not one named id", () => {
-    const inventory = app({ id: "legacy-instructions", synthetic: true });
+    const inventory = app({ adapterId: "legacy-instructions", synthetic: true });
 
     expect(sharedInstructionLinksCheck.detect(workspace([inventory], "# Shared\n"))).toEqual([]);
   });

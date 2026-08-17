@@ -18,7 +18,7 @@ describe("seeded setup integration", () => {
     );
 
     expect(first.exitCode).toBe(0);
-    expect(first.stdout).toContain("Applied 2 operation(s).");
+    expect(first.stdout).toContain("Applied 2 operations.");
     expect(first.stdout).toContain("1 passed, 0 informational, 0 warnings, 0 errors");
     const paths = first.diffs.map((diff) => `${diff.status}:${diff.path}`);
     expect(paths).toContain("added:<HOME>/agents/aura.json");

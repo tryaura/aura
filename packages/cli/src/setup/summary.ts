@@ -3,7 +3,7 @@ import type { Writable } from "node:stream";
 import type { FixPlanPreview } from "@tryaura/core";
 
 import { renderManualSteps, renderOperationPreviews } from "../preview-render.js";
-import { safe } from "../render.js";
+import { safe } from "../safe-text.js";
 import type { SetupBlocker, SetupNotice } from "./planner.js";
 
 /** Shows the whole plan — changes, blockers, manual steps — before the one confirmation. */

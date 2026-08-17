@@ -1,6 +1,8 @@
 import type { Finding, FindingMetadataTableColumn } from "@tryaura/aura-sdk";
+import { pluralize } from "@tryaura/core/pluralize";
+import stringWidth from "string-width";
 
-import { safeFindingText } from "./safe-text.js";
+import { GRAPHEME_SEGMENTER, safeFindingText } from "./safe-text.js";
 
 /**
  * How many rows one metadata table prints before the rest are summarized.
@@ -11,6 +13,8 @@ import { safeFindingText } from "./safe-text.js";
  * that scrolls a terminal for a minute is no longer a report.
  */
 const MAX_TABLE_ROWS = 100;
+const MAX_TABLE_COLUMN_WIDTH = 80;
+const ELLIPSIS = "…";
 
 /** Draws the table a finding asked for, or nothing at all if it asked for none it can fill. */
 export function renderFindingPresentation(
@@ -31,16 +35,18 @@ export function renderFindingPresentation(
 
   const shown = records.slice(0, MAX_TABLE_ROWS);
   const omitted = records.length - shown.length;
-  const headings = presentation.columns.map((column) => safeFindingText(column.heading));
+  const headings = presentation.columns.map((column) =>
+    fitTableCell(safeFindingText(column.heading)),
+  );
   const cells = shown.map((row) =>
     presentation.columns.map((column) =>
-      safeFindingText(formatMetadataCell(row[column.key], column)),
+      fitTableCell(safeFindingText(formatMetadataCell(row[column.key], column))),
     ),
   );
   const widths = presentation.columns.map((_, index) =>
     cells.reduce(
-      (widest, row) => Math.max(widest, row[index]?.length ?? 0),
-      headings[index]?.length ?? 0,
+      (widest, row) => Math.max(widest, displayWidth(row[index] ?? "")),
+      displayWidth(headings[index] ?? ""),
     ),
   );
 
@@ -52,7 +58,7 @@ export function renderFindingPresentation(
       widths,
     ),
     ...cells.map((row) => renderTableRow(row, presentation.columns, widths)),
-    ...(omitted === 0 ? [] : [`… ${String(omitted)} more row(s) not shown`]),
+    ...(omitted === 0 ? [] : [`… ${String(omitted)} more ${pluralize(omitted, "row")} not shown`]),
   ];
 }
 
@@ -106,11 +112,35 @@ function renderTableRow(
   widths: readonly number[],
 ): string {
   return cells
-    .map((cell, index) =>
-      columns[index]?.align === "right"
-        ? cell.padStart(widths[index] ?? 0)
-        : cell.padEnd(widths[index] ?? 0),
-    )
+    .map((cell, index) => padCell(cell, widths[index] ?? 0, columns[index]?.align === "right"))
     .join("  ")
     .trimEnd();
+}
+
+function fitTableCell(value: string): string {
+  if (displayWidth(value) <= MAX_TABLE_COLUMN_WIDTH) {
+    return value;
+  }
+
+  const contentWidth = MAX_TABLE_COLUMN_WIDTH - displayWidth(ELLIPSIS);
+  let fitted = "";
+  let fittedWidth = 0;
+  for (const { segment } of GRAPHEME_SEGMENTER.segment(value)) {
+    const segmentWidth = displayWidth(segment);
+    if (fittedWidth + segmentWidth > contentWidth) {
+      break;
+    }
+    fitted += segment;
+    fittedWidth += segmentWidth;
+  }
+  return `${fitted}${ELLIPSIS}`;
+}
+
+function padCell(value: string, width: number, rightAligned: boolean): string {
+  const padding = " ".repeat(Math.max(0, width - displayWidth(value)));
+  return rightAligned ? `${padding}${value}` : `${value}${padding}`;
+}
+
+function displayWidth(value: string): number {
+  return stringWidth(value);
 }

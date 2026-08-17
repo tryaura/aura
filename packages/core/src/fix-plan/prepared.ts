@@ -7,6 +7,7 @@ import type {
   WriteFileOperation,
 } from "@tryaura/aura-sdk";
 
+import { pluralize } from "../pluralize.js";
 import { renderConflict } from "./diff.js";
 import type { PathPolicy, ValidatedOperation } from "./path-policy.js";
 import type {
@@ -145,7 +146,7 @@ export function blockedPlanError(preview: FixPlanPreview): FixPlanError {
   return operationError(
     "plan-blocked",
     first?.index ?? 0,
-    `plan has ${preview.conflictedOperationCount} blocked operation(s) and cannot be applied: ${first?.conflict ?? "unknown conflict"}`,
+    `plan has ${preview.conflictedOperationCount} blocked ${pluralize(preview.conflictedOperationCount, "operation")} and cannot be applied: ${first?.conflict ?? "unknown conflict"}`,
     { path: first?.paths[0] },
   );
 }
