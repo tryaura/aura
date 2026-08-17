@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { CheckExplanation, CheckReport } from "./report.js";
+import { createCheckReport, type CheckExplanation, type CheckReport } from "./report.js";
 import {
   assertValidCheckOutput,
   parseCheckExplanation,
@@ -14,6 +14,7 @@ describe("check-output-v1.schema.json", () => {
         {
           appId: "fixture",
           detection: { authenticated: true, installed: true, version: "1.2.3" },
+          detectionScope: "the fixture CLI on PATH",
           displayName: "Fixture App",
           support: { status: "supported", supportedRange: ">=1 <2", version: "1.2.3" },
         },
@@ -109,7 +110,7 @@ describe("check-output-v1.schema.json", () => {
       withDetail: false,
     });
 
-    expect(validate(report), JSON.stringify(validate.errors)).toBe(true);
+    expect(parseCheckReport(JSON.stringify(report))).toEqual(report);
   });
 
   it("validates the explanation envelope", () => {

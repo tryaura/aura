@@ -284,7 +284,7 @@ function rollbackSummary(rollback: FixPlanRollbackStatus, appliedOperationCount:
       return "earlier operations were rolled back";
     }
     case "failed": {
-      return `rollback failed; ${appliedOperationCount} ${pluralize(appliedOperationCount, "operation")} ${appliedOperationCount === 1 ? "remains" : "remain"} applied`;
+      return `rollback failed; ${appliedOperationCount} ${pluralize(appliedOperationCount, "operation")} ${pluralize(appliedOperationCount, "remains", "remain")} applied`;
     }
     case "not-required": {
       return "nothing had been applied";

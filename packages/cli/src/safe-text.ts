@@ -1,6 +1,9 @@
 const MAX_FINDING_TEXT_CHARACTERS = 500;
 const UNICODE_FORMAT_CHARACTER = /\p{Cf}/u;
 
+/** Splits text on user-perceived character boundaries, so truncation never breaks one apart. */
+export const GRAPHEME_SEGMENTER = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+
 /**
  * Neutralizes control and Unicode format characters in text Aura did not write itself.
  *
@@ -26,13 +29,21 @@ export function safe(value: string): string {
 
 /** {@link safe}, bounded to what a report line can carry. */
 export function safeFindingText(value: string): string {
-  const characters = [...value];
-  const truncated =
-    characters.length > MAX_FINDING_TEXT_CHARACTERS
-      ? `${characters.slice(0, MAX_FINDING_TEXT_CHARACTERS).join("")}…`
-      : value;
+  // The UTF-16 length bounds the grapheme count, so most values skip segmentation entirely.
+  if (value.length <= MAX_FINDING_TEXT_CHARACTERS) {
+    return safe(value);
+  }
 
-  return safe(truncated);
+  let kept = "";
+  let count = 0;
+  for (const { segment } of GRAPHEME_SEGMENTER.segment(value)) {
+    if (count >= MAX_FINDING_TEXT_CHARACTERS) {
+      return safe(`${kept}…`);
+    }
+    kept += segment;
+    count += 1;
+  }
+  return safe(kept);
 }
 
 /** {@link safe}, preserving the line structure of a multi-line value. */

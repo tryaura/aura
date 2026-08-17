@@ -5,10 +5,10 @@ import {
   collectAutomaticFixCandidates,
   describeFailure,
   FixPlanApplyError,
-  pluralize,
   prepareFixCandidates,
   type CheckDiagnostic,
 } from "@tryaura/core";
+import { pluralize } from "@tryaura/core/pluralize";
 import type { Check, Environment, Finding, WorkspaceModel } from "@tryaura/aura-sdk";
 
 import { confirmFixes } from "./fix-confirmation.js";
@@ -130,12 +130,14 @@ export async function runFixes(request: FixRequest): Promise<FixOutcome> {
     prepared.prepared.preview.changedOperationCount === 0 &&
     prepared.prepared.preview.conflictedOperationCount === 0
   ) {
+    // A plan exists only when findings produced candidates, so this is convergence, not absence:
+    // the files already read the way every planned operation would leave them.
     return finishWithoutFixes(
       request,
       automatic.diagnostics,
       fixDiagnostics,
       prepared.manualSteps,
-      "Nothing to fix.\n\n",
+      "The planned fixes already match the current file contents.\n\n",
     );
   }
 

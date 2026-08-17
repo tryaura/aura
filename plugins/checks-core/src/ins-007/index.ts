@@ -10,7 +10,7 @@ import {
   type JsonObject,
   type WorkspaceModel,
 } from "@tryaura/aura-sdk";
-import { pluralize } from "@tryaura/core";
+import { pluralize } from "@tryaura/core/pluralize";
 
 import {
   instructionGraphFor,

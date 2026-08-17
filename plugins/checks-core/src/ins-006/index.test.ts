@@ -198,7 +198,7 @@ describe("INS-006", () => {
 
     expect(findings).toHaveLength(21);
     expect(findings[20]).toMatchObject({
-      message: "/workspace/AGENTS.md has 5 further link problems not listed.",
+      message: "AGENTS.md has 5 further link problems not listed.",
       severity: "warn",
     });
   });

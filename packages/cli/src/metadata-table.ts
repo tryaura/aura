@@ -1,8 +1,8 @@
 import type { Finding, FindingMetadataTableColumn } from "@tryaura/aura-sdk";
-import { pluralize } from "@tryaura/core";
+import { pluralize } from "@tryaura/core/pluralize";
 import stringWidth from "string-width";
 
-import { safeFindingText } from "./safe-text.js";
+import { GRAPHEME_SEGMENTER, safeFindingText } from "./safe-text.js";
 
 /**
  * How many rows one metadata table prints before the rest are summarized.
@@ -15,7 +15,6 @@ import { safeFindingText } from "./safe-text.js";
 const MAX_TABLE_ROWS = 100;
 const MAX_TABLE_COLUMN_WIDTH = 80;
 const ELLIPSIS = "…";
-const GRAPHEME_SEGMENTER = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
 /** Draws the table a finding asked for, or nothing at all if it asked for none it can fill. */
 export function renderFindingPresentation(

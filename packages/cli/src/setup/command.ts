@@ -14,7 +14,7 @@ import {
 } from "../command-support.js";
 import type { AuraCliContext } from "../commands.js";
 import type { CliExitCode } from "../types.js";
-import { safe } from "../render.js";
+import { safe } from "../safe-text.js";
 import { runSetup } from "./setup.js";
 import { selectSetupSteps, setupAddKinds } from "./steps/index.js";
 import type { SetupStep } from "./types.js";

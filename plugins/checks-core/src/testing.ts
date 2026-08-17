@@ -30,7 +30,6 @@ export interface TestAppOptions {
   readonly displayName?: string;
   readonly installHint?: string;
   readonly instructionFiles?: readonly InstructionDocument[];
-  readonly id?: string;
   readonly link?: ResolvedSharedLink;
   readonly metadata?: JsonObject;
   readonly source?:
@@ -48,7 +47,7 @@ export interface TestAppOptions {
 }
 
 export function app(options: TestAppOptions = {}): AppModel {
-  const adapterId = options.adapterId ?? options.id ?? "alpha";
+  const adapterId = options.adapterId ?? "alpha";
   const source = options.source;
   const sourceFiles: AppModel["sourceFiles"] =
     source === undefined
@@ -91,29 +90,40 @@ export function app(options: TestAppOptions = {}): AppModel {
   };
 }
 
+/** Everything the fixture fills in for what a test does not say about an instruction file. */
+export interface TestDocumentOptions {
+  /** What core resolved `path` to. Defaults to the resolved `path`, as a regular file does. */
+  readonly canonicalPath?: string;
+  readonly metadata?: JsonObject;
+  readonly scope?: Scope;
+}
+
 /** One instruction file, with defaults for what a test does not care about. */
 export function document(
   path: string,
-  contentOrValid: string | boolean,
-  options: {
-    /** What core resolved `path` to. Defaults to the resolved `path`, as a regular file does. */
-    readonly canonicalPath?: string;
-    readonly metadata?: JsonObject;
-    readonly scope?: Scope;
-  } = {},
+  content: string,
+  options: TestDocumentOptions = {},
 ): InstructionDocument {
-  const content = typeof contentOrValid === "string" ? contentOrValid : "";
   return {
     canonicalPath: options.canonicalPath ?? resolve(path),
     content,
-    links:
-      typeof contentOrValid === "boolean"
-        ? [{ kind: "symlink", targetPath: SHARED_PATH, valid: contentOrValid }]
-        : [],
+    links: [],
     metadata: options.metadata,
     path,
     scope: options.scope ?? "global",
     sourceId: `test:${path}`,
+  };
+}
+
+/** {@link document}, carrying a symlink to {@link SHARED_PATH} that either resolved or broke. */
+export function linkedDocument(
+  path: string,
+  valid: boolean,
+  options: TestDocumentOptions = {},
+): InstructionDocument {
+  return {
+    ...document(path, "", options),
+    links: [{ kind: "symlink", targetPath: SHARED_PATH, valid }],
   };
 }
 
@@ -159,12 +169,15 @@ export function model(
 export function workspace(
   apps: readonly AppModel[],
   content: string | undefined,
-  exists = content !== undefined,
-  problem?: FileProblem,
+  options: { readonly exists?: boolean; readonly problem?: FileProblem } = {},
 ): WorkspaceModel {
   return model({
     apps,
-    sharedInstructions: { content, exists, problem },
+    sharedInstructions: {
+      content,
+      exists: options.exists ?? content !== undefined,
+      problem: options.problem,
+    },
   });
 }
 

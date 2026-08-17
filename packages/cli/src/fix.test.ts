@@ -339,7 +339,7 @@ describe("runFixes guided remediation", () => {
       );
 
       expect(outcome).toMatchObject({ applied: false, fixes: [] });
-      expect(stdout.text).toContain("Nothing to fix.");
+      expect(stdout.text).toContain("The planned fixes already match the current file contents.");
       expect(wizard.confirmations).toBe(0);
       expect(applyCalls).toBe(0);
     } finally {

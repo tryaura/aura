@@ -14,7 +14,7 @@ describe("INS-001", () => {
     ["missing", false, undefined],
     ["empty", true, "  \n"],
   ])("fixes a %s shared instruction source", (_case, exists, content) => {
-    const model = workspace([], content, exists);
+    const model = workspace([], content, { exists });
     const finding = onlyFinding(sharedInstructionsCheck, model);
 
     expect(sharedInstructionsCheck.fix(finding, model)).toEqual({
@@ -33,7 +33,7 @@ describe("INS-001", () => {
   it.each(["denied", "too-large", "unsupported"] satisfies readonly FileProblem[])(
     "reports but does not overwrite a %s source",
     (problem) => {
-      const model = workspace([], undefined, true, problem);
+      const model = workspace([], undefined, { exists: true, problem });
       const finding = onlyFinding(sharedInstructionsCheck, model);
 
       expect(finding.details).toContain(problem);

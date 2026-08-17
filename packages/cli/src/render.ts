@@ -1,7 +1,7 @@
 import type { Writable } from "node:stream";
 
 import type { Check, Finding, FindingLocation } from "@tryaura/aura-sdk";
-import { pluralize } from "@tryaura/core";
+import { pluralize } from "@tryaura/core/pluralize";
 
 import { renderFindingPresentation } from "./metadata-table.js";
 import { notFoundLine } from "./not-found-line.js";
@@ -140,17 +140,17 @@ function renderNextSteps(report: CheckReport, branding: CliBranding, output: Wri
   const lines: string[] = [];
   if (auto > 0) {
     lines.push(
-      `${String(auto)} finding(s) can be fixed automatically — run ${branding.command} check --fix`,
+      `${String(auto)} ${pluralize(auto, "finding")} can be fixed automatically — run ${branding.command} check --fix`,
     );
   }
   if (guided > 0) {
     lines.push(
-      `${String(guided)} ${pluralize(guided, "finding")} ${guided === 1 ? "offers" : "offer"} guided resolutions — run ${branding.command} check --fix --interactive`,
+      `${String(guided)} ${pluralize(guided, "finding")} ${pluralize(guided, "offers", "offer")} guided resolutions — run ${branding.command} check --fix --interactive`,
     );
   }
   if (manual > 0) {
     lines.push(
-      `${String(manual)} ${pluralize(manual, "finding")} ${manual === 1 ? "needs" : "need"} a manual edit — run ${branding.command} check --explain <id>`,
+      `${String(manual)} ${pluralize(manual, "finding")} ${pluralize(manual, "needs", "need")} a manual edit — run ${branding.command} check --explain <id>`,
     );
   }
   if (lines.length === 0) {

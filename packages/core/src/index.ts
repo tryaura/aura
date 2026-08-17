@@ -1,7 +1,6 @@
 export { createEnvironment } from "./environment.js";
 export type { EnvironmentBootOptions } from "./environment.js";
 export { canonicalAppId } from "./app-id.js";
-export { pluralize } from "./pluralize.js";
 export { runChecks } from "./checks.js";
 export type { CheckDiagnostic } from "./checks.js";
 export {

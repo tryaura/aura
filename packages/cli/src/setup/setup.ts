@@ -4,13 +4,13 @@ import type { Environment, Finding } from "@tryaura/aura-sdk";
 import {
   applyFixPlan,
   buildWorkspaceModel,
-  pluralize,
   prepareFixPlan,
   runChecks,
   type FixPlanPreview,
   type PluginRegistry,
   type WorkspaceScan,
 } from "@tryaura/core";
+import { pluralize } from "@tryaura/core/pluralize";
 
 import { createCheckReport } from "../report.js";
 import { renderHuman } from "../render.js";

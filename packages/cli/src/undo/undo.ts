@@ -10,8 +10,9 @@ import {
   type FixPlanBackup,
   type PluginRegistry,
 } from "@tryaura/core";
+import { pluralize } from "@tryaura/core/pluralize";
 
-import { safe } from "../render.js";
+import { safe } from "../safe-text.js";
 import type { WizardIo } from "../setup/wizard-types.js";
 import type { CliBranding, CliExitCode } from "../types.js";
 
@@ -82,7 +83,7 @@ export async function runUndo(request: UndoRequest): Promise<CliExitCode> {
     if (latest === undefined) {
       if (unreadable > 0) {
         request.stderr.write(
-          `${branding.displayName}: ${String(unreadable)} backup(s) could not be read and nothing restorable remains. Run ${branding.command} undo --list for details.\n`,
+          `${branding.displayName}: ${String(unreadable)} ${pluralize(unreadable, "backup")} could not be read and nothing restorable remains. Run ${branding.command} undo --list for details.\n`,
         );
         return 2;
       }
@@ -97,7 +98,7 @@ export async function runUndo(request: UndoRequest): Promise<CliExitCode> {
 
 async function restoreBackup(request: UndoRequest, backup: ReadableBackup): Promise<CliExitCode> {
   const { stdout } = request;
-  const described = `backup ${safe(backup.id)} (${String(backup.operationCount)} operation(s))`;
+  const described = `backup ${safe(backup.id)} (${String(backup.operationCount)} ${pluralize(backup.operationCount, "operation")})`;
 
   if (request.dryRun) {
     stdout.write(
@@ -133,11 +134,11 @@ async function restoreBackup(request: UndoRequest, backup: ReadableBackup): Prom
   }
 
   stdout.write(
-    `Restored backup ${safe(result.backupId)} (${String(result.restoredOperationCount)} operation(s)).\n`,
+    `Restored backup ${safe(result.backupId)} (${String(result.restoredOperationCount)} ${pluralize(result.restoredOperationCount, "operation")}).\n`,
   );
   if (result.skippedBackupIds.length > 0) {
     stdout.write(
-      `Skipped ${String(result.skippedBackupIds.length)} unreadable newer backup(s): ${result.skippedBackupIds.map(safe).join(", ")}.\n`,
+      `Skipped ${String(result.skippedBackupIds.length)} unreadable newer ${pluralize(result.skippedBackupIds.length, "backup")}: ${result.skippedBackupIds.map(safe).join(", ")}.\n`,
     );
   }
   return 0;
@@ -162,7 +163,7 @@ function renderBackupList(
       continue;
     }
     output.write(
-      `  ${safe(backup.id)}  ${safe(backup.createdAt)}  ${String(backup.operationCount)} operation(s)  ${backup.status}\n`,
+      `  ${safe(backup.id)}  ${safe(backup.createdAt)}  ${String(backup.operationCount)} ${pluralize(backup.operationCount, "operation")}  ${backup.status}\n`,
     );
   }
   if (backups.some((backup) => backup.undoable)) {

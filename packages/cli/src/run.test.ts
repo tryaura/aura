@@ -138,7 +138,9 @@ describe("runCli", () => {
       expect(exitCode).toBe(1);
 
       expect(parseCheckReport(capture.stdout.text).fixes).toEqual([]);
-      expect(capture.stderr.text).toContain("Nothing to fix.");
+      expect(capture.stderr.text).toContain(
+        "The planned fixes already match the current file contents.",
+      );
       expect(detections).toBe(1);
     } finally {
       await rm(temporaryRoot, { force: true, recursive: true });
