@@ -35,20 +35,21 @@ export function guidedFixes(finding: Finding, model: WorkspaceModel): readonly G
   if (kind === "malformed") {
     return [malformedMergeChoice(finding)];
   }
+  if (kind === "unterminated-fence") {
+    return [unterminatedFenceChoice(finding)];
+  }
   return kind === "hash-mismatch" ? mismatchChoices(finding, model) : [];
 }
 
 function mismatchChoices(finding: Finding, model: WorkspaceModel): readonly GuidedFixChoice[] {
   const context = mismatchContext(finding, model);
   if (context === undefined) {
-    return [];
+    throw new Error(`The managed snippet for finding "${finding.id}" is no longer available.`);
   }
 
   const choices: GuidedFixChoice[] = [];
   const keep = keepChoice(context, model);
-  if (keep !== undefined) {
-    choices.push(keep);
-  }
+  choices.push(keep);
   const canonical = model.availableSnippets.find(
     (candidate) => candidate.id === context.snippet.id,
   );
@@ -70,14 +71,16 @@ function mismatchContext(finding: Finding, model: WorkspaceModel): MismatchConte
     return undefined;
   }
   const snippet = document.parsed.block.snippets.find((candidate) => candidate.id === snippetId);
-  return snippet === undefined || snippet.hashMatches ? undefined : { document, snippet };
+  return snippet === undefined ? undefined : { document, snippet };
 }
 
-function keepChoice(context: MismatchContext, model: WorkspaceModel): GuidedFixChoice | undefined {
+function keepChoice(context: MismatchContext, model: WorkspaceModel): GuidedFixChoice {
   const { document, snippet } = context;
   const keep = reconcileManagedSnippet(document.content, snippet.id, { kind: "keep" });
-  if (keep.status !== "updated") {
-    return undefined;
+  if (keep.status === "invalid") {
+    throw new Error(
+      `Keep yours could not reconcile ${snippet.id}: ${keep.problems.map((problem) => problem.message).join(" ")}`,
+    );
   }
   const applied = operationsWithManifest({
     content: keep.content,
@@ -110,8 +113,10 @@ function restoreChoice(
     content: canonical.content,
     kind: "restore",
   });
-  if (restored.status !== "updated") {
-    return undefined;
+  if (restored.status === "invalid") {
+    throw new Error(
+      `Restore could not reconcile ${context.snippet.id}: ${restored.problems.map((problem) => problem.message).join(" ")}`,
+    );
   }
   const applied = operationsWithManifest({
     content: restored.content,
@@ -162,10 +167,18 @@ function operationsWithManifest(options: ManifestOperationOptions): AppliedOpera
   const operations: FileOperation[] = [
     { content: options.content, path: options.path, type: "write" },
   ];
-  if (options.model.manifest.status !== "ready") {
+  if (options.model.manifest.status === "missing") {
     return {
       manualSteps: [
-        `Record ${options.snippetId} at hash ${options.hash} in the Aura manifest by hand; it could not be read, so this fix updates only ${options.path}.`,
+        `Create ${options.model.manifest.path} and record ${options.snippetId} at hash ${options.hash}; the manifest does not exist, so this fix updates only ${options.path}.`,
+      ],
+      operations,
+    };
+  }
+  if (options.model.manifest.status === "read-only") {
+    return {
+      manualSteps: [
+        `Record ${options.snippetId} at hash ${options.hash} after repairing the Aura manifest: ${options.model.manifest.problem.message}`,
       ],
       operations,
     };
@@ -247,6 +260,24 @@ function malformedMergeChoice(finding: Finding): GuidedFixChoice {
       ],
       operations: [],
       summary: "Repair the malformed Aura-managed block manually.",
+    },
+  };
+}
+
+function unterminatedFenceChoice(finding: Finding): GuidedFixChoice {
+  const path = finding.locations?.[0]?.path;
+  return {
+    id: "close-fence",
+    label: "Close the fence",
+    plan: {
+      manualSteps: [
+        path === undefined
+          ? "Close the Markdown fence that hides the Aura-managed markers."
+          : `Close the Markdown fence that hides the Aura-managed markers in ${path}.`,
+        "Run `aura check` again after the markers are visible.",
+      ],
+      operations: [],
+      summary: "Close the unterminated Markdown fence manually.",
     },
   };
 }

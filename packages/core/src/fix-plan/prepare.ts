@@ -9,10 +9,11 @@ import type {
 
 import { captureBefore, findUnwritablePath, spendBudget, type RetentionBudget } from "./capture.js";
 import { renderMoveDiff, renderRemoveDiff, renderSymlinkDiff, renderWriteDiff } from "./diff.js";
-import { FILE_MODES, MAX_MUTABLE_FILE_BYTES, MAX_RETAINED_PLAN_BYTES } from "./limits.js";
+import { MAX_RETAINED_PLAN_BYTES } from "./limits.js";
 import { createPathPolicy, validatePlanPaths, type ValidatedOperation } from "./path-policy.js";
 import { prepareArchive } from "./prepare-archive.js";
 import { createEnforcedModes, resolveWriteMode, type EnforcedModes } from "./prepare-modes.js";
+import { prepareWriteGroup } from "./prepare-write-group.js";
 import {
   conflict,
   createPreview,
@@ -22,6 +23,7 @@ import {
 } from "./prepared.js";
 import { inspectPath, isCapturedFile } from "./state.js";
 import type { FixPlanPreview, FixPlanPreviewOptions } from "./types.js";
+import { writeRejection } from "./write-validation.js";
 
 export async function prepareOperations(
   options: FixPlanPreviewOptions,
@@ -32,13 +34,34 @@ export async function prepareOperations(
   const operations: PreparedOperation[] = [];
   const enforcedMode = createEnforcedModes(options.model.homeDir, policy.caseInsensitive);
   const readOnly = manifestConflict(options.model);
+  const operationOwners = options.plan.operations.map((_operation, index) => index);
+  const followers = new Map<number, ValidatedOperation[]>();
+  for (const operation of validated) {
+    if (operation.coalescesWith === undefined) {
+      continue;
+    }
+    operationOwners[operation.index] = operation.coalescesWith;
+    const group = followers.get(operation.coalescesWith);
+    if (group === undefined) {
+      followers.set(operation.coalescesWith, [operation]);
+    } else {
+      group.push(operation);
+    }
+  }
 
   // Sequential on purpose: the retention budget is spent in plan order, so what a plan costs in
   // memory does not depend on how its reads happen to interleave.
   for (const operation of validated) {
+    if (operation.coalescesWith !== undefined) {
+      continue;
+    }
+    // Only a write ever collects followers, so a group of one is always the ordinary path.
+    const group = followers.get(operation.index);
     operations.push(
       readOnly === undefined
-        ? await prepareOperation(operation, budget, enforcedMode)
+        ? group === undefined
+          ? await prepareOperation(operation, budget, enforcedMode)
+          : await prepareWriteGroup([operation, ...group], budget, enforcedMode)
         : conflict(operation, readOnly),
     );
   }
@@ -57,7 +80,12 @@ export async function prepareOperations(
 
   return {
     preview,
-    state: Object.freeze({ model: options.model, operations: Object.freeze(operations), policy }),
+    state: Object.freeze({
+      model: options.model,
+      operationOwners: Object.freeze(operationOwners),
+      operations: Object.freeze(operations),
+      policy,
+    }),
   };
 }
 
@@ -144,20 +172,6 @@ async function prepareWrite(
     ),
     type: "write",
   };
-}
-
-/** Why a write is refused before its target is read, or undefined when nothing rules it out. */
-function writeRejection(operation: WriteFileOperation, content: Buffer): string | undefined {
-  if (content.byteLength > MAX_MUTABLE_FILE_BYTES) {
-    return `content is ${content.byteLength} bytes, above the ${MAX_MUTABLE_FILE_BYTES} byte limit for one operation`;
-  }
-  // `FileMode` closes this set at compile time, but plugins ship compiled, and the value reaches
-  // `chmod` unchanged. Checking it is what keeps a plan from asking for setuid or world-writable.
-  if (operation.mode !== undefined && !FILE_MODES.has(operation.mode)) {
-    return `mode 0o${operation.mode.toString(8)} is not a permitted file mode`;
-  }
-
-  return undefined;
 }
 
 async function prepareRemove(

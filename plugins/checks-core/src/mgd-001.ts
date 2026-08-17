@@ -20,41 +20,37 @@ Re-run the check with \`--fix --interactive\` and choose Keep yours to adopt the
 });
 
 function detectManagedBlockDrift(model: WorkspaceModel): readonly DetectedFinding[] {
-  return managedDocuments(model).flatMap((document) => findingsForDocument(document));
+  return managedDocuments(model).flatMap((document) => findingsForDocument(document, model));
 }
 
-function findingsForDocument(document: ManagedDocument): readonly DetectedFinding[] {
+function findingsForDocument(
+  document: ManagedDocument,
+  model: WorkspaceModel,
+): readonly DetectedFinding[] {
   const parsed = document.parsed;
+  const hiddenMarker = parsed.notes.find((note) => note.code === "unterminated-fence");
+  if (hiddenMarker !== undefined) {
+    return [unterminatedFenceFinding(document, hiddenMarker.line)];
+  }
   if (parsed.status === "invalid") {
-    return [
-      {
-        details: `${parsed.problems.map((problem) => problem.message).join(" ")} Aura will not write to a block it cannot parse; repair the markers by hand.`,
-        id: `${document.sourceId}:malformed-managed-block`,
-        locations: parsed.problems.map((problem) => ({
-          ...(problem.line === undefined ? {} : { line: problem.line }),
-          path: document.path,
-        })),
-        message: `The Aura-managed block in ${document.path} is malformed.`,
-        metadata: {
-          kind: "malformed",
-          problems: parsed.problems.map((problem) => ({
-            code: problem.code,
-            ...(problem.line === undefined ? {} : { line: problem.line }),
-          })),
-          sourceId: document.sourceId,
-        },
-      },
-    ];
+    return [malformedFinding(document, parsed.problems)];
   }
   if (parsed.status === "absent") {
     return [];
   }
 
+  const manifestHashes = manifestSnippetHashes(model);
   return parsed.block.snippets
-    .filter((snippet) => !snippet.hashMatches)
+    .filter((snippet) => {
+      const manifestHash = manifestHashes.get(snippet.id);
+      return (
+        !snippet.hashMatches ||
+        (manifestHash !== undefined && manifestHash !== snippet.computedHash)
+      );
+    })
     .map((snippet) => ({
       details:
-        "Aura will not rewrite this snippet while the edit stands. Reconcile it by hand until a client offers the Keep, Restore, or Merge choice.",
+        "Run `aura check --fix --interactive` and choose Keep yours, Restore, or Merge before running setup again.",
       id: `${document.sourceId}:${snippet.id}`,
       locations: [{ line: snippet.startLine, path: document.path }],
       message: `Managed snippet ${snippet.id} in ${document.path} was edited by hand.`,
@@ -64,4 +60,60 @@ function findingsForDocument(document: ManagedDocument): readonly DetectedFindin
         sourceId: document.sourceId,
       },
     }));
+}
+
+function unterminatedFenceFinding(
+  document: ManagedDocument,
+  line: number | undefined,
+): DetectedFinding {
+  return {
+    details:
+      "Close the Markdown fence, then run `aura check --fix --interactive` again. Aura will not reconcile this document while its markers are hidden.",
+    id: `${document.sourceId}:unterminated-fence`,
+    locations: [{ ...(line === undefined ? {} : { line }), path: document.path }],
+    message: `An unclosed Markdown fence hides Aura-managed markers in ${document.path}.`,
+    metadata: { kind: "unterminated-fence", sourceId: document.sourceId },
+  };
+}
+
+function malformedFinding(
+  document: ManagedDocument,
+  problems: Extract<ManagedDocument["parsed"], { readonly status: "invalid" }>["problems"],
+): DetectedFinding {
+  return {
+    details: `${problems.map((problem) => problem.message).join(" ")} Aura will not write to a block it cannot parse; repair the markers by hand.`,
+    id: `${document.sourceId}:malformed-managed-block`,
+    locations: problems.map((problem) => ({
+      ...(problem.line === undefined ? {} : { line: problem.line }),
+      path: document.path,
+    })),
+    message: `The Aura-managed block in ${document.path} is malformed.`,
+    metadata: {
+      kind: "malformed",
+      problems: problems.map((problem) => ({
+        code: problem.code,
+        ...(problem.line === undefined ? {} : { line: problem.line }),
+      })),
+      sourceId: document.sourceId,
+    },
+  };
+}
+
+function manifestSnippetHashes(model: WorkspaceModel): ReadonlyMap<string, string> {
+  if (model.manifest.status !== "ready") {
+    return new Map();
+  }
+  const hashes = new Map<string, string>();
+  const ambiguous = new Set<string>();
+  for (const snippet of model.manifest.value.snippets) {
+    if (hashes.has(snippet.id)) {
+      ambiguous.add(snippet.id);
+    } else {
+      hashes.set(snippet.id, snippet.hash);
+    }
+  }
+  for (const id of ambiguous) {
+    hashes.delete(id);
+  }
+  return hashes;
 }
