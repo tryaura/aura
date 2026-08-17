@@ -97,7 +97,12 @@ export async function runFixes(request: FixRequest): Promise<FixOutcome> {
         applied: false,
         diagnostics: automatic.diagnostics,
         fixDiagnostics,
-        fixes: reportFixes(prepared, "planned", request.withDetail),
+        fixes: reportFixes(
+          prepared,
+          "planned",
+          request.withDetail,
+          "Aborted before confirmation. Nothing was changed.",
+        ),
       };
     }
     candidates = orderCandidates([...candidates, ...guided], request.findings);
@@ -139,7 +144,7 @@ export async function runFixes(request: FixRequest): Promise<FixOutcome> {
     };
   }
 
-  renderFixPreview(prepared.prepared, prepared.manualSteps, request.withDetail, request.stdout);
+  renderFixPreview(prepared, request.withDetail, request.stdout);
 
   if (prepared.prepared.preview.conflictedOperationCount > 0) {
     request.stderr.write(
@@ -174,7 +179,12 @@ export async function runFixes(request: FixRequest): Promise<FixOutcome> {
       diagnostics: automatic.diagnostics,
       exitCode: 2,
       fixDiagnostics,
-      fixes: reportFixes(prepared, "planned", request.withDetail),
+      fixes: reportFixes(
+        prepared,
+        "planned",
+        request.withDetail,
+        "Not applied: the confirmation prompt is unavailable in this terminal. Re-run with --yes, or --dry-run to stop at the preview.",
+      ),
     };
   }
   if (confirmation === "declined") {
@@ -194,7 +204,9 @@ export async function runFixes(request: FixRequest): Promise<FixOutcome> {
     });
     request.stdout.write(`\nApplied ${String(result.appliedOperationCount)} fix operation(s).\n`);
     if (result.backupId !== undefined) {
-      request.stdout.write(`The previous contents are saved as backup ${safe(result.backupId)}.\n`);
+      request.stdout.write(
+        `The previous contents are saved as backup ${safe(result.backupId)}. Run ${request.branding.command} undo to restore them.\n`,
+      );
     }
     request.stdout.write("\n");
     return {

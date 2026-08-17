@@ -10,6 +10,7 @@ import { createPluginRegistry } from "@tryaura/core";
 import { CheckCommand, type AuraCliContext } from "./commands.js";
 import { DefaultCommand } from "./default-command.js";
 import { SetupCommand } from "./setup/command.js";
+import { UndoCommand } from "./undo/command.js";
 import type { CliDistro, CliExitCode, CliRuntime } from "./types.js";
 
 /** Runs one build-time-composed Aura distribution. */
@@ -107,8 +108,10 @@ function resolveValue<T>(value: T | undefined, fallback: () => T): T {
 /**
  * Decides how much color the terminal should get.
  *
- * Only the command framework's help and error output is colored; the report renders the same bytes
- * either way, so there is no second, disagreeing opinion about color further down.
+ * One decision for the whole run: the command framework's help and error output, the wizard, and
+ * the report's severity and verdict styling all read this depth, so no layer forms a second,
+ * disagreeing opinion about color. Injected streams resolve to 0, which keeps every captured run
+ * free of escape sequences.
  */
 function detectColorDepth(environmentVariables: Record<string, string | undefined>): number {
   const noColor = environmentVariables["NO_COLOR"];
@@ -162,6 +165,7 @@ function createCli(distro: CliDistro, enableColors: boolean): Cli<AuraCliContext
   cli.register(DefaultCommand);
   cli.register(CheckCommand);
   cli.register(SetupCommand);
+  cli.register(UndoCommand);
   cli.register(Builtins.HelpCommand);
   if (branding.version !== undefined) {
     cli.register(Builtins.VersionCommand);

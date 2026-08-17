@@ -77,10 +77,17 @@ An unchanged run is the one exception away from being a no-op: the manifest reco
 applications Aura manages, so it is held at mode `600`, and any run rewrites it when its
 permissions have been widened even if its contents already match.
 
-Successful writes receive a backup ID and failed applications are rolled back when possible. A
-user-facing command to restore a successful run from its backup has not been added yet. Stopping
+Successful writes receive a backup ID and failed applications are rolled back when possible. `aura
+undo` restores the most recent backup, or a named one, after one confirmation. Stopping
 management of an application updates the manifest but deliberately leaves its existing agent
 configuration in place.
+
+```sh
+aura undo --list                        # list every backup and its status
+aura undo                               # restore the newest backup after one confirmation
+aura undo 2026-08-16T23-47-43-937Z      # restore one backup by name
+aura undo --dry-run                     # name what would be restored, write nothing
+```
 
 ## Check and repair
 
