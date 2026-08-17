@@ -35,6 +35,8 @@ interface DuplicateMember {
 
 export interface DuplicateCluster {
   readonly id: string;
+  /** True only when the check saw every pair of copies as an exact match. */
+  readonly identical: boolean;
   readonly members: readonly DuplicateMember[];
   readonly similarity: number;
 }
@@ -141,7 +143,17 @@ export function duplicateClusters(findings: readonly Finding[]): readonly Duplic
             isRecord(match) && typeof match["similarity"] === "number" ? [match["similarity"]] : [],
           )
         : [];
-      return [{ id: finding.id, members, similarity: Math.min(...similarities, 100) }];
+      // Taken from the finding rather than re-derived: `matches` is capped at the check's edge
+      // limit, so a large cluster's list can look all-exact while the copies it dropped were not.
+      // A finding that does not say is treated as near, which asks rather than silently choosing.
+      return [
+        {
+          id: finding.id,
+          identical: finding.metadata?.["identical"] === true,
+          members,
+          similarity: Math.min(...similarities, 100),
+        },
+      ];
     })
     .sort((left, right) => left.id.localeCompare(right.id));
 }
@@ -171,6 +183,9 @@ export function composeConsolidatedInstructions(
       heading: provenanceHeading(source.path, selection.scope, model),
       text: removeRanges(source.content, removals.get(resolve(source.path)) ?? []),
     }))
+    // A source can lose every paragraph to copies kept elsewhere; a heading with nothing under it
+    // would say the file contributed something it did not.
+    .filter((section) => section.text.trim().length > 0)
     // Matched with its line ending, so a merged `~/a.md.bak` cannot pass for a merged `~/a.md`.
     .filter((section) => !base.includes(`${section.heading}\n`))
     .map((section) => `${section.heading}\n\n${section.text}`);

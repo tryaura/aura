@@ -1,3 +1,5 @@
+import { resolve } from "node:path";
+
 import type {
   AppModel,
   DetectedFinding,
@@ -52,9 +54,15 @@ export function app(options: TestAppOptions = {}): AppModel {
 export function document(
   path: string,
   content: string,
-  options: { readonly metadata?: JsonObject; readonly scope?: Scope } = {},
+  options: {
+    /** What core resolved `path` to. Defaults to the resolved `path`, as a regular file does. */
+    readonly canonicalPath?: string;
+    readonly metadata?: JsonObject;
+    readonly scope?: Scope;
+  } = {},
 ): InstructionDocument {
   return {
+    canonicalPath: options.canonicalPath ?? resolve(path),
     content,
     links: [],
     metadata: options.metadata,

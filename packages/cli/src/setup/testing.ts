@@ -147,21 +147,27 @@ export function consolidationPlugin(): AuraPlugin {
     detect: (model) => {
       const claude = model.instructionFiles.find((document) => document.sourceId === ids[0]);
       const cursor = model.instructionFiles.find((document) => document.sourceId === ids[1]);
-      return claude === undefined || cursor === undefined
-        ? []
-        : [
-            {
-              id: "fixture-duplicate",
-              message: "Duplicate fixture guidance.",
-              metadata: {
-                matches: [{ kind: "exact", left: 0, right: 1, similarity: 100 }],
-                members: [
-                  { endLine: 3, path: claude.path, startLine: 3 },
-                  { endLine: 3, path: cursor.path, startLine: 3 },
-                ],
-              },
-            },
-          ];
+      if (claude === undefined || cursor === undefined) {
+        return [];
+      }
+      // Byte-identical files cluster whole-file, the way the real INS-003 reports them; otherwise
+      // the fixture reports the one shared line its tests place at line 3 of both files.
+      const wholeFile = claude.content === cursor.content;
+      const lastLine = wholeFile ? claude.content.split(/\r?\n/u).length : 3;
+      return [
+        {
+          id: "fixture-duplicate",
+          message: "Duplicate fixture guidance.",
+          metadata: {
+            identical: true,
+            matches: [{ kind: "exact", left: 0, right: 1, similarity: 100 }],
+            members: [
+              { endLine: lastLine, path: claude.path, startLine: wholeFile ? 1 : 3 },
+              { endLine: lastLine, path: cursor.path, startLine: wholeFile ? 1 : 3 },
+            ],
+          },
+        },
+      ];
     },
     explain: "Fixture duplicate check.",
     fixability: "manual",

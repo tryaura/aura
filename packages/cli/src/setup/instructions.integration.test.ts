@@ -66,6 +66,31 @@ describe("instruction consolidation setup", () => {
     await expect(snapshot(fixture.homeDir)).resolves.toEqual(before);
   });
 
+  it("merges byte-identical files silently into one section under one heading", async () => {
+    const content =
+      "Always run the full verification suite before considering implementation complete.\n";
+    const fixture = await createFixture();
+    await mkdir(join(fixture.homeDir, ".claude"), { recursive: true });
+    await writeFile(join(fixture.homeDir, ".claude", "CLAUDE.md"), content, "utf8");
+    await writeFile(join(fixture.homeDir, ".cursorrules"), content, "utf8");
+    const registry = createPluginRegistry([consolidationPlugin()], {
+      bareCheckIdPlugins: ["checks-core"],
+    });
+
+    await expect(runSetup(fixture.request(registry, archiveOriginals()))).resolves.toBe(0);
+
+    // The copy that lost everything must not leave a dangling provenance heading behind.
+    const shared = await readFile(join(fixture.homeDir, "agents", "AGENTS.md"), "utf8");
+    expect(shared).toContain("# Instructions from ~/.claude/CLAUDE.md");
+    expect(shared).not.toContain("# Instructions from ~/.cursorrules");
+    expect(shared.match(/# Instructions from/gu)).toHaveLength(1);
+    expect(shared.match(/Always run the full verification suite/gu)).toHaveLength(1);
+
+    const before = await snapshot(fixture.homeDir);
+    await expect(runSetup(fixture.request(registry, archiveOriginals()))).resolves.toBe(0);
+    await expect(snapshot(fixture.homeDir)).resolves.toEqual(before);
+  });
+
   it("converges on the default answers, which leave every original in place", async () => {
     const duplicate = "Always run the full verification suite before considering work complete.";
     const fixture = await createFixture();
