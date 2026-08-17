@@ -36,7 +36,10 @@ locations, metadata, and presentation are present only when supplied by the chec
 Each fix record belongs to one executable finding plan and retains original finding order. Its
 status is `planned` for a dry run, `applied` after a successful write, `failed` when preparation,
 conflict detection, or application prevents the merged transaction from succeeding, or `partial`
-when applying failed _and_ unwinding the operations already performed also failed. `failed`
+when applying failed _and_ unwinding the operations already performed also failed. A `planned`
+record can carry an optional `message` explaining why the run stopped before applying — the
+interactive wizard was aborted, or no terminal was available for the confirmation prompt — so a
+consumer that sees `status: "error"` with no error findings reads the reason here. `failed`
 guarantees the filesystem is unchanged; `partial` is the only status that does not, and a run that
 reports it leaves a diagnostic naming how many operations could not be undone. Operations
 carry effects and affected paths. Unified diff text is omitted unless `--detail` is present because

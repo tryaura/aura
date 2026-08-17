@@ -179,7 +179,7 @@ export class CheckCommand extends Command<AuraCliContext> {
       if (this.json) {
         renderJson(report, this.context.report);
       } else {
-        renderHuman(report, this.context.branding, this.context.stdout);
+        renderHuman(report, this.context.branding, this.context.stdout, this.context.colorDepth);
       }
 
       return report.summary.exitCode;

@@ -614,4 +614,42 @@ describe("runCli", () => {
     expect(await runCli(distro([bare]), refused.runtime)).toBe(3);
     expect(refused.stderr.text).toContain("Acme Doctor:");
   });
+
+  it("lists no backups for undo on a machine nothing has changed", async () => {
+    const capture = createCapture(["undo", "--list"]);
+
+    const exitCode = await runCli(distro(), capture.runtime);
+
+    expect(exitCode).toBe(0);
+    expect(capture.stdout.text).toContain("No backups.");
+  });
+
+  it("refuses to restore without a terminal to confirm on", async () => {
+    const capture = createCapture(["undo"]);
+
+    const exitCode = await runCli(distro(), capture.runtime);
+
+    expect(exitCode).toBe(2);
+    expect(capture.stderr.text).toContain(
+      "stdin and stdout must both be terminals before Acme Doctor can ask to restore",
+    );
+  });
+
+  it("refuses contradictory undo options", async () => {
+    const contradiction = createCapture(["undo", "--dry-run", "--yes"]);
+    expect(await runCli(distro(), contradiction.runtime)).toBe(2);
+    expect(contradiction.stderr.text).toContain("--dry-run and --yes contradict each other");
+
+    const listRestore = createCapture(["undo", "--list", "--yes"]);
+    expect(await runCli(distro(), listRestore.runtime)).toBe(2);
+    expect(listRestore.stderr.text).toContain("--list only lists backups");
+  });
+
+  it("names undo in the command overview", async () => {
+    const capture = createCapture([]);
+
+    await runCli(distro(), capture.runtime);
+
+    expect(capture.stdout.text).toContain("undo");
+  });
 });

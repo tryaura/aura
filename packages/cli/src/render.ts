@@ -1,11 +1,13 @@
 import type { Writable } from "node:stream";
 
-import type { Check, Finding } from "@tryaura/aura-sdk";
+import type { Check, Finding, FindingLocation } from "@tryaura/aura-sdk";
 
 import { renderFindingPresentation } from "./metadata-table.js";
 import { notFoundLine } from "./not-found-line.js";
 import { createCheckExplanation, type CheckReport } from "./report.js";
+import type { ReportApp } from "./report-shapes.js";
 import { safe, safeFindingText, safeMultiline } from "./safe-text.js";
+import { createStyle, type Style } from "./style.js";
 import type { CliBranding } from "./types.js";
 
 export { safe, safeMultiline } from "./safe-text.js";
@@ -34,7 +36,13 @@ export function renderExplanationJson(check: Check, output: Writable): void {
   output.write(`${JSON.stringify(createCheckExplanation(check))}\n`);
 }
 
-export function renderHuman(report: CheckReport, branding: CliBranding, output: Writable): void {
+export function renderHuman(
+  report: CheckReport,
+  branding: CliBranding,
+  output: Writable,
+  colorDepth = 0,
+): void {
+  const style = createStyle(colorDepth);
   output.write(`${branding.displayName} check\n`);
 
   if (report.passedChecks.length > 0) {
@@ -43,6 +51,7 @@ export function renderHuman(report: CheckReport, branding: CliBranding, output: 
       `Passed (${String(report.passedChecks.length)})`,
       report.passedChecks.map((check) => `[${safe(check.id)}] ${safe(check.title)}`),
       output,
+      style.green,
     );
   } else if (report.status === "empty") {
     renderGroup(
@@ -52,16 +61,17 @@ export function renderHuman(report: CheckReport, branding: CliBranding, output: 
         "No checks are registered. This build of the CLI ships no plugins, so nothing about this machine was inspected.",
       ],
       output,
+      style.yellow,
     );
   } else if (report.findings.length === 0 && report.diagnostics.length === 0) {
-    renderGroup("✓", "Clean", ["No checks reported issues."], output);
+    renderGroup("✓", "Clean", ["No checks reported issues."], output, style.green);
   }
 
-  renderFindingGroup("·", "Informational", report, "info", output);
-  renderFindingGroup("!", "Warnings", report, "warn", output);
-  renderFindingGroup("✗", "Errors", report, "error", output);
+  renderFindingGroup("·", "Informational", report, "info", output, style);
+  renderFindingGroup("!", "Warnings", report, "warn", output, style, style.yellow);
+  renderFindingGroup("✗", "Errors", report, "error", output, style, style.red);
 
-  renderRemainingWork(report, branding, output);
+  renderNextSteps(report, branding, output);
 
   if (report.diagnostics.length > 0) {
     renderGroup(
@@ -72,11 +82,17 @@ export function renderHuman(report: CheckReport, branding: CliBranding, output: 
         ...(diagnostic.detail === undefined ? [] : [`  ${safe(diagnostic.detail)}`]),
       ]),
       output,
+      style.red,
     );
   }
 
-  // What was looked for, then the one command that can act on it — the install instructions
-  // themselves belong to the app the user picks, not to every app they have never wanted.
+  // The inventory the counts above were measured against: what was inspected, then what was looked
+  // for and not found. The install instructions themselves belong to the app the user picks, not
+  // to every app they have never wanted.
+  const detected = report.apps.filter((app) => app.detection.installed);
+  if (detected.length > 0) {
+    renderGroup("·", `Detected (${String(detected.length)})`, detected.map(detectedLine), output);
+  }
   const skipped = report.apps.filter((app) => !app.detection.installed);
   if (skipped.length > 0) {
     renderGroup(
@@ -106,23 +122,28 @@ export function renderHuman(report: CheckReport, branding: CliBranding, output: 
   }
 
   output.write(`\n${summaryMessage(report)}\n`);
+  output.write(`${verdictStyle(report, style)(verdictMessage(report))}\n`);
 }
 
 /**
- * Says what a `--fix` run could not do for the user, once it has done what it could.
+ * The next action for every finding the run could not resolve by itself.
  *
  * A count and a command, not the findings again: every one of them was just printed above with its
- * check id, and repeating them doubles the report exactly when it should be getting shorter.
+ * check id, and repeating them doubles the report exactly when it should be getting shorter. On a
+ * plain run this is what reveals `--fix` exists at all; after a fix run it is what remains.
  */
-function renderRemainingWork(report: CheckReport, branding: CliBranding, output: Writable): void {
+function renderNextSteps(report: CheckReport, branding: CliBranding, output: Writable): void {
   const applied = report.fixes?.some((fix) => fix.status === "applied") ?? false;
+  const auto = report.findings.filter((finding) => finding.fixability === "auto").length;
   const guided = report.findings.filter((finding) => finding.fixability === "guided").length;
   const manual = report.findings.filter((finding) => finding.fixability === "manual").length;
-  if (!applied || guided + manual === 0) {
-    return;
-  }
 
   const lines: string[] = [];
+  if (auto > 0 && !applied) {
+    lines.push(
+      `${String(auto)} finding(s) can be fixed automatically — run ${branding.command} check --fix`,
+    );
+  }
   if (guided > 0) {
     lines.push(
       `${String(guided)} finding(s) offer guided resolutions — run ${branding.command} check --fix --interactive`,
@@ -133,8 +154,19 @@ function renderRemainingWork(report: CheckReport, branding: CliBranding, output:
       `${String(manual)} finding(s) need a manual edit — run ${branding.command} check --explain <id>`,
     );
   }
-  renderGroup("·", `Remaining work (${String(guided + manual)})`, lines, output);
+  if (lines.length === 0) {
+    return;
+  }
+  const heading = applied ? "Remaining work" : "Next steps";
+  const count = applied ? guided + manual : auto + guided + manual;
+  renderGroup("·", `${heading} (${String(count)})`, lines, output);
 }
+
+/** Marks the findings a fix run could act on; manual ones carry no tag, only guidance. */
+const FIXABILITY_TAGS: Readonly<Record<string, string>> = Object.freeze({
+  auto: "(fixable)",
+  guided: "(guided fix)",
+});
 
 function renderFindingGroup(
   symbol: string,
@@ -142,6 +174,8 @@ function renderFindingGroup(
   report: CheckReport,
   severity: Finding["severity"],
   output: Writable,
+  style: Style,
+  decorate?: (text: string) => string,
 ): void {
   const findings = report.findings.filter((finding) => finding.severity === severity);
   if (findings.length === 0) {
@@ -151,13 +185,46 @@ function renderFindingGroup(
   renderGroup(
     symbol,
     `${label} (${String(findings.length)})`,
-    findings.flatMap((finding) => [
-      `[${safe(finding.checkId)}] ${safeFindingText(finding.message)}`,
-      ...(finding.details === undefined ? [] : [`  ${safeFindingText(finding.details)}`]),
-      ...renderFindingPresentation(finding).map((line) => `  ${line}`),
-    ]),
+    findings.flatMap((finding) => {
+      const tag = FIXABILITY_TAGS[finding.fixability];
+      return [
+        `[${safe(finding.checkId)}] ${safeFindingText(finding.message)}${tag === undefined ? "" : ` ${style.dim(tag)}`}`,
+        ...(finding.details === undefined ? [] : [`  ${safeFindingText(finding.details)}`]),
+        ...(finding.locations ?? []).map((location) => `  at ${locationText(location)}`),
+        ...renderFindingPresentation(finding).map((line) => `  ${line}`),
+      ];
+    }),
     output,
+    decorate,
   );
+}
+
+function locationText(location: FindingLocation): string {
+  const line = location.line === undefined ? "" : `:${String(location.line)}`;
+  const column = line === "" || location.column === undefined ? "" : `:${String(location.column)}`;
+  return `${safe(location.path)}${line}${column}`;
+}
+
+/** One line of inventory per inspected app: identity, then how far Aura can see into it. */
+function detectedLine(app: ReportApp): string {
+  const version = app.detection.version === undefined ? "" : ` ${safe(app.detection.version)}`;
+  const auth =
+    app.detection.authenticated === undefined
+      ? ""
+      : app.detection.authenticated
+        ? ", signed in"
+        : ", not signed in";
+  return `${safe(app.displayName)}${version} — ${supportText(app)}${auth}`;
+}
+
+function supportText(app: ReportApp): string {
+  if (app.support === undefined || app.support.status === "unknown") {
+    return "support unknown";
+  }
+  if (app.support.status === "unsupported") {
+    return `unsupported (supports ${safe(app.support.supportedRange)})`;
+  }
+  return "supported";
 }
 
 function renderGroup(
@@ -165,8 +232,9 @@ function renderGroup(
   heading: string,
   entries: readonly string[],
   output: Writable,
+  decorate: (text: string) => string = (text) => text,
 ): void {
-  output.write(`\n${symbol} ${heading}\n`);
+  output.write(`\n${decorate(`${symbol} ${heading}`)}\n`);
   for (const entry of entries) {
     output.write(`  ${entry}\n`);
   }
@@ -175,4 +243,23 @@ function renderGroup(
 function summaryMessage(report: CheckReport): string {
   const { errors, informational, passed, warnings } = report.summary;
   return `${String(passed)} passed, ${String(informational)} informational, ${String(warnings)} warnings, ${String(errors)} errors`;
+}
+
+function verdictMessage(report: CheckReport): string {
+  return `Status: ${report.status} (exit ${String(report.summary.exitCode)})`;
+}
+
+function verdictStyle(report: CheckReport, style: Style): (text: string) => string {
+  switch (report.status) {
+    case "clean": {
+      return style.green;
+    }
+    case "empty":
+    case "warning": {
+      return style.yellow;
+    }
+    default: {
+      return style.red;
+    }
+  }
 }

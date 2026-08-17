@@ -1,4 +1,5 @@
 import { safe, safeMultiline } from "../render.js";
+import { createStyle, type Style } from "../style.js";
 import type { WizardQuestion } from "./wizard-types.js";
 
 /** One question's live state while its form is on screen. */
@@ -81,27 +82,6 @@ export function renderAnsweredSummary(questions: readonly WizardQuestionView[]):
   return `${questions
     .map((view) => ` ${ANSWERED} ${safe(view.question.label)}  ${summarizeAnswer(view)}`)
     .join("\n")}\n`;
-}
-
-interface Style {
-  readonly active: (text: string) => string;
-  readonly bold: (text: string) => string;
-  readonly dim: (text: string) => string;
-}
-
-function createStyle(colorDepth: number): Style {
-  if (colorDepth <= 0) {
-    return {
-      active: (text) => `[${text}]`,
-      bold: (text) => text,
-      dim: (text) => text,
-    };
-  }
-  return {
-    active: (text) => `\u001b[7m ${text} \u001b[27m`,
-    bold: (text) => `\u001b[1m${text}\u001b[22m`,
-    dim: (text) => `\u001b[2m${text}\u001b[22m`,
-  };
 }
 
 function renderTabBar(frame: WizardFrame, style: Style): string {

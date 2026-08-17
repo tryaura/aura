@@ -82,6 +82,7 @@ export class SetupCommand extends Command<AuraCliContext> {
 
       return await runSetup({
         branding: this.context.branding,
+        colorDepth: this.context.colorDepth,
         dryRun: this.dryRun,
         environment,
         io,

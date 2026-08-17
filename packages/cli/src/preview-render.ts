@@ -1,20 +1,38 @@
 import type { Writable } from "node:stream";
 
-import type { FixOperationPreview, PreparedFixPlan } from "@tryaura/core";
+import type { FixCandidate, FixOperationPreview, PreparedFixPlan } from "@tryaura/core";
 import type { Check, Finding } from "@tryaura/aura-sdk";
 
 import { safe, safeMultiline } from "./render.js";
 import type { CliBranding } from "./types.js";
 
-/** Shows what applying the plan would do; only the shape of each change unless `withDetail`. */
+/**
+ * Shows what applying the plan would do; only the shape of each change unless `withDetail`.
+ *
+ * The preview is one flat list covering every candidate's operations in plan order, so each
+ * candidate takes the next `plan.operations.length` of them — the same slicing the report uses.
+ * Grouping them under the check that proposed each change is what lets the user judge the plan:
+ * the findings themselves have not been printed yet at this point in the flow.
+ */
 export function renderFixPreview(
+  candidates: readonly FixCandidate[],
   prepared: PreparedFixPlan,
   manualSteps: readonly string[],
   withDetail: boolean,
   output: Writable,
 ): void {
   output.write(`Fix preview: ${safe(prepared.preview.summary)}\n`);
-  renderOperationPreviews(prepared.preview.operations, withDetail, output);
+  let operationIndex = 0;
+  for (const candidate of candidates) {
+    const count = candidate.plan.operations.length;
+    const operations = prepared.preview.operations.slice(operationIndex, operationIndex + count);
+    operationIndex += count;
+    if (operations.every((operation) => operation.effect === "noop")) {
+      continue;
+    }
+    output.write(`  [${safe(candidate.checkId)}] ${safe(candidate.plan.summary)}\n`);
+    renderOperationPreviews(operations, withDetail, output, "    ");
+  }
   if (!withDetail) {
     output.write("\nRe-run with --detail to see the full diff of every change.\n");
   }
@@ -56,15 +74,16 @@ export function renderOperationPreviews(
   operations: readonly FixOperationPreview[],
   withDetail: boolean,
   output: Writable,
+  indent = "  ",
 ): void {
   for (const operation of operations) {
     if (operation.effect === "noop") {
       continue;
     }
 
-    output.write(`  ${operation.effect} ${operation.paths.map(safe).join(" -> ")}\n`);
+    output.write(`${indent}${operation.effect} ${operation.paths.map(safe).join(" -> ")}\n`);
     if (operation.conflict !== undefined) {
-      output.write(`    blocked: ${safe(operation.conflict)}\n`);
+      output.write(`${indent}  blocked: ${safe(operation.conflict)}\n`);
     }
     if (withDetail) {
       output.write(`\n${safeMultiline(operation.diff)}\n`);

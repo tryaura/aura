@@ -35,6 +35,32 @@ describe("check-output-v1.schema.json", () => {
     expect(validate(report), JSON.stringify(validate.errors)).toBe(true);
   });
 
+  it("validates a planned fix carrying the reason nothing was applied", () => {
+    const report = createCheckReport({
+      adapters: [],
+      apps: [],
+      checkDiagnostics: [],
+      checks: [],
+      findings: [],
+      fixes: [
+        {
+          checkId: "fixture/CHECK",
+          findingId: "fixture-finding",
+          manualSteps: [],
+          message: "Aborted before confirmation. Nothing was changed.",
+          operations: [{ effect: "update", paths: ["/home/dev/agents/AGENTS.md"] }],
+          status: "planned",
+          summary: "Rewrite the shared instructions.",
+        },
+      ],
+      scanDiagnostics: [],
+      skipped: [],
+      withDetail: false,
+    });
+
+    expect(validate(report), JSON.stringify(validate.errors)).toBe(true);
+  });
+
   it("validates the explanation envelope", () => {
     const explanation = createCheckExplanation({
       defaultSeverity: "warn",
