@@ -2,6 +2,7 @@ import { mkdir, symlink } from "node:fs/promises";
 import { join } from "node:path";
 
 import {
+  ANY_ARGUMENT,
   createSeedBuilder,
   runCheck,
   type TestSeed,
@@ -196,10 +197,45 @@ describe("aura instruction precedence checks", () => {
       )
       .homeFile("agents/AGENTS.md", "# Shared agent instructions\n")
       .workspaceFile(".git", "gitdir: /fixture/unavailable\n")
+      .workspaceFile("packages/core/package.json", '{"name":"@fixture/core"}\n')
       .workspaceFile(
         "CLAUDE.md",
         ["Always use 2 spaces for indentation.", "", duplicate].join("\n"),
       )
+      .shim("git", [
+        { args: ["--version"], stdout: "git version 2.51.0\n" },
+        {
+          args: [
+            "-C",
+            ANY_ARGUMENT,
+            "ls-files",
+            "-z",
+            "--",
+            "package.json",
+            ":(glob)**/package.json",
+          ],
+          stdout: "packages/core/package.json",
+        },
+        {
+          args: ["-C", ANY_ARGUMENT, "rev-parse", "--path-format=absolute", "--git-common-dir"],
+          exitCode: 1,
+        },
+        {
+          args: [
+            "-C",
+            ANY_ARGUMENT,
+            "ls-files",
+            "-z",
+            "--",
+            ".claude/settings.local.json",
+            ".cursor/mcp.json",
+            ".mcp.json",
+            "AGENTS.md",
+            "CLAUDE.md",
+          ],
+          stdout: "CLAUDE.md",
+        },
+      ])
       .shim("claude", [
         { args: ["--version"], stdout: "2.1.233 (Claude Code)\n" },
         { args: ["auth", "status"], stdout: '{"loggedIn":true}\n' },

@@ -44,6 +44,20 @@ describe("instruction link graph", () => {
     expect(findInstructionCycles(graph)).toEqual([["/a.md", "/b.md", "/a.md"]]);
   });
 
+  it("can exclude inert import edges without removing other link mechanisms", () => {
+    const graph = buildInstructionGraph(
+      [
+        document("/a.md", [link("/b.md"), { kind: "symlink", targetPath: "/c.md", valid: true }]),
+        document("/b.md", [link("/a.md")]),
+        document("/c.md", []),
+      ],
+      { excludedImportSources: new Set(["/a.md"]) },
+    );
+
+    expect(graph.edges.get("/a.md")).toEqual(["/c.md"]);
+    expect(findInstructionCycles(graph)).toEqual([]);
+  });
+
   it("allows exactly five hops and reports the first six-hop chain", () => {
     const five = chain(5);
     const fiveGraph = buildInstructionGraph(five);

@@ -14,7 +14,7 @@ export function guidedFix(finding: Finding): FixPlan | undefined {
   if (!isFailureKind(failure)) {
     return undefined;
   }
-  const step = MANUAL_STEPS[failure](finding);
+  const step = overflowManualStep(finding) ?? MANUAL_STEPS[failure](finding);
   if (step === undefined) {
     return undefined;
   }
@@ -37,12 +37,15 @@ const MANUAL_STEPS: Readonly<Record<FailureKind, (finding: Finding) => string | 
 function missingManualStep(finding: Finding): string | undefined {
   const sourcePath = finding.metadata?.["sourcePath"];
   const targetPath = finding.metadata?.["targetPath"];
-  // The summary standing in for capped findings names no single target to repair.
-  if (typeof sourcePath === "string" && typeof finding.metadata?.["hidden"] === "number") {
-    return `Fix the link problems already listed for ${sourcePath}.`;
-  }
   return typeof sourcePath === "string" && typeof targetPath === "string"
     ? `Create ${targetPath}, correct its path in ${sourcePath}, or remove the reference.`
+    : undefined;
+}
+
+function overflowManualStep(finding: Finding): string | undefined {
+  const sourcePath = finding.metadata?.["sourcePath"];
+  return typeof sourcePath === "string" && typeof finding.metadata?.["hidden"] === "number"
+    ? `Fix the reported link problems in ${sourcePath}, then run the check again to reveal the rest.`
     : undefined;
 }
 

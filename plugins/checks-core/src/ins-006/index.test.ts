@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- one check's behavior matrix shares local graph fixtures. */
 import type { AppModel, InstructionDocument, Scope } from "@tryaura/aura-sdk";
 import { runChecks } from "@tryaura/core";
 import { describe, expect, it } from "vitest";
@@ -64,6 +65,21 @@ describe("INS-006", () => {
     ]);
   });
 
+  it("does not report cycles formed only by imports no detected application follows", () => {
+    const documents = [
+      document("/home/dev/.codex/AGENTS.md", "/workspace/AGENTS.md", true, "global"),
+      document("/workspace/AGENTS.md", "/home/dev/.codex/AGENTS.md"),
+    ];
+    const codex = withDocuments(app({ adapterId: "codex", displayName: "Codex" }), documents);
+
+    const findings = runChecks([instructionLinkIntegrityCheck], model({ apps: [codex] })).findings;
+
+    expect(findings.map((finding) => finding.metadata?.["failure"])).toEqual([
+      "unsupported",
+      "unsupported",
+    ]);
+  });
+
   it("reports Claude Code depth overflow but not the five-hop boundary", () => {
     const sixHopDocuments = chain(6);
     const claude = withDocuments(
@@ -108,6 +124,23 @@ describe("INS-006", () => {
     );
   });
 
+  it("does not warn when another application follows imports from the same shared file", () => {
+    const shared = document(
+      "/home/dev/agents/AGENTS.md",
+      "/home/dev/agents/more.md",
+      true,
+      "global",
+    );
+    const codex = withDocuments(app({ adapterId: "codex", displayName: "Codex" }), [shared]);
+    const claude = withDocuments(app({ adapterId: "claude-code", displayName: "Claude Code" }), [
+      shared,
+    ]);
+
+    expect(
+      runChecks([instructionLinkIntegrityCheck], model({ apps: [codex, claude] })).findings,
+    ).toEqual([]);
+  });
+
   it("does not call a Codex import broken, since Codex never reads it", () => {
     const codex = withDocuments(app({ adapterId: "codex", displayName: "Codex" }), [
       document("/home/dev/.codex/AGENTS.md", "/home/dev/.codex/gone.md", false, "global"),
@@ -144,7 +177,7 @@ describe("INS-006", () => {
       ).findings;
 
     const present = findingsFor(true);
-    expect(present).toMatchObject([{ metadata: { failure: "outside" }, severity: "warn" }]);
+    expect(present).toMatchObject([{ metadata: { failure: "outside" }, severity: "info" }]);
     expect(findingsFor(false)).toEqual(present);
   });
 
@@ -198,9 +231,81 @@ describe("INS-006", () => {
 
     expect(findings).toHaveLength(21);
     expect(findings[20]).toMatchObject({
-      message: "AGENTS.md has 5 further link problems not listed.",
+      message: "AGENTS.md has 5 further broken links not listed.",
       severity: "warn",
     });
+  });
+
+  it("summarizes hidden link failures by their actual kind", () => {
+    const links = [
+      ...Array.from({ length: 20 }, (_value, index) => ({
+        kind: "import" as const,
+        targetPath: `/workspace/gone-${String(index).padStart(2, "0")}.md`,
+        valid: false,
+      })),
+      ...Array.from({ length: 2 }, (_value, index) => ({
+        kind: "import" as const,
+        targetPath: `/zz-outside-${String(index)}.md`,
+        valid: true,
+      })),
+    ];
+    const findings = runChecks(
+      [instructionLinkIntegrityCheck],
+      model({
+        instructionFiles: [
+          {
+            content: "",
+            links,
+            path: "/workspace/AGENTS.md",
+            scope: "project",
+            sourceId: "test:mixed-overflow",
+          },
+        ],
+      }),
+    ).findings;
+    const overflow = findings[20];
+    if (overflow === undefined) {
+      throw new Error("Expected a mixed-link overflow summary.");
+    }
+
+    expect(overflow).toMatchObject({
+      message: "AGENTS.md has 2 further out-of-project references not listed.",
+      metadata: {
+        failure: "outside",
+        hidden: 2,
+        sourcePath: "/workspace/AGENTS.md",
+      },
+      severity: "info",
+    });
+    expect(instructionLinkIntegrityCheck.fix(overflow)).toMatchObject({
+      manualSteps: [
+        expect.stringContaining("Fix the reported link problems in /workspace/AGENTS.md"),
+        expect.stringContaining("aura check"),
+      ],
+      operations: [],
+    });
+  });
+
+  it("keeps depth identities stable when another overflow chain sorts first", () => {
+    const root = linkedDocument("/workspace/CLAUDE.md", ["/workspace/b-0.md"]);
+    const beforeDocuments = [root, ...namedChain("b", 6)];
+    const afterDocuments = [
+      linkedDocument("/workspace/CLAUDE.md", ["/workspace/a-0.md", "/workspace/b-0.md"]),
+      ...namedChain("a", 6),
+      ...namedChain("b", 6),
+    ];
+    const findingFor = (documents: readonly InstructionDocument[]) => {
+      const claude = withDocuments(app({ adapterId: "claude-code", displayName: "Claude Code" }), [
+        documents[0] ?? root,
+      ]);
+      return runChecks(
+        [instructionLinkIntegrityCheck],
+        model({ apps: [claude], instructionFiles: documents.slice(1) }),
+      ).findings.find((finding) => finding.metadata?.["failure"] === "depth");
+    };
+
+    expect(findingFor(beforeDocuments)?.id).toBe(findingFor(afterDocuments)?.id);
+    expect(findingFor(afterDocuments)?.id).toMatch(/^depth:[0-9a-f]{16}$/u);
   });
 
   it("treats a link two applications observe as valid when either resolved it", () => {
@@ -239,6 +344,33 @@ function chain(hops: number): readonly InstructionDocument[] {
         }
       : document(`/workspace/${String(index)}.md`, `/workspace/${String(index + 1)}.md`),
   );
+}
+
+function namedChain(prefix: string, hops: number): readonly InstructionDocument[] {
+  return Array.from({ length: hops + 1 }, (_value, index) =>
+    index === hops
+      ? {
+          content: "",
+          links: [],
+          path: `/workspace/${prefix}-${String(index)}.md`,
+          scope: "project",
+          sourceId: `chain:${prefix}:${String(index)}`,
+        }
+      : document(
+          `/workspace/${prefix}-${String(index)}.md`,
+          `/workspace/${prefix}-${String(index + 1)}.md`,
+        ),
+  );
+}
+
+function linkedDocument(path: string, targets: readonly string[]): InstructionDocument {
+  return {
+    content: "",
+    links: targets.map((targetPath) => ({ kind: "import", targetPath, valid: true })),
+    path,
+    scope: "project",
+    sourceId: `test:${path}`,
+  };
 }
 
 function document(
