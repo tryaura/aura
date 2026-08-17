@@ -55,6 +55,90 @@ describe("instruction paragraph extraction", () => {
     expect(publish?.code).toContain("publish");
   });
 
+  it("does not treat line wrapping or unmatched backticks as embedded code", () => {
+    const oneLine = extractParagraphs([
+      document(
+        "/repo/AGENTS.md",
+        "Always run the complete verification suite before merging because every package must remain healthy.",
+      ),
+    ])[0];
+    const rewrapped = extractParagraphs([
+      document(
+        "/repo/CLAUDE.md",
+        "Always run the complete verification suite before merging\nbecause every package must remain healthy.",
+      ),
+    ])[0];
+    const strayTick = extractParagraphs([
+      document(
+        "/repo/rules.md",
+        "Always `run the complete verification suite before merging because every package must remain healthy.",
+      ),
+    ])[0];
+
+    expect(oneLine?.code).toBe("");
+    expect(rewrapped?.code).toBe("");
+    expect(strayTick?.code).toBe("");
+    expect(rewrapped?.hash).toBe(oneLine?.hash);
+    expect(strayTick?.hash).toBe(oneLine?.hash);
+  });
+
+  it("skips frontmatter containing blank lines without losing following line numbers", () => {
+    const content = [
+      "---",
+      "description: Database migration instructions",
+      "",
+      "alwaysApply: false",
+      "---",
+      "Always keep database migrations backward compatible until every deployed service has upgraded.",
+    ].join("\n");
+
+    expect(extractParagraphs([document("/repo/rule.mdc", content)])).toMatchObject([
+      { startLine: 6, endLine: 6 },
+    ]);
+  });
+
+  it("skips setext headings and indented code blocks", () => {
+    const content = [
+      "A deliberately long heading that must not become duplicate instruction guidance",
+      "---",
+      "",
+      "    Always run the destructive command because this is only a code example.",
+      "",
+      "Always keep database migrations backward compatible until every deployed service has upgraded.",
+    ].join("\n");
+
+    expect(extractParagraphs([document("/repo/AGENTS.md", content)])).toMatchObject([
+      { startLine: 6, endLine: 6 },
+    ]);
+  });
+
+  it("keeps guidance a nested list or a trailing thematic break would otherwise hide", () => {
+    const nested = [
+      "- Tooling rules",
+      "    - Always run the complete verification suite before merging every single change.",
+    ].join("\n");
+    const beforeBreak = [
+      "- Always run the complete verification suite before merging every single change.",
+      "- Never force push to a shared branch.",
+      "---",
+    ].join("\n");
+
+    expect(
+      [nested, beforeBreak].map((content) =>
+        extractParagraphs([document("/repo/AGENTS.md", content)]).map(
+          (paragraph) => paragraph.normalized,
+        ),
+      ),
+    ).toEqual([
+      [
+        "tooling rules always run the complete verification suite before merging every single change",
+      ],
+      [
+        "always run the complete verification suite before merging every single change. never force push to a shared branch",
+      ],
+    ]);
+  });
+
   it.each([
     [
       "Markdown table",
@@ -83,5 +167,19 @@ describe("instruction paragraph extraction", () => {
     ];
 
     expect(extractParagraphs(documents)).toHaveLength(1);
+  });
+
+  it("orders document paths by code point instead of the host locale", () => {
+    const content =
+      "Always keep database migrations backward compatible until every deployed service has upgraded.";
+
+    expect(
+      extractParagraphs([
+        document("/repo/ä.md", content),
+        document("/repo/z.md", `${content} Carefully.`),
+        document("/repo/😀.md", `${content} Thoroughly.`),
+        document("/repo/\uE000.md", `${content} Safely.`),
+      ]).map((paragraph) => paragraph.path),
+    ).toEqual(["/repo/z.md", "/repo/ä.md", "/repo/\uE000.md", "/repo/😀.md"]);
   });
 });

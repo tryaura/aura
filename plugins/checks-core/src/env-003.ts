@@ -6,6 +6,7 @@ import {
   type Finding,
   type FixPlan,
   type GitignoreModel,
+  type RepositoryModel,
   type WorkspaceModel,
 } from "@tryaura/aura-sdk";
 
@@ -43,6 +44,7 @@ function detectGitignoreFindings(model: WorkspaceModel): readonly DetectedFindin
     return [
       {
         details: `Aura could not read ${repository.gitignore.path}: ${repository.gitignore.problem}.`,
+        fixability: "manual",
         id: "gitignore-unreadable",
         locations: [{ path: repository.gitignore.path }],
         message: "The repository .gitignore could not be inspected.",
@@ -50,39 +52,81 @@ function detectGitignoreFindings(model: WorkspaceModel): readonly DetectedFindin
     ];
   }
 
-  // Rules from both files decide whether a path is already handled, so a developer who excluded a
-  // personal path locally is not told to commit the same rule to everyone else's .gitignore.
-  const matcher = ignore().add([
+  return [
+    ...policyFindings(repository),
+    ...malformedBlockFindings(repository.gitignore),
+    ...trackedPersonalFindings(repository.trackedAgentPaths ?? []),
+  ];
+}
+
+function policyFindings(repository: RepositoryModel): readonly DetectedFinding[] {
+  const infoExclude = repository.infoExclude;
+
+  if (infoExclude?.problem !== undefined) {
+    return [
+      {
+        details: `Aura could not read ${infoExclude.path}: ${infoExclude.problem}. Ignore-policy findings are omitted because the effective Git rules are unknown.`,
+        fixability: "manual",
+        id: "info-exclude-unreadable",
+        locations: [{ path: infoExclude.path }],
+        message: "The repository-local Git exclude file could not be inspected.",
+      },
+    ];
+  }
+
+  // Git evaluates repository-local excludes below per-directory .gitignore rules. The ignore
+  // package is last-match-wins, so adding the root file last reproduces that precedence.
+  const matcher = ignore({ ignorecase: false }).add([
+    ...patternsOf(infoExclude),
     ...patternsOf(repository.gitignore),
-    ...patternsOf(repository.infoExclude),
   ]);
   const personalNotIgnored = PERSONAL_PATHS.filter((path) => !matcher.ignores(path));
   const shareableIgnored = SHAREABLE_PATHS.filter((path) => matcher.ignores(path));
-  const findings: DetectedFinding[] = [];
+  return personalNotIgnored.length === 0 && shareableIgnored.length === 0
+    ? []
+    : [
+        {
+          details: policyDetail(personalNotIgnored, shareableIgnored),
+          id: "gitignore-policy",
+          locations: [{ path: repository.gitignore.path }],
+          message: "The repository .gitignore does not follow Aura's agent-file policy.",
+          metadata: { personalNotIgnored, shareableIgnored },
+        },
+      ];
+}
 
-  if (personalNotIgnored.length > 0 || shareableIgnored.length > 0) {
-    findings.push({
-      details: policyDetail(personalNotIgnored, shareableIgnored),
-      id: "gitignore-policy",
-      locations: [{ path: repository.gitignore.path }],
-      message: "The repository .gitignore does not follow Aura's agent-file policy.",
-      metadata: { personalNotIgnored, shareableIgnored },
-    });
-  }
+function malformedBlockFindings(gitignore: GitignoreModel): readonly DetectedFinding[] {
+  return reconcileGitignoreBlock(gitignore.content ?? "") === undefined
+    ? [
+        {
+          details:
+            "Repair the duplicate, incomplete, reversed, suffixed, or indented ENV-003 markers before running the automatic fix again.",
+          fixability: "manual",
+          id: "managed-block-malformed",
+          locations: [{ path: gitignore.path }],
+          message: "Aura's managed ENV-003 block has malformed markers.",
+        },
+      ]
+    : [];
+}
 
-  for (const path of repository.trackedAgentPaths ?? []) {
-    if (PERSONAL_PATHS.includes(path) && matcher.ignores(path)) {
-      findings.push({
-        details: `Review the file, then run \`git rm --cached -- ${shellArgument(path)}\` if it should remain local.`,
-        id: `ignored-but-tracked:${path}`,
-        message: `${path} is ignored but already tracked by Git.`,
-        metadata: { path },
-        severity: "info",
-      });
-    }
-  }
-
-  return findings;
+function trackedPersonalFindings(paths: readonly string[]): readonly DetectedFinding[] {
+  return paths.flatMap((path) =>
+    PERSONAL_PATHS.includes(path)
+      ? [
+          {
+            details: `Review the file, then run \`git rm --cached -- ${shellArgument(path)}\` if it should remain local.`,
+            // Named for the state it reports: the path no longer has to be ignored to qualify, and
+            // an id that still said "ignored" would describe a condition Aura never checked.
+            fixability: "manual",
+            id: `tracked-personal-path:${path}`,
+            message: `${path} is already tracked by Git but should remain personal.`,
+            metadata: { path },
+            severity: "info",
+          },
+        ]
+      : [],
+  );
 }
 
 function patternsOf(gitignore: GitignoreModel | undefined): readonly string[] {

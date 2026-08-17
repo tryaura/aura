@@ -9,6 +9,7 @@ import {
 import { sha256 } from "../hashing.js";
 import { extractParagraphs, type InstructionParagraph } from "../instruction-paragraphs.js";
 import { displayInstructionPath, instructionLineRange } from "../instruction-paths.js";
+import { compareCodePoints } from "../ordering.js";
 import { clusterMatches, type MatchCluster } from "./clusters.js";
 import { findMatches, type ParagraphMatch } from "./matches.js";
 
@@ -46,11 +47,13 @@ interface ClusterMember {
 
 interface DescribedCluster {
   /**
-   * Identity of the files involved, which survives edits to the text they share.
+   * Identity of the files involved together with the text they share.
    *
-   * Hashing the paragraphs instead would mint a new finding every time one copy is reworded, or
-   * when a third file joins the cluster, and a suppression keyed to the old identity would
-   * silently stop applying to the duplication it was written for.
+   * The files alone cannot tell two clusters apart when the same pair duplicates more than one
+   * paragraph, and the ordinal that used to separate them moved whenever an unrelated duplicate
+   * appeared earlier in the file — renaming a finding for an edit nowhere near it. Hashing the
+   * paragraphs removes that, at a cost worth stating plainly: rewording any copy mints a new
+   * identity, so a suppression written against the old one stops applying and has to be renewed.
    */
   readonly key: string;
   readonly matches: readonly ParagraphMatch[];
@@ -63,13 +66,8 @@ function detectDuplicateInstructions(model: WorkspaceModel): readonly DetectedFi
   const clusters = clusterMatches(findMatches(paragraphs))
     .flatMap((cluster) => describeCluster(cluster, paragraphs))
     .sort(compareClusters);
-  const ordinals = new Map<string, number>();
 
-  return clusters.map((cluster) => {
-    const ordinal = (ordinals.get(cluster.key) ?? 0) + 1;
-    ordinals.set(cluster.key, ordinal);
-    return findingForCluster(cluster, ordinal, model);
-  });
+  return clusters.map((cluster) => findingForCluster(cluster, model));
 }
 
 /**
@@ -93,7 +91,9 @@ function describeCluster(
 
   return SCOPES.flatMap((scope) => {
     const scoped = members.filter((member) => member.paragraph.scope === scope);
-    const paths = [...new Set(scoped.map((member) => member.paragraph.path))].sort();
+    const paths = [...new Set(scoped.map((member) => member.paragraph.path))].sort(
+      compareCodePoints,
+    );
     if (paths.length < 2) {
       return [];
     }
@@ -101,21 +101,28 @@ function describeCluster(
     const matches = cluster.matches.filter(
       (match) => indexes.has(match.left) && indexes.has(match.right),
     );
-    return [{ key: sha256(paths.join(PATH_SEPARATOR)), matches, members: scoped, paths }];
+    if (matches.length === 0) {
+      return [];
+    }
+    const hashes = [...new Set(scoped.map((member) => member.paragraph.hash))].sort(
+      compareCodePoints,
+    );
+    const key = sha256(
+      `${paths.join(PATH_SEPARATOR)}${PATH_SEPARATOR}${PATH_SEPARATOR}${hashes.join(PATH_SEPARATOR)}`,
+    );
+    return [{ key, matches, members: scoped, paths }];
   });
 }
 
-function findingForCluster(
-  cluster: DescribedCluster,
-  ordinal: number,
-  model: WorkspaceModel,
-): DetectedFinding {
+function findingForCluster(cluster: DescribedCluster, model: WorkspaceModel): DetectedFinding {
   const memberIndexes = new Map(cluster.members.map((member, index) => [member.index, index]));
   const metadataMatches = cluster.matches
     .flatMap((match) => metadataMatch(match, memberIndexes))
     .sort(
       (left, right) =>
-        left.left - right.left || left.right - right.right || left.kind.localeCompare(right.kind),
+        left.left - right.left ||
+        left.right - right.right ||
+        compareCodePoints(left.kind, right.kind),
     );
   // Reduced rather than spread: `Math.min(...edges)` throws RangeError once a cluster grows past
   // roughly a hundred thousand edges, and a check that throws is a check the user stops getting.
@@ -128,7 +135,7 @@ function findingForCluster(
 
   return {
     details: describeCopies(cluster.members, model),
-    id: `cluster:${cluster.key}:${String(ordinal)}`,
+    id: `cluster:${cluster.key}`,
     locations: cluster.members.map(({ paragraph }) => ({
       line: paragraph.startLine,
       path: paragraph.path,
@@ -207,14 +214,14 @@ function compareClusters(left: DescribedCluster, right: DescribedCluster): numbe
       return order;
     }
   }
-  return left.key.localeCompare(right.key);
+  return compareCodePoints(left.key, right.key);
 }
 
 function compareParagraphs(left: InstructionParagraph, right: InstructionParagraph): number {
   return (
-    left.path.localeCompare(right.path) ||
+    compareCodePoints(left.path, right.path) ||
     left.startLine - right.startLine ||
     left.endLine - right.endLine ||
-    left.hash.localeCompare(right.hash)
+    compareCodePoints(left.hash, right.hash)
   );
 }

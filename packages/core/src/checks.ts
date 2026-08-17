@@ -79,6 +79,7 @@ function toFinding(check: Check, detected: DetectedFinding): Finding {
     scope: check.scope,
     severity: detected.severity ?? check.defaultSeverity,
     ...(detected.details === undefined ? {} : { details: detected.details }),
+    ...(detected.fixability === undefined ? {} : { fixability: detected.fixability }),
     ...(detected.locations === undefined ? {} : { locations: detected.locations }),
     ...(detected.metadata === undefined ? {} : { metadata: detected.metadata }),
     ...(detected.presentation === undefined ? {} : { presentation: detected.presentation }),

@@ -243,6 +243,25 @@ describe("prepareAutomaticFixes", () => {
       effect: "conflict",
     });
   });
+
+  it("skips a finding that downgrades itself to manual", async () => {
+    const fixture = await createFixture();
+    const check: Check = {
+      ...createCheck("alpha/AUTO", () => writePlan(fixture.model)),
+      detect: () => [
+        { fixability: "manual", id: "undescribable", message: "Aura can only describe this." },
+        { id: "finding", message: "Something is wrong." },
+      ],
+    };
+
+    const fixes = await prepareAutomaticFixes({
+      checks: [check],
+      findings: runChecks([check], fixture.model).findings,
+      model: fixture.model,
+    });
+
+    expect(fixes.candidates.map((candidate) => candidate.findingId)).toEqual(["finding"]);
+  });
 });
 
 function writePlan(model: WorkspaceModel, name = "written.md"): FixPlan {

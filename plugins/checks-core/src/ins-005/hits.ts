@@ -3,7 +3,13 @@ import { resolve } from "node:path";
 import { maskMarkdownCode, type InstructionDocument, type Scope } from "@tryaura/aura-sdk";
 
 import { canonicalInstructionDocuments } from "../instruction-documents.js";
+import { compareCodePoints } from "../ordering.js";
 import { CONTRADICTION_AXES } from "./axes.js";
+
+/** Words that turn a following rule into its prohibition. Matched whole, plus any `n't` contraction. */
+const NEGATORS = new Set(["never", "no", "not", "without"]);
+/** How many words before a match are searched for a negator. */
+const NEGATION_WINDOW = 3;
 
 export interface AxisHit {
   readonly axis: string;
@@ -71,7 +77,9 @@ export function findAxisConflicts(hits: readonly AxisHit[]): readonly AxisConfli
         continue;
       }
       const ordered =
-        left.path.localeCompare(right.path) <= 0 ? { left, right } : { left: right, right: left };
+        compareCodePoints(left.path, right.path) <= 0
+          ? { left, right }
+          : { left: right, right: left };
       const key = `${left.axis}\0${ordered.left.path}\0${ordered.right.path}`;
       conflicts.set(key, conflicts.get(key) ?? { axis: left.axis, ...ordered });
     }
@@ -86,6 +94,9 @@ function hitsForDocument(document: InstructionDocument): readonly AxisHit[] {
     for (const axis of CONTRADICTION_AXES) {
       for (const pattern of axis.patterns) {
         for (const match of line.matchAll(pattern.regex)) {
+          if (isNegated(line, match.index)) {
+            continue;
+          }
           hits.push({
             axis: axis.id,
             line: index + 1,
@@ -98,6 +109,24 @@ function hitsForDocument(document: InstructionDocument): readonly AxisHit[] {
     }
   }
   return hits;
+}
+
+/**
+ * Whether the words just before a match turn the rule it states into a prohibition.
+ *
+ * The patterns recognize a stance, not a sentence, so "do not ever use npm" matches "use npm" as
+ * readily as an endorsement does. Dropping the hit rather than inverting it is deliberate: what
+ * the author forbade is known, what they meant instead is not, and a finding that quotes a file as
+ * saying the opposite of what it says costs more than a contradiction left unreported.
+ */
+function isNegated(line: string, matchIndex: number): boolean {
+  const preceding = line
+    .slice(0, matchIndex)
+    .toLocaleLowerCase("en-US")
+    .split(/[^\p{L}\p{N}']+/u)
+    .filter((word) => word.length > 0)
+    .slice(-NEGATION_WINDOW);
+  return preceding.some((word) => NEGATORS.has(word) || word.endsWith("n't"));
 }
 
 function resolvePolarity(template: string, match: RegExpMatchArray): string {
@@ -126,17 +155,17 @@ function polaritiesConflict(left: AxisHit, right: AxisHit): boolean {
 
 function compareHits(left: AxisHit, right: AxisHit): number {
   return (
-    left.axis.localeCompare(right.axis) ||
-    left.path.localeCompare(right.path) ||
+    compareCodePoints(left.axis, right.axis) ||
+    compareCodePoints(left.path, right.path) ||
     left.line - right.line ||
-    left.polarity.localeCompare(right.polarity)
+    compareCodePoints(left.polarity, right.polarity)
   );
 }
 
 function compareConflicts(left: AxisConflict, right: AxisConflict): number {
   return (
-    left.axis.localeCompare(right.axis) ||
-    left.left.path.localeCompare(right.left.path) ||
-    left.right.path.localeCompare(right.right.path)
+    compareCodePoints(left.axis, right.axis) ||
+    compareCodePoints(left.left.path, right.left.path) ||
+    compareCodePoints(left.right.path, right.right.path)
   );
 }

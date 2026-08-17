@@ -41,8 +41,8 @@ describe("INS-005", () => {
       ],
       metadata: {
         axis,
-        left: { line: 1, path: "/workspace/AGENTS.md" },
-        right: { line: 1, path: "/workspace/CLAUDE.md" },
+        left: expect.objectContaining({ line: 1, path: "/workspace/AGENTS.md" }),
+        right: expect.objectContaining({ line: 1, path: "/workspace/CLAUDE.md" }),
       },
       severity: "info",
     });
@@ -128,6 +128,47 @@ describe("INS-005", () => {
         document("/workspace/CLAUDE.md", "Prefer pnpm for dependencies."),
       ]),
     ).toEqual([]);
+  });
+
+  it.each([
+    ["indentation", "Do not use tabs for indentation.", "Use spaces for indentation."],
+    ["package manager", "Never use npm for dependencies.", "Always use pnpm for dependencies."],
+    ["commit style", "Do not use conventional commits.", "Prefer free-form commit messages."],
+    ["emoji policy", "Do not use emojis in responses.", "Avoid emojis in responses."],
+  ])("does not double-match negated %s guidance", (_axis, left, right) => {
+    expect(
+      run([document("/workspace/AGENTS.md", left), document("/workspace/CLAUDE.md", right)]),
+    ).toEqual([]);
+  });
+
+  it.each([
+    ["a word between the negator and the rule", "Do not always use tabs for indentation."],
+    ["an adverb after the negator", "Do not ever use npm for dependencies."],
+    ["a doubled negator", "Never ever use npm for dependencies."],
+    ["a negator outside the fixed openings", "We should not use tabs for indentation."],
+    ["a contraction", "We don't ever use npm for dependencies."],
+  ])("reads %s as a prohibition rather than an endorsement", (_case, prohibition) => {
+    expect(
+      run([
+        document("/workspace/AGENTS.md", prohibition),
+        document("/workspace/CLAUDE.md", "Always use pnpm and 2 spaces for indentation."),
+      ]),
+    ).toEqual([]);
+  });
+
+  it("surfaces content-free polarities in details and metadata", () => {
+    const findings = run([
+      document("/workspace/AGENTS.md", "Always use tabs for indentation."),
+      document("/workspace/CLAUDE.md", "Always use 2 spaces for indentation."),
+    ]);
+
+    expect(findings[0]?.details).toBe(
+      "Locations: AGENTS.md:1 says tabs; CLAUDE.md:1 says 2 spaces.",
+    );
+    expect(findings[0]?.metadata).toMatchObject({
+      left: { polarity: "tabs" },
+      right: { polarity: "spaces:2" },
+    });
   });
 
   it("keeps output stable across input order, duplicate paths, and sentence edits", () => {

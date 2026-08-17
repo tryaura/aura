@@ -34,6 +34,12 @@ describe("ENV-001", () => {
     expect(env001.detect(model({ apps: [app({ status: "supported" })] }))).toEqual([]);
     expect(env001.detect(model())).toEqual([]);
   });
+
+  it("skips synthetic inventory adapters", () => {
+    expect(env001.detect(model({ apps: [app({ status: "unknown", synthetic: true })] }))).toEqual(
+      [],
+    );
+  });
 });
 
 describe("ENV-002", () => {
@@ -56,5 +62,29 @@ describe("ENV-002", () => {
         metadata: { appId: "alpha" },
       },
     ]);
+  });
+
+  it("provides authentication commands for supported apps and a safe fallback", () => {
+    const findings = env002.detect(
+      model({
+        apps: [
+          app({ adapterId: "claude-code", authenticated: false, displayName: "Claude Code" }),
+          app({ adapterId: "codex", authenticated: false, displayName: "Codex" }),
+          app({ authenticated: false }),
+        ],
+      }),
+    );
+
+    expect(findings.map((finding) => finding.details)).toEqual([
+      "Run `claude auth login`, complete authentication, then run `aura check` again.",
+      "Run `codex login`, complete authentication, then run `aura check` again.",
+      "Open Alpha, sign in, then run `aura check` again.",
+    ]);
+  });
+
+  it("skips synthetic inventory adapters", () => {
+    expect(
+      env002.detect(model({ apps: [app({ authenticated: false, synthetic: true })] })),
+    ).toEqual([]);
   });
 });

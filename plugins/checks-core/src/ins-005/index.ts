@@ -33,12 +33,13 @@ function detectContradictoryInstructions(model: WorkspaceModel): readonly Detect
 }
 
 function findingForConflict(conflict: AxisConflict, model: WorkspaceModel): DetectedFinding {
-  const label =
-    CONTRADICTION_AXES.find((axis) => axis.id === conflict.axis)?.label ?? conflict.axis;
+  const axis = CONTRADICTION_AXES.find((candidate) => candidate.id === conflict.axis);
+  const label = axis?.label ?? conflict.axis;
+  const describe = axis?.describePolarity ?? ((polarity: string) => polarity);
   const left = displayInstructionPath(conflict.left.path, model);
   const right = displayInstructionPath(conflict.right.path, model);
   return {
-    details: `Locations: ${left}:${String(conflict.left.line)}, ${right}:${String(conflict.right.line)}.`,
+    details: `Locations: ${left}:${String(conflict.left.line)} says ${describe(conflict.left.polarity)}; ${right}:${String(conflict.right.line)} says ${describe(conflict.right.polarity)}.`,
     id: `axis:${conflict.axis}:${sha256(`${conflict.left.path}\0${conflict.right.path}`)}`,
     locations: [
       { line: conflict.left.line, path: conflict.left.path },
@@ -47,8 +48,16 @@ function findingForConflict(conflict: AxisConflict, model: WorkspaceModel): Dete
     message: `Instruction files disagree about ${label} guidance.`,
     metadata: {
       axis: conflict.axis,
-      left: { line: conflict.left.line, path: conflict.left.path },
-      right: { line: conflict.right.line, path: conflict.right.path },
+      left: {
+        line: conflict.left.line,
+        path: conflict.left.path,
+        polarity: conflict.left.polarity,
+      },
+      right: {
+        line: conflict.right.line,
+        path: conflict.right.path,
+        polarity: conflict.right.polarity,
+      },
     },
   };
 }

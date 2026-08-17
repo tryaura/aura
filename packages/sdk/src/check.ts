@@ -89,6 +89,15 @@ export interface DetectedFinding {
   /** Extra explanation for this occurrence, beyond the check's static {@link Check.explain}. */
   readonly details?: string | undefined;
   /**
+   * Downgrades {@link Check.fixability} to `"manual"` for this occurrence only.
+   *
+   * A fixable check often reports states it can only describe — an unreadable file, a hand-edited
+   * managed block — and returning `undefined` from `fix` leaves the report promising a remediation
+   * that never arrives. Only a downgrade is expressible: a finding cannot claim a capability its
+   * check did not declare.
+   */
+  readonly fixability?: "manual" | undefined;
+  /**
    * Stable identifier for this occurrence, unique across runs.
    *
    * Derive it from what the finding is about — a path, an app id — never from array position, so

@@ -5,6 +5,14 @@ interface ContradictionPattern {
 }
 
 export interface ContradictionAxis {
+  /**
+   * Renders one of this axis's polarities as the words a user would recognize.
+   *
+   * Owned by the axis rather than the reporting code, so that adding an axis cannot leak an
+   * internal encoding such as `spaces:any` into a finding. Omit it when the polarity is already
+   * the word to print.
+   */
+  readonly describePolarity?: ((polarity: string) => string) | undefined;
   readonly id: string;
   readonly label: string;
   readonly patterns: readonly ContradictionPattern[];
@@ -13,6 +21,14 @@ export interface ContradictionAxis {
 /** Cheap, curated contradiction classes. Additions require positive and near-miss fixtures. */
 export const CONTRADICTION_AXES: readonly ContradictionAxis[] = [
   {
+    describePolarity: (polarity) => {
+      if (polarity === "spaces:any") {
+        return "spaces";
+      }
+      return polarity.startsWith("spaces:")
+        ? `${polarity.slice("spaces:".length)} spaces`
+        : polarity;
+    },
     id: "indentation",
     label: "indentation",
     patterns: [
@@ -43,6 +59,8 @@ export const CONTRADICTION_AXES: readonly ContradictionAxis[] = [
     ],
   },
   {
+    describePolarity: (polarity) =>
+      polarity === "always" ? "required semicolons" : "no semicolons",
     id: "semicolons",
     label: "semicolon",
     patterns: [
@@ -57,6 +75,8 @@ export const CONTRADICTION_AXES: readonly ContradictionAxis[] = [
     ],
   },
   {
+    describePolarity: (polarity) =>
+      polarity === "conventional" ? "conventional commits" : "free-form commits",
     id: "commit-style",
     label: "commit style",
     patterns: [
@@ -72,6 +92,7 @@ export const CONTRADICTION_AXES: readonly ContradictionAxis[] = [
     ],
   },
   {
+    describePolarity: (polarity) => (polarity === "use" ? "use emojis" : "avoid emojis"),
     id: "emoji-policy",
     label: "emoji policy",
     patterns: [
@@ -86,6 +107,7 @@ export const CONTRADICTION_AXES: readonly ContradictionAxis[] = [
     ],
   },
   {
+    describePolarity: (polarity) => `${polarity} columns`,
     id: "line-width",
     label: "line-width",
     patterns: [
@@ -97,6 +119,7 @@ export const CONTRADICTION_AXES: readonly ContradictionAxis[] = [
     ],
   },
   {
+    describePolarity: (polarity) => `${polarity} responses`,
     id: "response-detail",
     label: "response detail",
     patterns: [

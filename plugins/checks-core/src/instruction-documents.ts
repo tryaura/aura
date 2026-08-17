@@ -2,6 +2,8 @@ import { resolve } from "node:path";
 
 import type { InstructionDocument, Scope } from "@tryaura/aura-sdk";
 
+import { compareCodePoints } from "./ordering.js";
+
 /** Sorts and deduplicates adapter documents by their resolved path. */
 export function canonicalInstructionDocuments(
   documents: readonly InstructionDocument[],
@@ -11,10 +13,10 @@ export function canonicalInstructionDocuments(
     .filter((document) => scope === undefined || document.scope === scope)
     .sort(
       (left, right) =>
-        resolve(left.path).localeCompare(resolve(right.path)) ||
-        left.sourceId.localeCompare(right.sourceId) ||
-        left.scope.localeCompare(right.scope) ||
-        left.content.localeCompare(right.content),
+        compareCodePoints(resolve(left.path), resolve(right.path)) ||
+        compareCodePoints(left.sourceId, right.sourceId) ||
+        compareCodePoints(left.scope, right.scope) ||
+        compareCodePoints(left.content, right.content),
     );
   const paths = new Set<string>();
 
