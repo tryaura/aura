@@ -325,11 +325,32 @@ describe("interactive wizard", () => {
           prompt: "What should Aura do with the originals?",
         },
       ],
-      { completed: [{ label: "Global" }], upcoming: [] },
+      { completed: [{ label: "Global" }], upcoming: [{ label: "Snippets" }] },
     );
     session.press("right");
 
     await expect(form).resolves.toEqual({ archive: { kind: "options", values: ["archive"] } });
+  });
+
+  it("keeps → inert on the flow's last form", async () => {
+    const session = createSession();
+    const io = createInteractiveWizardIo({
+      colorDepth: 0,
+      stdin: session.stdin,
+      stdout: session.stdout,
+    });
+
+    const form = io.ask([MCP_QUESTION], {
+      completed: [{ label: "Applications" }],
+      step: { label: "Baseline" },
+      upcoming: [],
+    });
+    session.press("right");
+    session.press("right");
+    // Nothing ahead but Submit, so → left the form standing; only ↵ resolves it.
+    session.press("return");
+
+    await expect(form).resolves.toEqual({ mcp: { kind: "options", values: ["linear"] } });
   });
 
   it("opens a select with the cursor on its current answer", async () => {
