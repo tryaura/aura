@@ -34,7 +34,32 @@ Every top-level section is required, including sections that are still empty:
       "pinned": false
     }
   ],
-  "mcpServers": [],
+  "mcpServers": [
+    {
+      "name": "github",
+      "transport": {
+        "type": "stdio",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-github"],
+        "env": ["GITHUB_TOKEN"]
+      },
+      "apps": ["claude-code", "cursor"],
+      "scope": "global",
+      "catalogId": "official/github"
+    },
+    {
+      "name": "sentry",
+      "transport": {
+        "type": "http",
+        "url": "https://mcp.example.com/sentry",
+        "headers": {
+          "Authorization": "Bearer ${SENTRY_TOKEN}"
+        }
+      },
+      "apps": ["claude-code"],
+      "scope": "project"
+    }
+  ],
   "ownership": {
     "claude-code": {
       "mcpServerNames": [],
@@ -48,11 +73,36 @@ Every top-level section is required, including sections that are still empty:
 the exact selected content; a pinned snippet is kept at that revision. Each skill records its
 source-local, kebab-case `id`, stable source provenance, source version, deterministic tree hash,
 and pin state. Source provenance starts with `plugin:`, `directory:`, or `driver:`. A pinned skill
-keeps its recorded revision. `mcpServers` is populated by its corresponding setup feature.
+keeps its recorded revision. Each `mcpServers` entry records one desired server, the applications
+that should receive it, and whether it belongs in global or project configuration. `catalogId`
+records provenance for a catalog selection and is omitted for a custom server.
 
 Aura installs each managed skill once below `~/agents/skills/<id>` and links supported application
 skill directories to that shared copy. Two sources may publish the same local ID, but a manifest
 cannot select both at once because they would share the same installation directory.
+
+## MCP credential safety
+
+MCP definitions contain credential references, never credential values. Stdio `env` entries must
+match `^[A-Z_][A-Z0-9_]*$`; an entry such as `TOKEN=value` makes the manifest read-only. A header
+value must be `${VARIABLE}` references plus at most sixteen characters of letters and spaces, so
+`Bearer ${SENTRY_TOKEN}` is accepted and a value carrying a plain-text secret alongside an unused
+reference is not. Header names use the HTTP token grammar.
+
+Server names contain only letters, digits, `.`, `_`, and `-`; consecutive dots and the reserved
+object-property names `__proto__`, `prototype`, and `constructor` are rejected. One name may be
+declared once per application per scope: a second entry claiming it for an application that already
+has it makes the manifest read-only, because convergence would otherwise pick a winner by position.
+Every entry names at least one application. Aura also refuses recognized credential literals in
+commands, arguments, URLs, and headers. HTTP transports require an absolute HTTP(S) URL without
+embedded username or password credentials.
+
+A transport keeps fields this release does not define, so a manifest written by a later Aura
+survives a round-trip through an earlier one. Those fields are held to the same bar: a field
+belonging to the other transport kind is refused outright — `headers` on a `stdio` transport would
+otherwise reach an application without ever passing the header rules — and everything else is
+scanned for credential literals before it is kept. Each check runs on both manifest reads and
+writes, so an unsafe definition is never propagated into application configuration.
 
 ## Ownership ledger
 

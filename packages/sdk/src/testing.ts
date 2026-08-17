@@ -5,10 +5,11 @@
  * imports it by accident should notice from the specifier.
  */
 
-import type { WorkspaceModel } from "./model.js";
+import type { WorkspaceModel } from "./workspace-model.js";
 
 /** Everything a {@link WorkspaceModel} needs that a test almost never cares about. */
 const EMPTY_MODEL = {
+  availableMcpServers: [],
   availableSkills: [],
   availableSnippets: [],
   apps: [],

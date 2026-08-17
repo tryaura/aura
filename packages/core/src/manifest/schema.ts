@@ -9,8 +9,20 @@ import type {
   SkillSourceId,
 } from "@tryaura/aura-sdk";
 
+import { defineOwnProperty, jsonPropertyPath } from "@tryaura/aura-sdk";
+
 import { isRecord } from "../values.js";
 import { AURA_MANIFEST_SCHEMA_VERSION } from "./protocol.js";
+import { mcpServers } from "./schema-mcp.js";
+import {
+  invalid,
+  requiredBoolean,
+  requiredObject,
+  requiredString,
+  stringArray,
+} from "./schema-values.js";
+
+export { AuraManifestValidationError } from "./schema-values.js";
 
 const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
 const SKILL_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
@@ -26,16 +38,6 @@ const SKILL_SOURCE_PATTERN = /^(?:directory|driver|plugin):[^\s:]+$/u;
  */
 const MAX_DEPTH = 100;
 
-export class AuraManifestValidationError extends Error {
-  readonly jsonPath: string;
-
-  constructor(jsonPath: string, message: string) {
-    super(`${jsonPath}: ${message}`);
-    this.name = "AuraManifestValidationError";
-    this.jsonPath = jsonPath;
-  }
-}
-
 /** Validates and normalizes a runtime value into manifest v1 without dropping extension fields. */
 export function validateAuraManifest(value: unknown): AuraManifest {
   const source = jsonObject(value, "$", "manifest must be an object");
@@ -50,7 +52,7 @@ export function validateAuraManifest(value: unknown): AuraManifest {
   return Object.freeze({
     ...source,
     apps: apps(source["apps"]),
-    mcpServers: objectArray(source["mcpServers"], "$.mcpServers"),
+    mcpServers: mcpServers(source["mcpServers"]),
     ownership: ownership(source["ownership"]),
     schemaVersion: AURA_MANIFEST_SCHEMA_VERSION,
     skills: skills(source["skills"]),
@@ -121,9 +123,13 @@ function apps(value: JsonValue | undefined): Readonly<Record<string, AuraManifes
   const source = requiredObject(value, "$.apps");
   const result: Record<string, AuraManifestApp> = {};
   for (const [id, candidate] of Object.entries(source)) {
-    const path = propertyPath("$.apps", id);
+    const path = jsonPropertyPath("$.apps", id);
     const app = requiredObject(candidate, path);
-    define(result, id, Object.freeze({ ...app, managed: requiredBoolean(app, "managed", path) }));
+    defineOwnProperty(
+      result,
+      id,
+      Object.freeze({ ...app, managed: requiredBoolean(app, "managed", path) }),
+    );
   }
   return Object.freeze(result);
 }
@@ -156,9 +162,9 @@ function ownership(value: JsonValue | undefined): Readonly<Record<string, AuraMa
   const source = requiredObject(value, "$.ownership");
   const result: Record<string, AuraManifestOwnership> = {};
   for (const [id, candidate] of Object.entries(source)) {
-    const path = propertyPath("$.ownership", id);
+    const path = jsonPropertyPath("$.ownership", id);
     const entry = requiredObject(candidate, path);
-    define(
+    defineOwnProperty(
       result,
       id,
       Object.freeze({
@@ -171,58 +177,6 @@ function ownership(value: JsonValue | undefined): Readonly<Record<string, AuraMa
   return Object.freeze(result);
 }
 
-function objectArray(value: JsonValue | undefined, path: string): readonly JsonObject[] {
-  if (!Array.isArray(value)) {
-    throw invalid(path, "must be an array");
-  }
-  return Object.freeze(
-    value.map((candidate, index) => requiredObject(candidate, `${path}[${String(index)}]`)),
-  );
-}
-
-function stringArray(value: JsonValue | undefined, path: string): readonly string[] {
-  if (!Array.isArray(value)) {
-    throw invalid(path, "must be an array");
-  }
-  return Object.freeze(
-    value.map((candidate, index) => {
-      if (typeof candidate !== "string") {
-        throw invalid(`${path}[${String(index)}]`, "must be a string");
-      }
-      return candidate;
-    }),
-  );
-}
-
-function requiredString(value: JsonObject, key: string, path: string): string {
-  const field = value[key];
-  if (typeof field !== "string") {
-    throw invalid(`${path}.${key}`, "must be a string");
-  }
-  return field;
-}
-
-function requiredBoolean(value: JsonObject, key: string, path: string): boolean {
-  const field = value[key];
-  if (typeof field !== "boolean") {
-    throw invalid(`${path}.${key}`, "must be a boolean");
-  }
-  return field;
-}
-
-/**
- * Narrows a value the top-level walk has already normalized.
- *
- * The section helpers run over subtrees of that walk, so they check shape and hand the existing
- * frozen object back rather than copying and freezing it a second time.
- */
-function requiredObject(value: JsonValue | undefined, path: string): JsonObject {
-  if (!isJsonObject(value)) {
-    throw invalid(path, "must be an object");
-  }
-  return value;
-}
-
 function jsonObject(value: unknown, path: string, message: string): JsonObject {
   if (!isRecord(value)) {
     throw invalid(path, message);
@@ -233,7 +187,7 @@ function jsonObject(value: unknown, path: string, message: string): JsonObject {
 function freezeJsonObject(value: Record<string, unknown>, path: string, depth: number): JsonObject {
   const result: Record<string, JsonValue> = {};
   for (const [key, candidate] of Object.entries(value)) {
-    define(result, key, jsonValue(candidate, propertyPath(path, key), depth + 1));
+    defineOwnProperty(result, key, jsonValue(candidate, jsonPropertyPath(path, key), depth + 1));
   }
   return Object.freeze(result);
 }
@@ -259,34 +213,4 @@ function jsonValue(value: unknown, path: string, depth: number): JsonValue {
     return freezeJsonObject(value, path, depth);
   }
   throw invalid(path, "must be a JSON value");
-}
-
-/**
- * Adds one key without letting the file decide what the object inherits.
- *
- * `JSON.parse` reports `__proto__` as an ordinary own property, but plain assignment routes that
- * one key through the inherited setter: the field would vanish from the manifest Aura writes back,
- * and its value would become the object's prototype. Defining the property does neither.
- */
-function define<T>(target: Record<string, T>, key: string, value: T): void {
-  Object.defineProperty(target, key, {
-    configurable: true,
-    enumerable: true,
-    value,
-    writable: true,
-  });
-}
-
-function isJsonObject(value: JsonValue | undefined): value is JsonObject {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function propertyPath(parent: string, key: string): string {
-  return /^[A-Za-z_$][A-Za-z0-9_$]*$/u.test(key)
-    ? `${parent}.${key}`
-    : `${parent}[${JSON.stringify(key)}]`;
-}
-
-function invalid(path: string, message: string): AuraManifestValidationError {
-  return new AuraManifestValidationError(path, message);
 }

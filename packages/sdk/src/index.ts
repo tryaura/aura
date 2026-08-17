@@ -69,6 +69,23 @@ export type {
   Snippet,
   StandardDirectorySkillSource,
 } from "./content.js";
+export {
+  mcpEnvironmentNameProblem,
+  mcpServerNameProblem,
+  parseMcpServerDefinition,
+} from "./mcp-definition.js";
+export { defineOwnProperty, jsonPropertyPath } from "./mcp-definition-values.js";
+export { parseMcpServerManifest } from "./mcp-server-manifest.js";
+export type {
+  HttpMcpServerDefinition,
+  McpCredentialEnvironmentVariable,
+  McpDefinitionError,
+  McpDefinitionResult,
+  McpServerDefinition,
+  McpServerManifest,
+  ResolvedMcpServerDef,
+  StdioMcpServerDefinition,
+} from "./mcp-definition-types.js";
 export { defineAdapter, defineCheck, definePlugin } from "./define.js";
 export { detectExecutable } from "./detect.js";
 export type { DetectExecutableOptions } from "./detect.js";
@@ -97,6 +114,7 @@ export type {
   AuraManifest,
   AuraManifestApp,
   AuraManifestEntry,
+  AuraManifestMcpServer,
   AuraManifestOwnership,
   AuraManifestProblem,
   AuraManifestSkill,
@@ -118,8 +136,8 @@ export type {
   ResolvedSnippet,
   SharedInstructionsState,
   StdioMcpTransport,
-  WorkspaceModel,
 } from "./model.js";
+export type { WorkspaceModel } from "./workspace-model.js";
 export type {
   InstalledSkill,
   ResolvedSkillDirectory,
@@ -137,6 +155,7 @@ export {
   configStringArray,
   configStringRecord,
   isConfigRecord,
+  isMcpCredentialLiteral,
   parseConfigObject,
   redactMcpArguments,
   sanitizeMcpUrl,

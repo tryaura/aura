@@ -7,10 +7,7 @@ import type {
 import type { AdapterCapabilities } from "./capabilities.js";
 import type { AdapterSharedLinkKind } from "./shared-link.js";
 import type { JsonObject, Scope } from "./common.js";
-import type { AuraManifestState } from "./manifest.js";
-import type { ResolvedSkillPack } from "./content.js";
-import type { RepositoryModel } from "./repository.js";
-import type { InstalledSkill, ResolvedSkillDirectory, SharedSkillState } from "./skill-model.js";
+import type { InstalledSkill, ResolvedSkillDirectory } from "./skill-model.js";
 
 /** A plugin snippet whose bundled source was resolved during the workspace scan. */
 export interface ResolvedSnippet {
@@ -250,39 +247,4 @@ export interface AppModel extends Omit<AdapterSnapshot, "problems"> {
    * about what an application supports, should skip these.
    */
   readonly synthetic?: boolean | undefined;
-}
-
-/**
- * The complete normalized view of a workspace, and the only input a {@link Check} receives.
- *
- * The aggregate `instructionFiles`, `mcpServers`, and `skills` collections span every application,
- * so a check sees configuration contributed by adapters from other plugins.
- */
-export interface WorkspaceModel {
-  /** Bundled skill packs whose directory sources resolved in this run. */
-  readonly availableSkills?: readonly ResolvedSkillPack[] | undefined;
-  /** Registry snippets whose bundled Markdown sources were readable in this run. */
-  readonly availableSnippets: readonly ResolvedSnippet[];
-  /** Every detected application. */
-  readonly apps: readonly AppModel[];
-  /** Directory Aura was invoked from. */
-  readonly cwd: string;
-  /** The current user's home directory. */
-  readonly homeDir: string;
-  /** Instruction documents across every application. */
-  readonly instructionFiles: readonly InstructionDocument[];
-  /** Desired Aura-managed state loaded from the distribution-independent manifest. */
-  readonly manifest: AuraManifestState;
-  /** MCP servers across every application. */
-  readonly mcpServers: readonly McpServer[];
-  /** Repository root, when `cwd` is inside one. */
-  readonly projectRoot?: string | undefined;
-  /** Repository state captured once by core, when the workspace is inside a repository. */
-  readonly repository?: RepositoryModel | undefined;
-  /** Canonical `~/agents/AGENTS.md` source read independently of any application adapter. */
-  readonly sharedInstructions: SharedInstructionsState;
-  /** Skill trees installed in Aura's canonical shared directory. */
-  readonly sharedSkills?: readonly SharedSkillState[] | undefined;
-  /** Installed skills across every application. */
-  readonly skills: readonly InstalledSkill[];
 }

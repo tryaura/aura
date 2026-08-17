@@ -1,14 +1,16 @@
 import type { FileProblem } from "./adapter.js";
+import type { Scope } from "./common.js";
 import type { SkillSourceId } from "./content.js";
+import type { McpServerDefinition } from "./mcp-definition-types.js";
 
 /**
  * One entry in a manifest section this release does not define.
  *
- * Deliberately opaque rather than {@link JsonObject}. The manifest is a private `0o600` file, and
- * the sections reserved below will carry MCP server definitions whose `env` blocks hold API tokens.
- * `JsonObject` is documented as the shape that gets serialized into reports, logs, and CI output,
- * so manifest contents must not be assignable to it: a check cannot forward one of these into
- * `Finding.metadata` without narrowing it deliberately first.
+ * Deliberately opaque rather than {@link JsonObject}. The manifest is a private `0o600` file and
+ * future sections may carry private source references. `JsonObject` is documented as the shape
+ * that gets serialized into reports, logs, and CI output, so manifest contents must not be
+ * assignable to it: a check cannot forward one of these into `Finding.metadata` without narrowing
+ * it deliberately first.
  *
  * Entries round-trip verbatim regardless of what this release understands about them.
  */
@@ -51,6 +53,20 @@ export interface AuraManifestSkill {
   readonly version: string;
 }
 
+/** One MCP server Aura should converge into the selected applications. */
+export interface AuraManifestMcpServer {
+  /** Adapter ids that should receive this server. */
+  readonly apps: readonly string[];
+  /** Catalog provenance. Omitted for a custom server. */
+  readonly catalogId?: string | undefined;
+  /** Server key written into each target application's configuration. */
+  readonly name: string;
+  /** Whether the server belongs in user-level or workspace-level configuration. */
+  readonly scope: Scope;
+  /** How each target application reaches the server. */
+  readonly transport: McpServerDefinition;
+}
+
 /** The exact entries Aura last wrote for one application. */
 export interface AuraManifestOwnership {
   /** Managed file or managed-block references owned by Aura. */
@@ -63,8 +79,8 @@ export interface AuraManifestOwnership {
 export interface AuraManifestV1 {
   /** Application selections keyed by stable adapter id. */
   readonly apps: Readonly<Record<string, AuraManifestApp>>;
-  /** Reserved for manifest MCP definitions introduced by the MCP milestone. */
-  readonly mcpServers: readonly AuraManifestEntry[];
+  /** MCP servers Aura should converge into their selected applications. */
+  readonly mcpServers: readonly AuraManifestMcpServer[];
   /** What Aura owns in each application's configuration, keyed by adapter id. */
   readonly ownership: Readonly<Record<string, AuraManifestOwnership>>;
   readonly schemaVersion: 1;
