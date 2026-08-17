@@ -144,6 +144,10 @@ function findingForCluster(cluster: DescribedCluster, model: WorkspaceModel): De
       ? `Identical guidance appears in ${files}.`
       : `Near-identical guidance appears in ${files} (at least ${String(similarity)}% similar).`,
     metadata: {
+      // Computed before `matches` is capped: past METADATA_MATCH_LIMIT edges a consumer can no
+      // longer tell from the list alone whether every copy is byte-identical, and the setup wizard
+      // uses this to skip asking a question whose answers all produce the same bytes.
+      identical,
       matchCount: metadataMatches.length,
       matches: metadataMatches.slice(0, METADATA_MATCH_LIMIT),
       members: cluster.members.map(({ paragraph }) => ({

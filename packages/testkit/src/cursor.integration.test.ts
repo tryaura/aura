@@ -116,6 +116,7 @@ describe("Cursor versioned fixtures", () => {
     expect(scan.diagnostics).toEqual([]);
     expect(scan.model.instructionFiles).toEqual([
       {
+        canonicalPath: `${seed.workspaceDir}/.cursorrules`,
         content: "# Legacy Cursor instructions\n\nUse the repository conventions.\n",
         links: [],
         path: `${seed.workspaceDir}/.cursorrules`,

@@ -36,6 +36,7 @@ describe("INS-003", () => {
       ],
       message: "Identical guidance appears in .cursorrules, CLAUDE.md.",
       metadata: {
+        identical: true,
         matchCount: 1,
         matches: [{ kind: "exact", left: 0, right: 1, similarity: 100 }],
         members: [
@@ -79,6 +80,19 @@ describe("INS-003", () => {
     expect(findings[0]?.metadata?.["matches"]).toEqual([
       { kind: "near", left: 0, right: 1, similarity: 85 },
     ]);
+    expect(findings[0]?.metadata?.["identical"]).toBe(false);
+  });
+
+  it("does not call a cluster identical while any copy in it has drifted", () => {
+    const original = numberedGuidance(40);
+    const findings = run([
+      document("/workspace/AGENTS.md", original),
+      document("/workspace/CLAUDE.md", original),
+      document("/workspace/rules.md", original.replace("instruction20", "replacement")),
+    ]);
+
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.metadata?.["identical"]).toBe(false);
   });
 
   it("keeps IDs and output stable across input order and duplicate path entries", () => {
@@ -134,6 +148,17 @@ describe("INS-003", () => {
       "Identical guidance appears in AGENTS.md, CLAUDE.md and 1 more.",
     );
     expect(findings[0]?.metadata?.["members"]).toHaveLength(4);
+  });
+
+  it("ignores one file two applications reach through symlinks", () => {
+    const shared = "/home/dev/.agents/AGENTS.md";
+
+    expect(
+      run([
+        document("/home/dev/.claude/CLAUDE.md", GUIDANCE, { canonicalPath: shared }),
+        document("/home/dev/.codex/AGENTS.md", GUIDANCE, { canonicalPath: shared }),
+      ]),
+    ).toEqual([]);
   });
 
   it("ignores repetition confined to one file", () => {

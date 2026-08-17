@@ -16,15 +16,15 @@ import {
   type ScanPhase,
 } from "./diagnostics.js";
 import { type AdapterFileDiscovery, discoverAdapterFiles } from "./discovery.js";
-import type { LinkResolver } from "./links.js";
+import type { DocumentResolver } from "./documents.js";
 import type { FileReader } from "./reader.js";
 import { resolveAdapterProjectSharedLink, resolveAdapterSharedLink } from "./shared-links.js";
 import { evaluateSupport, isComparableRange } from "./support.js";
 
 /** What one adapter needs from the surrounding scan to run its lifecycle. */
 export interface ScanContext {
+  readonly documents: DocumentResolver;
   readonly environment: Environment;
-  readonly links: LinkResolver;
   /** Canonical directory project-scoped paths must stay inside. Awaited once per adapter. */
   readonly projectBoundary: Promise<string | undefined>;
   readonly projectRoot: Promise<string | undefined>;
@@ -159,7 +159,7 @@ async function parseAdapter(
     return {
       diagnostics: describeAdapterProblems(adapter, parsed.problems ?? [], discovery.files),
       snapshot: {
-        instructionFiles: await context.links.resolve(parsed.instructionFiles),
+        instructionFiles: await context.documents.resolve(parsed.instructionFiles),
         mcpServers: [...parsed.mcpServers],
         metadata: parsed.metadata,
         skills: [...parsed.skills],

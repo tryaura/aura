@@ -77,6 +77,7 @@ describe("instruction composition", () => {
     const second = source("/home/dev/b.md", "other\nshared rule\nlast\n");
     const cluster: DuplicateCluster = {
       id: "duplicate",
+      identical: true,
       members: [
         { endLine: 2, id: `${first.path}:2:2`, path: first.path, startLine: 2 },
         { endLine: 2, id: `${second.path}:2:2`, path: second.path, startLine: 2 },
@@ -96,6 +97,31 @@ describe("instruction composition", () => {
     expect(output.match(/shared rule/gu)).toHaveLength(1);
     expect(output).toContain("before\nafter\n");
     expect(output).toContain("other\nshared rule\nlast\n");
+  });
+
+  it("drops the section of a source that lost every paragraph, heading and all", () => {
+    const shared = "Always run the full verification suite before merging.\n";
+    const first = source("/home/dev/a.md", shared);
+    const second = source("/home/dev/b.md", shared);
+    const cluster: DuplicateCluster = {
+      id: "duplicate",
+      identical: true,
+      members: [
+        { endLine: 1, id: `${first.path}:1:1`, path: first.path, startLine: 1 },
+        { endLine: 1, id: `${second.path}:1:1`, path: second.path, startLine: 1 },
+      ],
+      similarity: 100,
+    };
+
+    const output = composeConsolidatedInstructions(
+      [first, second],
+      selection([first.path, second.path], { duplicate: `${first.path}:1:1` }),
+      [cluster],
+      workspaceModel([]),
+    );
+
+    expect(output).toBe(`# Instructions from ~/a.md\n\n${shared}`);
+    expect(output).not.toContain("~/b.md");
   });
 
   it("converges when the originals stay in place and setup runs again", () => {

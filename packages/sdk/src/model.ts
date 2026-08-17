@@ -41,6 +41,19 @@ export interface InstructionLink {
  * never copy `content` into a {@link Finding} message or `metadata`.
  */
 export interface InstructionDocument {
+  /**
+   * {@link path} with every symbolic link along it resolved, filled in by core after parsing.
+   *
+   * Two applications routinely read one physical file: a dotfile setup symlinks `~/.claude/CLAUDE.md`
+   * and `~/.codex/AGENTS.md` at the same shared source, or at a directory that is itself a link.
+   * Those are one document seen twice, and a consumer that compares only {@link path} reports the
+   * file as duplicating itself. Absent when the path did not resolve, such as a dangling symlink,
+   * where {@link path} is all there is to compare.
+   *
+   * An {@link Adapter.parse} implementation cannot set this: it is pure and never touches the
+   * filesystem.
+   */
+  readonly canonicalPath?: string | undefined;
   /** Full file contents. */
   readonly content: string;
   /** References this document makes to other instruction files. */

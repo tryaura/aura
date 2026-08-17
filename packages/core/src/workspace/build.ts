@@ -19,7 +19,7 @@ import {
 import { managedSnippetContentProblems } from "../managed-block/scan.js";
 import { type ScanContext, scanAdapter, type SkippedApp } from "./adapter-scan.js";
 import type { ScanDiagnostic } from "./diagnostics.js";
-import { createLinkResolver } from "./links.js";
+import { createDocumentResolver } from "./documents.js";
 import { findProjectRoot } from "./project-root.js";
 import {
   createCachingReader,
@@ -84,8 +84,8 @@ export async function buildWorkspaceModel(options: WorkspaceScanOptions): Promis
   const reader = createCachingReader(options.reader ?? createFileReader());
   const projectRoot = findProjectRoot(options.environment.cwd, reader);
   const context: ScanContext = {
+    documents: createDocumentResolver(reader),
     environment: options.environment,
-    links: createLinkResolver(reader),
     projectBoundary: resolveProjectBoundary(projectRoot, options.environment.cwd, reader),
     projectRoot,
     reader,
