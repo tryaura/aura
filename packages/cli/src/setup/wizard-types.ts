@@ -1,3 +1,11 @@
+/** One decoded key, however the terminal happened to encode it. */
+export interface Keypress {
+  readonly ctrl: boolean;
+  readonly meta: boolean;
+  readonly name: string | undefined;
+  readonly sequence: string | undefined;
+}
+
 /** One selectable row of a wizard question. */
 export interface WizardOption {
   /** One dim line of context rendered under the label. */
@@ -14,6 +22,8 @@ export interface WizardOption {
 
 /** One question tab of a wizard form. */
 export interface WizardQuestion {
+  /** Shorter tab-bar label used when the full labels would overflow the terminal. */
+  readonly compactLabel?: string | undefined;
   /** Offers a trailing free-text row after the options. */
   readonly freeText?: boolean | undefined;
   readonly id: string;
@@ -24,6 +34,8 @@ export interface WizardQuestion {
    * initial selection, so what they accept is exactly what the form would have proposed.
    */
   readonly initial?: readonly string[] | undefined;
+  /** Draft seeded into the free-text row when the form opens; how a text answer is re-seeded. */
+  readonly initialText?: string | undefined;
   readonly kind: "multiselect" | "select";
   /** Short name shown in the tab bar. */
   readonly label: string;
@@ -39,9 +51,51 @@ export type WizardAnswer =
 /** Answers keyed by question id. */
 export type WizardAnswers = Readonly<Record<string, WizardAnswer>>;
 
-export type WizardFormResult = WizardAnswers | "aborted";
+/**
+ * `"back"` is the user backing out of the form to the one before it (← past the first tab); only
+ * forms given a {@link WizardFlowContext} with something before them can resolve with it.
+ */
+export type WizardFormResult = WizardAnswers | "aborted" | "back";
 
-export type WizardConfirmation = "accepted" | "aborted" | "declined";
+export type WizardConfirmation = "accepted" | "aborted" | "back" | "declined";
+
+/** One surrounding-flow step shown in the tab bar around the live form. */
+export interface WizardFlowStep {
+  /** Shorter tab-bar label used when the full labels would overflow the terminal. */
+  readonly compactLabel?: string | undefined;
+  readonly label: string;
+}
+
+/** The active step's internal chain progress, rendered as an indented sub-row under the bar. */
+interface WizardFlowSubContext {
+  readonly completed: readonly WizardFlowStep[];
+  readonly upcoming: readonly WizardFlowStep[];
+}
+
+/**
+ * Where one form sits in the wizard's overall flow.
+ *
+ * The tab bar must map the whole flow, not just the live form (docs/cli-ux.md). With `step` set,
+ * the top row is a static map of the real steps — completed `✔`, the active step `▶`, the rest
+ * pending — and the live form's questions render only in the `└` sub-row, framed by `sub`'s
+ * chain progress. With `step` absent, the questions splice into the top row at the flow position,
+ * which is also how the Submit confirmation's question stands in for the Submit tab. A form given
+ * a flow has no review tab of its own — the trailing Submit belongs to the flow, and answering
+ * the form's last question resolves it.
+ */
+export interface WizardFlowContext {
+  readonly completed: readonly WizardFlowStep[];
+  /** The active step's own tab; absent on the final Submit confirmation and on legacy forms. */
+  readonly step?: WizardFlowStep | undefined;
+  /** Chain progress around the live form's questions; presence alone does not force a sub-row. */
+  readonly sub?: WizardFlowSubContext | undefined;
+  /**
+   * This form is the flow's final Submit action: its tab renders label-only, like the Submit tab
+   * it stands in for, and no extra Submit is appended after the upcoming steps.
+   */
+  readonly submit?: boolean | undefined;
+  readonly upcoming: readonly WizardFlowStep[];
+}
 
 /**
  * The one seam between wizard flow and terminal interaction.
@@ -51,9 +105,12 @@ export type WizardConfirmation = "accepted" | "aborted" | "declined";
  */
 export interface WizardIo {
   /** Runs one tabbed form and resolves with an answer per question. */
-  readonly ask: (questions: readonly WizardQuestion[]) => Promise<WizardFormResult>;
+  readonly ask: (
+    questions: readonly WizardQuestion[],
+    flow?: WizardFlowContext,
+  ) => Promise<WizardFormResult>;
   /** Asks for one final go-ahead. */
-  readonly confirm: (prompt: string) => Promise<WizardConfirmation>;
+  readonly confirm: (prompt: string, flow?: WizardFlowContext) => Promise<WizardConfirmation>;
   /** Shows one line of progress or context outside any form. */
   readonly note: (text: string) => void;
 }

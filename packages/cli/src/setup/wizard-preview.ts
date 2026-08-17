@@ -1,5 +1,6 @@
-import type { Keypress } from "./wizard-form.js";
-import { wrapPreviewLines, type WizardPreview } from "./wizard-render.js";
+import { wrapPreviewLines } from "./text-width.js";
+import type { Keypress } from "./wizard-types.js";
+import type { WizardPreview } from "./wizard-render.js";
 
 /**
  * An open preview, plus how far it can scroll.

@@ -11,7 +11,7 @@ import {
 } from "./wizard-types.js";
 
 /** What one scripted `ask` call resolves with; omitted question ids take their default answer. */
-type ScriptedFormResponse = WizardAnswers | "aborted";
+type ScriptedFormResponse = WizardAnswers | "aborted" | "back";
 
 export interface ScriptedWizardScript {
   /** Consumed one per `confirm` call; an exhausted script accepts. */
@@ -42,8 +42,8 @@ export function createScriptedWizardIo(script: ScriptedWizardScript = {}): Scrip
   return {
     ask: async (questions) => {
       const response = forms.shift();
-      if (response === "aborted") {
-        return Promise.resolve<WizardFormResult>("aborted");
+      if (response === "aborted" || response === "back") {
+        return Promise.resolve<WizardFormResult>(response);
       }
 
       const answers: Record<string, WizardAnswer> = {};

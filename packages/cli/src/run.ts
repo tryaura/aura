@@ -4,14 +4,26 @@ import process from "node:process";
 // Deep import on purpose: clipanion's ESM entry contains a directory import Node cannot resolve, so
 // the package root loads only under CommonJS. This is the file its `main` points at.
 import { Builtins, Cli, type Command } from "clipanion/lib/advanced/index.js";
+// Deep imports again: the internal help command `cli.process` resolves `-h` to, and the parse
+// error class, are not re-exported from the advanced entry.
+import { HelpCommand as ClipanionHelpCommand } from "clipanion/lib/advanced/HelpCommand.js";
+import { UnknownSyntaxError } from "clipanion/lib/errors.js";
 
 import { createPluginRegistry } from "@tryaura/core";
 
 import { CheckCommand, type AuraCliContext } from "./commands.js";
 import { DefaultCommand } from "./default-command.js";
+import {
+  renderCheckHelp,
+  renderRootHelp,
+  renderSetupHelp,
+  renderUndoHelp,
+  renderUnknownCommand,
+} from "./help.js";
 import { SetupCommand } from "./setup/command.js";
+import { setupAddKinds } from "./setup/steps/index.js";
 import { UndoCommand } from "./undo/command.js";
-import type { CliDistro, CliExitCode, CliRuntime } from "./types.js";
+import type { CliBranding, CliDistro, CliExitCode, CliRuntime } from "./types.js";
 
 /** Runs one build-time-composed Aura distribution. */
 export async function runCli(distro: CliDistro, runtime?: CliRuntime): Promise<CliExitCode> {
@@ -38,9 +50,23 @@ export async function runCli(distro: CliDistro, runtime?: CliRuntime): Promise<C
     try {
       command = cli.process(resolved.argv, context);
     } catch (error) {
-      const normalized = error instanceof Error ? error : new Error(String(error));
-      resolved.stderr.write(`${cli.error(normalized, { colored: false })}\n`);
+      const unknownCommand = unknownCommandInput(error, resolved.argv);
+      if (unknownCommand === undefined) {
+        const normalized = error instanceof Error ? error : new Error(String(error));
+        resolved.stderr.write(`${cli.error(normalized, { colored: false })}\n`);
+      } else {
+        resolved.stderr.write(renderUnknownCommand(distro.branding, unknownCommand));
+      }
       exitCode = 2;
+      applyExitCode(exitCode, runtime);
+      return exitCode;
+    }
+
+    // `-h`/`--help` resolves to clipanion's internal help command; render the action-first screen
+    // for whatever command the user was asking about instead of the framework's flag inventory.
+    if (command instanceof ClipanionHelpCommand) {
+      resolved.stdout.write(helpScreen(resolved.argv, distro.branding));
+      exitCode = 0;
       applyExitCode(exitCode, runtime);
       return exitCode;
     }
@@ -105,6 +131,45 @@ function resolveValue<T>(value: T | undefined, fallback: () => T): T {
   return value === undefined ? fallback() : value;
 }
 
+/** First tokens of every registered command path, kept next to `createCli`'s registrations. */
+const KNOWN_COMMANDS: ReadonlySet<string> = new Set(
+  [
+    ...(CheckCommand.paths ?? []),
+    ...(SetupCommand.paths ?? []),
+    ...(UndoCommand.paths ?? []),
+  ].flatMap((path) => (path[0] === undefined ? [] : [path[0]])),
+);
+
+/**
+ * The misspelled command behind a parse error, or undefined when the input's problem is elsewhere.
+ *
+ * A bad flag on a real command raises the same error class, and there clipanion's message — which
+ * names the offending flag — is the more useful one, so only a genuinely unknown first word gets
+ * the redirect screen.
+ */
+function unknownCommandInput(error: unknown, argv: readonly string[]): string | undefined {
+  const first = argv[0];
+  if (!(error instanceof UnknownSyntaxError) || first === undefined || first.startsWith("-")) {
+    return undefined;
+  }
+  return KNOWN_COMMANDS.has(first) ? undefined : first;
+}
+
+/** The help screen `-h` anywhere in the input was asking for, decided by the command word. */
+function helpScreen(argv: readonly string[], branding: CliBranding): string {
+  const command = argv.find((token) => !token.startsWith("-"));
+  if (command === "check") {
+    return renderCheckHelp(branding);
+  }
+  if (command === "setup") {
+    return renderSetupHelp(branding, setupAddKinds());
+  }
+  if (command === "undo") {
+    return renderUndoHelp(branding);
+  }
+  return renderRootHelp(branding);
+}
+
 /**
  * Decides how much color the terminal should get.
  *
@@ -166,7 +231,8 @@ function createCli(distro: CliDistro, enableColors: boolean): Cli<AuraCliContext
   cli.register(CheckCommand);
   cli.register(SetupCommand);
   cli.register(UndoCommand);
-  cli.register(Builtins.HelpCommand);
+  // No Builtins.HelpCommand: `-h`/`--help` routes through clipanion's internal help command, which
+  // `runCli` intercepts to render the action-first screens in help.ts.
   if (branding.version !== undefined) {
     cli.register(Builtins.VersionCommand);
   }

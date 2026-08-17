@@ -1,5 +1,5 @@
 import type { SnippetCatalogEntry } from "../snippets.js";
-import { SETUP_ABORTED, type SetupStep, type SetupStepContext } from "../types.js";
+import { SETUP_ABORTED, SETUP_BACK, type SetupStep, type SetupStepContext } from "../types.js";
 import { selectedValues, type WizardOption } from "../wizard-types.js";
 
 export const snippetsStep: SetupStep = {
@@ -8,18 +8,26 @@ export const snippetsStep: SetupStep = {
     const catalog = await context.snippetCatalog.load();
     const previous = previousSnippetIds(context);
     const options = snippetOptions(catalog, previous);
-    emitUnavailableNotes(catalog, io.note);
+    if (context.revisited !== true) {
+      emitUnavailableNotes(catalog, io.note);
+    }
     if (options.length === 0) {
-      io.note("No snippets are available from the installed plugins.");
+      if (context.enteredBackward === true) {
+        return SETUP_BACK;
+      }
+      if (context.revisited !== true) {
+        io.note("No snippets are available from the installed plugins.");
+      }
       return { ...context.selections, snippets: { selected: [] } };
     }
 
     const result = await io.ask([
       {
         id: "snippets",
-        initial: options
-          .filter((option) => previous.has(option.value))
-          .map((option) => option.value),
+        // A re-entered step shows the answer this run already gave it, not its cold-start proposal.
+        initial:
+          context.selections.snippets?.selected ??
+          options.filter((option) => previous.has(option.value)).map((option) => option.value),
         kind: "multiselect",
         label: "Snippets",
         options,
@@ -28,6 +36,9 @@ export const snippetsStep: SetupStep = {
     ]);
     if (result === "aborted") {
       return SETUP_ABORTED;
+    }
+    if (result === "back") {
+      return SETUP_BACK;
     }
     const selected = selectedSnippetIds(options, previous, selectedValues(result["snippets"]));
     return {

@@ -6,7 +6,6 @@ import {
   buildWorkspaceModel,
   prepareFixPlan,
   runChecks,
-  type FixPlanPreview,
   type PluginRegistry,
   type WorkspaceScan,
 } from "@tryaura/core";
@@ -17,16 +16,12 @@ import { renderHuman } from "../render.js";
 import { safe } from "../safe-text.js";
 import type { CliBranding, CliExitCode } from "../types.js";
 import { buildAppCatalog } from "./catalog.js";
-import { planSetup, type SetupNotice } from "./planner.js";
+import { planSetup } from "./planner.js";
 import { createSnippetCatalog } from "./snippets.js";
 import { SETUP_STEPS } from "./steps/index.js";
-import { renderSetupSummary } from "./summary.js";
-import {
-  SETUP_ABORTED,
-  type SetupSelections,
-  type SetupStep,
-  type SetupStepContext,
-} from "./types.js";
+import { renderConvergedSetup, renderSetupSummary } from "./summary.js";
+import { gatherSelections, toFlowStep, type GatherStart } from "./gather.js";
+import type { SetupStep, SetupStepContext } from "./types.js";
 import type { WizardIo } from "./wizard-types.js";
 
 /** Everything one `setup` run needs, so the flow does not reach back into the command object. */
@@ -87,77 +82,29 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
   const appCatalog = buildAppCatalog(request.registry.adapters, model, scan.skipped);
   const snippetCatalog = createSnippetCatalog(request.registry.snippets, model.manifest);
 
-  const gathered = await gatherSelections(
-    steps,
-    {
-      appCatalog,
-      ...(initialFindings === undefined ? {} : { findings: initialFindings }),
-      manifest: model.manifest,
-      model,
-      snippetCatalog,
-    },
-    io,
-  );
-  if (gathered.status === "invalid-dependency") {
-    request.stderr.write(
-      `${branding.displayName}: the ${safe(gathered.stepTitle)} step needs ${safe(gathered.missing)}. Run ${branding.command} setup to establish it, then retry this command.\n`,
-    );
-    return 2;
-  }
-  if (gathered.status === "aborted") {
-    stdout.write("\nLeft everything as it was.\n");
-    return 1;
-  }
-  const selections = gathered.selections;
-
-  const outcome = planSetup({
+  const stepContext = {
     appCatalog,
     ...(initialFindings === undefined ? {} : { findings: initialFindings }),
     manifest: model.manifest,
     model,
-    selections,
     snippetCatalog,
-  });
-  const prepared = await prepareFixPlan({ model, plan: outcome.plan });
+  };
 
-  if (
-    prepared.preview.changedOperationCount === 0 &&
-    prepared.preview.conflictedOperationCount === 0 &&
-    outcome.blockers.length === 0
-  ) {
-    renderConvergedSetup(prepared.preview, outcome.notices, request.withDetail, stdout);
-    return endOnGreen(request, scan);
-  }
-
-  stdout.write("\n");
-  renderSetupSummary(
-    prepared.preview,
-    outcome.blockers,
-    outcome.notices,
-    request.withDetail,
-    stdout,
-  );
-
-  if (prepared.preview.conflictedOperationCount > 0 || outcome.blockers.length > 0) {
-    request.stderr.write(
-      `${branding.displayName}: the plan is blocked by the current state of these files; nothing was changed.\n`,
-    );
-    return 2;
-  }
-
-  if (request.dryRun) {
-    stdout.write("\nDry run: nothing was written.\n");
-    return 0;
-  }
-
-  const confirmation = await io.confirm("Apply this plan?");
-  if (confirmation === "aborted") {
-    stdout.write("\nLeft everything as it was.\n");
-    return 1;
-  }
-  if (confirmation === "declined") {
-    stdout.write("\nLeft everything as it was.\n");
-    return 0;
+  // The confirmation can send the user ← back into the last step, so gather → plan → confirm
+  // repeats until the plan is accepted, declined, or aborted. Nothing is written inside the loop.
+  let start: GatherStart = { index: 0, selections: {} };
+  let prepared: PreparedPlan;
+  for (;;) {
+    const pass = await runPass(request, steps, stepContext, scan, start);
+    if (pass.kind === "back") {
+      start = pass.start;
+      continue;
+    }
+    if (pass.kind === "exit") {
+      return pass.code;
+    }
+    prepared = pass.prepared;
+    break;
   }
 
   const result = await applyFixPlan(prepared, {
@@ -199,58 +146,105 @@ function gatherFindings(
   return run.findings;
 }
 
-type GatherSelectionsResult =
-  | { readonly status: "aborted" }
-  | {
-      /** What is missing and which step wanted it, both already in user-facing words. */
-      readonly missing: string;
-      readonly status: "invalid-dependency";
-      readonly stepTitle: string;
-    }
-  | { readonly selections: SetupSelections; readonly status: "ready" };
+type PreparedPlan = Awaited<ReturnType<typeof prepareFixPlan>>;
 
-async function gatherSelections(
+type PlanOutcome =
+  | { readonly kind: "blocked" }
+  | { readonly kind: "converged" }
+  | { readonly kind: "ready"; readonly prepared: PreparedPlan };
+
+type PassOutcome =
+  | { readonly kind: "apply"; readonly prepared: PreparedPlan }
+  | { readonly kind: "back"; readonly start: GatherStart }
+  | { readonly code: CliExitCode; readonly kind: "exit" };
+
+/** One gather → plan → confirm pass; a confirmation backing out restarts at the last step. */
+async function runPass(
+  request: SetupRequest,
   steps: readonly SetupStep[],
-  context: Omit<SetupStepContext, "selections">,
-  io: WizardIo,
-): Promise<GatherSelectionsResult> {
-  let selections: SetupSelections = {};
-  const completedSteps = new Set<string>();
-  for (const step of steps) {
-    const stepContext = { ...context, selections };
-    const prerequisite = step.prerequisites?.find(
-      (candidate) => !completedSteps.has(candidate.id) && !candidate.isSatisfied(stepContext),
+  stepContext: Omit<SetupStepContext, "selections">,
+  scan: WorkspaceScan,
+  start: GatherStart,
+): Promise<PassOutcome> {
+  const { branding, io, stdout } = request;
+  const gathered = await gatherSelections(steps, stepContext, io, start);
+  if (gathered.status === "invalid-dependency") {
+    request.stderr.write(
+      `${branding.displayName}: the ${safe(gathered.stepTitle)} step needs ${safe(gathered.missing)}. Run ${branding.command} setup to establish it, then retry this command.\n`,
     );
-    if (prerequisite !== undefined) {
-      return {
-        missing: prerequisite.title,
-        status: "invalid-dependency",
-        stepTitle: step.title,
-      };
-    }
-    const outcome = await step.gather(stepContext, io);
-    if (outcome === SETUP_ABORTED) {
-      return { status: "aborted" };
-    }
-    selections = outcome;
-    completedSteps.add(step.id);
+    return { code: 2, kind: "exit" };
   }
-  return { selections, status: "ready" };
+  if (gathered.status === "aborted") {
+    stdout.write("\nLeft everything as it was.\n");
+    return { code: 1, kind: "exit" };
+  }
+  const selections = gathered.selections;
+
+  const planned = await previewPlan(request, { ...stepContext, selections });
+  if (planned.kind === "converged") {
+    return { code: endOnGreen(request, scan), kind: "exit" };
+  }
+  if (planned.kind === "blocked") {
+    return { code: 2, kind: "exit" };
+  }
+  if (request.dryRun) {
+    stdout.write("\nDry run: nothing was written.\n");
+    return { code: 0, kind: "exit" };
+  }
+
+  // The confirmation is the flow's Submit: every step is gathered, so the bar shows them done.
+  const confirmation = await io.confirm("Apply this plan?", {
+    completed: steps.map(toFlowStep),
+    submit: true,
+    upcoming: [],
+  });
+  if (confirmation === "back") {
+    return {
+      kind: "back",
+      start: { entered: "backward", index: Math.max(0, steps.length - 1), selections },
+    };
+  }
+  if (confirmation !== "accepted") {
+    stdout.write("\nLeft everything as it was.\n");
+    return { code: confirmation === "aborted" ? 1 : 0, kind: "exit" };
+  }
+  return { kind: "apply", prepared: planned.prepared };
 }
 
-function renderConvergedSetup(
-  preview: FixPlanPreview,
-  notices: readonly SetupNotice[],
-  withDetail: boolean,
-  output: Writable,
-): void {
-  output.write("\n");
-  if (preview.manualSteps.length === 0 && notices.length === 0) {
-    output.write("Already converged — nothing to do.\n\n");
-    return;
+/** Plans the gathered selections, renders the summary, and classifies what can happen next. */
+async function previewPlan(
+  request: SetupRequest,
+  inputs: Parameters<typeof planSetup>[0],
+): Promise<PlanOutcome> {
+  const { stdout } = request;
+  const outcome = planSetup(inputs);
+  const prepared = await prepareFixPlan({ model: inputs.model, plan: outcome.plan });
+
+  if (
+    prepared.preview.changedOperationCount === 0 &&
+    prepared.preview.conflictedOperationCount === 0 &&
+    outcome.blockers.length === 0
+  ) {
+    renderConvergedSetup(prepared.preview, outcome.notices, request.withDetail, stdout);
+    return { kind: "converged" };
   }
-  renderSetupSummary(preview, [], notices, withDetail, output);
-  output.write("\n");
+
+  stdout.write("\n");
+  renderSetupSummary(
+    prepared.preview,
+    outcome.blockers,
+    outcome.notices,
+    request.withDetail,
+    stdout,
+  );
+
+  if (prepared.preview.conflictedOperationCount > 0 || outcome.blockers.length > 0) {
+    request.stderr.write(
+      `${request.branding.displayName}: the plan is blocked by the current state of these files; nothing was changed.\n`,
+    );
+    return { kind: "blocked" };
+  }
+  return { kind: "ready", prepared };
 }
 
 function endOnGreen(request: SetupRequest, scan: WorkspaceScan): CliExitCode {

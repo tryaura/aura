@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- one end-to-end setup matrix shares the same filesystem fixtures. */
 import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
@@ -10,8 +11,9 @@ import type { Environment } from "@tryaura/aura-sdk";
 
 import { appsPlugin, BRANDING, findingPlugin } from "../testing.js";
 import { runSetup, type SetupRequest } from "./setup.js";
-import { SETUP_ABORTED, type SetupStep } from "./types.js";
+import { SETUP_ABORTED, SETUP_BACK, type SetupStep } from "./types.js";
 import { createScriptedWizardIo, type ScriptedWizardScript } from "./wizard-scripted.js";
+import type { WizardFlowContext, WizardIo } from "./wizard-types.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -117,6 +119,102 @@ describe("runSetup", () => {
       expect(fixture.stdout()).toContain("Left everything as it was.");
       await expect(snapshot(fixture.homeDir)).resolves.toEqual(before);
     }
+  });
+
+  it("threads each step's flow position into the forms it opens", async () => {
+    const fixture = await createFixture();
+    const steps: readonly SetupStep[] = [stubStep("first"), stubStep("second")];
+    const flows: (WizardFlowContext | undefined)[] = [];
+    const base = createScriptedWizardIo();
+    const io: WizardIo = {
+      ...base,
+      ask: async (questions, flow) => {
+        flows.push(flow);
+        return base.ask(questions, flow);
+      },
+    };
+
+    await runSetup(fixture.request({}, { io, steps }));
+
+    expect(flows).toEqual([
+      { completed: [], step: { label: "first" }, upcoming: [{ label: "second" }] },
+      { completed: [{ label: "first" }], step: { label: "second" }, upcoming: [] },
+    ]);
+  });
+
+  it("re-runs the previous step when a form backs out, keeping its selections", async () => {
+    const fixture = await createFixture();
+    const steps: readonly SetupStep[] = [stubStep("first"), stubStep("second")];
+    const asked: string[] = [];
+    const base = createScriptedWizardIo({
+      forms: [{}, "back", {}, {}],
+    });
+    const io: WizardIo = {
+      ...base,
+      ask: async (questions, flow) => {
+        asked.push(questions[0]?.id ?? "?");
+        return base.ask(questions, flow);
+      },
+    };
+
+    const exitCode = await runSetup(fixture.request({}, { io, steps }));
+
+    // first → second backs out → first again → second, then the run continues normally.
+    expect(asked).toEqual(["first", "second", "first", "second"]);
+    expect(exitCode).toBe(0);
+  });
+
+  it("tells a step it was entered backward and revisited so it can resume quietly", async () => {
+    const fixture = await createFixture();
+    const entries: {
+      readonly backward: boolean;
+      readonly id: string;
+      readonly revisited: boolean;
+    }[] = [];
+    const record = (id: string): SetupStep => {
+      const stub = stubStep(id);
+      return {
+        ...stub,
+        gather: async (context, io) => {
+          entries.push({
+            backward: context.enteredBackward === true,
+            id,
+            revisited: context.revisited === true,
+          });
+          return stub.gather(context, io);
+        },
+      };
+    };
+    const steps = [record("first"), record("second")];
+
+    await runSetup(fixture.request({ forms: [{}, "back", {}, {}] }, { steps }));
+
+    expect(entries).toEqual([
+      { backward: false, id: "first", revisited: false },
+      { backward: false, id: "second", revisited: false },
+      { backward: true, id: "first", revisited: true },
+      { backward: false, id: "second", revisited: true },
+    ]);
+  });
+
+  it("returns to the last step when the final confirmation backs out", async () => {
+    const fixture = await createFixture();
+    const asked: string[] = [];
+    const base = createScriptedWizardIo({ confirmations: ["back", "accepted"] });
+    const io: WizardIo = {
+      ...base,
+      ask: async (questions, flow) => {
+        asked.push(questions[0]?.id ?? "?");
+        return base.ask(questions, flow);
+      },
+    };
+
+    const exitCode = await runSetup(fixture.request({}, { io }));
+
+    // Only the last step re-runs before the plan is rebuilt and confirmed again.
+    expect(asked.filter((id) => id === "baseline")).toHaveLength(2);
+    expect(asked.filter((id) => id === "global-instruction-action")).toHaveLength(1);
+    expect(exitCode).toBe(0);
   });
 
   it("leaves the filesystem untouched when the confirmation is declined", async () => {
@@ -259,7 +357,13 @@ function stubStep(id: string): SetupStep {
           prompt: `Continue past ${id}?`,
         },
       ]);
-      return result === "aborted" ? SETUP_ABORTED : context.selections;
+      if (result === "aborted") {
+        return SETUP_ABORTED;
+      }
+      if (result === "back") {
+        return SETUP_BACK;
+      }
+      return context.selections;
     },
     id,
     title: id,

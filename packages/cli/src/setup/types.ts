@@ -2,7 +2,7 @@ import type { AuraManifestState, Finding, Scope, WorkspaceModel } from "@tryaura
 
 import type { AppCatalogEntry } from "./catalog.js";
 import type { SnippetCatalog } from "./snippets.js";
-import type { WizardIo } from "./wizard-types.js";
+import type { WizardFlowContext, WizardIo } from "./wizard-types.js";
 
 /** What the apps step decided; see `steps/apps.ts`. */
 interface AppSelections {
@@ -13,6 +13,8 @@ interface AppSelections {
 /** What the baseline step decided; see `steps/baseline.ts`. */
 interface BaselineSelections {
   readonly createManifest: boolean;
+  /** Raw option values as chosen, so a re-entered form re-seeds exactly what was answered. */
+  readonly selected: readonly string[];
 }
 
 /**
@@ -60,6 +62,15 @@ export interface SetupSelections {
 export interface SetupStepContext {
   /** Every registered adapter, detected or not, in registry order. */
   readonly appCatalog: readonly AppCatalogEntry[];
+  /**
+   * True when the user navigated ← into this step from the one after it. The step then opens on
+   * its last form, and a step with nothing to ask returns {@link SETUP_BACK} so ← keeps walking.
+   */
+  readonly enteredBackward?: boolean | undefined;
+  /** Where this step sits in the wizard flow; chain steps hand it to `runFormChain` for sub-tabs. */
+  readonly flow?: WizardFlowContext | undefined;
+  /** True when this step already ran earlier in this run; informational banners stay quiet. */
+  readonly revisited?: boolean | undefined;
   readonly findings?: readonly Finding[] | undefined;
   readonly manifest: AuraManifestState;
   readonly model: WorkspaceModel;
@@ -76,7 +87,10 @@ export interface SetupStepContext {
 /** The out-of-band outcome of a step the user backed out of. */
 export const SETUP_ABORTED: unique symbol = Symbol("aura.setup.aborted");
 
-type SetupStepOutcome = SetupSelections | typeof SETUP_ABORTED;
+/** The user navigated ← past the step's first form; the orchestrator re-runs the previous step. */
+export const SETUP_BACK: unique symbol = Symbol("aura.setup.back");
+
+type SetupStepOutcome = SetupSelections | typeof SETUP_ABORTED | typeof SETUP_BACK;
 
 /** State another setup step must have established before this one can run by itself. */
 interface SetupStepPrerequisite {
@@ -87,6 +101,8 @@ interface SetupStepPrerequisite {
 }
 
 interface SetupStepBase {
+  /** Shorter tab-bar title used when the full flow would overflow the terminal. */
+  readonly compactTitle?: string | undefined;
   readonly gather: (context: SetupStepContext, io: WizardIo) => Promise<SetupStepOutcome>;
   readonly id: string;
   /**

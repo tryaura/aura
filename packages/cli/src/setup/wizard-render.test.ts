@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- one snapshot matrix pins every frame the renderer can produce. */
 import { describe, expect, it } from "vitest";
 
 import {
@@ -53,16 +54,16 @@ describe("renderWizardFrame", () => {
     };
 
     expect(renderWizardFrame(frame, 0)).toMatchInlineSnapshot(`
-      " ←  [☐ Apps]  ☐ MCP  ✔ Submit  →
+      " ▶ Apps ☐ │ MCP ☐ │ Submit
 
        Which apps should Aura manage?
 
-      ❯ 1. Claude Code + Cursor
+      ❯ 1. ○ Claude Code + Cursor
             Both installed and authed.
-        2. Claude Code only
+        2. ○ Claude Code only
         3. Type something.
 
-       ↑/↓ move · ←/→ questions · ↵ select · esc cancel
+       ↑/↓ move · ←/→ steps · ↵ select · esc cancel
       "
     `);
   });
@@ -78,19 +79,19 @@ describe("renderWizardFrame", () => {
     };
 
     expect(renderWizardFrame(frame, 0)).toMatchInlineSnapshot(`
-      " ←  ☑ Apps  [☐ MCP]  ✔ Submit  →
+      " ✔ Apps │ ▶ MCP ☐ │ Submit
 
        Which MCP servers should every managed app get?
 
         1. ☑ linear
       ❯ 2. ☐ context7
 
-       ↑/↓ move · space toggle · ←/→ questions · ↵ select · esc cancel
+       ↑/↓ move · space toggle · ←/→ steps · ↵ select · esc cancel
       "
     `);
   });
 
-  it("renders the Submit tab as a review of every answer", () => {
+  it("renders a locked Submit tab as the list of missing steps", () => {
     const frame: WizardFrame = {
       activeTab: 2,
       cursorRow: 0,
@@ -101,16 +102,221 @@ describe("renderWizardFrame", () => {
     };
 
     expect(renderWizardFrame(frame, 0)).toMatchInlineSnapshot(`
-      " ←  ☑ Apps  ☐ MCP  [✔ Submit]  →
+      " ✔ Apps │ MCP ☐ │ ▶ Submit
+
+       Submit unlocks once every step below is answered.
+
+       ✔ Apps  Claude Code + Cursor
+       ☐ MCP  (unanswered)
+
+       ←/→ steps · esc cancel
+      "
+    `);
+  });
+
+  it("renders an unlocked Submit tab as a review of every answer", () => {
+    const frame: WizardFrame = {
+      activeTab: 2,
+      cursorRow: 0,
+      questions: [
+        view(APPS_QUESTION, { answered: true, selected: new Set(["both"]) }),
+        view(MCP_QUESTION, { answered: true, selected: new Set(["linear"]) }),
+      ],
+    };
+
+    expect(renderWizardFrame(frame, 0)).toMatchInlineSnapshot(`
+      " ✔ Apps │ ✔ MCP │ ▶ Submit
 
        Review your answers, then press ↵ to continue.
 
-       ☑ Apps  Claude Code + Cursor
-       ☐ MCP  (unanswered)
+       ✔ Apps  Claude Code + Cursor
+       ✔ MCP  linear
 
-       ↵ submit · ←/→ back to a question · esc cancel
+       ↵ submit · ←/→ steps · esc cancel
       "
     `);
+  });
+
+  it("maps the whole flow around the live form's questions", () => {
+    const frame: WizardFrame = {
+      activeTab: 0,
+      cursorRow: 0,
+      flow: {
+        completed: [{ label: "Applications" }, { label: "Instructions" }],
+        upcoming: [{ label: "Baseline", compactLabel: "Base" }],
+      },
+      questions: [view(MCP_QUESTION)],
+    };
+
+    const bar = renderWizardFrame(frame, 0).split("\n")[0];
+    expect(bar).toBe(" ✔ Applications │ ✔ Instructions │ ▶ MCP ☐ │ Baseline ☐ │ Submit");
+  });
+
+  it("renders the flow's Submit form as the active Submit tab", () => {
+    const submitQuestion: WizardQuestion = {
+      id: "confirm",
+      kind: "select",
+      label: "Submit",
+      options: [
+        { label: "Apply", value: "apply" },
+        { label: "Cancel", value: "cancel" },
+      ],
+      prompt: "Apply this plan?",
+    };
+    const frame: WizardFrame = {
+      activeTab: 0,
+      cursorRow: 0,
+      flow: {
+        completed: [{ label: "Applications" }, { label: "Snippets" }],
+        submit: true,
+        upcoming: [],
+      },
+      questions: [view(submitQuestion)],
+    };
+
+    const bar = renderWizardFrame(frame, 0).split("\n")[0];
+    expect(bar).toBe(" ✔ Applications │ ✔ Snippets │ ▶ Submit");
+  });
+
+  it("windows a body taller than the terminal around the cursor instead of overflowing", () => {
+    const tall: WizardQuestion = {
+      id: "snippets",
+      kind: "multiselect",
+      label: "Snippets",
+      options: Array.from({ length: 12 }, (_, index) => ({
+        description: `Description ${String(index + 1)}.`,
+        label: `Snippet ${String(index + 1)}`,
+        value: `snippet-${String(index + 1)}`,
+      })),
+      prompt: "Choose snippets",
+    };
+    const frame: WizardFrame = {
+      activeTab: 0,
+      cursorRow: 11,
+      questions: [view(tall)],
+    };
+
+    const rendered = renderWizardFrame(frame, 0, { columns: 80, rows: 14 });
+    const rows = rendered.split("\n");
+
+    // The frame must fit the terminal, or the engine's cursor-up erasure leaks rows above.
+    expect(rows.length - 1).toBeLessThanOrEqual(14 - 1);
+    expect(rendered).toContain("↑");
+    expect(rendered).toContain("more");
+    // The cursor row stays visible inside the window.
+    expect(rendered).toContain("❯ 12. ☐ Snippet 12");
+  });
+
+  it("keeps the step row static and maps chain progress in a └ sub-row", () => {
+    const sources: WizardQuestion = { ...MCP_QUESTION, label: "Sources" };
+    const frame: WizardFrame = {
+      activeTab: 0,
+      cursorRow: 0,
+      flow: {
+        completed: [{ label: "Applications" }],
+        step: { compactLabel: "Instr", label: "Instructions" },
+        sub: { completed: [{ label: "Global" }], upcoming: [{ label: "Archive" }] },
+        upcoming: [{ label: "Snippets" }, { compactLabel: "Base", label: "Baseline" }],
+      },
+      questions: [view(sources)],
+    };
+
+    const rows = renderWizardFrame(frame, 0).split("\n");
+    expect(rows[0]).toBe(" ✔ Applications │ ▶ Instructions ☐ │ Snippets ☐ │ Baseline ☐ │ Submit");
+    expect(rows[1]).toBe(" └ ✔ Global │ ▶ Sources ☐ │ Archive ☐");
+    expect(rows[2]).toBe("");
+  });
+
+  it("shows no sub-row when the lone question is the step itself", () => {
+    const apps: WizardQuestion = { ...MCP_QUESTION, label: "Applications" };
+    const frame: WizardFrame = {
+      activeTab: 0,
+      cursorRow: 0,
+      flow: {
+        completed: [],
+        step: { label: "Applications" },
+        upcoming: [{ label: "Snippets" }],
+      },
+      questions: [view(apps)],
+    };
+
+    const rows = renderWizardFrame(frame, 0).split("\n");
+    expect(rows[0]).toBe(" ▶ Applications ☐ │ Snippets ☐ │ Submit");
+    expect(rows[1]).toBe("");
+  });
+
+  it("degrades each bar row independently when the terminal narrows", () => {
+    const sources: WizardQuestion = { ...MCP_QUESTION, label: "Sources" };
+    const frame: WizardFrame = {
+      activeTab: 0,
+      cursorRow: 0,
+      flow: {
+        completed: [{ label: "Applications", compactLabel: "Apps" }],
+        step: { compactLabel: "Instr", label: "Instructions" },
+        sub: { completed: [{ label: "Global" }], upcoming: [{ label: "Archive" }] },
+        upcoming: [{ compactLabel: "Base", label: "Baseline" }],
+      },
+      questions: [view(sources)],
+    };
+
+    const rows = renderWizardFrame(frame, 0, { columns: 40, rows: 24 }).split("\n");
+    expect(rows[0]).toBe(" ✔ Apps │ ▶ Instr ☐ │ Base ☐ │ Submit");
+    expect(rows[1]).toBe(" └ ✔ Global │ ▶ Sources ☐ │ Archive ☐");
+
+    const glyphRows = renderWizardFrame(frame, 0, { columns: 30, rows: 24 }).split("\n");
+    expect(glyphRows[0]).toBe(" ✔ │ ▶ Instructions ☐ │ ☐ │ Submit");
+    expect(glyphRows[1]).toBe(" └ ✔ │ ▶ Sources ☐ │ ☐");
+  });
+
+  it("charges the sub-row against the body window so tall frames still fit", () => {
+    const tall: WizardQuestion = {
+      id: "snippets",
+      kind: "multiselect",
+      label: "Sources",
+      options: Array.from({ length: 12 }, (_, index) => ({
+        description: `Description ${String(index + 1)}.`,
+        label: `Snippet ${String(index + 1)}`,
+        value: `snippet-${String(index + 1)}`,
+      })),
+      prompt: "Choose snippets",
+    };
+    const frame: WizardFrame = {
+      activeTab: 0,
+      cursorRow: 11,
+      flow: {
+        completed: [],
+        step: { label: "Instructions" },
+        sub: { completed: [{ label: "Global" }], upcoming: [] },
+        upcoming: [],
+      },
+      questions: [view(tall)],
+    };
+
+    const rendered = renderWizardFrame(frame, 0, { columns: 80, rows: 14 });
+    expect(rendered.split("\n").length - 1).toBeLessThanOrEqual(14 - 1);
+    expect(rendered).toContain("❯ 12. ☐ Snippet 12");
+  });
+
+  it("degrades the tab bar to compact labels, then glyphs, before ever truncating", () => {
+    const long: WizardQuestion = {
+      ...APPS_QUESTION,
+      compactLabel: "Apps",
+      label: "Applications",
+    };
+    const frame: WizardFrame = {
+      activeTab: 0,
+      cursorRow: 0,
+      questions: [view(long), view(MCP_QUESTION, { answered: true })],
+    };
+
+    const wide = renderWizardFrame(frame, 0).split("\n")[0];
+    expect(wide).toBe(" ▶ Applications ☐ │ ✔ MCP │ Submit");
+
+    const compact = renderWizardFrame(frame, 0, { columns: 30, rows: 24 }).split("\n")[0];
+    expect(compact).toBe(" ▶ Apps ☐ │ ✔ MCP │ Submit");
+
+    const glyphs = renderWizardFrame(frame, 0, { columns: 24, rows: 24 }).split("\n")[0];
+    expect(glyphs).toBe(" ▶ Applications ☐ │ ✔ │ Submit");
   });
 
   it("shows the free-text draft on its row and in the summary", () => {
@@ -125,7 +331,7 @@ describe("renderWizardFrame", () => {
       renderAnsweredSummary([
         view(APPS_QUESTION, { answered: true, selected: new Set(), text: "codex" }),
       ]),
-    ).toBe(" ☑ Apps  codex\n");
+    ).toBe(" ✔ Apps  codex\n");
   });
 
   it("emits escape sequences only when the terminal has color", () => {
