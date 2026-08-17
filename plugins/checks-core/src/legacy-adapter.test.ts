@@ -4,17 +4,11 @@ import { describe, expect, it } from "vitest";
 import checksCore from "./index.js";
 import { LEGACY_INSTRUCTIONS_ADAPTER_ID, legacyInstructionsAdapter } from "./legacy-adapter.js";
 
-const LEGACY_NAMES = [
-  ".cursorrules",
-  ".windsurfrules",
-  ".clinerules",
-  "GEMINI.md",
-  "CRUSH.md",
-  "WARP.md",
-  "AMPCODE.md",
-  ".goosehints",
-  ".github/copilot-instructions.md",
-];
+const LEGACY_NAMES = [".cursorrules", ".windsurfrules", ".clinerules", "AMPCODE.md", ".goosehints"];
+
+const CURRENT_NAMES = ["GEMINI.md", "CRUSH.md", "WARP.md", ".github/copilot-instructions.md"];
+
+const INVENTORY_NAMES = [...LEGACY_NAMES, ...CURRENT_NAMES];
 
 describe("legacy instruction inventory adapter", () => {
   it("is registered and always reports a supported synthetic installation", async () => {
@@ -25,7 +19,7 @@ describe("legacy instruction inventory adapter", () => {
     });
   });
 
-  it("declares every legacy path at home, the repository root, and the invocation directory", () => {
+  it("declares every inventoried path at home, the repository root, and the invocation directory", () => {
     const specs = legacyInstructionsAdapter.files(
       environment(),
       { installed: true },
@@ -35,14 +29,29 @@ describe("legacy instruction inventory adapter", () => {
 
     expect(specs).toHaveLength(27);
     expect(specs.map((spec) => spec.path)).toEqual([
-      ...LEGACY_NAMES.map((name) => `/home/dev/${name}`),
-      ...LEGACY_NAMES.map((name) => `/repo/${name}`),
-      ...LEGACY_NAMES.map((name) => `/repo/packages/app/${name}`),
+      ...INVENTORY_NAMES.map((name) => `/home/dev/${name}`),
+      ...INVENTORY_NAMES.map((name) => `/repo/${name}`),
+      ...INVENTORY_NAMES.map((name) => `/repo/packages/app/${name}`),
     ]);
     expect(new Set(specs.map((spec) => spec.id)).size).toBe(specs.length);
     expect(specs.every((spec) => spec.kind === "instructions" && spec.optional === true)).toBe(
       true,
     );
+  });
+
+  it("keeps current instruction formats in the inventory so other checks still see them", () => {
+    const specs = legacyInstructionsAdapter.files(
+      { ...environment(), cwd: "/repo" },
+      { installed: true },
+      new Map(),
+      "/repo",
+    );
+    const current = specs.filter((spec) =>
+      CURRENT_NAMES.some((name) => spec.path.endsWith(`/${name}`)),
+    );
+
+    // Both scopes of each: they are inventoried exactly as the legacy names are.
+    expect(current).toHaveLength(CURRENT_NAMES.length * 2);
   });
 
   it("declares each project base once when the repository root is the invocation directory", () => {
@@ -54,8 +63,8 @@ describe("legacy instruction inventory adapter", () => {
     );
 
     expect(specs.map((spec) => spec.path)).toEqual([
-      ...LEGACY_NAMES.map((name) => `/home/dev/${name}`),
-      ...LEGACY_NAMES.map((name) => `/repo/${name}`),
+      ...INVENTORY_NAMES.map((name) => `/home/dev/${name}`),
+      ...INVENTORY_NAMES.map((name) => `/repo/${name}`),
     ]);
   });
 
@@ -84,15 +93,16 @@ describe("legacy instruction inventory adapter", () => {
       projectRoot: "/repo",
     });
 
-    // Two names at each of the three bases, and the tool survives the per-base id suffix.
+    // Two names at each of the three bases, and the tool survives the per-base id suffix. A current
+    // format is inventoried beside a legacy one, distinguished only by the flag INS-004 reads.
     expect(snapshot.instructionFiles).toHaveLength(6);
     expect(snapshot.instructionFiles.map((document) => document.metadata)).toEqual([
       { legacy: true, tool: "windsurf" },
-      { legacy: true, tool: "gemini" },
+      { legacy: false, tool: "gemini" },
       { legacy: true, tool: "windsurf" },
-      { legacy: true, tool: "gemini" },
+      { legacy: false, tool: "gemini" },
       { legacy: true, tool: "windsurf" },
-      { legacy: true, tool: "gemini" },
+      { legacy: false, tool: "gemini" },
     ]);
     expect(
       snapshot.instructionFiles.every((document) =>

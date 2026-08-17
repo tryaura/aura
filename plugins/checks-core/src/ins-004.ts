@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { resolve } from "node:path";
 
 import {
@@ -7,7 +6,11 @@ import {
   type Finding,
   type FixPlan,
   type InstructionDocument,
+  type WorkspaceModel,
 } from "@tryaura/aura-sdk";
+
+import { sha256 } from "./hashing.js";
+import { displayInstructionPath } from "./instruction-paths.js";
 
 interface LegacyDocument {
   readonly document: InstructionDocument;
@@ -16,7 +19,8 @@ interface LegacyDocument {
 
 export const legacyInstructionsCheck = defineCheck({
   defaultSeverity: "warn",
-  detect: (model) => legacyDocuments(model.instructionFiles).map(toFinding),
+  detect: (model) =>
+    legacyDocuments(model.instructionFiles).map((legacy) => toFinding(legacy, model)),
   explain: `Legacy instruction files are easy to forget after changing agent applications or configuration formats. They may still be loaded unexpectedly, or hold useful guidance that newer application files never received.
 
 Re-run the check with \`--fix --interactive\` to review the suggested migration steps, then use the \`setup\` command to consolidate selected content. Aura archives originals through its reversible backup history instead of deleting them silently.`,
@@ -49,14 +53,17 @@ function legacyTool(document: InstructionDocument): string | undefined {
   return typeof tool === "string" ? tool : undefined;
 }
 
-function toFinding(legacy: LegacyDocument): DetectedFinding {
+function toFinding(legacy: LegacyDocument, model: WorkspaceModel): DetectedFinding {
   const path = resolve(legacy.document.path);
+  const displayPath = displayInstructionPath(path, model);
   return {
     details: `Consolidate the useful guidance into the shared instructions, then archive the original through Aura setup.`,
-    id: `legacy:${pathHash(path)}`,
+    id: `legacy:${sha256(path).slice(0, 16)}`,
     locations: [{ path }],
-    message: `${displayTool(legacy.tool)} legacy instructions remain at ${path}.`,
-    metadata: { legacy: true, tool: legacy.tool },
+    message: `${displayTool(legacy.tool)} legacy instructions remain at ${displayPath}.`,
+    // `fix` receives the finding without the workspace, so the name the message used is carried
+    // rather than re-derived — the two would otherwise drift apart in the same report.
+    metadata: { displayPath, legacy: true, tool: legacy.tool },
   };
 }
 
@@ -68,18 +75,16 @@ function guidedFix(finding: Finding): FixPlan | undefined {
   if (path === undefined) {
     return undefined;
   }
+  const displayPath = finding.metadata["displayPath"];
+  const name = typeof displayPath === "string" ? displayPath : path;
   return {
     manualSteps: [
-      `Run \`aura setup\` and choose instruction consolidation to migrate ${path} into the shared instructions.`,
+      `Run \`aura setup\` and choose instruction consolidation to migrate ${name} into the shared instructions.`,
       "Confirm setup archived the original, then run `aura check` again.",
     ],
     operations: [],
-    summary: `Consolidate the legacy instruction file at ${path}.`,
+    summary: `Consolidate the legacy instruction file at ${name}.`,
   };
-}
-
-function pathHash(path: string): string {
-  return createHash("sha256").update(path).digest("hex").slice(0, 16);
 }
 
 function displayTool(tool: string): string {
