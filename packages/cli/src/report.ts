@@ -1,111 +1,24 @@
-import type {
-  Adapter,
-  AppModel,
-  Check,
-  Finding,
-  Fixability,
-  Scope,
-  Severity,
-} from "@tryaura/aura-sdk";
-import type {
-  CheckDiagnostic,
-  FixOperationEffect,
-  ScanDiagnostic,
-  ScanPhase,
-  SkippedApp,
-} from "@tryaura/core";
+import type { Adapter, AppModel, Check, Finding, Severity } from "@tryaura/aura-sdk";
+import type { CheckDiagnostic, ScanDiagnostic, SkippedApp } from "@tryaura/core";
 
 import { checkCategory } from "./check-selection.js";
-import { reportApps, reportFinding, type ReportApp, type ReportFinding } from "./report-shapes.js";
+import { reportApps, reportFinding } from "./report-shapes.js";
+import type {
+  CheckCounts,
+  CheckExplanation,
+  CheckReport,
+  PassedCheck,
+  ReportDiagnostic,
+  ReportFix,
+  ReportStatus,
+} from "./report-types.js";
 import type { CliExitCode } from "./types.js";
 
 // The per-item shapes and the functions that build them live together in report-shapes; this module
 // owns the envelope around them. Re-exported here because the envelope is the published entry point.
-export type { ReportApp, ReportFinding } from "./report-shapes.js";
+export type { CheckExplanation, CheckReport, ReportFix } from "./report-types.js";
 
 const CHECK_JSON_SCHEMA_VERSION = 1;
-
-export interface PassedCheck {
-  readonly id: string;
-  readonly title: string;
-}
-
-export interface CheckCounts {
-  readonly errors: number;
-  readonly informational: number;
-  readonly passed: number;
-  readonly warnings: number;
-}
-
-export interface CheckSummary extends CheckCounts {
-  readonly categories: Readonly<Record<string, CheckCounts>>;
-  readonly diagnostics: number;
-  readonly exitCode: CliExitCode;
-}
-
-/** A problem with the run itself, as the report carries it. */
-export interface ReportDiagnostic {
-  readonly detail?: string | undefined;
-  readonly id: string;
-  readonly message: string;
-  readonly path?: string | undefined;
-  readonly phase: ScanPhase | "check" | "fix";
-}
-
-export type ReportStatus = "clean" | "empty" | "error" | "operational-error" | "warning";
-
-export interface ReportFixOperation {
-  readonly conflict?: string | undefined;
-  readonly diff?: string | undefined;
-  readonly effect: FixOperationEffect;
-  readonly paths: readonly string[];
-}
-
-export interface ReportFix {
-  readonly checkId: string;
-  readonly findingId: string;
-  readonly manualSteps: readonly string[];
-  readonly message?: string | undefined;
-  readonly operations: readonly ReportFixOperation[];
-  /**
-   * What the plan did to the filesystem.
-   *
-   * `failed` promises the filesystem is as it was; `partial` is the case that promise cannot cover,
-   * where applying failed and unwinding it failed too, so some operations are still on disk.
-   */
-  readonly status: "applied" | "failed" | "partial" | "planned";
-  readonly summary: string;
-}
-
-export interface CheckReportV1 {
-  readonly apps: readonly ReportApp[];
-  readonly diagnostics: readonly ReportDiagnostic[];
-  readonly findings: readonly ReportFinding[];
-  readonly fixes?: readonly ReportFix[] | undefined;
-  readonly kind: "check-report";
-  readonly passedChecks: readonly PassedCheck[];
-  readonly schemaVersion: typeof CHECK_JSON_SCHEMA_VERSION;
-  readonly status: ReportStatus;
-  readonly summary: CheckSummary;
-}
-
-/** Backwards-compatible name for the frozen version 1 report envelope. */
-export type CheckReport = CheckReportV1;
-
-export interface CheckExplanationV1 {
-  readonly explain: string;
-  readonly fixability: Fixability;
-  readonly fixesApplicable: boolean;
-  readonly id: string;
-  readonly kind: "check-explanation";
-  readonly schemaVersion: typeof CHECK_JSON_SCHEMA_VERSION;
-  readonly scope: Scope;
-  readonly severity: Severity;
-  readonly title: string;
-}
-
-/** Backwards-compatible name for the frozen version 1 explanation envelope. */
-export type CheckExplanation = CheckExplanationV1;
 
 export function createCheckExplanation(check: Check): CheckExplanation {
   return Object.freeze({
@@ -208,7 +121,7 @@ export interface DiagnosticSource {
   readonly id: string;
   readonly message: string;
   readonly path?: string | undefined;
-  readonly phase: ScanPhase | "check" | "fix";
+  readonly phase: ReportDiagnostic["phase"];
 }
 
 function toReportDiagnostic(source: DiagnosticSource, withDetail: boolean): ReportDiagnostic {

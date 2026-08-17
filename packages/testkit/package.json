@@ -1,6 +1,6 @@
 {
   "name": "@tryaura/aura-testkit",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Deterministic filesystem seeds and CLI harnesses for Aura plugins and distributions.",
   "keywords": [
     "aura",
@@ -16,8 +16,7 @@
     "directory": "packages/testkit"
   },
   "files": [
-    "dist",
-    "src"
+    "dist"
   ],
   "type": "module",
   "sideEffects": false,
@@ -38,13 +37,14 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsc --project tsconfig.build.json",
+    "build": "tsdown",
+    "prepack": "pnpm build",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@tryaura/aura-cli": "workspace:*",
     "@tryaura/aura-sdk": "workspace:*",
-    "diff": "^9.0.0"
+    "diff": "9.0.0"
   },
   "devDependencies": {
     "@tryaura/adapter-claude-code": "workspace:*",

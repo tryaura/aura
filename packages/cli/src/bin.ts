@@ -1,9 +1,10 @@
-import type { CliDistro } from "@tryaura/aura-cli";
-import { OFFICIAL_PLUGINS, OFFICIAL_REGISTRY_OPTIONS } from "@tryaura/aura-cli/plugins";
-
+#!/usr/bin/env node
 import packageManifest from "../package.json" with { type: "json" };
 
-export const AURA_DISTRO: CliDistro = {
+import { OFFICIAL_PLUGINS, OFFICIAL_REGISTRY_OPTIONS } from "./plugins.js";
+import { runCli } from "./run.js";
+
+await runCli({
   branding: {
     command: "aura",
     description: "Agent Unification & Repair Assistant",
@@ -12,4 +13,4 @@ export const AURA_DISTRO: CliDistro = {
   },
   plugins: OFFICIAL_PLUGINS,
   registry: OFFICIAL_REGISTRY_OPTIONS,
-};
+});

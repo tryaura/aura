@@ -29,6 +29,10 @@ export default defineConfig({
           ],
         },
         {
+          label: "Guides",
+          items: [{ label: "Author a distribution", slug: "docs/guides/distributions" }],
+        },
+        {
           label: "Reference",
           items: [{ autogenerate: { directory: "docs/reference" } }],
         },

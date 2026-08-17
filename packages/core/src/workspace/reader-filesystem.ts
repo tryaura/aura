@@ -4,6 +4,7 @@ import { lstat, open, opendir, readFile, readlink, realpath, stat } from "node:f
 
 import type { AdapterPathKind, FileProblem } from "@tryaura/aura-sdk";
 
+import { isEmbeddedAssetPath } from "./embedded-assets.js";
 import { MAX_DIRECTORY_ENTRIES, MAX_FILE_BYTES } from "./reader-limits.js";
 import type { FileReadOptions, PathContents } from "./reader.js";
 
@@ -11,7 +12,7 @@ const MISSING: PathContents = Object.freeze({ exists: false, isDirectory: false 
 
 export async function pathExists(path: string): Promise<boolean> {
   try {
-    await lstat(path);
+    await compatibleLstat(path);
     return true;
   } catch {
     return false;
@@ -21,7 +22,7 @@ export async function pathExists(path: string): Promise<boolean> {
 export async function inspectPath(path: string): Promise<PathContents> {
   let stats: Stats;
   try {
-    stats = await lstat(path);
+    stats = await compatibleLstat(path);
   } catch (error) {
     return isAbsence(error) ? MISSING : { ...MISSING, problem: toProblem(error) };
   }
@@ -79,7 +80,7 @@ function inspectedContents(
 export async function readPath(path: string, options?: FileReadOptions): Promise<PathContents> {
   let stats: Stats;
   try {
-    stats = await lstat(path);
+    stats = await compatibleLstat(path);
   } catch (error) {
     return isAbsence(error) ? MISSING : { ...MISSING, problem: toProblem(error) };
   }
@@ -144,6 +145,23 @@ async function readResolvedPath(
   return readRegularFile(path, stats, metadata, options);
 }
 
+/**
+ * `lstat` for real paths, `stat` for files embedded in a compiled executable.
+ *
+ * The fallback loses nothing: an embedded filesystem has no symlinks, so the two calls agree
+ * wherever both work. Non-embedded failures keep their original error.
+ */
+async function compatibleLstat(path: string): Promise<Stats> {
+  try {
+    return await lstat(path);
+  } catch (error) {
+    if (!isEmbeddedAssetPath(path)) {
+      throw error;
+    }
+    return stat(path);
+  }
+}
+
 function resolvedMetadata(
   stats: Stats,
   pathKind: AdapterPathKind,
@@ -191,6 +209,13 @@ async function readRegularFile(
 async function readPrefix(path: string, maxBytes: number): Promise<string> {
   if (maxBytes === 0) {
     return "";
+  }
+  // An embedded filesystem cannot serve the positional reads below, so the prefix is sliced out of
+  // a whole read. Peak memory is the asset's size rather than `maxBytes`, which is acceptable only
+  // because an embedded asset is already resident in the executable that is running.
+  if (isEmbeddedAssetPath(path)) {
+    const buffer = await readFile(path);
+    return buffer.subarray(0, maxBytes).toString("utf8");
   }
   const file = await open(path, "r");
   try {

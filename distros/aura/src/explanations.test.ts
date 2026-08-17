@@ -1,11 +1,11 @@
-import checksCore from "@tryaura/checks-core";
+import { checksCorePlugin } from "@tryaura/aura-cli/plugins";
 import { describe, expect, it } from "vitest";
 
 describe("shipped check explanations", () => {
   it("gives every shipped check exactly two non-empty Markdown paragraphs", () => {
-    expect(checksCore.checks).toHaveLength(13);
+    expect(checksCorePlugin.checks).toHaveLength(13);
 
-    for (const check of checksCore.checks ?? []) {
+    for (const check of checksCorePlugin.checks ?? []) {
       const paragraphs = check.explain
         .trim()
         .split(/\n\s*\n/u)

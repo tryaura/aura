@@ -77,6 +77,21 @@ describe("workspace snippet catalog", () => {
       new Set(["core/snippets"]),
     );
   });
+
+  it("blames the compile step, not the filesystem, for a snippet missing from a binary", async () => {
+    const { diagnostics } = await buildWorkspaceModel({
+      adapters: [],
+      environment: createTestEnvironment(),
+      reader: createMemoryReader({}),
+      snippets: [
+        snippet({ id: "fixture/embedded", url: "file:///$bunfs/root/content/snippets/rule.md" }),
+      ],
+    });
+
+    expect(diagnostics.map((diagnostic) => diagnostic.message)).toEqual([
+      'Snippet "fixture/embedded" was not embedded in this executable, so its content is unavailable. Compile it with the snippet Markdown as extra "bun build" entrypoints, "--loader .md:file", and "--asset-naming=content/snippets/[name].[ext]".',
+    ]);
+  });
 });
 
 function snippet(overrides: { readonly id?: string; readonly url?: string } = {}): Snippet {

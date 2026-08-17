@@ -1,11 +1,33 @@
 {
   "$schema": "./node_modules/fallow/schema.json",
   "entry": [
+    "packages/cli/type-tests/*.ts",
     "packages/sdk/type-tests/*.ts",
     "distros/aura/src/*.smoke.ts",
-    "apps/web/src/styles/docs.css"
+    "apps/web/src/styles/docs.css",
+    "packages/cli/src/bin.ts",
+    "packages/cli/src/index.release.ts",
+    "packages/*/tsdown*.config.ts",
+    "scripts/fixtures/distro-consumer/*.mjs"
+  ],
+  "ignoreDependencies": [
+    "@arethetypeswrong/core",
+    "diff",
+    "ignore",
+    "publint",
+    "semver",
+    "smol-toml"
   ],
   "ignoreUnresolvedImports": ["./content/**"],
+  "health": {
+    "thresholdOverrides": [
+      {
+        "files": ["scripts/verify-packages.mjs"],
+        "maxCrap": 100,
+        "reason": "The linear clean-room verifier intentionally owns one transactional workflow."
+      }
+    ]
+  },
   "audit": {
     "gate": "new-only"
   },

@@ -1,50 +1,8 @@
-import type {
-  Adapter,
-  AdapterSupport,
-  AppModel,
-  Check,
-  Finding,
-  FindingLocation,
-  FindingPresentation,
-  Fixability,
-  JsonObject,
-  Scope,
-  Severity,
-} from "@tryaura/aura-sdk";
+import type { Adapter, AppModel, Check, Finding } from "@tryaura/aura-sdk";
 import type { SkippedApp } from "@tryaura/core";
+import type { ReportApp, ReportFinding } from "./report-types.js";
 
-interface ReportAppDetection {
-  readonly authenticated?: boolean | undefined;
-  readonly installed: boolean;
-  readonly version?: string | undefined;
-}
-
-export interface ReportApp {
-  readonly appId: string;
-  readonly detection: ReportAppDetection;
-  /**
-   * What detection looked at, from {@link Adapter.detectionScope}.
-   *
-   * Present only for an application the adapter looked for and did not find — never for one that
-   * is installed, and never for one whose adapter crashed before it could look.
-   */
-  readonly detectionScope?: string | undefined;
-  readonly displayName: string;
-  readonly support?: AdapterSupport | undefined;
-}
-
-export interface ReportFinding {
-  readonly checkId: string;
-  readonly details?: string | undefined;
-  readonly findingId: string;
-  readonly fixability: Fixability;
-  readonly locations?: readonly FindingLocation[] | undefined;
-  readonly message: string;
-  readonly metadata?: JsonObject | undefined;
-  readonly presentation?: FindingPresentation | undefined;
-  readonly scope: Scope;
-  readonly severity: Severity;
-}
+export type { ReportApp, ReportFinding } from "./report-types.js";
 
 export function reportFinding(finding: Finding, checks: readonly Check[]): ReportFinding {
   const check = checks.find((candidate) => candidate.id === finding.checkId);

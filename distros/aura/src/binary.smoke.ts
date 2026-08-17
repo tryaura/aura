@@ -68,10 +68,21 @@ describe("compiled Aura distribution", () => {
         {
           appId: "claude-code",
           detection: { installed: false },
+          detectionScope: "the claude CLI on PATH (the desktop app is not checked)",
           displayName: "Claude Code",
         },
-        { appId: "codex", detection: { installed: false }, displayName: "Codex" },
-        { appId: "cursor", detection: { installed: false }, displayName: "Cursor" },
+        {
+          appId: "codex",
+          detection: { installed: false },
+          detectionScope: "the codex CLI on PATH (the desktop app is not checked)",
+          displayName: "Codex",
+        },
+        {
+          appId: "cursor",
+          detection: { installed: false },
+          detectionScope: "the cursor shell command on PATH (the editor itself is not checked)",
+          displayName: "Cursor",
+        },
       ],
       diagnostics: [],
       findings: [
