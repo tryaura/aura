@@ -1,58 +1,95 @@
 # Aura
 
-**Agent Unification & Repair Assistant** — every coding agent in your repo, working from the same
-rules.
+**Agent Unification & Repair Assistant** — keep Claude Code, Codex, and Cursor working from the
+same instructions.
 
-Claude Code, Codex, and Cursor each keep their own instruction files, their own MCP server list,
-and their own idea of which skills are installed. Nothing keeps them in agreement. Aura reads all
-of them, normalizes what it finds into a single workspace model, and reports where they have
-drifted apart.
+Each coding agent keeps its own instruction files and MCP configuration. Aura detects the agents
+available on a machine, reads their configuration into one workspace model, reports drift, and can
+converge the files it manages through a previewable fix plan.
 
 Docs: [tryaura.sh/docs/introduction](https://tryaura.sh/docs/introduction)
 
-## Status
+## Run from source
 
-Pre-release. Core, the CLI shell, and the plugin SDK are in place. The Aura distribution ships
-Claude Code, Codex, and Cursor adapters plus 13 environment, instruction, and managed-content
-checks. Content plugins remain under development. Every package is at `0.0.0` and nothing is
-published yet.
-
-## How a scan works
-
-1. **Adapters detect** which agent applications are installed and declare the files they care
-   about. They do not read those files themselves.
-2. **Core reads** the declared paths and hands the contents back to each adapter's `parse`, which
-   is synchronous and has no filesystem access.
-3. **Checks inspect** the resulting `WorkspaceModel` — every application's instruction documents,
-   MCP servers, and skills together — and emit findings.
-4. **Fixes return data**, never actions. A fix produces a `FixPlan` of write, remove, move, and
-   symlink operations, so Aura can show a diff, dry run it, back it up, and undo it.
-
-That separation is what makes a scan previewable. A check cannot run a command, and a fix cannot
-make a network request.
-
-## Install
+Aura requires Node.js 24 and pnpm 11. The versions are pinned in `.nvmrc` and the root
+`package.json`.
 
 ```sh
-curl -fsSL https://tryaura.sh/install | sh
+corepack enable
+pnpm install
+pnpm build
+node distros/aura/dist/main.js --help
 ```
 
-The script detects your platform, verifies the release archive against the published `SHA256SUMS`,
-and installs to `~/.aura/bin`. With Node.js 24 or newer, `npm install -g @tryaura/aura-cli` is the
-shorter path. See [Installation](https://tryaura.sh/docs/installation) for prebuilt binaries and
-the `AURA_INSTALL_DIR` / `AURA_VERSION` options.
-
-## Usage
+Use the built entry point for a first, read-only scan:
 
 ```sh
-aura check              # inspect the current AI agent setup
-aura check --json       # machine-readable report
-aura check --only ENV --only claude # environment checks for Claude Code
-aura check --detail     # include the failing plugin's own error text
-aura check --explain ENV-003 # explain one check without scanning the machine
-aura check --fix --dry-run # preview automatic fixes without writing
-aura check --fix --interactive # choose guided resolutions and apply one atomic plan
+node distros/aura/dist/main.js check
 ```
+
+To build the standalone executable, install the Bun version pinned in `.bun-version`, then run:
+
+```sh
+pnpm --filter @tryaura/aura build:binary
+./distros/aura/dist/aura --help
+```
+
+The examples below use `aura` for readability; from a source checkout, substitute either built
+entry point above.
+
+## Setup
+
+Preview setup before allowing it to write:
+
+```sh
+aura setup --dry-run
+aura setup
+```
+
+The wizard:
+
+1. detects Claude Code, Codex, and Cursor and asks which applications Aura should manage;
+2. creates or consolidates global and project instructions, with optional archival of originals;
+3. offers the seven bundled snippets for Git, safety, Atlassian, TypeScript, and Python guidance;
+4. records desired state and ownership in `~/agents/aura.json`; and
+5. previews one combined plan, asks once, applies it atomically, then rescans the machine.
+
+Setup is convergent: rerunning it with the same selections produces no changes. `--yes` accepts
+the least-invasive defaults without prompts, while `--detail` includes full file diffs and may
+therefore expose instruction contents.
+
+```sh
+aura setup --yes
+aura setup --detail
+```
+
+Successful writes receive a backup ID and failed applications are rolled back when possible. A
+user-facing command to restore a successful run from its backup has not been added yet. Stopping
+management of an application updates the manifest but deliberately leaves its existing agent
+configuration in place.
+
+## Check and repair
+
+```sh
+aura check                              # inspect the current agent setup
+aura check --json                       # emit the versioned JSON report
+aura check --only ENV --only claude     # run environment checks for Claude Code
+aura check --detail                     # include plugin diagnostics and fix diffs
+aura check --explain ENV-003             # explain one check without scanning
+aura check --fix --dry-run               # preview automatic fixes without writing
+aura check --fix                         # preview, confirm, and apply automatic fixes
+aura check --fix --interactive           # include guided remediation choices
+```
+
+The bundled checks cover:
+
+| IDs           | What they inspect                                                                                      |
+| ------------- | ------------------------------------------------------------------------------------------------------ |
+| `ENV-001–004` | Supported app versions, authentication, repository ignore policy, and restrictive project settings.    |
+| `INS-001–008` | Shared links, duplicate or contradictory guidance, legacy files, link integrity, size, and precedence. |
+| `MGD-001`     | Hand edits inside Aura-managed instruction blocks.                                                     |
+
+### Check flags
 
 | Flag             | Purpose                                                                                          |
 | ---------------- | ------------------------------------------------------------------------------------------------ |
@@ -72,11 +109,11 @@ The versioned JSON contract and published schema are documented in the
 [check JSON reference](https://tryaura.sh/docs/reference/check-json/).
 
 `--only` matches case-insensitive exact check IDs first, then check categories and real adapter
-IDs. Categories are the local ID prefix (for example, `SEC` in `acme/SEC-001`). `claude` and
-`claude_code` are aliases for the canonical `claude-code` adapter ID. Repeated selectors are ORed
-within the check and application dimensions, then those dimensions are intersected.
+IDs. Categories are the local ID prefix, such as `ENV` in `ENV-003`. `claude` and `claude_code`
+are aliases for the canonical `claude-code` adapter ID. Repeated selectors are ORed within the
+check and application dimensions, then those dimensions are intersected.
 
-Exit codes are stable enough to gate CI on:
+Check exit codes are stable enough to gate CI on:
 
 | Code | Meaning                                                                                       |
 | ---- | --------------------------------------------------------------------------------------------- |
@@ -85,25 +122,25 @@ Exit codes are stable enough to gate CI on:
 | `2`  | Error findings, invalid usage or selectors, filesystem conflicts, or an empty check registry. |
 | `3`  | Adapter, check, plugin, registry, command, or fix preparation/application failures.           |
 
-## Repository layout
+## How a scan works
 
-| Path               | Contents                                                                  |
-| ------------------ | ------------------------------------------------------------------------- |
-| `packages/sdk`     | `@tryaura/aura-sdk` — the public plugin API. No runtime dependencies.     |
-| `packages/core`    | Environment, workspace model, checks, fix-plan execution, managed blocks. |
-| `packages/cli`     | `runCli(distro)` — the command shell a distribution is built on.          |
-| `packages/testkit` | Integration helpers used across package test suites.                      |
-| `plugins/*`        | Adapters (Claude Code, Codex, Cursor), core checks, official content.     |
-| `distros/aura`     | The `aura` binary: branding plus the plugin list, composed at build time. |
-| `apps/web`         | Marketing landing and Starlight docs, deployed on Cloudflare Workers.     |
+1. **Adapters detect** installed agent applications and declare the files they need. They do not
+   read those files themselves.
+2. **Core reads** the declared paths and passes bounded contents to each adapter's synchronous
+   `parse` function.
+3. **Checks inspect** the normalized `WorkspaceModel` and emit findings without reading the
+   filesystem or process environment.
+4. **Fixes return data**, never actions. A fix produces a `FixPlan` of write, remove, move,
+   archive, and symlink operations for Aura to preview and apply through its fix-plan kernel.
 
-A _distribution_ is the composition point: it picks branding and a build-time list of plugins and
-calls `runCli`. Everything else is a library.
+That separation makes every change previewable. A check cannot run a command, and a fix cannot
+make a network request. Fix plans use target locking, precondition checks, atomic replacement,
+backup journals, and rollback on failure.
 
 ## Development
 
-Requires Node.js 24 (see `.nvmrc`) and pnpm. Building the standalone executable also requires the
-Bun version pinned in `.bun-version`.
+Building the standalone executable requires the Bun version pinned in `.bun-version`; the rest of
+the repository uses Node.js 24 and pnpm.
 
 ```sh
 pnpm install
@@ -111,36 +148,33 @@ pnpm verify
 pnpm verify:binary
 ```
 
-`verify` covers typecheck, build, lint, format check, knip, fallow, and tests. The individual
-scripts are also available — `pnpm typecheck`, `pnpm build`, `pnpm lint`, `pnpm format` (`oxfmt`),
-`pnpm knip`, `pnpm fallow`, `pnpm test`. `pnpm verify:binary` compiles the current-platform
-executable and runs the seed-backed smoke suite against it; it is separate because it is the one
-step that needs Bun. PR CI runs `verify`; the release workflow runs `verify:binary` on every
-platform it ships to.
+`verify` runs typecheck, build, lint, format check, knip, fallow, and tests. The individual scripts
+are also available: `pnpm typecheck`, `pnpm build`, `pnpm lint`, `pnpm format`, `pnpm knip`,
+`pnpm fallow`, and `pnpm test`. `verify:binary` compiles the current-platform executable and runs
+the seed-backed smoke suite; it is separate because it requires Bun. Pull-request CI runs
+`verify`, while tagged releases run the binary suite on macOS and Linux for arm64 and x64.
 
-### A note on the compiled executable
+### Compiled executable trust boundary
 
-Setting `BUN_BE_BUN=1` in the environment of a compiled Bun executable makes it behave as the Bun
-CLI rather than as the program it was built from, which means anyone who can set environment
-variables on an `aura` invocation can run arbitrary code through it. Compilation disables the
-`.env` and `bunfig.toml` autoloading that would let a checked-in file reach that switch, but the
-ambient variable is read before any Aura code runs and Bun offers no way to compile it out. Treat
-the executable as trusted only as far as its environment is: do not rely on it as a boundary in a
-context where an untrusted party controls the environment. `binary.smoke.ts` pins the behaviour so
-that a future Bun release offering an opt-out is noticed.
+Setting `BUN_BE_BUN=1` in a compiled Bun executable's environment makes it behave as the Bun CLI
+rather than the program it was built from. Compilation disables `.env` and `bunfig.toml`
+autoloading, but Bun reads the ambient variable before Aura starts. Treat the executable as trusted
+only as far as its environment; do not use it as a security boundary when an untrusted party can
+set environment variables. The binary smoke suite pins this behavior so a future Bun opt-out is
+noticed.
 
 ## Writing a plugin
 
-Everything Aura does ships as a plugin: adapters, checks, snippets, skills, skill sources, MCP
-catalog entries, and presets are all contribution slots on `definePlugin`. Start with the
-[SDK README](packages/sdk/README.md), which covers the API surface, the content-reference rules,
-and the model invariants a plugin has to respect.
+Everything Aura does ships as a plugin. Adapters, checks, snippets, skills, skill sources, MCP
+catalog entries, and presets are contribution slots on `definePlugin`. Start with the
+[SDK README](packages/sdk/README.md), which covers the API, content-reference rules, and model
+invariants.
 
 > **Plugins are not sandboxed.** A plugin runs with the full privileges of the Aura process.
 > `Adapter.detect` and skill sources receive an `Environment` and can execute commands. Install
-> plugins with the same care you apply to any other dependency. The declarative shapes in the SDK
-> exist for previewability, not isolation — see the
-> [trust model](packages/sdk/README.md#trust-model) for what Aura does enforce.
+> plugins with the same care you apply to any other dependency. The declarative SDK shapes exist
+> for previewability, not isolation; see the
+> [trust model](packages/sdk/README.md#trust-model) for the guarantees Aura does enforce.
 
 ## License
 
