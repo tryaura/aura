@@ -1,5 +1,11 @@
 import { SETUP_ABORTED, SETUP_BACK } from "./types.js";
-import type { WizardAnswers, WizardIo, WizardQuestion } from "./wizard-types.js";
+import type {
+  WizardAnswers,
+  WizardFlowContext,
+  WizardFlowStep,
+  WizardIo,
+  WizardQuestion,
+} from "./wizard-types.js";
 
 /**
  * One form of a step's internal sequence.
@@ -10,11 +16,21 @@ import type { WizardAnswers, WizardIo, WizardQuestion } from "./wizard-types.js"
  */
 export interface ChainStage<S> {
   readonly apply: (state: S, answers: WizardAnswers) => S;
+  /** Shorter sub-row label used when the full labels would overflow the terminal. */
+  readonly compactLabel?: string | undefined;
+  /** Sub-row tab for this stage when it is not the live form. */
+  readonly label: string;
   readonly questions: (state: S) => readonly WizardQuestion[] | undefined;
 }
 
 /** Which end of the chain a run opens on; "end" is how ← re-enters an already-answered step. */
-export type ChainEntry = "end" | "start";
+type ChainEntry = "end" | "start";
+
+export interface ChainOptions {
+  readonly entry?: ChainEntry | undefined;
+  /** The step's base flow; when set, every ask carries it plus this chain's `sub` progress. */
+  readonly flow?: WizardFlowContext | undefined;
+}
 
 /**
  * Runs a step's forms in order with ← navigation between them.
@@ -33,14 +49,14 @@ export async function runFormChain<S>(
   stages: readonly ChainStage<S>[],
   initial: S,
   io: WizardIo,
-  entry: ChainEntry = "start",
+  options: ChainOptions = {},
 ): Promise<S | typeof SETUP_ABORTED | typeof SETUP_BACK> {
   const history: { index: number; state: S }[] = [];
   const remembered = new Map<string, readonly string[]>();
   let state = initial;
   let index = 0;
 
-  if (entry === "end") {
+  if (options.entry === "end") {
     const asked = stages.flatMap((stage, position) => {
       const questions = stage.questions(state);
       return questions === undefined || questions.length === 0 ? [] : [position];
@@ -62,7 +78,10 @@ export async function runFormChain<S>(
       continue;
     }
 
-    const result = await io.ask(questions.map((question) => reseed(question, remembered)));
+    const result = await io.ask(
+      questions.map((question) => reseed(question, remembered)),
+      askFlow(options.flow, stages, history, state, index),
+    );
     if (result === "aborted") {
       return SETUP_ABORTED;
     }
@@ -82,6 +101,42 @@ export async function runFormChain<S>(
     index += 1;
   }
   return state;
+}
+
+/**
+ * The base flow plus this chain's live `sub` progress, recomputed for every ask.
+ *
+ * Derived fresh from the history and state, so back-rewinds and enter-at-end need no bookkeeping:
+ * stages already asked render `✔`, later stages appear only once the current state gives them
+ * questions — the honest map of what exists right now.
+ */
+function askFlow<S>(
+  flow: WizardFlowContext | undefined,
+  stages: readonly ChainStage<S>[],
+  history: readonly { readonly index: number }[],
+  state: S,
+  index: number,
+): WizardFlowContext | undefined {
+  if (flow === undefined) {
+    return undefined;
+  }
+  return {
+    ...flow,
+    sub: {
+      completed: history.flatMap(({ index: position }) => {
+        const stage = stages[position];
+        return stage === undefined ? [] : [toStageStep(stage)];
+      }),
+      upcoming: stages
+        .slice(index + 1)
+        .filter((stage) => (stage.questions(state)?.length ?? 0) > 0)
+        .map(toStageStep),
+    },
+  };
+}
+
+function toStageStep<S>(stage: ChainStage<S>): WizardFlowStep {
+  return { compactLabel: stage.compactLabel, label: stage.label };
 }
 
 function remember(remembered: Map<string, readonly string[]>, answers: WizardAnswers): void {

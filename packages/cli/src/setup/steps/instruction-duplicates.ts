@@ -35,19 +35,21 @@ export function duplicateQuestions(
   sources: readonly InstructionSource[],
   winners: Readonly<Record<string, string>>,
 ): readonly WizardQuestion[] {
-  return relevant.filter((cluster) => !cluster.identical).map((cluster, index) => ({
-    compactLabel: `Dup ${String(index + 1)}`,
-    id: `${scope}-duplicate-${String(index)}`,
-    initial: initialWinner(cluster, winners),
-    kind: "select",
-    label: `Duplicate ${String(index + 1)}`,
-    options: cluster.members.map((member) => ({
-      description: excerpt(sources, member.path, member.startLine, member.endLine),
-      label: `${basename(member.path)}:${String(member.startLine)}-${String(member.endLine)}`,
-      value: member.id,
-    })),
-    prompt: `These paragraphs are at least ${String(cluster.similarity)}% similar. Which version should Aura keep?`,
-  }));
+  return relevant
+    .filter((cluster) => !cluster.identical)
+    .map((cluster, index) => ({
+      compactLabel: `Dup ${String(index + 1)}`,
+      id: `${scope}-duplicate-${String(index)}`,
+      initial: initialWinner(cluster, winners),
+      kind: "select",
+      label: `Duplicate ${String(index + 1)}`,
+      options: cluster.members.map((member) => ({
+        description: excerpt(sources, member.path, member.startLine, member.endLine),
+        label: `${basename(member.path)}:${String(member.startLine)}-${String(member.endLine)}`,
+        value: member.id,
+      })),
+      prompt: `These paragraphs are at least ${String(cluster.similarity)}% similar. Which version should Aura keep?`,
+    }));
 }
 
 export function parseDuplicateWinners(

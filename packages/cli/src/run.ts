@@ -126,9 +126,11 @@ function resolveValue<T>(value: T | undefined, fallback: () => T): T {
 
 /** First tokens of every registered command path, kept next to `createCli`'s registrations. */
 const KNOWN_COMMANDS: ReadonlySet<string> = new Set(
-  [...(CheckCommand.paths ?? []), ...(SetupCommand.paths ?? []), ...(UndoCommand.paths ?? [])].flatMap(
-    (path) => (path[0] === undefined ? [] : [path[0]]),
-  ),
+  [
+    ...(CheckCommand.paths ?? []),
+    ...(SetupCommand.paths ?? []),
+    ...(UndoCommand.paths ?? []),
+  ].flatMap((path) => (path[0] === undefined ? [] : [path[0]])),
 );
 
 /**

@@ -60,6 +60,7 @@ Every command returns one of these; `runCli` normalizes anything else to 2.
 | `☑`   | A checked multiselect option                     |
 | `❯`   | Cursor row inside a question body                |
 | `│`   | Tab separator                                    |
+| `└`   | Sub-row connector under the active step          |
 | `·`   | Separator inside hint lines and footers          |
 
 Plain ASCII/Unicode only — no spinner frames, no emoji.
@@ -73,16 +74,41 @@ glance how many steps exist, which are done, and where they are.
 
 ### Anatomy
 
-One line, steps separated by `│`:
+One or two lines. The **top row** is a static map of the flow's real steps, separated by `│`,
+always in flow order, ending in **Submit**:
 
 ```
- ▶ Applications ☐ │ Instructions ☐ │ Snippets ☐ │ Baseline ☐ │ Submit
+ ✔ Applications │ ▶ Instructions ☐ │ Snippets ☐ │ Baseline ☐ │ Submit
 ```
 
-- Active step: `▶ ` prefix (plus inverse where the terminal supports it). Never a box around the
+The top row never mutates as a step's internal forms advance: the active step keeps its own name
+(`▶ Instructions ☐`) for as long as any of its forms is live.
+
+When the active step runs a sequence of internal forms (a chain step like Instructions), a
+**sub-row** prefixed with `└` maps that step's internal progress around the live form:
+
+```
+ └ ✔ Global │ ▶ Sources ☐ │ Duplicates ☐ │ Archive ☐
+```
+
+- The live form's questions appear individually (`▶ Duplicate 2 ☐`); a completed or upcoming
+  stage collapses to its stage label (`Duplicates`).
+- The sub-row has no Submit of its own; its inactive tabs render dimmed where the terminal
+  supports it — on monochrome the `└` prefix alone carries the hierarchy.
+- The sub-row is an honest map: a conditional stage appears the moment its precondition holds and
+  disappears when it stops holding. A stage behind the live form shows `☐` even when a
+  remembered answer will re-seed it.
+- Both instruction scopes flow through one sub-row; the `Global` / `Project` action tabs double
+  as scope section markers, so repeated stage names read unambiguously left to right:
+  `✔ Global │ ✔ Sources │ ✔ Archive │ ▶ Project ☐ │ Sources ☐`.
+- A step whose single form is named like the step shows no sub-row.
+
+Tab states, in either row:
+
+- Active tab: `▶ ` prefix (plus inverse where the terminal supports it). Never a box around the
   active tab.
-- Pending step: trailing `☐`.
-- Completed step: leading `✔`, no checkbox (`✔ Applications`).
+- Pending: trailing `☐`.
+- Completed: leading `✔`, no checkbox (`✔ Applications`).
 - Submit: label only — no `☐`/`✔`. It is an action, not a step. When active it gets the same
   `▶ ` prefix; while locked it renders dimmed.
 
@@ -116,8 +142,9 @@ never reintroduce scrolling and never truncate with `…`:
 2. Glyph-only for non-active tabs (`✔ │ ✔ │ ▶ Snippets ☐ │ ☐ │ Submit`) — the active tab always
    keeps its label, and Submit keeps its label.
 
-The full step name is always repeated in the question heading below the bar, so compact tabs lose
-no information.
+Each row degrades independently; the sub-row's active question keeps its label just as the top
+row's active step does. The full step name is always repeated in the question heading below the
+bar, so compact tabs lose no information.
 
 ### General
 
@@ -130,20 +157,21 @@ no information.
 
 ### Implementation status
 
-The bar maps the whole flow: the orchestrator threads a `WizardFlowContext` (completed steps,
-upcoming steps) into every form a step opens, so during any question the bar reads e.g.
-`✔ Applications │ ▶ Sources ☐ │ Snippets ☐ │ Baseline ☐ │ Submit` — the live form's questions
-stand in for their step, inserted at its flow position, which is also how conditional sub-steps
-(`Global`, `Sources`, `Duplicate 1`) surface. The final "Apply this plan?" confirmation is the
-flow's Submit: it renders as `✔ …every step… │ ▶ Submit`. Anatomy, glyphs, Submit locking, width
-degradation, and back navigation are implemented in `wizard-render.ts` / `wizard-form.ts` /
-`wizard-chain.ts` / `setup.ts`: a form resolving `"back"` rewinds the step's internal chain, a
-step resolving `SETUP_BACK` re-runs the previous step seeded from this run's selections, and the
-confirmation's back re-runs the last step before re-planning.
+The bar maps the whole flow in two rows: the orchestrator threads a `WizardFlowContext`
+(completed steps, the active `step`, upcoming steps) into every form a step opens (`gather.ts`),
+and `runFormChain` adds the live `sub` progress per ask (`wizard-chain.ts`), so the top row stays
+static while the sub-row tracks the step's internal forms. The final "Apply this plan?"
+confirmation is the flow's Submit: its flow carries no `step`, so it renders through the
+single-row path as `✔ …every step… │ ▶ Submit`. Anatomy, glyphs, Submit locking, width
+degradation, and back navigation are implemented in `wizard-render.ts` / `wizard-tabs.ts` /
+`wizard-form.ts` / `wizard-chain.ts` / `setup.ts`: a form resolving `"back"` rewinds the step's
+internal chain, a step resolving `SETUP_BACK` re-runs the previous step seeded from this run's
+selections, and the confirmation's back re-runs the last step before re-planning.
 
 Frames are also windowed to the terminal: a question body taller than the viewport is clipped
-around the cursor with dim `↑/↓ N more` markers, because the engine repaints by cursor-up erasure
-and an overflowing frame would leak rows into the scrollback.
+around the cursor with dim `↑/↓ N more` markers (capacity is the viewport minus four chrome rows
+minus one per bar line), because the engine repaints by cursor-up erasure and an overflowing
+frame would leak rows into the scrollback.
 
 One refinement remains open: a _multi-question_ form reopened via back lands on its first
 question tab (← from Archive opens the duplicates form on Duplicate 1, not Duplicate 4).

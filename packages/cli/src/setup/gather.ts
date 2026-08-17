@@ -47,11 +47,13 @@ export async function gatherSelections(
     }
     const flow: WizardFlowContext = {
       completed: flowSteps.slice(0, index),
+      step: toFlowStep(step),
       upcoming: flowSteps.slice(index + 1),
     };
     const stepContext: SetupStepContext = {
       ...context,
       enteredBackward,
+      flow,
       revisited: visited.has(step.id),
       selections,
     };

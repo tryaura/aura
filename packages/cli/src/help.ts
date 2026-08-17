@@ -32,6 +32,7 @@ export function renderRootHelp(branding: CliBranding): string {
         rows: [
           { term: `${bin} check`, text: "Inspect the current AI agent setup" },
           { term: `${bin} check --fix`, text: "Preview fixes and apply them after confirming" },
+          { term: `${bin} undo`, text: "Restore the most recent Aura backup" },
         ],
         title: "Everyday use",
       },
@@ -134,6 +135,7 @@ export function renderUnknownCommand(branding: CliBranding, input: string): stri
         rows: [
           { term: `${bin} setup`, text: "Set up this machine interactively and converge it" },
           { term: `${bin} check`, text: "Inspect the current AI agent setup" },
+          { term: `${bin} undo`, text: "Restore the most recent Aura backup" },
         ],
         title: "Commands",
       },

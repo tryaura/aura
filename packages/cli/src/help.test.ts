@@ -15,6 +15,7 @@ describe("help screens", () => {
         Everyday use
           acme check               Inspect the current AI agent setup
           acme check --fix         Preview fixes and apply them after confirming
+          acme undo                Restore the most recent Aura backup
 
         Help
           acme <command> --help    Full flag reference for a command
@@ -91,6 +92,7 @@ describe("help screens", () => {
         Commands
           acme setup    Set up this machine interactively and converge it
           acme check    Inspect the current AI agent setup
+          acme undo     Restore the most recent Aura backup
 
         Run 'acme --help' for more
       "

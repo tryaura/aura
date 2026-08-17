@@ -137,8 +137,8 @@ describe("runSetup", () => {
     await runSetup(fixture.request({}, { io, steps }));
 
     expect(flows).toEqual([
-      { completed: [], upcoming: [{ label: "second" }] },
-      { completed: [{ label: "first" }], upcoming: [] },
+      { completed: [], step: { label: "first" }, upcoming: [{ label: "second" }] },
+      { completed: [{ label: "first" }], step: { label: "second" }, upcoming: [] },
     ]);
   });
 

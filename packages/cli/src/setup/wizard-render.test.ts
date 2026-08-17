@@ -207,6 +207,96 @@ describe("renderWizardFrame", () => {
     expect(rendered).toContain("❯ 12. ☐ Snippet 12");
   });
 
+  it("keeps the step row static and maps chain progress in a └ sub-row", () => {
+    const sources: WizardQuestion = { ...MCP_QUESTION, label: "Sources" };
+    const frame: WizardFrame = {
+      activeTab: 0,
+      cursorRow: 0,
+      flow: {
+        completed: [{ label: "Applications" }],
+        step: { compactLabel: "Instr", label: "Instructions" },
+        sub: { completed: [{ label: "Global" }], upcoming: [{ label: "Archive" }] },
+        upcoming: [{ label: "Snippets" }, { compactLabel: "Base", label: "Baseline" }],
+      },
+      questions: [view(sources)],
+    };
+
+    const rows = renderWizardFrame(frame, 0).split("\n");
+    expect(rows[0]).toBe(" ✔ Applications │ ▶ Instructions ☐ │ Snippets ☐ │ Baseline ☐ │ Submit");
+    expect(rows[1]).toBe(" └ ✔ Global │ ▶ Sources ☐ │ Archive ☐");
+    expect(rows[2]).toBe("");
+  });
+
+  it("shows no sub-row when the lone question is the step itself", () => {
+    const apps: WizardQuestion = { ...MCP_QUESTION, label: "Applications" };
+    const frame: WizardFrame = {
+      activeTab: 0,
+      cursorRow: 0,
+      flow: {
+        completed: [],
+        step: { label: "Applications" },
+        upcoming: [{ label: "Snippets" }],
+      },
+      questions: [view(apps)],
+    };
+
+    const rows = renderWizardFrame(frame, 0).split("\n");
+    expect(rows[0]).toBe(" ▶ Applications ☐ │ Snippets ☐ │ Submit");
+    expect(rows[1]).toBe("");
+  });
+
+  it("degrades each bar row independently when the terminal narrows", () => {
+    const sources: WizardQuestion = { ...MCP_QUESTION, label: "Sources" };
+    const frame: WizardFrame = {
+      activeTab: 0,
+      cursorRow: 0,
+      flow: {
+        completed: [{ label: "Applications", compactLabel: "Apps" }],
+        step: { compactLabel: "Instr", label: "Instructions" },
+        sub: { completed: [{ label: "Global" }], upcoming: [{ label: "Archive" }] },
+        upcoming: [{ compactLabel: "Base", label: "Baseline" }],
+      },
+      questions: [view(sources)],
+    };
+
+    const rows = renderWizardFrame(frame, 0, { columns: 40, rows: 24 }).split("\n");
+    expect(rows[0]).toBe(" ✔ Apps │ ▶ Instr ☐ │ Base ☐ │ Submit");
+    expect(rows[1]).toBe(" └ ✔ Global │ ▶ Sources ☐ │ Archive ☐");
+
+    const glyphRows = renderWizardFrame(frame, 0, { columns: 30, rows: 24 }).split("\n");
+    expect(glyphRows[0]).toBe(" ✔ │ ▶ Instructions ☐ │ ☐ │ Submit");
+    expect(glyphRows[1]).toBe(" └ ✔ │ ▶ Sources ☐ │ ☐");
+  });
+
+  it("charges the sub-row against the body window so tall frames still fit", () => {
+    const tall: WizardQuestion = {
+      id: "snippets",
+      kind: "multiselect",
+      label: "Sources",
+      options: Array.from({ length: 12 }, (_, index) => ({
+        description: `Description ${String(index + 1)}.`,
+        label: `Snippet ${String(index + 1)}`,
+        value: `snippet-${String(index + 1)}`,
+      })),
+      prompt: "Choose snippets",
+    };
+    const frame: WizardFrame = {
+      activeTab: 0,
+      cursorRow: 11,
+      flow: {
+        completed: [],
+        step: { label: "Instructions" },
+        sub: { completed: [{ label: "Global" }], upcoming: [] },
+        upcoming: [],
+      },
+      questions: [view(tall)],
+    };
+
+    const rendered = renderWizardFrame(frame, 0, { columns: 80, rows: 14 });
+    expect(rendered.split("\n").length - 1).toBeLessThanOrEqual(14 - 1);
+    expect(rendered).toContain("❯ 12. ☐ Snippet 12");
+  });
+
   it("degrades the tab bar to compact labels, then glyphs, before ever truncating", () => {
     const long: WizardQuestion = {
       ...APPS_QUESTION,

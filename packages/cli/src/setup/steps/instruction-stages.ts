@@ -53,6 +53,7 @@ export function scopeStages(input: ScopeInput): readonly ChainStage<ChainState>[
 
   return [
     {
+      label: input.scope === "global" ? "Global" : "Project",
       apply: (state, answers) =>
         update(state, { action: selectedValues(answers[actionId])[0] ?? fallback }),
       questions: (state) =>
@@ -70,6 +71,7 @@ export function scopeStages(input: ScopeInput): readonly ChainStage<ChainState>[
             ],
     },
     {
+      label: "Sources",
       apply: (state, answers) =>
         update(state, { selectedSources: selectedValues(answers[sourcesId]) }),
       questions: (state) =>
@@ -91,6 +93,8 @@ export function scopeStages(input: ScopeInput): readonly ChainStage<ChainState>[
           : undefined,
     },
     {
+      compactLabel: "Dups",
+      label: "Duplicates",
       apply: (state, answers) =>
         update(state, {
           duplicateWinners: parseDuplicateWinners(
@@ -117,6 +121,7 @@ export function scopeStages(input: ScopeInput): readonly ChainStage<ChainState>[
       },
     },
     {
+      label: "Archive",
       apply: (state, answers) =>
         update(state, {
           archiveOriginals: selectedValues(answers[archiveId]).includes("archive"),

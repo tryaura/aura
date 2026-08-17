@@ -64,17 +64,29 @@ export interface WizardFlowStep {
   readonly label: string;
 }
 
+/** The active step's internal chain progress, rendered as an indented sub-row under the bar. */
+interface WizardFlowSubContext {
+  readonly completed: readonly WizardFlowStep[];
+  readonly upcoming: readonly WizardFlowStep[];
+}
+
 /**
  * Where one form sits in the wizard's overall flow.
  *
- * The tab bar must map the whole flow, not just the live form (docs/cli-ux.md): steps already
- * gathered render as `✔`, steps still to come render pending, and the live form's questions stand
- * in for the step they belong to, inserted at its flow position. A form given a flow has no
- * review tab of its own — the trailing Submit in the bar belongs to the flow, and answering the
- * form's last question resolves it.
+ * The tab bar must map the whole flow, not just the live form (docs/cli-ux.md). With `step` set,
+ * the top row is a static map of the real steps — completed `✔`, the active step `▶`, the rest
+ * pending — and the live form's questions render only in the `└` sub-row, framed by `sub`'s
+ * chain progress. With `step` absent, the questions splice into the top row at the flow position,
+ * which is also how the Submit confirmation's question stands in for the Submit tab. A form given
+ * a flow has no review tab of its own — the trailing Submit belongs to the flow, and answering
+ * the form's last question resolves it.
  */
 export interface WizardFlowContext {
   readonly completed: readonly WizardFlowStep[];
+  /** The active step's own tab; absent on the final Submit confirmation and on legacy forms. */
+  readonly step?: WizardFlowStep | undefined;
+  /** Chain progress around the live form's questions; presence alone does not force a sub-row. */
+  readonly sub?: WizardFlowSubContext | undefined;
   /**
    * This form is the flow's final Submit action: its tab renders label-only, like the Submit tab
    * it stands in for, and no extra Submit is appended after the upcoming steps.

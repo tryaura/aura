@@ -15,7 +15,7 @@ export function renderConvergedSetup(
 ): void {
   output.write("\n");
   if (preview.manualSteps.length === 0 && notices.length === 0) {
-    output.write("Already converged — nothing to change.\n\n");
+    output.write("Already converged — nothing to do.\n\n");
     return;
   }
   renderSetupSummary(preview, [], notices, withDetail, output);

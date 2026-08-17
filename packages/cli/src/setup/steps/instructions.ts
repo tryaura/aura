@@ -46,12 +46,10 @@ export const instructionsStep: SetupStep = {
     }
 
     const stages = [...scopeStages(global), ...(project === undefined ? [] : scopeStages(project))];
-    const result = await runFormChain(
-      stages,
-      initialState(context),
-      io,
-      context.enteredBackward === true ? "end" : "start",
-    );
+    const result = await runFormChain(stages, initialState(context), io, {
+      entry: context.enteredBackward === true ? "end" : "start",
+      flow: context.flow,
+    });
     if (result === SETUP_ABORTED || result === SETUP_BACK) {
       return result;
     }

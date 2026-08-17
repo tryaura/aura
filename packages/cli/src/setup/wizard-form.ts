@@ -109,7 +109,9 @@ export function createFormSession(
   };
 
   /** Whether ← past the first tab has somewhere to go: an earlier form of the same flow. */
-  const canGoBack = flow !== undefined && (flow.completed.length > 0 || flow.submit === true);
+  const canGoBack =
+    flow !== undefined &&
+    (flow.completed.length > 0 || flow.submit === true || (flow.sub?.completed.length ?? 0) > 0);
 
   /** Moves tab focus by one step, stopping at the bar's ends instead of wrapping. */
   const moveTab = (delta: number): boolean => {

@@ -44,8 +44,8 @@ export const DEFAULT_WIZARD_VIEWPORT: WizardViewport = Object.freeze({ columns: 
 /** Title, two blank lines, the hint, and a row of headroom for the cursor. */
 const PREVIEW_CHROME_ROWS = 5;
 
-/** Tab bar, two blank lines, the hint, and a row of headroom for the cursor. */
-const FRAME_CHROME_ROWS = 5;
+/** Two blank lines, the hint, and a row of headroom — plus one row per tab-bar line. */
+const FRAME_BASE_CHROME_ROWS = 4;
 
 /** Below this the wrapped body is unreadable anyway, and the arithmetic stops being useful. */
 const PREVIEW_MIN_COLUMNS = 40;
@@ -65,13 +65,14 @@ export function renderWizardFrame(
   colorDepth: number,
   viewport: WizardViewport = DEFAULT_WIZARD_VIEWPORT,
 ): string {
-  const style = createStyle(colorDepth);
+  const style = createWizardStyle(colorDepth);
   if (frame.preview !== undefined) {
     return renderPreview(frame.preview, style, viewport);
   }
   // A form inside a flow can never unlock the flow's Submit by itself: later steps still pend.
   const submitLocked = frame.flow !== undefined || frame.questions.some((view) => !view.answered);
-  const lines = [renderTabBar(frame, submitLocked, style, viewport.columns), ""];
+  const barLines = renderTabBar(frame, submitLocked, style, viewport.columns);
+  const lines = [...barLines, ""];
 
   const active = frame.questions[frame.activeTab];
   const body =
@@ -81,10 +82,26 @@ export function renderWizardFrame(
   // The engine repaints by moving the cursor up as many rows as it last printed; a frame taller
   // than the terminal scrolls the buffer and the erasure lands short, leaking rows into the
   // scrollback. The body is therefore windowed around the cursor instead of trusted to fit.
-  lines.push(...clipBody(body.lines, body.focus, viewport.rows - FRAME_CHROME_ROWS, style));
+  lines.push(
+    ...clipBody(
+      body.lines,
+      body.focus,
+      viewport.rows - FRAME_BASE_CHROME_ROWS - barLines.length,
+      style,
+    ),
+  );
 
   lines.push("", style.dim(renderHint(active?.question, submitLocked)));
   return `${lines.join("\n")}\n`;
+}
+
+/** The arrow already marks the active tab, so its styling must not add visible-width markers. */
+function createWizardStyle(colorDepth: number): Style {
+  const style = createStyle(colorDepth);
+  return {
+    ...style,
+    active: colorDepth <= 0 ? (text) => text : (text) => `\u001b[7m${text}\u001b[27m`,
+  };
 }
 
 /** Windows the body to `capacity` rows, keeping the focused row visible with `more` markers. */

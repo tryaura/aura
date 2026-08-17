@@ -2,7 +2,7 @@ import type { AuraManifestState, Finding, Scope, WorkspaceModel } from "@tryaura
 
 import type { AppCatalogEntry } from "./catalog.js";
 import type { SnippetCatalog } from "./snippets.js";
-import type { WizardIo } from "./wizard-types.js";
+import type { WizardFlowContext, WizardIo } from "./wizard-types.js";
 
 /** What the apps step decided; see `steps/apps.ts`. */
 interface AppSelections {
@@ -65,6 +65,8 @@ export interface SetupStepContext {
    * its last form, and a step with nothing to ask returns {@link SETUP_BACK} so ← keeps walking.
    */
   readonly enteredBackward?: boolean | undefined;
+  /** Where this step sits in the wizard flow; chain steps hand it to `runFormChain` for sub-tabs. */
+  readonly flow?: WizardFlowContext | undefined;
   /** True when this step already ran earlier in this run; informational banners stay quiet. */
   readonly revisited?: boolean | undefined;
   readonly findings?: readonly Finding[] | undefined;

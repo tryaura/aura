@@ -210,6 +210,47 @@ describe("interactive wizard", () => {
     });
   });
 
+  it("renders a static step row with a └ sub-row for a chain form", async () => {
+    const session = createSession();
+    const io = createInteractiveWizardIo({
+      colorDepth: 0,
+      stdin: session.stdin,
+      stdout: session.stdout,
+    });
+
+    const form = io.ask([MCP_QUESTION], {
+      completed: [{ label: "Applications" }],
+      step: { label: "Instructions" },
+      sub: { completed: [{ label: "Global" }], upcoming: [] },
+      upcoming: [{ label: "Baseline" }],
+    });
+    expect(session.output()).toContain(
+      " ✔ Applications │ ▶ Instructions ☐ │ Baseline ☐ │ Submit\n └ ✔ Global │ ▶ MCP ☐",
+    );
+    session.press("return");
+
+    await expect(form).resolves.toEqual({ mcp: { kind: "options", values: ["linear"] } });
+  });
+
+  it("honors ← when only the step's own chain has history", async () => {
+    const session = createSession();
+    const io = createInteractiveWizardIo({
+      colorDepth: 0,
+      stdin: session.stdin,
+      stdout: session.stdout,
+    });
+
+    const form = io.ask([MCP_QUESTION], {
+      completed: [],
+      step: { label: "Instructions" },
+      sub: { completed: [{ label: "Global" }], upcoming: [] },
+      upcoming: [],
+    });
+    session.press("left");
+
+    await expect(form).resolves.toBe("back");
+  });
+
   it("resolves back when ← leaves the first tab of a flow form with history", async () => {
     const session = createSession();
     const io = createInteractiveWizardIo({
