@@ -1,10 +1,15 @@
 import { existsSync } from "node:fs";
-import { lstat, readdir, readFile, readlink } from "node:fs/promises";
+import { lstat, readFile, readlink } from "node:fs/promises";
 import { join } from "node:path";
 import { Readable, Writable } from "node:stream";
 
 import { runCli, type CliRuntime } from "@tryaura/aura-cli";
-import { createSeedBuilder, type TestSeed } from "@tryaura/aura-testkit";
+import {
+  createSeedBuilder,
+  expectConvergedTwice,
+  runCheck,
+  type TestSeed,
+} from "@tryaura/aura-testkit";
 import { describe, expect, it } from "vitest";
 
 import { AURA_DISTRO } from "./distro.js";
@@ -49,15 +54,14 @@ describe("aura check --fix", () => {
     expect(first.stdout).toContain("Steps to take yourself:");
     expect(first.stdout).toContain(`${cursorPath} points at the shared source by absolute path`);
 
-    const beforeSecondRun = await snapshot(seed);
-    const second = await run(seed, ["check", "--fix", "--yes"]);
-    const afterSecondRun = await snapshot(seed);
+    const { second } = await expectConvergedTwice(seed, () =>
+      runCheck({ args: ["--fix", "--yes"], distro: AURA_DISTRO, seed }),
+    );
 
     expect(second.exitCode).toBe(0);
-    expect(second.stdout).not.toContain("Fix preview");
-    expect(second.stdout).toContain("Nothing to fix.");
-    expect(second.stdout).toContain("13 passed, 0 informational, 0 warnings, 0 errors");
-    expect(afterSecondRun).toEqual(beforeSecondRun);
+    expect(second.stderr).not.toContain("Fix preview");
+    expect(second.stderr).toContain("Nothing to fix.");
+    expect(second.report.summary).toMatchObject({ errors: 0, warnings: 0 });
   });
 
   it("shows the shape of each change without quoting file contents", async () => {
@@ -154,36 +158,4 @@ class CapturedOutput extends Writable {
     this.text += text;
     callback();
   }
-}
-
-async function snapshot(seed: TestSeed): Promise<readonly string[]> {
-  return [
-    ...(await snapshotTree(seed.homeDir, "home")),
-    ...(await snapshotTree(seed.workspaceDir, "workspace")),
-  ];
-}
-
-async function snapshotTree(root: string, label: string): Promise<readonly string[]> {
-  const snapshotEntries: string[] = [];
-
-  async function visit(directory: string, relativeDirectory: string): Promise<void> {
-    const entries = await readdir(directory, { withFileTypes: true });
-    entries.sort((left, right) => left.name.localeCompare(right.name));
-    for (const entry of entries) {
-      const path = join(directory, entry.name);
-      const relativePath = join(relativeDirectory, entry.name);
-      if (entry.isDirectory()) {
-        snapshotEntries.push(`directory:${relativePath}`);
-        await visit(path, relativePath);
-      } else if (entry.isSymbolicLink()) {
-        snapshotEntries.push(`symlink:${relativePath}:${await readlink(path)}`);
-      } else {
-        const contents = await readFile(path);
-        snapshotEntries.push(`file:${relativePath}:${contents.toString("base64")}`);
-      }
-    }
-  }
-
-  await visit(root, label);
-  return snapshotEntries;
 }

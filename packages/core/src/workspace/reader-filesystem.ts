@@ -65,7 +65,13 @@ function inspectedContents(
     return { ...metadata, exists: true, isDirectory: true };
   }
   if (stats.isFile()) {
-    return { ...metadata, exists: true, isDirectory: false, size: stats.size };
+    return {
+      ...metadata,
+      exists: true,
+      isDirectory: false,
+      mode: fileMode(stats),
+      size: stats.size,
+    };
   }
   return { ...metadata, exists: true, isDirectory: false, problem: "unsupported" };
 }
@@ -143,18 +149,24 @@ function resolvedMetadata(
   pathKind: AdapterPathKind,
   symlinkTarget?: string,
   options?: FileReadOptions,
-): Pick<PathContents, "pathKind" | "size" | "symlinkTarget"> {
+): Pick<PathContents, "mode" | "pathKind" | "size" | "symlinkTarget"> {
   return {
+    ...(stats.isFile() ? { mode: fileMode(stats) } : {}),
     pathKind,
     ...(options?.maxBytes === undefined || !stats.isFile() ? {} : { size: stats.size }),
     ...(symlinkTarget === undefined ? {} : { symlinkTarget }),
   };
 }
 
+/** Permission bits only: the type bits say what `pathKind` already carries. */
+function fileMode(stats: Stats): number {
+  return stats.mode & 0o777;
+}
+
 async function readRegularFile(
   path: string,
   stats: Stats,
-  metadata: Pick<PathContents, "pathKind" | "size" | "symlinkTarget">,
+  metadata: Pick<PathContents, "mode" | "pathKind" | "size" | "symlinkTarget">,
   options?: FileReadOptions,
 ): Promise<PathContents> {
   const maxBytes = options?.maxBytes;

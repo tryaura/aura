@@ -18,6 +18,15 @@ export interface PathContents {
   readonly exists: boolean;
   /** Whether the path is a directory. */
   readonly isDirectory: boolean;
+  /**
+   * Permission bits of a regular file, absent for everything else.
+   *
+   * Core holds its own protocol files at a fixed mode, so a planner that decides whether to rewrite
+   * one has to be able to see the mode it currently has. Deliberately not forwarded to adapters:
+   * `toStatus` whitelists what {@link AdapterFileStatus} carries, and a plugin has no business
+   * reading permission bits off a path it merely declared.
+   */
+  readonly mode?: number | undefined;
   /** Kind of the final path entry without following a symbolic link. */
   readonly pathKind?: AdapterPathKind | undefined;
   /** Why no contents were captured, when the reason was something other than absence. */

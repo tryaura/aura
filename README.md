@@ -63,6 +63,20 @@ aura setup --yes
 aura setup --detail
 ```
 
+After the full setup has created the shared instruction file, reopen only the snippet picker with:
+
+```sh
+aura setup --add snippet
+```
+
+The shortcut still previews and applies one atomic plan and finishes by running the checks. It
+skips application selection, instruction consolidation, and baseline questions. An unchanged run
+prints `Already converged — nothing to do.` and does not rewrite the manifest or create a backup.
+
+An unchanged run is the one exception away from being a no-op: the manifest records which
+applications Aura manages, so it is held at mode `600`, and any run rewrites it when its
+permissions have been widened even if its contents already match.
+
 Successful writes receive a backup ID and failed applications are rolled back when possible. A
 user-facing command to restore a successful run from its backup has not been added yet. Stopping
 management of an application updates the manifest but deliberately leaves its existing agent

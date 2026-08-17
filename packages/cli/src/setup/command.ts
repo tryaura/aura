@@ -14,7 +14,10 @@ import {
 } from "../command-support.js";
 import type { AuraCliContext } from "../commands.js";
 import type { CliExitCode } from "../types.js";
+import { safe } from "../render.js";
 import { runSetup } from "./setup.js";
+import { selectSetupSteps, setupAddKinds } from "./steps/index.js";
+import type { SetupStep } from "./types.js";
 import { createInteractiveWizardIo } from "./wizard-prompt.js";
 import { createDefaultsWizardIo } from "./wizard-scripted.js";
 
@@ -29,9 +32,13 @@ export class SetupCommand extends Command<AuraCliContext> {
       ["Accept every proposed default without being asked", "$0 setup --yes"],
       ["See what setup would change, without writing", "$0 setup --dry-run"],
       ["Include the full diff of every change", "$0 setup --detail"],
+      ["Open only the snippet picker", "$0 setup --add snippet"],
     ],
   });
 
+  add = Option.String("--add", {
+    description: `Run one registered setup addition. Kinds: ${setupAddKinds().join(", ")}.`,
+  });
   detail = Option.Boolean("--detail", false, {
     description: "Include the full diff of every planned change. May contain file contents.",
   });
@@ -47,9 +54,9 @@ export class SetupCommand extends Command<AuraCliContext> {
 
   // fallow-ignore-next-line unused-class-member -- Clipanion invokes registered command handlers.
   async execute(): Promise<CliExitCode> {
-    const rejection = this.rejectInvalidOptions();
-    if (rejection !== undefined) {
-      return writeOptionRejection(this.context, rejection);
+    const options = this.resolveOptions();
+    if (options.status === "rejected") {
+      return writeOptionRejection(this.context, options.reason);
     }
 
     const interactive =
@@ -81,6 +88,7 @@ export class SetupCommand extends Command<AuraCliContext> {
         registry: this.context.registry,
         stateHomeDir: this.context.defaultHomeDir,
         stderr: this.context.stderr,
+        steps: options.steps,
         stdout: this.context.stdout,
         withDetail: this.detail,
       });
@@ -96,10 +104,27 @@ export class SetupCommand extends Command<AuraCliContext> {
   }
 
   /** The first reason, if any, that this command line cannot mean what the user intended. */
-  private rejectInvalidOptions(): string | undefined {
-    if (this.dryRun && this.yes) {
-      return "--dry-run and --yes contradict each other: one stops at the plan, the other applies without asking.";
+  private resolveOptions():
+    | { readonly reason: string; readonly status: "rejected" }
+    | { readonly status: "ready"; readonly steps: readonly SetupStep[] } {
+    const selected = selectSetupSteps(this.add);
+    if (selected.status === "invalid") {
+      const valid = selected.validKinds.length === 0 ? "none" : selected.validKinds.join(", ");
+      return {
+        // `safe`, because the rejected kind is text Aura did not write: an escape sequence in argv
+        // reaching the terminal can repaint this line into something that reads like success.
+        reason: `unknown --add kind: ${safe(selected.kind)}. Valid kinds: ${valid}.`,
+        status: "rejected",
+      };
     }
-    return rejectInvalidPathOptions(this.home, this.pathValue);
+    if (this.dryRun && this.yes) {
+      return {
+        reason:
+          "--dry-run and --yes contradict each other: one stops at the plan, the other applies without asking.",
+        status: "rejected",
+      };
+    }
+    const pathRejection = rejectInvalidPathOptions(this.home, this.pathValue);
+    return pathRejection === undefined ? selected : { reason: pathRejection, status: "rejected" };
   }
 }

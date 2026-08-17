@@ -96,6 +96,14 @@ export type AuraManifestState =
     }
   | {
       readonly exists: true;
+      /**
+       * Permission bits the file currently carries, absent when they could not be observed.
+       *
+       * Core pins this file to {@link AURA_MANIFEST_FILE_MODE} on every write, so a planner that
+       * skips a write because the parsed value already matches has to check this too — otherwise a
+       * manifest someone chmodded stays that way forever.
+       */
+      readonly mode?: number | undefined;
       readonly path: string;
       readonly status: "ready";
       readonly value: AuraManifest;

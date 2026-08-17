@@ -1,4 +1,4 @@
-import { basename, resolve } from "node:path";
+import { basename } from "node:path";
 
 import type { Scope } from "@tryaura/aura-sdk";
 
@@ -6,16 +6,12 @@ import {
   describeInstructionSource,
   duplicateClusters,
   instructionInventory,
+  instructionTargetContent,
   instructionTargets,
   type DuplicateCluster,
   type InstructionSource,
 } from "../instructions.js";
-import {
-  SETUP_ABORTED,
-  type InstructionScopeSelection,
-  type SetupStep,
-  type SetupStepContext,
-} from "../types.js";
+import { SETUP_ABORTED, type InstructionScopeSelection, type SetupStep } from "../types.js";
 import {
   selectedValues,
   type WizardIo,
@@ -37,7 +33,7 @@ export const instructionsStep: SetupStep = {
       io,
       scope: "global",
       sources: inventory.filter((source) => source.scope === "global"),
-      targetContentValue: targetContent(context, targets.global),
+      targetContentValue: instructionTargetContent(context.model, "global", targets.global),
       targetPath: targets.global,
     });
     if (global === SETUP_ABORTED) {
@@ -45,7 +41,7 @@ export const instructionsStep: SetupStep = {
     }
 
     const projectSources = inventory.filter((source) => source.scope === "project");
-    const projectContent = targetContent(context, targets.project);
+    const projectContent = instructionTargetContent(context.model, "project", targets.project);
     const project =
       projectSources.length === 0 && projectContent === undefined
         ? undefined
@@ -68,6 +64,7 @@ export const instructionsStep: SetupStep = {
     };
   },
   id: "instructions",
+  needsFindings: true,
   title: "Instructions",
 };
 
@@ -228,14 +225,6 @@ function inactiveSelection(
     selectedSources: [],
     targetPath: input.targetPath,
   };
-}
-
-function targetContent(context: SetupStepContext, path: string): string | undefined {
-  if (resolve(path) === resolve(context.model.sharedInstructions.path)) {
-    return context.model.sharedInstructions.content;
-  }
-  return context.model.instructionFiles.find((document) => resolve(document.path) === resolve(path))
-    ?.content;
 }
 
 function describeSources(sources: readonly InstructionSource[]): string {
