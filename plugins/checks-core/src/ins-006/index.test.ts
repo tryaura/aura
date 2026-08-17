@@ -3,7 +3,7 @@ import { runChecks } from "@tryaura/core";
 import { describe, expect, it } from "vitest";
 
 import checksCore from "../index.js";
-import { app, model } from "../testing.js";
+import { app, gitignore, model, projectModel } from "../testing.js";
 import { instructionLinkIntegrityCheck } from "./index.js";
 
 describe("INS-006", () => {
@@ -157,6 +157,24 @@ describe("INS-006", () => {
     expect(findings).toMatchObject([{ metadata: { failure: "missing" }, severity: "error" }]);
   });
 
+  it("uses project-relative prose while preserving absolute structured paths", () => {
+    const source = document("/repo/AGENTS.md", "/repo/rules/gone.md", false);
+    const findings = runChecks(
+      [instructionLinkIntegrityCheck],
+      projectModel(gitignore(""), { instructionFiles: [source] }),
+    ).findings;
+
+    expect(findings).toMatchObject([
+      {
+        details:
+          "Create rules/gone.md, correct the reference in AGENTS.md, or remove the reference.",
+        locations: [{ path: "/repo/AGENTS.md" }],
+        message: "AGENTS.md links to missing file rules/gone.md.",
+        metadata: { sourcePath: "/repo/AGENTS.md", targetPath: "/repo/rules/gone.md" },
+      },
+    ]);
+  });
+
   it("summarizes the link problems past the per-file cap", () => {
     const links = Array.from({ length: 25 }, (_value, index) => ({
       kind: "import" as const,
@@ -180,7 +198,7 @@ describe("INS-006", () => {
 
     expect(findings).toHaveLength(21);
     expect(findings[20]).toMatchObject({
-      message: "/workspace/AGENTS.md has 5 further link problem(s) not listed.",
+      message: "/workspace/AGENTS.md has 5 further link problems not listed.",
       severity: "warn",
     });
   });

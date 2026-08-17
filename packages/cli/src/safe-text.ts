@@ -26,9 +26,10 @@ export function safe(value: string): string {
 
 /** {@link safe}, bounded to what a report line can carry. */
 export function safeFindingText(value: string): string {
+  const characters = [...value];
   const truncated =
-    value.length > MAX_FINDING_TEXT_CHARACTERS
-      ? `${value.slice(0, MAX_FINDING_TEXT_CHARACTERS)}…`
+    characters.length > MAX_FINDING_TEXT_CHARACTERS
+      ? `${characters.slice(0, MAX_FINDING_TEXT_CHARACTERS).join("")}…`
       : value;
 
   return safe(truncated);

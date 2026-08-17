@@ -1,7 +1,7 @@
 import type { ResolvedSharedLink } from "@tryaura/aura-sdk";
 import { describe, expect, it } from "vitest";
 
-import { app, document, onlyFinding, READY, SHARED_PATH, workspace } from "./fixtures.js";
+import { app, document, onlyFinding, READY, SHARED_PATH, workspace } from "./testing.js";
 import { sharedInstructionLinksCheck } from "./instructions.js";
 
 describe("INS-002", () => {
@@ -174,7 +174,7 @@ describe("INS-002", () => {
   it("keeps unsupported versions and undeclared mechanisms report-only", () => {
     const unsupported = app({
       link: { entryPath: "/home/dev/.codex/AGENTS.md", kind: "symlink", scope: "global" },
-      support: "unsupported",
+      status: "unsupported",
     });
     const undeclared = app({ id: "third-party" });
 

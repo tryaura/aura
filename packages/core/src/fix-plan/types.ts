@@ -5,6 +5,7 @@ import type {
   WorkspaceModel,
 } from "@tryaura/aura-sdk";
 
+import { pluralize } from "../pluralize.js";
 import { errorCode } from "./error-values.js";
 import type { JournalStatus } from "./journal-schema.js";
 
@@ -283,7 +284,7 @@ function rollbackSummary(rollback: FixPlanRollbackStatus, appliedOperationCount:
       return "earlier operations were rolled back";
     }
     case "failed": {
-      return `rollback failed; ${appliedOperationCount} operation(s) remain applied`;
+      return `rollback failed; ${appliedOperationCount} ${pluralize(appliedOperationCount, "operation")} ${appliedOperationCount === 1 ? "remains" : "remain"} applied`;
     }
     case "not-required": {
       return "nothing had been applied";

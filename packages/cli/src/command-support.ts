@@ -6,7 +6,7 @@ import { Option } from "clipanion/lib/advanced/index.js";
 
 import { describeFailure, type EnvironmentBootOptions } from "@tryaura/core";
 
-import { safe } from "./render.js";
+import { safe } from "./safe-text.js";
 import type { CliBranding, CliExitCode } from "./types.js";
 
 /** The `--home` override every scanning command shares. */

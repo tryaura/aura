@@ -1,6 +1,7 @@
 import type { Writable } from "node:stream";
 
 import type { Check, Finding, FindingLocation } from "@tryaura/aura-sdk";
+import { pluralize } from "@tryaura/core";
 
 import { renderFindingPresentation } from "./metadata-table.js";
 import { notFoundLine } from "./not-found-line.js";
@@ -9,8 +10,6 @@ import type { ReportApp } from "./report-shapes.js";
 import { safe, safeFindingText, safeMultiline } from "./safe-text.js";
 import { createStyle, type Style } from "./style.js";
 import type { CliBranding } from "./types.js";
-
-export { safe, safeMultiline } from "./safe-text.js";
 
 export function renderJson(report: CheckReport, output: Writable): void {
   output.write(`${JSON.stringify(report)}\n`);
@@ -146,12 +145,12 @@ function renderNextSteps(report: CheckReport, branding: CliBranding, output: Wri
   }
   if (guided > 0) {
     lines.push(
-      `${String(guided)} finding(s) offer guided resolutions — run ${branding.command} check --fix --interactive`,
+      `${String(guided)} ${pluralize(guided, "finding")} ${guided === 1 ? "offers" : "offer"} guided resolutions — run ${branding.command} check --fix --interactive`,
     );
   }
   if (manual > 0) {
     lines.push(
-      `${String(manual)} finding(s) need a manual edit — run ${branding.command} check --explain <id>`,
+      `${String(manual)} ${pluralize(manual, "finding")} ${manual === 1 ? "needs" : "need"} a manual edit — run ${branding.command} check --explain <id>`,
     );
   }
   if (lines.length === 0) {
@@ -241,7 +240,7 @@ function renderGroup(
 
 function summaryMessage(report: CheckReport): string {
   const { errors, informational, passed, warnings } = report.summary;
-  return `${String(passed)} passed, ${String(informational)} informational, ${String(warnings)} warnings, ${String(errors)} errors`;
+  return `${String(passed)} passed, ${String(informational)} informational, ${String(warnings)} ${pluralize(warnings, "warning")}, ${String(errors)} ${pluralize(errors, "error")}`;
 }
 
 function verdictMessage(report: CheckReport): string {

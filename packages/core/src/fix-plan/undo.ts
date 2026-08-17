@@ -1,3 +1,4 @@
+import { pluralize } from "../pluralize.js";
 import { withJournalLock } from "./journal-lock.js";
 import { readJournal, type JournalEntry, type JournalHandle } from "./journal-read.js";
 import type { JournalStatus, StoredOperation } from "./journal-schema.js";
@@ -156,7 +157,7 @@ async function selectLatest(root: string, homeDir: string): Promise<Selection | 
   if (skipped.length > 0) {
     throw new FixPlanError(
       "journal-corrupt",
-      `no undoable backup remains; ${String(skipped.length)} unreadable entry(s): ${skipped.join(", ")}`,
+      `no undoable backup remains; ${String(skipped.length)} unreadable ${pluralize(skipped.length, "entry", "entries")}: ${skipped.join(", ")}`,
     );
   }
   return undefined;

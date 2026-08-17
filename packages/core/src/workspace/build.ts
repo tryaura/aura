@@ -82,16 +82,17 @@ export interface WorkspaceScan {
  */
 export async function buildWorkspaceModel(options: WorkspaceScanOptions): Promise<WorkspaceScan> {
   const reader = createCachingReader(options.reader ?? createFileReader());
-  const projectRoot = findProjectRoot(options.environment.cwd, reader);
+  const environment = await canonicalizeEnvironmentPaths(options.environment, reader);
+  const projectRoot = findProjectRoot(environment.cwd, reader);
   const context: ScanContext = {
     documents: createDocumentResolver(reader),
-    environment: options.environment,
-    projectBoundary: resolveProjectBoundary(projectRoot, options.environment.cwd, reader),
+    environment,
+    projectBoundary: resolveProjectBoundary(projectRoot, environment.cwd, reader),
     projectRoot,
     reader,
   };
-  const sharedPath = sharedInstructionsPath(options.environment);
-  const manifestPath = resolveAuraManifestPath(options.environment.homeDir);
+  const sharedPath = sharedInstructionsPath(environment);
+  const manifestPath = resolveAuraManifestPath(environment.homeDir);
 
   // The repository scan needs only the project root, so it runs alongside the adapters rather than
   // after them: its Git probes are latency the scan would otherwise pay end to end.
@@ -100,7 +101,7 @@ export async function buildWorkspaceModel(options: WorkspaceScanOptions): Promis
       Promise.all(options.adapters.map((adapter) => scanAdapter(adapter, context))),
       projectRoot,
       projectRoot.then((found) =>
-        found === undefined ? undefined : scanRepository(found, options.environment, reader),
+        found === undefined ? undefined : scanRepository(found, environment, reader),
       ),
       reader.read(sharedPath),
       reader.read(manifestPath),
@@ -129,8 +130,8 @@ export async function buildWorkspaceModel(options: WorkspaceScanOptions): Promis
     model: {
       availableSnippets: resolvedSnippets.snippets,
       apps,
-      cwd: options.environment.cwd,
-      homeDir: options.environment.homeDir,
+      cwd: environment.cwd,
+      homeDir: environment.homeDir,
       instructionFiles: apps.flatMap((app) => app.instructionFiles),
       manifest,
       mcpServers: apps.flatMap((app) => app.mcpServers),
@@ -141,6 +142,22 @@ export async function buildWorkspaceModel(options: WorkspaceScanOptions): Promis
     },
     skipped,
   };
+}
+
+/** Uses one filesystem spelling for every root adapters use to construct paths. */
+async function canonicalizeEnvironmentPaths(
+  environment: Environment,
+  reader: FileReader,
+): Promise<Environment> {
+  const [cwd, homeDir] = await Promise.all([
+    reader.realPath(environment.cwd),
+    reader.realPath(environment.homeDir),
+  ]);
+  return Object.freeze({
+    ...environment,
+    cwd: cwd ?? environment.cwd,
+    homeDir: homeDir ?? environment.homeDir,
+  });
 }
 
 /** The core-owned adapter id standing in for snippet resolution, which no adapter performs. */

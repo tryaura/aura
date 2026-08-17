@@ -94,6 +94,9 @@ importers:
       clipanion:
         specifier: 3.2.1
         version: 3.2.1(typanion@3.14.0)
+      string-width:
+        specifier: 4.2.3
+        version: 4.2.3
       typanion:
         specifier: 3.14.0
         version: 3.14.0

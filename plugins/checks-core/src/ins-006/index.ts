@@ -6,11 +6,13 @@ import {
   type DetectedFinding,
   type WorkspaceModel,
 } from "@tryaura/aura-sdk";
+import { pluralize } from "@tryaura/core";
 
 import { guidedFix } from "./fix.js";
 import { findDepthOverflows } from "./depth.js";
 import { findInstructionCycles, instructionGraphFor, type InstructionGraph } from "./graph.js";
 import {
+  displayProjectPath,
   isWithin,
   linkReporting,
   observedLinks,
@@ -43,9 +45,9 @@ function detectLinkProblems(model: WorkspaceModel): readonly DetectedFinding[] {
   const reporting = linkReporting(model);
   return [
     ...targetFindings(model, reporting),
-    ...findInstructionCycles(graph).map(cycleFinding),
-    ...model.apps.flatMap((app) => depthFindings(app, graph)),
-    ...model.apps.flatMap(unsupportedImportFindings),
+    ...findInstructionCycles(graph).map((paths) => cycleFinding(paths, model.projectRoot)),
+    ...model.apps.flatMap((app) => depthFindings(app, graph, model.projectRoot)),
+    ...model.apps.flatMap((app) => unsupportedImportFindings(app, model.projectRoot)),
   ];
 }
 
@@ -73,21 +75,25 @@ function targetFindings(
     links,
     (link) =>
       untrusted.has(link.sourcePath) && !isWithin(link.targetPath, reporting.roots)
-        ? outsideFinding(link)
-        : missingFinding(link),
+        ? outsideFinding(link, model.projectRoot)
+        : missingFinding(link, model.projectRoot),
     "missing",
+    model.projectRoot,
   );
 }
 
-function missingFinding(link: ObservedLink): DetectedFinding | undefined {
+function missingFinding(
+  link: ObservedLink,
+  projectRoot: string | undefined,
+): DetectedFinding | undefined {
   if (link.valid) {
     return undefined;
   }
   return {
-    details: `Create ${link.targetPath}, correct the reference in ${link.sourcePath}, or remove the reference.`,
+    details: `Create ${displayProjectPath(link.targetPath, projectRoot)}, correct the reference in ${displayProjectPath(link.sourcePath, projectRoot)}, or remove the reference.`,
     id: structuralId("missing", [link.sourcePath, link.targetPath, link.kind]),
     locations: [{ path: link.sourcePath }],
-    message: `${link.sourcePath} links to missing file ${link.targetPath}.`,
+    message: `${displayProjectPath(link.sourcePath, projectRoot)} links to missing file ${displayProjectPath(link.targetPath, projectRoot)}.`,
     metadata: {
       failure: "missing",
       sourcePath: link.sourcePath,
@@ -102,13 +108,13 @@ function missingFinding(link: ObservedLink): DetectedFinding | undefined {
  * Emitted whether or not the target exists, which is the point: the finding describes the
  * reference the repository wrote, and reveals nothing about the machine reading it.
  */
-function outsideFinding(link: ObservedLink): DetectedFinding {
+function outsideFinding(link: ObservedLink, projectRoot: string | undefined): DetectedFinding {
   return {
     details:
       "Aura only resolves references that stay inside the project or the directories instruction files live in. Point the reference inside the project, or remove it.",
     id: structuralId("outside", [link.sourcePath, link.targetPath, link.kind]),
     locations: [{ path: link.sourcePath }],
-    message: `${link.sourcePath} references ${link.targetPath}, which is outside the project and instruction directories.`,
+    message: `${displayProjectPath(link.sourcePath, projectRoot)} references ${displayProjectPath(link.targetPath, projectRoot)}, which is outside the project and instruction directories.`,
     metadata: {
       failure: "outside",
       sourcePath: link.sourcePath,
@@ -118,30 +124,34 @@ function outsideFinding(link: ObservedLink): DetectedFinding {
   };
 }
 
-function cycleFinding(paths: readonly string[]): DetectedFinding {
+function cycleFinding(paths: readonly string[], projectRoot: string | undefined): DetectedFinding {
   const uniquePaths = paths.slice(0, -1);
   return {
-    details: `Cycle: ${describeChain(paths)}. Remove or redirect at least one reference.`,
+    details: `Cycle: ${describeChain(paths, projectRoot)}. Remove or redirect at least one reference.`,
     id: structuralId("cycle", uniquePaths),
     locations: uniquePaths.slice(0, MAX_REPORTED_PATHS).map((path) => ({ path })),
-    message: `Instruction imports form a cycle across ${String(uniquePaths.length)} file(s).`,
+    message: `Instruction imports form a cycle across ${String(uniquePaths.length)} ${pluralize(uniquePaths.length, "file")}.`,
     // The closing repeat of the first path is what makes the chain readable as a cycle, so the
     // bound is applied to the whole walk rather than to the distinct files inside it.
     metadata: { failure: "cycle", paths: paths.slice(0, MAX_REPORTED_PATHS) },
   };
 }
 
-function depthFindings(app: AppModel, graph: InstructionGraph): readonly DetectedFinding[] {
+function depthFindings(
+  app: AppModel,
+  graph: InstructionGraph,
+  projectRoot: string | undefined,
+): readonly DetectedFinding[] {
   const limit = DEPTH_LIMITS.get(app.adapterId);
   if (limit === undefined) {
     return [];
   }
   const roots = app.instructionFiles.map((document) => document.path);
   return findDepthOverflows(graph, roots, limit).map((overflow) => ({
-    details: `Chain: ${describeChain(overflow.paths)}. Flatten or shorten it to at most ${String(limit)} import hops.`,
+    details: `Chain: ${describeChain(overflow.paths, projectRoot)}. Flatten or shorten it to at most ${String(limit)} import hops.`,
     id: structuralId("depth", [app.adapterId, overflow.rootPath, ...overflow.paths]),
     locations: [{ path: overflow.rootPath }],
-    message: `${app.displayName} instruction imports exceed its ${String(limit)}-hop limit from ${overflow.rootPath}.`,
+    message: `${app.displayName} instruction imports exceed its ${String(limit)}-hop limit from ${displayProjectPath(overflow.rootPath, projectRoot)}.`,
     metadata: {
       appId: app.adapterId,
       failure: "depth",
@@ -152,7 +162,10 @@ function depthFindings(app: AppModel, graph: InstructionGraph): readonly Detecte
   }));
 }
 
-function unsupportedImportFindings(app: AppModel): readonly DetectedFinding[] {
+function unsupportedImportFindings(
+  app: AppModel,
+  projectRoot: string | undefined,
+): readonly DetectedFinding[] {
   if (IMPORT_SUPPORT.get(app.adapterId) !== false) {
     return [];
   }
@@ -163,7 +176,7 @@ function unsupportedImportFindings(app: AppModel): readonly DetectedFinding[] {
       details: `${app.displayName} does not load import directives from this file. Remove the directive or use the application's native instruction mechanism.`,
       id: structuralId("unsupported", [app.adapterId, link.sourcePath, link.targetPath]),
       locations: [{ path: link.sourcePath }],
-      message: `${link.sourcePath} contains an import that ${app.displayName} does not support.`,
+      message: `${displayProjectPath(link.sourcePath, projectRoot)} contains an import that ${app.displayName} does not support.`,
       metadata: {
         appId: app.adapterId,
         failure: "unsupported",
@@ -173,10 +186,14 @@ function unsupportedImportFindings(app: AppModel): readonly DetectedFinding[] {
       severity: "warn",
     }),
     "unsupported",
+    projectRoot,
   );
 }
 
-function describeChain(paths: readonly string[]): string {
-  const shown = paths.slice(0, MAX_REPORTED_PATHS).join(" -> ");
+function describeChain(paths: readonly string[], projectRoot: string | undefined): string {
+  const shown = paths
+    .slice(0, MAX_REPORTED_PATHS)
+    .map((path) => displayProjectPath(path, projectRoot))
+    .join(" -> ");
   return paths.length > MAX_REPORTED_PATHS ? `${shown} -> …` : shown;
 }

@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- one workspace-builder matrix shares the same memory reader fixtures. */
 import type {
   AdapterFileSpec,
   AdapterParseInput,
@@ -259,5 +260,52 @@ describe("buildWorkspaceModel", () => {
 
     expect(scan.model.projectRoot).toBe("/workspace");
     expect(outside.model.projectRoot).toBeUndefined();
+  });
+
+  it("canonicalizes cwd and home before adapters construct paths", async () => {
+    let received: AdapterParseInput | undefined;
+    const adapter = createTestAdapter({
+      files: (environment) => [
+        {
+          id: "instructions",
+          kind: "instructions",
+          path: `${environment.homeDir}/AGENTS.md`,
+          scope: "global",
+        },
+      ],
+      parse: (input) => {
+        received = input;
+        return createSnapshot({
+          instructionFiles: [createDocument(`${input.homeDir}/AGENTS.md`)],
+        });
+      },
+    });
+    const reader = createMemoryReader(
+      {
+        "/private/tmp/home/AGENTS.md": "# shared",
+        "/private/tmp/workspace/.git": DIRECTORY,
+      },
+      {
+        links: {
+          "/tmp/home": "/private/tmp/home",
+          "/tmp/workspace": "/private/tmp/workspace",
+        },
+      },
+    );
+
+    const { model } = await buildWorkspaceModel({
+      adapters: [adapter],
+      environment: createTestEnvironment({ cwd: "/tmp/workspace", homeDir: "/tmp/home" }),
+      reader,
+    });
+
+    expect(received?.cwd).toBe("/private/tmp/workspace");
+    expect(received?.homeDir).toBe("/private/tmp/home");
+    expect(model).toMatchObject({
+      cwd: "/private/tmp/workspace",
+      homeDir: "/private/tmp/home",
+      projectRoot: "/private/tmp/workspace",
+    });
+    expect(model.instructionFiles[0]?.path).toBe("/private/tmp/home/AGENTS.md");
   });
 });

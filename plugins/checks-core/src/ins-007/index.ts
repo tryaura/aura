@@ -10,6 +10,7 @@ import {
   type JsonObject,
   type WorkspaceModel,
 } from "@tryaura/aura-sdk";
+import { pluralize } from "@tryaura/core";
 
 import {
   instructionGraphFor,
@@ -227,11 +228,11 @@ function findingFor(app: AppModel, classified: ClassifiedDocuments): DetectedFin
       ...(omittedFiles === 0
         ? []
         : [
-            `Listing the ${String(MAX_REPORTED_FILES)} largest of ${String(breakdown.length)} file(s).`,
+            `Listing the ${String(MAX_REPORTED_FILES)} largest of ${String(breakdown.length)} ${pluralize(breakdown.length, "file")}.`,
           ]),
     ].join(" "),
     id: app.adapterId,
-    message: `${app.displayName} loads approximately ${String(approxTokens)} tokens of always-on instructions across ${String(effective.length)} file(s)${conditionalSuffix(conditionalFiles.length)}.`,
+    message: `${app.displayName} loads approximately ${String(approxTokens)} tokens of always-on instructions across ${String(effective.length)} ${pluralize(effective.length, "file")}${conditionalSuffix(conditionalFiles.length)}.`,
     metadata: {
       approxTokens,
       files,
@@ -244,7 +245,9 @@ function findingFor(app: AppModel, classified: ClassifiedDocuments): DetectedFin
 
 /** Names the conditional files the table lists, so the message and the table agree on the count. */
 function conditionalSuffix(count: number): string {
-  return count === 0 ? "" : `, and lists ${String(count)} conditional file(s) alongside them`;
+  return count === 0
+    ? ""
+    : `, and lists ${String(count)} conditional ${pluralize(count, "file")} alongside them`;
 }
 
 function measureDocument(document: InstructionDocument): Omit<BudgetFile, "share"> {

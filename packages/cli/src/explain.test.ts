@@ -2,6 +2,7 @@ import { defineCheck, definePlugin } from "@tryaura/aura-sdk";
 import { describe, expect, it } from "vitest";
 
 import { runCli } from "./index.js";
+import { parseCheckExplanation } from "./test-support/check-output-schema.js";
 import { createCapture, distro, findingPlugin, fixtureAdapter } from "./testing.js";
 
 describe("check --explain", () => {
@@ -57,7 +58,7 @@ describe("check --explain", () => {
 
     expect(await runCli(distro([findingPlugin("info", [])]), capture.runtime)).toBe(0);
     // `--json` keeps the document alone on stdout and moves everything else to stderr.
-    expect(JSON.parse(capture.stdout.text)).toEqual({
+    expect(parseCheckExplanation(capture.stdout.text)).toEqual({
       explain: "Test check.",
       fixability: "manual",
       fixesApplicable: false,
@@ -122,7 +123,7 @@ describe("check --explain", () => {
     expect(await runCli(distro([plugin]), human.runtime)).toBe(0);
     expect(human.stdout.text).toContain("check --fix --interactive");
     expect(await runCli(distro([plugin]), json.runtime)).toBe(0);
-    expect(JSON.parse(json.stdout.text)).toMatchObject({
+    expect(parseCheckExplanation(json.stdout.text)).toMatchObject({
       fixability: "guided",
       fixesApplicable: true,
       kind: "check-explanation",

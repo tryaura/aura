@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
-import { dirname, resolve, sep } from "node:path";
+import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 
 import type { DetectedFinding, InstructionDocument, WorkspaceModel } from "@tryaura/aura-sdk";
+import { pluralize } from "@tryaura/core";
 
 /** Which applications activate an `@` import in a file they read, and which read it as prose. */
 export const IMPORT_SUPPORT: ReadonlyMap<string, boolean> = new Map([
@@ -128,6 +129,7 @@ export function perSource(
   links: readonly ObservedLink[],
   describe: (link: ObservedLink) => DetectedFinding | undefined,
   overflowKind: FailureKind,
+  projectRoot?: string,
 ): readonly DetectedFinding[] {
   const findings: DetectedFinding[] = [];
   const reported = new Map<string, number>();
@@ -152,13 +154,28 @@ export function perSource(
       details: `Aura reports the first ${String(MAX_FINDINGS_PER_SOURCE)} link problems in a file. Fix those and run \`aura check\` again to see the rest.`,
       id: structuralId(overflowKind, [sourcePath, "overflow"]),
       locations: [{ path: sourcePath }],
-      message: `${sourcePath} has ${String(count)} further link problem(s) not listed.`,
+      message: `${displayProjectPath(sourcePath, projectRoot)} has ${String(count)} further link ${pluralize(count, "problem")} not listed.`,
       metadata: { failure: overflowKind, hidden: count, sourcePath },
       severity: "warn",
     });
   }
 
   return findings;
+}
+
+/** Uses a project-relative label without changing the absolute path carried as structured data. */
+export function displayProjectPath(path: string, projectRoot: string | undefined): string {
+  if (projectRoot === undefined) {
+    return path;
+  }
+  const displayed = relative(resolve(projectRoot), resolve(path));
+  if (displayed === "") {
+    return ".";
+  }
+  if (displayed === ".." || displayed.startsWith(`..${sep}`) || isAbsolute(displayed)) {
+    return path;
+  }
+  return displayed;
 }
 
 export function structuralId(kind: FailureKind, parts: readonly string[]): string {

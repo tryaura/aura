@@ -2,7 +2,7 @@ import type { FileProblem } from "@tryaura/aura-sdk";
 import { SHARED_INSTRUCTIONS_TEMPLATE } from "@tryaura/content-official";
 import { describe, expect, it } from "vitest";
 
-import { onlyFinding, SHARED_PATH, workspace } from "./fixtures.js";
+import { onlyFinding, SHARED_PATH, workspace } from "./testing.js";
 import { sharedInstructionsCheck } from "./instructions.js";
 
 describe("INS-001", () => {

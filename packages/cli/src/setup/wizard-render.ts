@@ -1,4 +1,4 @@
-import { safe, safeMultiline } from "../render.js";
+import { safe, safeMultiline } from "../safe-text.js";
 import { createStyle, type Style } from "../style.js";
 import type { WizardQuestion } from "./wizard-types.js";
 

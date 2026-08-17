@@ -1,7 +1,7 @@
 import { emitKeypressEvents } from "node:readline";
 import type { Readable, Writable } from "node:stream";
 
-import { safe } from "../render.js";
+import { safe } from "../safe-text.js";
 import { createFormSession, type Keypress } from "./wizard-form.js";
 import {
   DEFAULT_WIZARD_VIEWPORT,
