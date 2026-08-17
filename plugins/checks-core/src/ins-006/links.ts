@@ -1,9 +1,9 @@
-import { createHash } from "node:crypto";
 import { dirname, resolve, sep } from "node:path";
 
 import type { DetectedFinding, InstructionDocument, WorkspaceModel } from "@tryaura/aura-sdk";
 import { pluralize } from "@tryaura/core/pluralize";
 
+import { structuralFindingId } from "../finding-id.js";
 import { displayInstructionPath } from "../instruction-paths.js";
 
 /** Which applications activate an `@` import in a file they read, and which read it as prose. */
@@ -34,6 +34,20 @@ export const DEPTH_LIMITS: ReadonlyMap<string, number> = new Map([["claude-code"
 const MAX_FINDINGS_PER_SOURCE = 20;
 
 export type FailureKind = "cycle" | "depth" | "missing" | "outside" | "unsupported";
+
+/**
+ * How each failure reads as a noun, since a summary counts problems rather than naming a kind.
+ *
+ * "5 further missing link problems" makes the machine token do duty as an adjective; the phrases
+ * here are what the same sentence says in the user's language.
+ */
+const OVERFLOW_DESCRIPTIONS: Readonly<Record<FailureKind, string>> = {
+  cycle: "cyclic import",
+  depth: "over-long import chain",
+  missing: "broken link",
+  outside: "out-of-project reference",
+  unsupported: "unsupported import",
+};
 
 export interface ObservedLink {
   readonly kind: InstructionDocument["links"][number]["kind"];
@@ -120,52 +134,77 @@ export function observedLinks(documents: readonly InstructionDocument[]): readon
     .map(([, link]) => link);
 }
 
+/** What a caller adds to the summaries {@link perSource} writes on its behalf. */
+export interface PerSourceOptions {
+  /**
+   * Structural identity prefixed to each overflow summary.
+   *
+   * A summary names only its source file, so callers that report the same file once per
+   * application supply what tells those summaries apart.
+   */
+  readonly overflowScope?: readonly string[] | undefined;
+}
+
 /**
  * Describes each link, keeping at most {@link MAX_FINDINGS_PER_SOURCE} findings per source file.
  *
  * The links arrive grouped by source, so the overflow for one file is known by the time the next
  * begins. A summary replaces what was dropped, because a truncated list that says nothing about
  * being truncated reads as the whole story.
+ *
+ * Classifying is separated from describing so that nothing past the cap is ever formatted. A
+ * source's link count is bounded only by its size, and building hundreds of thousands of findings
+ * to keep twenty is the cost the cap exists to avoid.
  */
 export function perSource(
   links: readonly ObservedLink[],
-  describe: (link: ObservedLink) => DetectedFinding | undefined,
-  overflowKind: FailureKind,
+  classify: (link: ObservedLink) => FailureKind | undefined,
+  describe: (link: ObservedLink, failure: FailureKind) => DetectedFinding,
   model: WorkspaceModel,
+  options: PerSourceOptions = {},
 ): readonly DetectedFinding[] {
   const findings: DetectedFinding[] = [];
   const reported = new Map<string, number>();
-  const hidden = new Map<string, number>();
+  const hidden = new Map<string, Map<FailureKind, number>>();
 
   for (const link of links) {
-    const finding = describe(link);
-    if (finding === undefined) {
+    const failure = classify(link);
+    if (failure === undefined) {
       continue;
     }
     const count = reported.get(link.sourcePath) ?? 0;
     if (count >= MAX_FINDINGS_PER_SOURCE) {
-      hidden.set(link.sourcePath, (hidden.get(link.sourcePath) ?? 0) + 1);
+      const byKind = hidden.get(link.sourcePath) ?? new Map<FailureKind, number>();
+      byKind.set(failure, (byKind.get(failure) ?? 0) + 1);
+      hidden.set(link.sourcePath, byKind);
       continue;
     }
     reported.set(link.sourcePath, count + 1);
-    findings.push(finding);
+    findings.push(describe(link, failure));
   }
 
-  for (const [sourcePath, count] of hidden) {
-    findings.push({
-      details: `Aura reports the first ${String(MAX_FINDINGS_PER_SOURCE)} link problems in a file. Fix those and run \`aura check\` again to see the rest.`,
-      id: structuralId(overflowKind, [sourcePath, "overflow"]),
-      locations: [{ path: sourcePath }],
-      message: `${displayInstructionPath(sourcePath, model)} has ${String(count)} further link ${pluralize(count, "problem")} not listed.`,
-      metadata: { failure: overflowKind, hidden: count, sourcePath },
-      severity: "warn",
-    });
+  for (const [sourcePath, byKind] of hidden) {
+    for (const [failure, count] of byKind) {
+      findings.push(overflowFinding(sourcePath, failure, count, model, options));
+    }
   }
 
   return findings;
 }
 
-export function structuralId(kind: FailureKind, parts: readonly string[]): string {
-  const hash = createHash("sha256").update(parts.join("\u0000")).digest("hex").slice(0, 16);
-  return `${kind}:${hash}`;
+function overflowFinding(
+  sourcePath: string,
+  failure: FailureKind,
+  count: number,
+  model: WorkspaceModel,
+  options: PerSourceOptions,
+): DetectedFinding {
+  return {
+    details: `Aura reports the first ${String(MAX_FINDINGS_PER_SOURCE)} link problems in a file. Fix those and run \`aura check\` again to see the rest.`,
+    id: structuralFindingId(failure, [...(options.overflowScope ?? []), sourcePath, "overflow"]),
+    locations: [{ path: sourcePath }],
+    message: `${displayInstructionPath(sourcePath, model)} has ${String(count)} further ${pluralize(count, OVERFLOW_DESCRIPTIONS[failure])} not listed.`,
+    metadata: { failure, hidden: count, sourcePath },
+    severity: failure === "outside" ? "info" : "warn",
+  };
 }

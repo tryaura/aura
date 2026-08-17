@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- one check's precedence scenarios share repository fixtures. */
 import type { InstructionDocument } from "@tryaura/aura-sdk";
 import { runChecks } from "@tryaura/core";
 import { describe, expect, it } from "vitest";
@@ -43,6 +44,7 @@ describe("INS-008", () => {
     expect(findings).toHaveLength(1);
     expect(findings[0]).toMatchObject({
       checkId: "INS-008",
+      id: expect.stringMatching(/^duplicate:[0-9a-f]{16}$/u),
       locations: [
         { line: 1, path: "/home/dev/AGENTS.md" },
         { line: 1, path: "/repo/AGENTS.md" },
@@ -85,6 +87,7 @@ describe("INS-008", () => {
 
     expect(crossScope).toHaveLength(1);
     expect(crossScope[0]).toMatchObject({
+      id: expect.stringMatching(/^contradiction:[0-9a-f]{16}$/u),
       metadata: { axis: "indentation", kind: "contradiction" },
       message: "Project instructions contradict global guidance.",
     });
@@ -109,6 +112,7 @@ describe("INS-008", () => {
 
     expect(findings).toHaveLength(1);
     expect(findings[0]).toMatchObject({
+      id: expect.stringMatching(/^project-specific:[0-9a-f]{16}$/u),
       locations: [
         { line: 1, path: "/home/dev/AGENTS.md" },
         { line: 2, path: "/home/dev/AGENTS.md" },
@@ -122,6 +126,7 @@ describe("INS-008", () => {
           { kind: "script", line: 3 },
         ],
       },
+      severity: "warn",
     });
     expect(JSON.stringify(findings)).not.toContain("@tryaura/core");
     expect(JSON.stringify(findings)).not.toContain("pnpm verify");
@@ -147,9 +152,44 @@ describe("INS-008", () => {
     ).toEqual([]);
   });
 
-  it("ignores paths under directories every repository has", () => {
+  it("grounds path signals in the repository's actual package directories", () => {
+    const findings = run(
+      [
+        document(
+          "/home/dev/AGENTS.md",
+          [
+            "Edit packages/core/src/index.ts when changing the kernel.",
+            "Edit services/api/src/index.ts when changing the API.",
+            "Edit libs/shared/src/index.ts when changing shared code.",
+          ].join("\n"),
+        ),
+      ],
+      {
+        packageManifests: [
+          { path: "packages/core/package.json", scripts: [] },
+          { path: "services/api/package.json", scripts: [] },
+          { path: "libs/shared/package.json", scripts: [] },
+        ],
+      },
+    );
+
+    expect(findings).toMatchObject([
+      {
+        metadata: {
+          signals: [
+            { kind: "path", line: 1 },
+            { kind: "path", line: 2 },
+            { kind: "path", line: 3 },
+          ],
+        },
+        severity: "warn",
+      },
+    ]);
+
     expect(
-      run([document("/home/dev/AGENTS.md", "Put reusable helpers in src/lib rather than inline.")]),
+      run([document("/home/dev/AGENTS.md", "Use packages/example/src/index.ts for helpers.")], {
+        packageManifests: [{ path: "services/api/package.json", scripts: [] }],
+      }),
     ).toEqual([]);
   });
 
@@ -162,9 +202,15 @@ describe("INS-008", () => {
   });
 
   it("reports a lone heuristic signal below the check's default severity", () => {
-    const findings = run([
-      document("/home/dev/AGENTS.md", "Edit packages/core/src/index.ts when changing the kernel."),
-    ]);
+    const findings = run(
+      [
+        document(
+          "/home/dev/AGENTS.md",
+          "Edit packages/core/src/index.ts when changing the kernel.",
+        ),
+      ],
+      { packageManifests: [{ path: "packages/core/package.json", scripts: [] }] },
+    );
 
     expect(findings).toHaveLength(1);
     expect(findings[0]).toMatchObject({ metadata: { kind: "project-specific" }, severity: "info" });
@@ -181,6 +227,79 @@ describe("INS-008", () => {
     );
 
     expect(findings).toEqual([]);
+  });
+
+  it("recognizes sentence-final custom scripts without matching longer names", () => {
+    const manifests = [{ path: "package.json", scripts: ["verify"] }];
+
+    expect(
+      run([document("/home/dev/AGENTS.md", "Always run pnpm verify.")], {
+        packageManifests: manifests,
+      }),
+    ).toMatchObject([{ metadata: { signals: [{ kind: "script", line: 1 }] }, severity: "info" }]);
+    expect(
+      run([document("/home/dev/AGENTS.md", "Always run pnpm verify-all.")], {
+        packageManifests: manifests,
+      }),
+    ).toEqual([]);
+    expect(
+      run([document("/home/dev/AGENTS.md", "Always run pnpm verify:ci before pushing.")], {
+        packageManifests: manifests,
+      }),
+    ).toEqual([]);
+  });
+
+  it("recognizes a namespaced script this repository actually declares", () => {
+    expect(
+      run([document("/home/dev/AGENTS.md", "Always run pnpm verify:ci before pushing.")], {
+        packageManifests: [{ path: "package.json", scripts: ["verify:ci"] }],
+      }),
+    ).toMatchObject([{ metadata: { signals: [{ kind: "script", line: 1 }] }, severity: "info" }]);
+  });
+
+  it("ignores cross-scope duplicates when either paragraph is conditional", () => {
+    const project = document("/repo/AGENTS.md", DUPLICATED_GUIDANCE, { scope: "project" });
+    const explicit = document("/home/dev/.cursor/rules/explicit.mdc", DUPLICATED_GUIDANCE, {
+      metadata: { alwaysApply: false },
+    });
+    const implicit = document("/home/dev/.cursor/rules/implicit.mdc", DUPLICATED_GUIDANCE);
+
+    expect(run([explicit, project])).toEqual([]);
+    expect(run([implicit, project])).toEqual([]);
+  });
+
+  it("bounds signal evidence and records the omitted total", () => {
+    const content = Array.from(
+      { length: 105 },
+      (_value, index) => `Edit services/api/src/file-${String(index)}.ts when changing the API.`,
+    ).join("\n");
+    const findings = run([document("/home/dev/AGENTS.md", content)], {
+      packageManifests: [{ path: "services/api/package.json", scripts: [] }],
+    });
+
+    expect(findings).toMatchObject([
+      {
+        metadata: { omittedSignals: 5 },
+        severity: "warn",
+      },
+    ]);
+    expect(findings[0]?.locations).toHaveLength(100);
+    expect(findings[0]?.metadata?.["signals"]).toHaveLength(100);
+    expect(findings[0]?.details).toContain("5 further signals are not listed");
+  });
+
+  it("handles repositories whose package manifest inventory is unavailable", () => {
+    expect(
+      run(
+        [
+          document(
+            "/home/dev/AGENTS.md",
+            "Edit services/api/src/index.ts and always run pnpm verify.",
+          ),
+        ],
+        { packageManifestsAbsent: true },
+      ),
+    ).toEqual([]);
   });
 
   it("keeps finding identifiers stable when evidence moves within the same files", () => {
@@ -209,13 +328,18 @@ function run(
       readonly path: string;
       readonly scripts: readonly string[];
     }[];
+    readonly packageManifestsAbsent?: boolean;
   } = {},
 ) {
-  const workspace = projectModel(gitignore(""), {
+  const rootGitignore = gitignore("");
+  const workspace = projectModel(rootGitignore, {
     instructionFiles,
     ...(options.packageManifests === undefined
       ? {}
       : { packageManifests: options.packageManifests }),
   });
-  return runChecks([instructionPrecedenceCheck], workspace).findings;
+  const checked = options.packageManifestsAbsent
+    ? { ...workspace, repository: { gitignore: rootGitignore } }
+    : workspace;
+  return runChecks([instructionPrecedenceCheck], checked).findings;
 }

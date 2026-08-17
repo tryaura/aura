@@ -6,6 +6,11 @@ export interface InstructionGraph {
   readonly edges: ReadonlyMap<string, readonly string[]>;
 }
 
+export interface BuildInstructionGraphOptions {
+  /** Source documents whose import edges should be absent while preserving their other links. */
+  readonly excludedImportSources?: ReadonlySet<string> | undefined;
+}
+
 export interface ReachableInstructionOptions {
   /**
    * Paths the walk neither returns nor passes through.
@@ -39,24 +44,20 @@ export function instructionGraphFor(documents: readonly InstructionDocument[]): 
 }
 
 /** Builds a deterministic graph from valid links whose targets are also modeled documents. */
-export function buildInstructionGraph(documents: readonly InstructionDocument[]): InstructionGraph {
+export function buildInstructionGraph(
+  documents: readonly InstructionDocument[],
+  options: BuildInstructionGraphOptions = {},
+): InstructionGraph {
   const documentPaths = new Set(documents.map((document) => resolve(document.path)));
+  const excludedImportSources = new Set(
+    [...(options.excludedImportSources ?? [])].map((path) => resolve(path)),
+  );
   const mutable = new Map<string, Set<string>>();
   for (const path of documentPaths) {
     mutable.set(path, new Set());
   }
   for (const document of documents) {
-    const sourcePath = resolve(document.path);
-    const targets = mutable.get(sourcePath);
-    if (targets === undefined) {
-      continue;
-    }
-    for (const link of document.links) {
-      const targetPath = resolve(link.targetPath);
-      if (link.valid && documentPaths.has(targetPath)) {
-        targets.add(targetPath);
-      }
-    }
+    addDocumentEdges(document, documentPaths, mutable, excludedImportSources);
   }
 
   const edges = new Map<string, readonly string[]>();
@@ -69,6 +70,29 @@ export function buildInstructionGraph(documents: readonly InstructionDocument[])
     );
   }
   return Object.freeze({ edges });
+}
+
+function addDocumentEdges(
+  document: InstructionDocument,
+  documentPaths: ReadonlySet<string>,
+  mutable: Map<string, Set<string>>,
+  excludedImportSources: ReadonlySet<string>,
+): void {
+  const sourcePath = resolve(document.path);
+  const targets = mutable.get(sourcePath);
+  if (targets === undefined) {
+    return;
+  }
+  const importsExcluded = excludedImportSources.has(sourcePath);
+  for (const link of document.links) {
+    if (link.kind === "import" && importsExcluded) {
+      continue;
+    }
+    const targetPath = resolve(link.targetPath);
+    if (link.valid && documentPaths.has(targetPath)) {
+      targets.add(targetPath);
+    }
+  }
 }
 
 /** Returns every modeled path reachable from the roots, once, without using the call stack. */

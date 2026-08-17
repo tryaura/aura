@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- one check's loading-model matrix shares document fixtures. */
 import type { AppModel, InstructionDocument, JsonObject } from "@tryaura/aura-sdk";
 import { runChecks } from "@tryaura/core";
 import { describe, expect, it } from "vitest";
@@ -32,9 +33,11 @@ describe("INS-007", () => {
     ]);
     expect(run(utf8)).toMatchObject([
       {
-        id: "codex",
+        id: expect.stringMatching(/^budget:[0-9a-f]{16}$/u),
         metadata: {
+          appId: "codex",
           approxTokens: 8_001,
+          evaluated: true,
           files: [
             {
               bytes: 32_002,
@@ -165,6 +168,30 @@ describe("INS-007", () => {
     ]);
   });
 
+  it("treats an MDC rule without alwaysApply as conditional", () => {
+    const always = document("/workspace/.cursorrules", "a".repeat(32_001), {
+      scope: "project",
+    });
+    const implicit = document("/workspace/.cursor/rules/manual.mdc", "b".repeat(10_000), {
+      scope: "project",
+    });
+    const cursor = withDocuments(app({ adapterId: "cursor", displayName: "Cursor" }), [
+      always,
+      implicit,
+    ]);
+
+    const finding = run(cursor)[0];
+    expect(finding?.metadata).toMatchObject({ approxTokens: 8_001, evaluated: true });
+    expect(metadataFiles(finding?.metadata)).toEqual([
+      { bytes: 32_001, path: "/workspace/.cursorrules", share: 1 },
+      {
+        bytes: 10_000,
+        conditional: true,
+        path: "/workspace/.cursor/rules/manual.mdc",
+      },
+    ]);
+  });
+
   it("lists the largest files and says how many it left out", () => {
     const files = Array.from({ length: 120 }, (_, index) =>
       document(`/workspace/rule-${String(index).padStart(3, "0")}.md`, "a".repeat(index + 1)),
@@ -181,11 +208,69 @@ describe("INS-007", () => {
     expect(finding?.details).toContain("Listing the 100 largest of 121 files.");
   });
 
+  it("counts only conditional files retained in the capped table", () => {
+    const conditional = Array.from({ length: 120 }, (_value, index) =>
+      document(`/workspace/.cursor/rules/${String(index).padStart(3, "0")}.mdc`, "c", {
+        metadata: { alwaysApply: false },
+        scope: "project",
+      }),
+    );
+    const cursor = withDocuments(app({ adapterId: "cursor", displayName: "Cursor" }), [
+      document("/workspace/.cursorrules", "a".repeat(32_001), { scope: "project" }),
+      ...conditional,
+    ]);
+
+    const finding = run(cursor)[0];
+    expect(metadataFiles(finding?.metadata)).toHaveLength(100);
+    // The message counts the rows the table kept; the metadata still knows how many there were.
+    expect(finding?.metadata).toMatchObject({
+      appId: "cursor",
+      conditionalFiles: 120,
+      omittedFiles: 21,
+    });
+    expect(finding?.message).toContain("and lists 99 conditional files");
+  });
+
+  it("includes five Claude import hops in the budget and excludes the sixth", () => {
+    const documents = Array.from({ length: 7 }, (_value, index) =>
+      index === 6
+        ? document(`/workspace/${String(index)}.md`, "z".repeat(50_000))
+        : linkedDocument(
+            `/workspace/${String(index)}.md`,
+            index === 0 ? "a".repeat(30_001) : "b".repeat(1_000),
+            [`/workspace/${String(index + 1)}.md`],
+          ),
+    );
+    const root = documents[0];
+    if (root === undefined) {
+      throw new Error("Expected a Claude root document.");
+    }
+    const claude = withDocuments(app({ adapterId: "claude-code", displayName: "Claude Code" }), [
+      root,
+    ]);
+
+    const findings = runChecks(
+      [instructionContextBudgetCheck],
+      model({ apps: [claude], instructionFiles: documents.slice(1) }),
+    ).findings;
+
+    expect(findings[0]?.metadata).toMatchObject({
+      approxTokens: 8_751,
+      evaluated: true,
+      totalBytes: 35_001,
+    });
+    expect(metadataFiles(findings[0]?.metadata)).toHaveLength(6);
+    expect(JSON.stringify(findings[0]?.metadata)).not.toContain("/workspace/6.md");
+  });
+
   it("escalates copy without severity and skips synthetic adapters", () => {
     const huge = document("/workspace/AGENTS.md", "a".repeat(LARGE_CONTEXT_BUDGET_BYTES + 1));
     const codex = withDocuments(app({ adapterId: "codex" }), [huge]);
     const finding = run(codex)[0];
-    expect(finding).toMatchObject({ id: "codex", severity: "info" });
+    expect(finding).toMatchObject({
+      id: expect.stringMatching(/^budget:[0-9a-f]{16}$/u),
+      severity: "info",
+    });
     expect(finding?.details).toContain("well above");
     expect(JSON.stringify(finding)).not.toContain(huge.content);
 
@@ -198,8 +283,13 @@ describe("INS-007", () => {
 
     expect(unmodeled).toMatchObject([
       {
-        id: "external",
-        metadata: { appId: "external", evaluated: false, totalBytes: 80_001 },
+        id: expect.stringMatching(/^budget:[0-9a-f]{16}$/u),
+        metadata: {
+          appId: "external",
+          approxTokens: 20_001,
+          evaluated: false,
+          totalBytes: 80_001,
+        },
         severity: "info",
       },
     ]);

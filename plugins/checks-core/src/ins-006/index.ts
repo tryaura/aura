@@ -8,18 +8,24 @@ import {
 } from "@tryaura/aura-sdk";
 import { pluralize } from "@tryaura/core/pluralize";
 
+import { structuralFindingId } from "../finding-id.js";
 import { displayInstructionPath } from "../instruction-paths.js";
 import { guidedFix } from "./fix.js";
 import { findDepthOverflows } from "./depth.js";
-import { findInstructionCycles, instructionGraphFor, type InstructionGraph } from "./graph.js";
+import {
+  buildInstructionGraph,
+  findInstructionCycles,
+  instructionGraphFor,
+  type InstructionGraph,
+} from "./graph.js";
 import {
   isWithin,
   linkReporting,
   observedLinks,
   perSource,
-  structuralId,
   DEPTH_LIMITS,
   IMPORT_SUPPORT,
+  type FailureKind,
   type LinkReporting,
   type ObservedLink,
 } from "./links.js";
@@ -43,11 +49,17 @@ Re-run the check with \`--fix --interactive\` to review the affected source and 
 function detectLinkProblems(model: WorkspaceModel): readonly DetectedFinding[] {
   const graph = instructionGraphFor(model.instructionFiles);
   const reporting = linkReporting(model);
+  const cycleGraph =
+    reporting.inertImports.size === 0
+      ? graph
+      : buildInstructionGraph(model.instructionFiles, {
+          excludedImportSources: reporting.inertImports,
+        });
   return [
     ...targetFindings(model, reporting),
-    ...findInstructionCycles(graph).map((paths) => cycleFinding(paths, model)),
+    ...findInstructionCycles(cycleGraph).map((paths) => cycleFinding(paths, model)),
     ...model.apps.flatMap((app) => depthFindings(app, graph, model)),
-    ...model.apps.flatMap((app) => unsupportedImportFindings(app, model)),
+    ...model.apps.flatMap((app) => unsupportedImportFindings(app, model, reporting)),
   ];
 }
 
@@ -73,22 +85,34 @@ function targetFindings(
 
   return perSource(
     links,
-    (link) =>
-      untrusted.has(link.sourcePath) && !isWithin(link.targetPath, reporting.roots)
-        ? outsideFinding(link, model)
-        : missingFinding(link, model),
-    "missing",
+    (link) => targetFailure(link, untrusted, reporting),
+    (link, failure) =>
+      failure === "outside" ? outsideFinding(link, model) : missingFinding(link, model),
     model,
   );
 }
 
-function missingFinding(link: ObservedLink, model: WorkspaceModel): DetectedFinding | undefined {
-  if (link.valid) {
-    return undefined;
+/**
+ * Which failure a link is, without building the finding that would describe it.
+ *
+ * An out-of-bounds reference is reported whether or not it resolved — see {@link outsideFinding} —
+ * so an in-bounds link that resolved is the only one with nothing to say.
+ */
+function targetFailure(
+  link: ObservedLink,
+  untrusted: ReadonlySet<string>,
+  reporting: LinkReporting,
+): FailureKind | undefined {
+  if (untrusted.has(link.sourcePath) && !isWithin(link.targetPath, reporting.roots)) {
+    return "outside";
   }
+  return link.valid ? undefined : "missing";
+}
+
+function missingFinding(link: ObservedLink, model: WorkspaceModel): DetectedFinding {
   return {
     details: `Create ${displayInstructionPath(link.targetPath, model)}, correct the reference in ${displayInstructionPath(link.sourcePath, model)}, or remove the reference.`,
-    id: structuralId("missing", [link.sourcePath, link.targetPath, link.kind]),
+    id: structuralFindingId("missing", [link.sourcePath, link.targetPath, link.kind]),
     locations: [{ path: link.sourcePath }],
     message: `${displayInstructionPath(link.sourcePath, model)} links to missing file ${displayInstructionPath(link.targetPath, model)}.`,
     metadata: {
@@ -109,7 +133,7 @@ function outsideFinding(link: ObservedLink, model: WorkspaceModel): DetectedFind
   return {
     details:
       "Aura only resolves references that stay inside the project or the directories instruction files live in. Point the reference inside the project, or remove it.",
-    id: structuralId("outside", [link.sourcePath, link.targetPath, link.kind]),
+    id: structuralFindingId("outside", [link.sourcePath, link.targetPath, link.kind]),
     locations: [{ path: link.sourcePath }],
     message: `${displayInstructionPath(link.sourcePath, model)} references ${displayInstructionPath(link.targetPath, model)}, which is outside the project and instruction directories.`,
     metadata: {
@@ -117,7 +141,7 @@ function outsideFinding(link: ObservedLink, model: WorkspaceModel): DetectedFind
       sourcePath: link.sourcePath,
       targetPath: link.targetPath,
     },
-    severity: "warn",
+    severity: "info",
   };
 }
 
@@ -125,7 +149,7 @@ function cycleFinding(paths: readonly string[], model: WorkspaceModel): Detected
   const uniquePaths = paths.slice(0, -1);
   return {
     details: `Cycle: ${describeChain(paths, model)}. Remove or redirect at least one reference.`,
-    id: structuralId("cycle", uniquePaths),
+    id: structuralFindingId("cycle", uniquePaths),
     locations: uniquePaths.slice(0, MAX_REPORTED_PATHS).map((path) => ({ path })),
     message: `Instruction imports form a cycle across ${String(uniquePaths.length)} ${pluralize(uniquePaths.length, "file")}.`,
     // The closing repeat of the first path is what makes the chain readable as a cycle, so the
@@ -146,7 +170,7 @@ function depthFindings(
   const roots = app.instructionFiles.map((document) => document.path);
   return findDepthOverflows(graph, roots, limit).map((overflow) => ({
     details: `Chain: ${describeChain(overflow.paths, model)}. Flatten or shorten it to at most ${String(limit)} import hops.`,
-    id: structuralId("depth", [app.adapterId, overflow.rootPath, ...overflow.paths]),
+    id: structuralFindingId("depth", [app.adapterId, overflow.rootPath]),
     locations: [{ path: overflow.rootPath }],
     message: `${app.displayName} instruction imports exceed its ${String(limit)}-hop limit from ${displayInstructionPath(overflow.rootPath, model)}.`,
     metadata: {
@@ -162,16 +186,20 @@ function depthFindings(
 function unsupportedImportFindings(
   app: AppModel,
   model: WorkspaceModel,
+  reporting: LinkReporting,
 ): readonly DetectedFinding[] {
   if (IMPORT_SUPPORT.get(app.adapterId) !== false) {
     return [];
   }
-  const links = observedLinks(app.instructionFiles).filter((link) => link.kind === "import");
+  const links = observedLinks(app.instructionFiles).filter(
+    (link) => link.kind === "import" && reporting.inertImports.has(link.sourcePath),
+  );
   return perSource(
     links,
+    () => "unsupported",
     (link) => ({
       details: `${app.displayName} does not load import directives from this file. Remove the directive or use the application's native instruction mechanism.`,
-      id: structuralId("unsupported", [app.adapterId, link.sourcePath, link.targetPath]),
+      id: structuralFindingId("unsupported", [app.adapterId, link.sourcePath, link.targetPath]),
       locations: [{ path: link.sourcePath }],
       message: `${displayInstructionPath(link.sourcePath, model)} contains an import that ${app.displayName} does not support.`,
       metadata: {
@@ -182,8 +210,10 @@ function unsupportedImportFindings(
       },
       severity: "warn",
     }),
-    "unsupported",
     model,
+    // Every application that cannot follow imports reports the same source, so the summaries
+    // standing in for their capped findings need the application to tell them apart.
+    { overflowScope: [app.adapterId] },
   );
 }
 
