@@ -1,6 +1,7 @@
 import { safe, safeMultiline } from "../safe-text.js";
 import { createStyle, type Style } from "../style.js";
-import type { WizardQuestion } from "./wizard-types.js";
+import { DONE, renderTabBar, UNANSWERED } from "./wizard-tabs.js";
+import type { WizardFlowContext, WizardQuestion } from "./wizard-types.js";
 
 /** One question's live state while its form is on screen. */
 export interface WizardQuestionView {
@@ -22,10 +23,12 @@ export interface WizardPreview {
 
 /** Everything one repaint needs; the renderer holds no state of its own. */
 export interface WizardFrame {
-  /** Index into the tabs: one per question, then the Submit tab. */
+  /** Index into the form's own tabs: one per question, then the Submit tab when it has one. */
   readonly activeTab: number;
   /** Row the cursor is on inside the active question; options first, free text last. */
   readonly cursorRow: number;
+  /** The surrounding wizard flow rendered around the form's questions; see the type's docs. */
+  readonly flow?: WizardFlowContext | undefined;
   readonly questions: readonly WizardQuestionView[];
   readonly preview?: WizardPreview | undefined;
 }
@@ -41,10 +44,12 @@ export const DEFAULT_WIZARD_VIEWPORT: WizardViewport = Object.freeze({ columns: 
 /** Title, two blank lines, the hint, and a row of headroom for the cursor. */
 const PREVIEW_CHROME_ROWS = 5;
 
+/** Tab bar, two blank lines, the hint, and a row of headroom for the cursor. */
+const FRAME_CHROME_ROWS = 5;
+
 /** Below this the wrapped body is unreadable anyway, and the arithmetic stops being useful. */
 const PREVIEW_MIN_COLUMNS = 40;
 
-const UNANSWERED = "☐";
 const ANSWERED = "☑";
 const CURSOR = "❯";
 
@@ -64,95 +69,142 @@ export function renderWizardFrame(
   if (frame.preview !== undefined) {
     return renderPreview(frame.preview, style, viewport);
   }
-  const lines = [renderTabBar(frame, style), ""];
+  // A form inside a flow can never unlock the flow's Submit by itself: later steps still pend.
+  const submitLocked = frame.flow !== undefined || frame.questions.some((view) => !view.answered);
+  const lines = [renderTabBar(frame, submitLocked, style, viewport.columns), ""];
 
   const active = frame.questions[frame.activeTab];
-  if (active === undefined) {
-    lines.push(...renderSubmitBody(frame.questions, style));
-  } else {
-    lines.push(...renderQuestionBody(active, frame.cursorRow, style));
-  }
+  const body =
+    active === undefined
+      ? { focus: 0, lines: renderSubmitBody(frame.questions, submitLocked, style) }
+      : renderQuestionBody(active, frame.cursorRow, style);
+  // The engine repaints by moving the cursor up as many rows as it last printed; a frame taller
+  // than the terminal scrolls the buffer and the erasure lands short, leaking rows into the
+  // scrollback. The body is therefore windowed around the cursor instead of trusted to fit.
+  lines.push(...clipBody(body.lines, body.focus, viewport.rows - FRAME_CHROME_ROWS, style));
 
-  lines.push("", style.dim(renderHint(active?.question)));
+  lines.push("", style.dim(renderHint(active?.question, submitLocked)));
   return `${lines.join("\n")}\n`;
+}
+
+/** Windows the body to `capacity` rows, keeping the focused row visible with `more` markers. */
+function clipBody(
+  lines: readonly string[],
+  focus: number,
+  capacity: number,
+  style: Style,
+): readonly string[] {
+  const room = Math.max(1, capacity);
+  if (lines.length <= room) {
+    return lines;
+  }
+  // Two rows are reserved for the markers, so the window never grows past the capacity.
+  const visible = Math.max(1, room - 2);
+  const offset = Math.min(Math.max(focus - Math.floor(visible / 2), 0), lines.length - visible);
+  const below = lines.length - offset - visible;
+  return [
+    ...(offset > 0 ? [style.dim(`   ↑ ${String(offset)} more`)] : []),
+    ...lines.slice(offset, offset + visible),
+    ...(below > 0 ? [style.dim(`   ↓ ${String(below)} more`)] : []),
+  ];
 }
 
 /** One collapsed line per answered question, printed once a form resolves. */
 export function renderAnsweredSummary(questions: readonly WizardQuestionView[]): string {
   return `${questions
-    .map((view) => ` ${ANSWERED} ${safe(view.question.label)}  ${summarizeAnswer(view)}`)
+    .map((view) => ` ${DONE} ${safe(view.question.label)}  ${summarizeAnswer(view)}`)
     .join("\n")}\n`;
-}
-
-function renderTabBar(frame: WizardFrame, style: Style): string {
-  const tabs = frame.questions.map(
-    (view) => `${view.answered ? ANSWERED : UNANSWERED} ${safe(view.question.label)}`,
-  );
-  tabs.push("✔ Submit");
-
-  const rendered = tabs.map((tab, index) => (index === frame.activeTab ? style.active(tab) : tab));
-  return ` ←  ${rendered.join("  ")}  →`;
 }
 
 function renderQuestionBody(
   view: WizardQuestionView,
   cursorRow: number,
   style: Style,
-): readonly string[] {
+): { readonly focus: number; readonly lines: readonly string[] } {
   const lines = [` ${style.bold(safe(view.question.prompt))}`, ""];
+  let focus = 0;
 
   let previousGroup: string | undefined;
   view.question.options.forEach((option, index) => {
-    if (option.group !== undefined && option.group !== previousGroup) {
-      if (index > 0) {
-        lines.push("");
-      }
-      lines.push(` ${style.bold(safe(option.group))}`);
-      previousGroup = option.group;
+    lines.push(...groupHeadingLines(option.group, index, previousGroup, style));
+    previousGroup = option.group ?? previousGroup;
+    if (index === cursorRow) {
+      focus = lines.length;
     }
-    const cursor = index === cursorRow ? CURSOR : " ";
-    const marker =
-      view.question.kind === "multiselect"
-        ? `${view.selected.has(option.value) ? ANSWERED : UNANSWERED} `
-        : "";
-    const unavailable = option.disabled === true ? style.dim(" — unavailable") : "";
-    lines.push(`${cursor} ${String(index + 1)}. ${marker}${safe(option.label)}${unavailable}`);
-    if (option.description !== undefined) {
-      lines.push(style.dim(`      ${safe(option.description)}`));
-    }
+    lines.push(...optionLines(option, index, view, cursorRow, style));
   });
 
   if (view.question.freeText === true) {
-    const cursor = cursorRow === view.question.options.length ? CURSOR : " ";
+    const onFreeText = cursorRow === view.question.options.length;
+    const cursor = onFreeText ? CURSOR : " ";
+    if (onFreeText) {
+      focus = lines.length;
+    }
     const draft = view.text === "" ? style.dim("Type something.") : safe(view.text);
     lines.push(`${cursor} ${String(view.question.options.length + 1)}. ${draft}`);
   }
 
-  return lines;
+  return { focus, lines };
+}
+
+function groupHeadingLines(
+  group: string | undefined,
+  index: number,
+  previousGroup: string | undefined,
+  style: Style,
+): readonly string[] {
+  if (group === undefined || group === previousGroup) {
+    return [];
+  }
+  return [...(index > 0 ? [""] : []), ` ${style.bold(safe(group))}`];
+}
+
+function optionLines(
+  option: WizardQuestion["options"][number],
+  index: number,
+  view: WizardQuestionView,
+  cursorRow: number,
+  style: Style,
+): readonly string[] {
+  const cursor = index === cursorRow ? CURSOR : " ";
+  const marker =
+    view.question.kind === "multiselect"
+      ? `${view.selected.has(option.value) ? ANSWERED : UNANSWERED} `
+      : "";
+  const unavailable = option.disabled === true ? style.dim(" — unavailable") : "";
+  const rows = [`${cursor} ${String(index + 1)}. ${marker}${safe(option.label)}${unavailable}`];
+  if (option.description !== undefined) {
+    rows.push(style.dim(`      ${safe(option.description)}`));
+  }
+  return rows;
 }
 
 function renderSubmitBody(
   questions: readonly WizardQuestionView[],
+  submitLocked: boolean,
   style: Style,
 ): readonly string[] {
-  const lines = [` ${style.bold("Review your answers, then press ↵ to continue.")}`, ""];
+  const heading = submitLocked
+    ? "Submit unlocks once every step below is answered."
+    : "Review your answers, then press ↵ to continue.";
+  const lines = [` ${style.bold(heading)}`, ""];
   for (const view of questions) {
-    const box = view.answered ? ANSWERED : UNANSWERED;
+    const box = view.answered ? DONE : UNANSWERED;
     const summary = view.answered ? summarizeAnswer(view) : style.dim("(unanswered)");
     lines.push(` ${box} ${safe(view.question.label)}  ${summary}`);
   }
   return lines;
 }
 
-function renderHint(question: WizardQuestion | undefined): string {
+function renderHint(question: WizardQuestion | undefined, submitLocked: boolean): string {
   if (question === undefined) {
-    return " ↵ submit · ←/→ back to a question · esc cancel";
+    return submitLocked ? " ←/→ steps · esc cancel" : " ↵ submit · ←/→ steps · esc cancel";
   }
   const toggle = question.kind === "multiselect" ? " · space toggle" : "";
   const preview = question.options.some((option) => option.preview !== undefined)
     ? " · p preview"
     : "";
-  return ` ↑/↓ move${toggle}${preview} · ←/→ questions · ↵ select · esc cancel`;
+  return ` ↑/↓ move${toggle}${preview} · ←/→ steps · ↵ select · esc cancel`;
 }
 
 /**

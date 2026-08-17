@@ -154,6 +154,19 @@ Check exit codes are stable enough to gate CI on:
 4. **Fixes return data**, never actions. A fix produces a `FixPlan` of write, remove, move,
    archive, and symlink operations for Aura to preview and apply through its fix-plan kernel.
 
+## Repository layout
+
+| Path               | Contents                                                                  |
+| ------------------ | ------------------------------------------------------------------------- |
+| `packages/sdk`     | `@tryaura/aura-sdk` — the public plugin API. No runtime dependencies.     |
+| `packages/core`    | Environment, workspace model, checks, fix-plan execution, managed blocks. |
+| `packages/cli`     | `runCli(distro)` — the command shell a distribution is built on.          |
+| `packages/testkit` | Integration helpers used across package test suites.                      |
+| `plugins/*`        | Adapters (Claude Code, Codex, Cursor), core checks, official content.     |
+| `distros/aura`     | The `aura` binary: branding plus the plugin list, composed at build time. |
+| `apps/web`         | Marketing landing and Starlight docs, deployed on Cloudflare Workers.     |
+| `docs/cli-ux.md`   | The CLI UX contract: help screens, glyphs, and the setup wizard tab bar.  |
+
 That separation makes every change previewable. A check cannot run a command, and a fix cannot
 make a network request. Fix plans use target locking, precondition checks, atomic replacement,
 backup journals, and rollback on failure.

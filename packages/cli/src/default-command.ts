@@ -2,6 +2,7 @@
 import { Command } from "clipanion/lib/advanced/index.js";
 
 import type { AuraCliContext } from "./commands.js";
+import { renderRootHelp } from "./help.js";
 import type { CliExitCode } from "./types.js";
 
 export class DefaultCommand extends Command<AuraCliContext> {
@@ -12,10 +13,7 @@ export class DefaultCommand extends Command<AuraCliContext> {
 
   // fallow-ignore-next-line unused-class-member -- Clipanion invokes registered command handlers.
   async execute(): Promise<CliExitCode> {
-    this.context.stdout.write(this.cli.usage(null));
-    if (this.context.branding.docsUrl !== undefined) {
-      this.context.stdout.write(`\nDocs: ${this.context.branding.docsUrl}\n`);
-    }
+    this.context.stdout.write(renderRootHelp(this.context.branding));
     return 0;
   }
 }

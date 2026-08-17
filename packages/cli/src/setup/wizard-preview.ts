@@ -1,4 +1,4 @@
-import type { Keypress } from "./wizard-form.js";
+import type { Keypress } from "./wizard-types.js";
 import { wrapPreviewLines, type WizardPreview } from "./wizard-render.js";
 
 /**

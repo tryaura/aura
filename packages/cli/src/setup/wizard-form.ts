@@ -1,17 +1,16 @@
+import { digitRow, printable, rowCount, tabDelta } from "./wizard-keys.js";
 import { handlePreviewKeypress, openPreview, type PreviewState } from "./wizard-preview.js";
 import type { WizardFrame, WizardQuestionView } from "./wizard-render.js";
-import type { WizardAnswer, WizardAnswers, WizardQuestion } from "./wizard-types.js";
-
-/** One decoded key, however the terminal happened to encode it. */
-export interface Keypress {
-  readonly ctrl: boolean;
-  readonly meta: boolean;
-  readonly name: string | undefined;
-  readonly sequence: string | undefined;
-}
+import type {
+  Keypress,
+  WizardAnswer,
+  WizardAnswers,
+  WizardFlowContext,
+  WizardQuestion,
+} from "./wizard-types.js";
 
 /** What one key did to the form. */
-type FormEvent = "abort" | "none" | "repaint" | "submit";
+type FormEvent = "abort" | "back" | "none" | "repaint" | "submit";
 
 /**
  * The wizard form's state machine, free of any I/O.
@@ -38,7 +37,10 @@ interface QuestionState {
   text: string;
 }
 
-export function createFormSession(questions: readonly WizardQuestion[]): FormSession {
+export function createFormSession(
+  questions: readonly WizardQuestion[],
+  flow?: WizardFlowContext,
+): FormSession {
   const states: readonly QuestionState[] = questions.map((question) => ({
     answered: false,
     answeredWithText: false,
@@ -46,10 +48,28 @@ export function createFormSession(questions: readonly WizardQuestion[]): FormSes
     selected: new Set(question.initial ?? []),
     text: "",
   }));
-  const tabCount = questions.length + 1;
+  // With a flow the trailing Submit belongs to the whole wizard, not this form, so the form's
+  // navigable tabs are its questions alone and answering the last one resolves it.
+  const ownSubmitTab = flow === undefined;
+  const tabCount = questions.length + (ownSubmitTab ? 1 : 0);
   let activeTab = 0;
   let cursorRow = 0;
   let preview: PreviewState | undefined;
+
+  /** ← on the first tab leaves the form for the one before it in the flow. */
+  const leavesBackward = (keypress: Keypress): boolean =>
+    keypress.name === "left" && activeTab === 0 && canGoBack;
+
+  /**
+   * → past the last tab commits the form as it stands and moves on, so a re-entered flow
+   * retraces forward without re-answering. Never on the Submit form — applying a plan must stay
+   * an explicit ↵.
+   */
+  const commitsForward = (keypress: Keypress): boolean =>
+    (keypress.name === "right" || keypress.name === "tab") &&
+    activeTab === tabCount - 1 &&
+    flow !== undefined &&
+    flow.submit !== true;
 
   const handle = (keypress: Keypress): FormEvent => {
     const previewResult = handlePreviewKeypress(preview, keypress);
@@ -60,8 +80,11 @@ export function createFormSession(questions: readonly WizardQuestion[]): FormSes
     if (keypress.name === "escape") {
       return "abort";
     }
-    if (keypress.name === "return" || keypress.name === "enter") {
+    if (keypress.name === "return" || keypress.name === "enter" || commitsForward(keypress)) {
       return handleEnter();
+    }
+    if (leavesBackward(keypress)) {
+      return "back";
     }
     return applyNavigation(keypress, states[activeTab]) ? "repaint" : "none";
   };
@@ -69,36 +92,41 @@ export function createFormSession(questions: readonly WizardQuestion[]): FormSes
   const handleEnter = (): FormEvent => {
     const state = states[activeTab];
     if (state === undefined) {
-      const unanswered = states.findIndex((candidate) => !candidate.answered);
-      if (unanswered === -1) {
-        return "submit";
-      }
-      activeTab = unanswered;
-      cursorRow = 0;
-      return "repaint";
+      // A locked Submit swallows ↵; the body already lists exactly which steps are missing.
+      return states.every((candidate) => candidate.answered) ? "submit" : "none";
     }
 
     answerActive(state, cursorRow);
-    // A one-question form has nothing left to review, so answering it is submitting it.
-    if (states.length === 1 && state.answered) {
+    // A flow form and a one-question form have nothing left to review, so answering the last
+    // open question is submitting.
+    const allAnswered = states.every((candidate) => candidate.answered);
+    if (allAnswered && (!ownSubmitTab || states.length === 1)) {
       return "submit";
     }
-    activeTab = nextTab(states, activeTab);
+    activeTab = ownSubmitTab ? nextTab(states, activeTab) : nextUnanswered(states, activeTab);
     cursorRow = 0;
     return "repaint";
   };
 
+  /** Whether ← past the first tab has somewhere to go: an earlier form of the same flow. */
+  const canGoBack = flow !== undefined && (flow.completed.length > 0 || flow.submit === true);
+
+  /** Moves tab focus by one step, stopping at the bar's ends instead of wrapping. */
+  const moveTab = (delta: number): boolean => {
+    const target = activeTab + delta;
+    if (target < 0 || target >= tabCount) {
+      return false;
+    }
+    activeTab = target;
+    cursorRow = 0;
+    return true;
+  };
+
   /** Returns true when the key changed the frame. */
   const applyNavigation = (keypress: Keypress, state: QuestionState | undefined): boolean => {
-    if (keypress.name === "left") {
-      activeTab = (activeTab - 1 + tabCount) % tabCount;
-      cursorRow = 0;
-      return true;
-    }
-    if (keypress.name === "right" || keypress.name === "tab") {
-      activeTab = (activeTab + 1) % tabCount;
-      cursorRow = 0;
-      return true;
+    const delta = tabDelta(keypress);
+    if (delta !== undefined) {
+      return moveTab(delta);
     }
     if (state === undefined) {
       return false;
@@ -146,7 +174,7 @@ export function createFormSession(questions: readonly WizardQuestion[]): FormSes
 
   return {
     answers: () => collectAnswers(states),
-    frame: () => ({ activeTab, cursorRow, questions: states.map(toView), preview }),
+    frame: () => ({ activeTab, cursorRow, flow, questions: states.map(toView), preview }),
     handle,
     views: () => states.map(toView),
   };
@@ -237,8 +265,15 @@ function nextTab(states: readonly QuestionState[], activeTab: number): number {
   return states.length;
 }
 
-function rowCount(question: WizardQuestion): number {
-  return question.options.length + (question.freeText === true ? 1 : 0);
+/** The next unanswered question, wrapping past the end; `activeTab` when everything is answered. */
+function nextUnanswered(states: readonly QuestionState[], activeTab: number): number {
+  for (let offset = 1; offset <= states.length; offset += 1) {
+    const index = (activeTab + offset) % states.length;
+    if (states[index]?.answered === false) {
+      return index;
+    }
+  }
+  return activeTab;
 }
 
 function toggle(selected: Set<string>, value: string): void {
@@ -247,23 +282,4 @@ function toggle(selected: Set<string>, value: string): void {
   } else {
     selected.add(value);
   }
-}
-
-/** The row a typed digit addresses, counting the free-text row as the last one. */
-function digitRow(keypress: Keypress, question: WizardQuestion): number | undefined {
-  if (keypress.sequence === undefined || !/^[1-9]$/u.test(keypress.sequence)) {
-    return undefined;
-  }
-  const row = Number(keypress.sequence) - 1;
-  return row < rowCount(question) ? row : undefined;
-}
-
-function printable(keypress: Keypress): string | undefined {
-  if (keypress.ctrl || keypress.meta || keypress.sequence === undefined) {
-    return undefined;
-  }
-  const code = keypress.sequence.codePointAt(0) ?? 0;
-  return [...keypress.sequence].length === 1 && code >= 0x20 && code !== 0x7f
-    ? keypress.sequence
-    : undefined;
 }

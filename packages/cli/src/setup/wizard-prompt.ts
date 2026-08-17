@@ -2,7 +2,7 @@ import { emitKeypressEvents } from "node:readline";
 import type { Readable, Writable } from "node:stream";
 
 import { safe } from "../safe-text.js";
-import { createFormSession, type Keypress } from "./wizard-form.js";
+import { createFormSession } from "./wizard-form.js";
 import {
   DEFAULT_WIZARD_VIEWPORT,
   renderAnsweredSummary,
@@ -10,7 +10,9 @@ import {
   type WizardViewport,
 } from "./wizard-render.js";
 import type {
+  Keypress,
   WizardConfirmation,
+  WizardFlowContext,
   WizardFormResult,
   WizardIo,
   WizardQuestion,
@@ -33,25 +35,44 @@ const SHOW_CURSOR = "\u001b[?25h";
  * behaves identically under a captured stream.
  */
 export function createInteractiveWizardIo(options: InteractiveWizardOptions): WizardIo {
+  // Back navigation re-runs forms; their collapsed summary prints only the first time each form
+  // completes, or every re-answer would stack another copy of the same line in the scrollback.
+  const summarized = new Set<string>();
+  const summarizeOnce: SummaryGate = (questions) => {
+    const key = questions.map((question) => question.id).join(" ");
+    if (summarized.has(key)) {
+      return false;
+    }
+    summarized.add(key);
+    return true;
+  };
+
   return {
-    ask: async (questions) => runForm(questions, options),
-    confirm: async (prompt) => runConfirm(prompt, options),
+    ask: async (questions, flow) => runForm(questions, options, flow, summarizeOnce),
+    confirm: async (prompt, flow) => runConfirm(prompt, options, flow, summarizeOnce),
     note: (text) => {
       options.stdout.write(`${safe(text)}\n`);
     },
   };
 }
 
+/** Decides at completion time whether a form's collapsed summary should print. */
+type SummaryGate = (questions: readonly WizardQuestion[]) => boolean;
+
 async function runConfirm(
   prompt: string,
   options: InteractiveWizardOptions,
+  flow?: WizardFlowContext,
+  summarize?: SummaryGate,
 ): Promise<WizardConfirmation> {
   const result = await runForm(
     [
       {
         id: "confirm",
         kind: "select",
-        label: "Apply",
+        // As the flow's final action this question IS the Submit tab; standalone confirms keep
+        // their own name.
+        label: flow?.submit === true ? "Submit" : "Apply",
         options: [
           { label: "Apply", value: "apply" },
           { description: "Nothing has been written yet.", label: "Cancel", value: "cancel" },
@@ -60,10 +81,12 @@ async function runConfirm(
       },
     ],
     options,
+    flow,
+    summarize,
   );
 
-  if (result === "aborted") {
-    return "aborted";
+  if (result === "aborted" || result === "back") {
+    return result;
   }
   const answer = result["confirm"];
   return answer?.kind === "options" && answer.values.includes("apply") ? "accepted" : "declined";
@@ -72,9 +95,11 @@ async function runConfirm(
 async function runForm(
   questions: readonly WizardQuestion[],
   options: InteractiveWizardOptions,
+  flow?: WizardFlowContext,
+  summarize?: SummaryGate,
 ): Promise<WizardFormResult> {
   const { stdin, stdout } = options;
-  const session = createFormSession(questions);
+  const session = createFormSession(questions, flow);
   let renderedLines = 0;
 
   const paint = (): void => {
@@ -103,7 +128,9 @@ async function runForm(
         stdout.write(SHOW_CURSOR);
       }
       stdout.write(erasure(renderedLines));
-      if (result !== "aborted") {
+      // Only a completed form leaves its collapsed summary behind — and only its first
+      // completion; a backed-out, aborted, or re-answered form vanishes without a trace.
+      if (result !== "aborted" && result !== "back" && (summarize?.(questions) ?? true)) {
         stdout.write(renderAnsweredSummary(session.views()));
       }
       resolveForm(result);
@@ -117,6 +144,10 @@ async function runForm(
       switch (session.handle(toKeypress(sequence, key))) {
         case "abort": {
           finish("aborted");
+          return;
+        }
+        case "back": {
+          finish("back");
           return;
         }
         case "none": {

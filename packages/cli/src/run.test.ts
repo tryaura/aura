@@ -338,10 +338,30 @@ describe("runCli", () => {
     await runCli(distro(), help.runtime);
     await runCli(distro(), version.runtime);
 
-    expect(help.stdout.text).toContain("Acme Doctor — Agent setup doctor");
+    expect(help.stdout.text).toContain("Acme Doctor 1.2.3 — Agent setup doctor");
+    expect(help.stdout.text).toContain("Get started");
     expect(help.stdout.text).toContain("acme check");
     expect(help.stdout.text).toContain("https://example.com/docs");
     expect(version.stdout.text.trim()).toBe("1.2.3");
+  });
+
+  it("renders the action-first help screens for --help at every level", async () => {
+    const root = createCapture(["--help"]);
+    const check = createCapture(["check", "-h"]);
+    const setup = createCapture(["setup", "--help"]);
+
+    expect(await runCli(distro(), root.runtime)).toBe(0);
+    expect(await runCli(distro(), check.runtime)).toBe(0);
+    expect(await runCli(distro(), setup.runtime)).toBe(0);
+
+    expect(root.stdout.text).toContain("Everyday use");
+    expect(root.stdout.text).toContain("acme setup");
+    expect(check.stdout.text).toContain("acme check — Inspect the current AI agent setup");
+    expect(check.stdout.text).toContain("--only <filter>");
+    expect(check.stdout.text).toContain("Exit codes:");
+    expect(setup.stdout.text).toContain("acme setup — Set up this machine interactively");
+    expect(setup.stdout.text).toContain("--dry-run");
+    expect(setup.stderr.text).toBe("");
   });
 
   it("passes --home and --path overrides into the environment", async () => {
@@ -503,13 +523,24 @@ describe("runCli", () => {
     expect(capture.stdout.text).not.toContain("looked for");
   });
 
-  it("maps invalid invocations to exit code two and stderr", async () => {
+  it("redirects an unknown command to the command list on stderr", async () => {
     const capture = createCapture(["unknown"]);
 
     const exitCode = await runCli(distro(), capture.runtime);
 
     expect(exitCode).toBe(2);
     expect(capture.stdout.text).toBe("");
+    expect(capture.stderr.text).toContain("acme: unknown command 'unknown'");
+    expect(capture.stderr.text).toContain("acme check");
+    expect(capture.stderr.text).not.toContain("Unknown Syntax Error");
+  });
+
+  it("keeps the parser's own message for a bad flag on a real command", async () => {
+    const capture = createCapture(["check", "--nope"]);
+
+    const exitCode = await runCli(distro(), capture.runtime);
+
+    expect(exitCode).toBe(2);
     expect(capture.stderr.text).toContain("Unknown Syntax Error");
   });
 

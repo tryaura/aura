@@ -73,6 +73,10 @@ export async function gatherGuidedFixes(
     if (result === "aborted") {
       return "aborted";
     }
+    if (result === "back") {
+      // Unreachable — these forms carry no flow context, so ← cannot back out of them.
+      continue;
+    }
     const answer = selectedValues(result[`guided-${String(index)}`])[0];
     if (answer === undefined || answer === "skip") {
       continue;

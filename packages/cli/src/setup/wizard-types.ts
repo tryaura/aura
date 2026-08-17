@@ -1,3 +1,11 @@
+/** One decoded key, however the terminal happened to encode it. */
+export interface Keypress {
+  readonly ctrl: boolean;
+  readonly meta: boolean;
+  readonly name: string | undefined;
+  readonly sequence: string | undefined;
+}
+
 /** One selectable row of a wizard question. */
 export interface WizardOption {
   /** One dim line of context rendered under the label. */
@@ -14,6 +22,8 @@ export interface WizardOption {
 
 /** One question tab of a wizard form. */
 export interface WizardQuestion {
+  /** Shorter tab-bar label used when the full labels would overflow the terminal. */
+  readonly compactLabel?: string | undefined;
   /** Offers a trailing free-text row after the options. */
   readonly freeText?: boolean | undefined;
   readonly id: string;
@@ -39,9 +49,39 @@ export type WizardAnswer =
 /** Answers keyed by question id. */
 export type WizardAnswers = Readonly<Record<string, WizardAnswer>>;
 
-export type WizardFormResult = WizardAnswers | "aborted";
+/**
+ * `"back"` is the user backing out of the form to the one before it (← past the first tab); only
+ * forms given a {@link WizardFlowContext} with something before them can resolve with it.
+ */
+export type WizardFormResult = WizardAnswers | "aborted" | "back";
 
-export type WizardConfirmation = "accepted" | "aborted" | "declined";
+export type WizardConfirmation = "accepted" | "aborted" | "back" | "declined";
+
+/** One surrounding-flow step shown in the tab bar around the live form. */
+export interface WizardFlowStep {
+  /** Shorter tab-bar label used when the full labels would overflow the terminal. */
+  readonly compactLabel?: string | undefined;
+  readonly label: string;
+}
+
+/**
+ * Where one form sits in the wizard's overall flow.
+ *
+ * The tab bar must map the whole flow, not just the live form (docs/cli-ux.md): steps already
+ * gathered render as `✔`, steps still to come render pending, and the live form's questions stand
+ * in for the step they belong to, inserted at its flow position. A form given a flow has no
+ * review tab of its own — the trailing Submit in the bar belongs to the flow, and answering the
+ * form's last question resolves it.
+ */
+export interface WizardFlowContext {
+  readonly completed: readonly WizardFlowStep[];
+  /**
+   * This form is the flow's final Submit action: its tab renders label-only, like the Submit tab
+   * it stands in for, and no extra Submit is appended after the upcoming steps.
+   */
+  readonly submit?: boolean | undefined;
+  readonly upcoming: readonly WizardFlowStep[];
+}
 
 /**
  * The one seam between wizard flow and terminal interaction.
@@ -51,9 +91,12 @@ export type WizardConfirmation = "accepted" | "aborted" | "declined";
  */
 export interface WizardIo {
   /** Runs one tabbed form and resolves with an answer per question. */
-  readonly ask: (questions: readonly WizardQuestion[]) => Promise<WizardFormResult>;
+  readonly ask: (
+    questions: readonly WizardQuestion[],
+    flow?: WizardFlowContext,
+  ) => Promise<WizardFormResult>;
   /** Asks for one final go-ahead. */
-  readonly confirm: (prompt: string) => Promise<WizardConfirmation>;
+  readonly confirm: (prompt: string, flow?: WizardFlowContext) => Promise<WizardConfirmation>;
   /** Shows one line of progress or context outside any form. */
   readonly note: (text: string) => void;
 }

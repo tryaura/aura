@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- one keypress-driven matrix shares the same terminal fixtures. */
 import { PassThrough } from "node:stream";
 
 import { describe, expect, it } from "vitest";
@@ -97,7 +98,7 @@ describe("interactive wizard", () => {
     session.press("return");
 
     await expect(form).resolves.toEqual({ apps: { kind: "options", values: ["claude"] } });
-    expect(session.output()).toContain("☑ Apps  Claude Code only");
+    expect(session.output()).toContain("✔ Apps  Claude Code only");
   });
 
   it("toggles multiselect values with space before answering", async () => {
@@ -159,7 +160,7 @@ describe("interactive wizard", () => {
     });
   });
 
-  it("jumps to the first unanswered question when submitting early", async () => {
+  it("keeps ↵ inert on Submit until every step is answered", async () => {
     const session = createSession();
     const io = createInteractiveWizardIo({
       colorDepth: 0,
@@ -171,6 +172,10 @@ describe("interactive wizard", () => {
     session.press("right");
     session.press("right");
     session.press("return");
+    expect(session.output()).toContain("Submit unlocks once every step below is answered.");
+
+    session.press("left");
+    session.press("left");
     session.press("return");
     session.press("return");
     session.press("return");
@@ -179,6 +184,125 @@ describe("interactive wizard", () => {
       apps: { kind: "options", values: ["both"] },
       mcp: { kind: "options", values: ["linear"] },
     });
+  });
+
+  it("shows the surrounding flow and submits a flow form on its last answer", async () => {
+    const session = createSession();
+    const io = createInteractiveWizardIo({
+      colorDepth: 0,
+      stdin: session.stdin,
+      stdout: session.stdout,
+    });
+
+    const form = io.ask([APPS_QUESTION, MCP_QUESTION], {
+      completed: [{ label: "Baseline" }],
+      upcoming: [{ label: "Snippets" }],
+    });
+    expect(session.output()).toContain(" ✔ Baseline │ ▶ Apps ☐ │ MCP ☐ │ Snippets ☐ │ Submit");
+
+    // No review tab of its own: answering the second question resolves the form.
+    session.press("return");
+    session.press("return");
+
+    await expect(form).resolves.toEqual({
+      apps: { kind: "options", values: ["both"] },
+      mcp: { kind: "options", values: ["linear"] },
+    });
+  });
+
+  it("resolves back when ← leaves the first tab of a flow form with history", async () => {
+    const session = createSession();
+    const io = createInteractiveWizardIo({
+      colorDepth: 0,
+      stdin: session.stdin,
+      stdout: session.stdout,
+    });
+
+    const form = io.ask([MCP_QUESTION], {
+      completed: [{ label: "Applications" }],
+      upcoming: [],
+    });
+    session.press("left");
+
+    await expect(form).resolves.toBe("back");
+    // A backed-out form leaves no collapsed summary behind.
+    expect(session.output()).not.toContain("✔ MCP");
+  });
+
+  it("keeps ← a no-op on the first tab when nothing precedes the form", async () => {
+    const session = createSession();
+    const io = createInteractiveWizardIo({
+      colorDepth: 0,
+      stdin: session.stdin,
+      stdout: session.stdout,
+    });
+
+    const form = io.ask([MCP_QUESTION], { completed: [], upcoming: [{ label: "Baseline" }] });
+    session.press("left");
+    session.press("return");
+
+    await expect(form).resolves.toEqual({ mcp: { kind: "options", values: ["linear"] } });
+  });
+
+  it("commits a flow form and advances when → leaves its last tab", async () => {
+    const session = createSession();
+    const io = createInteractiveWizardIo({
+      colorDepth: 0,
+      stdin: session.stdin,
+      stdout: session.stdout,
+    });
+
+    const form = io.ask([MCP_QUESTION], {
+      completed: [{ label: "Applications" }],
+      upcoming: [{ label: "Baseline" }],
+    });
+    session.press("right");
+
+    await expect(form).resolves.toEqual({ mcp: { kind: "options", values: ["linear"] } });
+  });
+
+  it("keeps → away from the Submit form's answer", async () => {
+    const session = createSession();
+    const io = createInteractiveWizardIo({
+      colorDepth: 0,
+      stdin: session.stdin,
+      stdout: session.stdout,
+    });
+
+    const confirmation = io.confirm("Apply this plan?", {
+      completed: [{ label: "Applications" }],
+      submit: true,
+      upcoming: [],
+    });
+    session.press("right");
+    session.press("down");
+    session.press("return");
+
+    // → must never apply a plan; only ↵ resolves the confirmation, here on Cancel.
+    await expect(confirmation).resolves.toBe("declined");
+  });
+
+  it("prints a form's collapsed summary only on its first completion", async () => {
+    const session = createSession();
+    const io = createInteractiveWizardIo({
+      colorDepth: 0,
+      stdin: session.stdin,
+      stdout: session.stdout,
+    });
+    const flow = { completed: [{ label: "Baseline" }], upcoming: [] };
+
+    const first = io.ask([MCP_QUESTION], flow);
+    session.press("return");
+    await first;
+    const second = io.ask([MCP_QUESTION], flow);
+    session.press("return");
+    await second;
+
+    const summaries = session
+      .output()
+      .split("\n")
+      .filter((line) => line.includes("✔ MCP"));
+    expect(summaries).toHaveLength(1);
   });
 
   it("aborts on ctrl+c and restores the terminal", async () => {

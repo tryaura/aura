@@ -6,6 +6,22 @@ import { renderManualSteps, renderOperationPreviews } from "../preview-render.js
 import { safe } from "../safe-text.js";
 import type { SetupBlocker, SetupNotice } from "./planner.js";
 
+/** The already-converged variant of the summary: nothing to confirm, at most context to show. */
+export function renderConvergedSetup(
+  preview: FixPlanPreview,
+  notices: readonly SetupNotice[],
+  withDetail: boolean,
+  output: Writable,
+): void {
+  output.write("\n");
+  if (preview.manualSteps.length === 0 && notices.length === 0) {
+    output.write("Already converged — nothing to change.\n\n");
+    return;
+  }
+  renderSetupSummary(preview, [], notices, withDetail, output);
+  output.write("\n");
+}
+
 /** Shows the whole plan — changes, blockers, manual steps — before the one confirmation. */
 export function renderSetupSummary(
   preview: FixPlanPreview,
