@@ -1,5 +1,5 @@
 import { Buffer } from "node:buffer";
-import { extname, resolve } from "node:path";
+import { resolve } from "node:path";
 
 import {
   defineCheck,
@@ -12,6 +12,8 @@ import {
 } from "@tryaura/aura-sdk";
 import { pluralize } from "@tryaura/core/pluralize";
 
+import { structuralFindingId } from "../finding-id.js";
+import { isConditionalCursorRule } from "../instruction-paragraphs.js";
 import {
   instructionGraphFor,
   reachableInstructionPaths,
@@ -108,12 +110,13 @@ function unmodeledFinding(app: AppModel): DetectedFinding | undefined {
   if (totalBytes <= DEFAULT_CONTEXT_BUDGET_BYTES) {
     return undefined;
   }
+  const approxTokens = Math.ceil(totalBytes / 4);
   return {
     details:
       "Aura measures applications whose instruction loading it models. Until this one is modeled, treat the total as an upper bound and check by hand which of these files the application always loads.",
-    id: app.adapterId,
-    message: `${app.displayName} has approximately ${String(Math.ceil(totalBytes / 4))} tokens of instruction files, and Aura does not model how it loads them.`,
-    metadata: { appId: app.adapterId, evaluated: false, totalBytes },
+    id: structuralFindingId("budget", [app.adapterId]),
+    message: `${app.displayName} has approximately ${String(approxTokens)} tokens of instruction files, and Aura does not model how it loads them.`,
+    metadata: { appId: app.adapterId, approxTokens, evaluated: false, totalBytes },
   };
 }
 
@@ -186,12 +189,6 @@ function documentsAtPaths(
   });
 }
 
-function isConditionalCursorRule(document: InstructionDocument): boolean {
-  return (
-    extname(document.path).toLowerCase() === ".mdc" && document.metadata?.["alwaysApply"] !== true
-  );
-}
-
 function findingFor(app: AppModel, classified: ClassifiedDocuments): DetectedFinding | undefined {
   const effective = classified.effective.map(measureDocument);
   const totalBytes = effective.reduce((total, file) => total + file.bytes, 0);
@@ -217,6 +214,10 @@ function findingFor(app: AppModel, classified: ClassifiedDocuments): DetectedFin
     ...(file.share === undefined ? {} : { share: file.share }),
   }));
   const omittedFiles = breakdown.length - files.length;
+  const reportedConditionalFiles = files.filter((file) => file["conditional"] === true).length;
+  // The message counts only the rows the table kept, so the true total is carried here rather than
+  // disappearing along with the conditional rows the cap dropped.
+  const conditionalFileCount = classified.conditional.length;
   const approxTokens = Math.ceil(totalBytes / 4);
   const veryLarge = totalBytes > LARGE_CONTEXT_BUDGET_BYTES;
 
@@ -231,10 +232,13 @@ function findingFor(app: AppModel, classified: ClassifiedDocuments): DetectedFin
             `Listing the ${String(MAX_REPORTED_FILES)} largest of ${String(breakdown.length)} ${pluralize(breakdown.length, "file")}.`,
           ]),
     ].join(" "),
-    id: app.adapterId,
-    message: `${app.displayName} loads approximately ${String(approxTokens)} tokens of always-on instructions across ${String(effective.length)} ${pluralize(effective.length, "file")}${conditionalSuffix(conditionalFiles.length)}.`,
+    id: structuralFindingId("budget", [app.adapterId]),
+    message: `${app.displayName} loads approximately ${String(approxTokens)} tokens of always-on instructions across ${String(effective.length)} ${pluralize(effective.length, "file")}${conditionalSuffix(reportedConditionalFiles)}.`,
     metadata: {
+      appId: app.adapterId,
       approxTokens,
+      ...(conditionalFileCount === 0 ? {} : { conditionalFiles: conditionalFileCount }),
+      evaluated: true,
       files,
       ...(omittedFiles === 0 ? {} : { omittedFiles }),
       totalBytes,

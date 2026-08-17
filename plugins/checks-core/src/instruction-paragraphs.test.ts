@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { extractParagraphs, normalizeParagraph } from "./instruction-paragraphs.js";
+import {
+  extractParagraphs,
+  isConditionalCursorRule,
+  normalizeParagraph,
+} from "./instruction-paragraphs.js";
 import { document } from "./testing.js";
 
 describe("instruction paragraph extraction", () => {
@@ -24,6 +28,21 @@ describe("instruction paragraph extraction", () => {
       { endLine: 4, startLine: 3 },
       { endLine: 6, startLine: 6 },
     ]);
+  });
+
+  it("treats MDC rules as conditional unless alwaysApply is explicitly true", () => {
+    expect(isConditionalCursorRule(document("/repo/rule.mdc", "guidance"))).toBe(true);
+    expect(
+      isConditionalCursorRule(
+        document("/repo/rule.mdc", "guidance", { metadata: { alwaysApply: false } }),
+      ),
+    ).toBe(true);
+    expect(
+      isConditionalCursorRule(
+        document("/repo/rule.mdc", "guidance", { metadata: { alwaysApply: true } }),
+      ),
+    ).toBe(false);
+    expect(isConditionalCursorRule(document("/repo/AGENTS.md", "guidance"))).toBe(false);
   });
 
   it("masks fenced and inline code without emitting code-only paragraphs", () => {

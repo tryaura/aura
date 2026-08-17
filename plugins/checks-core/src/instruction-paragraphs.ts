@@ -175,7 +175,7 @@ function buildParagraph(
   const code = paragraphCode.filter((signature) => signature.length > 0).join(CODE_SEPARATOR);
   return {
     code,
-    conditional: isConditionalRule(document),
+    conditional: isConditionalCursorRule(document),
     endLine,
     hash: sha256(`${normalized}${CODE_SEPARATOR}${code}`),
     normalized,
@@ -238,9 +238,10 @@ function isLicenseBoilerplate(lines: readonly string[]): boolean {
   return LICENSE_START_PATTERN.test(lines.join(" ").trim());
 }
 
-function isConditionalRule(document: InstructionDocument): boolean {
+/** Cursor only always-loads an MDC rule when its frontmatter explicitly opts in. */
+export function isConditionalCursorRule(document: InstructionDocument): boolean {
   return (
-    extname(document.path).toLowerCase() === ".mdc" && document.metadata?.["alwaysApply"] === false
+    extname(document.path).toLowerCase() === ".mdc" && document.metadata?.["alwaysApply"] !== true
   );
 }
 

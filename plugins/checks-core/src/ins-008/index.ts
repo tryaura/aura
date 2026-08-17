@@ -8,7 +8,7 @@ import {
   type WorkspaceModel,
 } from "@tryaura/aura-sdk";
 
-import { sha256 } from "../hashing.js";
+import { structuralFindingId } from "../finding-id.js";
 import {
   extractParagraphs,
   paragraphHashBuckets,
@@ -21,7 +21,7 @@ import {
   isCrossScopeConflict,
   type AxisConflict,
 } from "../ins-005/hits.js";
-import { projectSpecificSignals, type ProjectSignal } from "./project-signals.js";
+import { projectSpecificSignals, type ProjectSignalReport } from "./project-signals.js";
 
 interface ParagraphLocation extends JsonObject {
   readonly endLine: number;
@@ -62,7 +62,7 @@ function detectInstructionPrecedence(model: WorkspaceModel): readonly DetectedFi
   const projectSpecificFindings = projectSpecificSignals(
     model.instructionFiles,
     model.repository.packageManifests ?? [],
-  ).map(([document, signals]) => findingForProjectSignals(document, signals, model));
+  ).map(([document, report]) => findingForProjectSignals(document, report, model));
 
   return [...duplicateFindings, ...contradictionFindings, ...projectSpecificFindings];
 }
@@ -74,11 +74,11 @@ function duplicatePairs(documents: readonly InstructionDocument[]): readonly Dup
   for (const indexes of paragraphHashBuckets(paragraphs).values()) {
     const globals = indexes.flatMap((index) => {
       const paragraph = paragraphs[index];
-      return paragraph?.scope === "global" ? [paragraph] : [];
+      return paragraph?.scope === "global" && !paragraph.conditional ? [paragraph] : [];
     });
     const projects = indexes.flatMap((index) => {
       const paragraph = paragraphs[index];
-      return paragraph?.scope === "project" ? [paragraph] : [];
+      return paragraph?.scope === "project" && !paragraph.conditional ? [paragraph] : [];
     });
     for (const global of globals) {
       for (const project of projects) {
@@ -143,7 +143,7 @@ function findingForDuplicate(pair: DuplicatePair, model: WorkspaceModel): Detect
       : `${displayInstructionPath(pair.projectPath, model)}:${instructionLineRange(project.startLine, project.endLine)}`;
   return {
     details: `Copies: ${globalDescription}, ${projectDescription}. Keep the guidance in the project file only when it is repository-specific.`,
-    id: `duplicate:${sha256(`${pair.globalPath}\0${pair.projectPath}`)}`,
+    id: structuralFindingId("duplicate", [pair.globalPath, pair.projectPath]),
     locations: [...pair.global, ...pair.project].map((location) => ({
       line: location.startLine,
       path: location.path,
@@ -162,7 +162,7 @@ function findingForContradiction(conflict: AxisConflict, model: WorkspaceModel):
   const project = conflict.left.scope === "project" ? conflict.left : conflict.right;
   return {
     details: `Locations: ${displayInstructionPath(global.path, model)}:${String(global.line)}, ${displayInstructionPath(project.path, model)}:${String(project.line)}. Resolve the project rule explicitly or remove the conflicting global preference.`,
-    id: `contradiction:${conflict.axis}:${sha256(`${global.path}\0${project.path}`)}`,
+    id: structuralFindingId("contradiction", [conflict.axis, global.path, project.path]),
     locations: [
       { line: global.line, path: global.path },
       { line: project.line, path: project.path },
@@ -179,26 +179,36 @@ function findingForContradiction(conflict: AxisConflict, model: WorkspaceModel):
 
 function findingForProjectSignals(
   document: InstructionDocument,
-  signals: readonly ProjectSignal[],
+  report: ProjectSignalReport,
   model: WorkspaceModel,
 ): DetectedFinding {
+  const { omittedSignals, signals } = report;
   const lines = [...new Set(signals.map((signal) => signal.line))].sort(
     (left, right) => left - right,
   );
   const path = resolve(document.path);
+  const totalSignals = signals.length + omittedSignals;
   return {
-    details: `Repository-specific guidance appears at ${displayInstructionPath(path, model)}:${lines.join(",")}. Move it to the project AGENTS.md or equivalent project instruction file.`,
-    id: `project-specific:${sha256(path)}`,
+    details: [
+      `Repository-specific guidance appears at ${displayInstructionPath(path, model)}:${lines.join(",")}. Move it to the project AGENTS.md or equivalent project instruction file.`,
+      ...(omittedSignals === 0
+        ? []
+        : [
+            `${String(omittedSignals)} further ${omittedSignals === 1 ? "signal is" : "signals are"} not listed.`,
+          ]),
+    ].join(" "),
+    id: structuralFindingId("project-specific", [path]),
     locations: lines.map((line) => ({ line, path })),
     message: "A global instruction file contains repository-specific guidance.",
     metadata: {
       kind: "project-specific",
+      ...(omittedSignals === 0 ? {} : { omittedSignals }),
       path,
       signals,
     },
     // Every signal is a heuristic, and one of them alone is as likely to be a turn of phrase that
     // happens to read like a path or a package name. Corroboration earns the check's warning; a
     // lone signal is reported where a false positive costs the user nothing.
-    ...(signals.length > 1 ? {} : { severity: "info" as const }),
+    ...(totalSignals > 1 ? {} : { severity: "info" as const }),
   };
 }
