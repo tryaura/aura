@@ -2,6 +2,7 @@ import { isAbsolute, sep } from "node:path";
 
 import type { Adapter, AdapterFileSpec, AdapterSourceFile, FileProblem } from "@tryaura/aura-sdk";
 
+import { FILE_PROBLEM_MESSAGES } from "../file-problem-messages.js";
 import type { ScanDiagnostic } from "./diagnostics.js";
 import {
   MAX_DIRECTORY_ENTRIES,
@@ -214,13 +215,10 @@ function describe(
   return [];
 }
 
+/** The shared table, with the limit-bearing entries wrapped to name the limits applied here. */
 const PROBLEM_REASONS: Readonly<Record<FileProblem, string>> = {
-  denied: "permission was denied",
-  loop: "the path is a loop of symbolic links",
-  "outside-project": "it resolves outside the project",
-  resources: "the system ran out of file handles",
-  "too-large": `it is larger than the ${MAX_FILE_BYTES / 1_000_000} MB Aura reads`,
-  "too-many-entries": `it holds more than the ${MAX_DIRECTORY_ENTRIES} entries Aura lists`,
-  unreadable: "the filesystem reported an error",
-  unsupported: "it is not a regular file or a directory",
+  ...FILE_PROBLEM_MESSAGES,
+  "too-large": `the file is larger than the ${MAX_FILE_BYTES / 1_000_000} MB Aura reads`,
+  "too-many-entries": `the path holds more than the ${MAX_DIRECTORY_ENTRIES} entries Aura lists`,
+  unsupported: "the path is not a regular file or a directory",
 };

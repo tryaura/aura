@@ -9,6 +9,7 @@ import {
 import { pluralize } from "@tryaura/core/pluralize";
 
 import { structuralFindingId } from "../finding-id.js";
+import { instructionCapabilities } from "../instruction-capabilities.js";
 import { displayInstructionPath } from "../instruction-paths.js";
 import { guidedFix } from "./fix.js";
 import { findDepthOverflows } from "./depth.js";
@@ -23,8 +24,6 @@ import {
   linkReporting,
   observedLinks,
   perSource,
-  DEPTH_LIMITS,
-  IMPORT_SUPPORT,
   type FailureKind,
   type LinkReporting,
   type ObservedLink,
@@ -163,7 +162,7 @@ function depthFindings(
   graph: InstructionGraph,
   model: WorkspaceModel,
 ): readonly DetectedFinding[] {
-  const limit = DEPTH_LIMITS.get(app.adapterId);
+  const limit = instructionCapabilities(app).importDepthLimit;
   if (limit === undefined) {
     return [];
   }
@@ -188,7 +187,7 @@ function unsupportedImportFindings(
   model: WorkspaceModel,
   reporting: LinkReporting,
 ): readonly DetectedFinding[] {
-  if (IMPORT_SUPPORT.get(app.adapterId) !== false) {
+  if (instructionCapabilities(app).importStyle !== "none") {
     return [];
   }
   const links = observedLinks(app.instructionFiles).filter(

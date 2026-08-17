@@ -265,7 +265,7 @@ describe("buildWorkspaceModel", () => {
   it("canonicalizes cwd and home before adapters construct paths", async () => {
     let received: AdapterParseInput | undefined;
     const adapter = createTestAdapter({
-      files: (environment) => [
+      files: ({ environment }) => [
         {
           id: "instructions",
           kind: "instructions",

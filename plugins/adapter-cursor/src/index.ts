@@ -2,6 +2,9 @@ import { definePlugin } from "@tryaura/aura-sdk";
 
 import { cursorAdapter } from "./adapter.js";
 
+/** @public */
+export { CURSOR_ADAPTER_ID, CURSOR_SOURCE_IDS, isConditionalCursorRule } from "./contract.js";
+
 export default definePlugin({
   adapters: [cursorAdapter],
   apiVersion: 1,

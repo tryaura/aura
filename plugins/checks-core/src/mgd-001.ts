@@ -1,5 +1,6 @@
 import { defineCheck, type DetectedFinding, type WorkspaceModel } from "@tryaura/aura-sdk";
 
+import { displayInstructionPath } from "./instruction-paths.js";
 import { managedDocuments, type ManagedDocument } from "./mgd-001-documents.js";
 import { guidedFixes } from "./mgd-001-fixes.js";
 
@@ -30,10 +31,10 @@ function findingsForDocument(
   const parsed = document.parsed;
   const hiddenMarker = parsed.notes.find((note) => note.code === "unterminated-fence");
   if (hiddenMarker !== undefined) {
-    return [unterminatedFenceFinding(document, hiddenMarker.line)];
+    return [unterminatedFenceFinding(document, hiddenMarker.line, model)];
   }
   if (parsed.status === "invalid") {
-    return [malformedFinding(document, parsed.problems)];
+    return [malformedFinding(document, parsed.problems, model)];
   }
   if (parsed.status === "absent") {
     return [];
@@ -53,7 +54,7 @@ function findingsForDocument(
         "Run `aura check --fix --interactive` and choose Keep yours, Restore, or Merge before running setup again.",
       id: `${document.sourceId}:${snippet.id}`,
       locations: [{ line: snippet.startLine, path: document.path }],
-      message: `Managed snippet ${snippet.id} in ${document.path} was edited by hand.`,
+      message: `Managed snippet ${snippet.id} in ${displayInstructionPath(document.path, model)} was edited by hand.`,
       metadata: {
         kind: "hash-mismatch",
         snippetId: snippet.id,
@@ -65,13 +66,14 @@ function findingsForDocument(
 function unterminatedFenceFinding(
   document: ManagedDocument,
   line: number | undefined,
+  model: WorkspaceModel,
 ): DetectedFinding {
   return {
     details:
       "Close the Markdown fence, then run `aura check --fix --interactive` again. Aura will not reconcile this document while its markers are hidden.",
     id: `${document.sourceId}:unterminated-fence`,
     locations: [{ ...(line === undefined ? {} : { line }), path: document.path }],
-    message: `An unclosed Markdown fence hides Aura-managed markers in ${document.path}.`,
+    message: `An unclosed Markdown fence hides Aura-managed markers in ${displayInstructionPath(document.path, model)}.`,
     metadata: { kind: "unterminated-fence", sourceId: document.sourceId },
   };
 }
@@ -79,6 +81,7 @@ function unterminatedFenceFinding(
 function malformedFinding(
   document: ManagedDocument,
   problems: Extract<ManagedDocument["parsed"], { readonly status: "invalid" }>["problems"],
+  model: WorkspaceModel,
 ): DetectedFinding {
   return {
     details: `${problems.map((problem) => problem.message).join(" ")} Aura will not write to a block it cannot parse; repair the markers by hand.`,
@@ -87,7 +90,7 @@ function malformedFinding(
       ...(problem.line === undefined ? {} : { line: problem.line }),
       path: document.path,
     })),
-    message: `The Aura-managed block in ${document.path} is malformed.`,
+    message: `The Aura-managed block in ${displayInstructionPath(document.path, model)} is malformed.`,
     metadata: {
       kind: "malformed",
       problems: problems.map((problem) => ({

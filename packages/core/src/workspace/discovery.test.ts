@@ -43,7 +43,7 @@ describe("adapter file discovery", () => {
     };
     const discoveryCalls: string[][] = [];
     const adapter = createTestAdapter({
-      files: (_environment, _detection, files) => {
+      files: ({ files }) => {
         discoveryCalls.push([...files.keys()]);
         return [
           SKILLS,
@@ -106,7 +106,7 @@ describe("adapter file discovery", () => {
 
   it("rejects a file spec id redefined after an earlier read", async () => {
     const broken = createTestAdapter({
-      files: (_environment, _detection, files) =>
+      files: ({ files }) =>
         files.size === 0 ? [REQUIRED] : [{ ...REQUIRED, path: `${REQUIRED.path}.other` }],
       id: "broken",
     });
@@ -124,7 +124,7 @@ describe("adapter file discovery", () => {
 
   it("guards a file declaration that throws in a later discovery round", async () => {
     const broken = createTestAdapter({
-      files: (_environment, _detection, files) => {
+      files: ({ files }) => {
         if (files.size > 0) {
           throw new Error("could not expand config");
         }
@@ -149,7 +149,7 @@ describe("adapter file discovery", () => {
 
   it("stops file discovery that does not stabilize within sixteen rounds", async () => {
     const broken = createTestAdapter({
-      files: (_environment, _detection, files) => [
+      files: ({ files }) => [
         {
           ...REQUIRED,
           id: `config.${files.size}`,

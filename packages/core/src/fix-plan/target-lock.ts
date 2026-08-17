@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir } from "node:fs/promises";
+import { mkdir, rmdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 import { comparablePath } from "./claims.js";
@@ -56,9 +56,18 @@ async function lockNext<Result>(
   }
 
   const directory = join(root, digest(target));
-  return withLockDirectory(directory, target, now, async () =>
-    lockNext(targets, index + 1, root, now, action),
-  );
+  try {
+    return await withLockDirectory(directory, target, now, async () =>
+      lockNext(targets, index + 1, root, now, action),
+    );
+  } finally {
+    // Every run takes a lock named after a target digest, so without cleanup the store grows by
+    // one directory per file ever locked. Removal is strictly best-effort: a concurrent run may
+    // have just published its own record (ENOTEMPTY) or removed the directory first (ENOENT), and
+    // either outcome leaves a correct store — the directory is recreated on demand — so failures
+    // are deliberately swallowed rather than surfaced from a plan that already ran.
+    await rmdir(directory).catch(() => undefined);
+  }
 }
 
 function digest(target: string): string {

@@ -1,6 +1,7 @@
 /* eslint-disable max-lines -- one snapshot matrix pins every frame the renderer can produce. */
 import { describe, expect, it } from "vitest";
 
+import { displayWidth } from "../text-width.js";
 import {
   renderAnsweredSummary,
   renderWizardFrame,
@@ -26,7 +27,7 @@ const MCP_QUESTION: WizardQuestion = {
   kind: "multiselect",
   label: "MCP",
   options: [
-    { label: "linear", value: "linear" },
+    { label: "acme", value: "acme" },
     { label: "context7", value: "context7" },
   ],
   prompt: "Which MCP servers should every managed app get?",
@@ -74,7 +75,7 @@ describe("renderWizardFrame", () => {
       cursorRow: 1,
       questions: [
         view(APPS_QUESTION, { answered: true, selected: new Set(["both"]) }),
-        view(MCP_QUESTION, { selected: new Set(["linear"]) }),
+        view(MCP_QUESTION, { selected: new Set(["acme"]) }),
       ],
     };
 
@@ -83,7 +84,7 @@ describe("renderWizardFrame", () => {
 
        Which MCP servers should every managed app get?
 
-        1. ☑ linear
+        1. ☑ acme
       ❯ 2. ☐ context7
 
        ↑/↓ move · space toggle · ←/→ steps · ↵ select · esc cancel
@@ -120,7 +121,7 @@ describe("renderWizardFrame", () => {
       cursorRow: 0,
       questions: [
         view(APPS_QUESTION, { answered: true, selected: new Set(["both"]) }),
-        view(MCP_QUESTION, { answered: true, selected: new Set(["linear"]) }),
+        view(MCP_QUESTION, { answered: true, selected: new Set(["acme"]) }),
       ],
     };
 
@@ -130,7 +131,7 @@ describe("renderWizardFrame", () => {
        Review your answers, then press ↵ to continue.
 
        ✔ Apps  Claude Code + Cursor
-       ✔ MCP  linear
+       ✔ MCP  acme
 
        ↵ submit · ←/→ steps · esc cancel
       "
@@ -205,6 +206,37 @@ describe("renderWizardFrame", () => {
     expect(rendered).toContain("more");
     // The cursor row stays visible inside the window.
     expect(rendered).toContain("❯ 12. ☐ Snippet 12");
+  });
+
+  it("clips by wrapped display rows, so wide labels never overflow the viewport", () => {
+    const wide: WizardQuestion = {
+      id: "snippets",
+      kind: "multiselect",
+      label: "Snippets",
+      options: Array.from({ length: 8 }, (_, index) => ({
+        label: `Snippet ${String(index + 1)} ${"x".repeat(120)}`,
+        value: `snippet-${String(index + 1)}`,
+      })),
+      prompt: "Choose snippets",
+    };
+    const frame: WizardFrame = {
+      activeTab: 0,
+      cursorRow: 7,
+      questions: [view(wide)],
+    };
+    const columns = 40;
+
+    const rendered = renderWizardFrame(frame, 0, { columns, rows: 14 });
+    const occupiedRows = rendered
+      .split("\n")
+      .slice(0, -1)
+      .reduce((sum, line) => sum + Math.max(1, Math.ceil(displayWidth(line) / columns)), 0);
+
+    // Every option wraps onto several terminal rows; a window counted in logical lines would
+    // still overflow the viewport and break the engine's cursor-up erasure.
+    expect(occupiedRows).toBeLessThanOrEqual(14 - 1);
+    expect(rendered).toContain("↑");
+    expect(rendered).toContain("Snippet 8");
   });
 
   it("keeps the step row static and maps chain progress in a └ sub-row", () => {
@@ -422,6 +454,20 @@ describe("renderWizardFrame", () => {
     ]);
     // The frame has to fit, or the engine's cursor-up repaint lands somewhere other than its start.
     expect(rendered.split("\n").length - 1).toBeLessThanOrEqual(10);
+  });
+
+  it("fills the width when wrapping emoji, measuring clusters rather than code points", () => {
+    // Each 👍🏽 is a base plus a skin-tone modifier: two columns as a cluster, but two columns per
+    // code point if the wrap splits it. Summing per code point would break this line at 34 of the
+    // 40 available columns and disagree with the width the terminal actually gives it.
+    const cluster = "ab\u{1F44D}\u{1F3FD}";
+    const body = cluster.repeat(11);
+
+    const rendered = renderWizardFrame(previewFrame(body, 0), 0, { columns: 40, rows: 12 });
+    const rows = rendered.split("\n").slice(2, -3);
+
+    expect(rows).toEqual([cluster.repeat(10), cluster]);
+    expect(rows.map((row) => displayWidth(row))).toEqual([40, 4]);
   });
 
   it("scrolls a preview by its offset and drops the counter at the end", () => {

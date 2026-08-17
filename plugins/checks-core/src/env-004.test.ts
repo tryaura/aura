@@ -90,19 +90,80 @@ describe("ENV-004", () => {
     expect(env004.detect(projectModel(gitignore(""), { apps: [counted] }))).toEqual([]);
   });
 
-  it("accepts Claude Code auto mode", () => {
-    const automatic = app({
+  it("accepts Claude Code acceptEdits mode", () => {
+    const accepting = app({
       adapterId: "claude-code",
-      metadata: { claudePermissions: { project: { defaultMode: "auto" } } },
+      metadata: { claudePermissions: { project: { defaultMode: "acceptEdits" } } },
     });
 
-    expect(env004.detect(projectModel(gitignore(""), { apps: [automatic] }))).toEqual([]);
+    expect(env004.detect(projectModel(gitignore(""), { apps: [accepting] }))).toEqual([]);
+  });
+
+  it("prefers local Claude settings over shared project settings", () => {
+    const localOverride = app({
+      adapterId: "claude-code",
+      metadata: {
+        claudePermissions: {
+          local: { defaultMode: "plan" },
+          project: { defaultMode: "default" },
+        },
+      },
+      sources: [
+        {
+          exists: true,
+          spec: {
+            id: "claude-code.settings.local",
+            kind: "config",
+            path: "/repo/.claude/settings.local.json",
+            scope: "project",
+          },
+        },
+      ],
+    });
+
+    const findings = env004.detect(projectModel(gitignore(""), { apps: [localOverride] }));
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({
+      id: "claude-permission-mode:plan",
+      locations: [{ path: "/repo/.claude/settings.local.json" }],
+      metadata: { sourceId: "claude-code.settings.local" },
+    });
+  });
+
+  it("recommends only permission modes Claude Code actually has", () => {
+    const restrictive = app({
+      adapterId: "claude-code",
+      metadata: { claudePermissions: { project: { defaultMode: "plan" } } },
+      sources: [
+        {
+          exists: true,
+          spec: {
+            id: "claude-code.settings.project",
+            kind: "config",
+            path: "/repo/.claude/settings.json",
+            scope: "project",
+          },
+        },
+      ],
+    });
+    const workspace = projectModel(gitignore(""), { apps: [restrictive] });
+    const finding = requireFinding(env004.detect(workspace)[0], "ENV-004", "project", "warn");
+    const step = env004.fix(finding, workspace)?.manualSteps?.[0];
+
+    expect(step).toContain("default or acceptEdits");
+    expect(step).not.toContain("auto");
+    expect(env004.explain).toContain("default or acceptEdits");
+    expect(env004.explain).not.toContain("auto");
   });
 
   it.each([
     ["trusted", 0],
     ["untrusted", 1],
     ["unknown", 1],
+    // An unparseable config.toml is already reported by the adapter, naming the file and saying
+    // Codex ignores all of it. A trust finding on top would split one broken file into two
+    // unrelated-looking symptoms, and the trust claim would be a guess besides.
+    ["unreadable", 0],
   ])("handles Codex %s project trust", (trust, count) => {
     const codex = app({ adapterId: "codex", metadata: { projectTrust: trust } });
 

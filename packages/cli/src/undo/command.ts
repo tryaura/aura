@@ -27,7 +27,7 @@ export class UndoCommand extends Command<AuraCliContext> {
     details: `
       Restores the newest restorable backup, or the one named on the command line. Every \`check --fix\` and \`setup\` run that writes saves one first.
 
-      Exit codes: 0 restored or nothing to undo, 1 aborted at the prompt, 2 conflicts or unusable state, 3 operational failures.
+      Exit codes: 0 restored or nothing to undo, 1 aborted or declined at the prompt, 2 conflicts or unusable state, 3 operational failures.
     `,
     examples: [
       ["Restore the most recent backup", "$0 undo"],

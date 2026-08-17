@@ -6,6 +6,7 @@ import {
   SUPPORTED_PLUGIN_API_VERSION,
 } from "./index.js";
 import {
+  captureRegistryError,
   createAdapter,
   createCheck,
   createMcpServer,
@@ -99,5 +100,35 @@ describe("createPluginRegistry", () => {
     expect(Object.isFrozen(registry.skills)).toBe(true);
     expect(Object.isFrozen(registry.skillSources)).toBe(true);
     expect(Object.isFrozen(registry.snippets)).toBe(true);
+  });
+  it("accepts semver versions with prerelease and build metadata", () => {
+    expect(() =>
+      captureRegistryError([createPlugin("acme", { name: "Acme", version: "1.2.3-rc.1+build.5" })]),
+    ).toThrow("Expected plugin registry creation to fail.");
+  });
+
+  it("rejects versions that only become semver after normalization", () => {
+    // A version is an identity field carried around as declared, so "parses as semver" is not
+    // enough: `semver` also accepts a leading `v` and surrounding whitespace, and storing either
+    // raw would let two spellings of one version travel under different names.
+    for (const version of ["v1.0.0", " 1.0.0 ", "1.0.0\n", "\t1.2.3"]) {
+      const error = captureRegistryError([createPlugin("acme", { name: "Acme", version })]);
+
+      expect(error.message).toContain(`declares version "${version}"`);
+      expect(error.message).toContain("expected a semver version");
+    }
+  });
+
+  it("rejects adapter IDs that cannot be used in paths, reports, and lookups", () => {
+    const emptyError = captureRegistryError([
+      createPlugin("acme", { adapters: [createAdapter("")], name: "Acme" }),
+    ]);
+    const slashError = captureRegistryError([
+      createPlugin("acme", { adapters: [createAdapter("agents/one")], name: "Acme" }),
+    ]);
+
+    expect(emptyError.message).toContain('contributes adapter ID ""');
+    expect(slashError.message).toContain('contributes adapter ID "agents/one"');
+    expect(slashError.message).toContain("expected lowercase letters, digits");
   });
 });

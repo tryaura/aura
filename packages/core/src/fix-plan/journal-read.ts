@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 import { parseManifest } from "./journal-parse.js";
 import { ENTRY_NAME, MANIFEST_NAME } from "./journal-paths.js";
 import type { JournalManifest, StoredPathState } from "./journal-schema.js";
-import { errorCode, errorMessage } from "./error-values.js";
+import { errorCode, errorMessage } from "../values.js";
 import { FixPlanError } from "./types.js";
 
 export interface JournalHandle {

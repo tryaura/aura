@@ -4,6 +4,7 @@ export interface Keypress {
   readonly meta: boolean;
   readonly name: string | undefined;
   readonly sequence: string | undefined;
+  readonly shift: boolean;
 }
 
 /** One selectable row of a wizard question. */

@@ -1,8 +1,10 @@
 /* eslint-disable max-lines -- one keypress-driven matrix shares the same terminal fixtures. */
+import process from "node:process";
 import { PassThrough } from "node:stream";
 
 import { describe, expect, it } from "vitest";
 
+import { displayWidth } from "../text-width.js";
 import { createInteractiveWizardIo } from "./wizard-prompt.js";
 import type { WizardQuestion } from "./wizard-types.js";
 
@@ -21,11 +23,11 @@ const APPS_QUESTION: WizardQuestion = {
 
 const MCP_QUESTION: WizardQuestion = {
   id: "mcp",
-  initial: ["linear"],
+  initial: ["acme"],
   kind: "multiselect",
   label: "MCP",
   options: [
-    { label: "linear", value: "linear" },
+    { label: "acme", value: "acme" },
     { label: "context7", value: "context7" },
   ],
   prompt: "Which MCP servers should every managed app get?",
@@ -33,7 +35,10 @@ const MCP_QUESTION: WizardQuestion = {
 
 interface Session {
   readonly output: () => string;
-  readonly press: (name: string, extras?: { ctrl?: boolean; sequence?: string }) => void;
+  readonly press: (
+    name: string,
+    extras?: { ctrl?: boolean; sequence?: string; shift?: boolean },
+  ) => void;
   readonly rawModeCalls: readonly boolean[];
   readonly stdin: PassThrough;
   readonly stdout: PassThrough;
@@ -63,7 +68,7 @@ function createSession(): Session {
         meta: false,
         name,
         sequence: extras.sequence,
-        shift: false,
+        shift: extras.shift ?? false,
       });
     },
     rawModeCalls,
@@ -116,7 +121,7 @@ describe("interactive wizard", () => {
     session.press("return");
 
     await expect(form).resolves.toEqual({
-      mcp: { kind: "options", values: ["linear", "context7"] },
+      mcp: { kind: "options", values: ["acme", "context7"] },
     });
   });
 
@@ -139,6 +144,48 @@ describe("interactive wizard", () => {
     await expect(form).resolves.toEqual({ apps: { kind: "text", text: "codex" } });
   });
 
+  it("moves focus backward on shift-tab", async () => {
+    const session = createSession();
+    const io = createInteractiveWizardIo({
+      colorDepth: 0,
+      stdin: session.stdin,
+      stdout: session.stdout,
+    });
+
+    const form = io.ask([APPS_QUESTION, MCP_QUESTION]);
+    session.press("tab");
+    expect(session.output()).toContain("Which MCP servers");
+    session.press("tab", { shift: true });
+    // Focus is back on the first question; answering both and submitting resolves the form.
+    session.press("return");
+    session.press("return");
+    session.press("return");
+
+    await expect(form).resolves.toEqual({
+      apps: { kind: "options", values: ["both"] },
+      mcp: { kind: "options", values: ["acme"] },
+    });
+  });
+
+  it("removes a whole emoji on backspace instead of splitting the surrogate pair", async () => {
+    const session = createSession();
+    const io = createInteractiveWizardIo({
+      colorDepth: 0,
+      stdin: session.stdin,
+      stdout: session.stdout,
+    });
+
+    const form = io.ask([APPS_QUESTION]);
+    session.press("down");
+    session.press("down");
+    session.type("a😀");
+    session.press("backspace");
+    session.press("return");
+    session.press("return");
+
+    await expect(form).resolves.toEqual({ apps: { kind: "text", text: "a" } });
+  });
+
   it("moves between question tabs and back", async () => {
     const session = createSession();
     const io = createInteractiveWizardIo({
@@ -156,7 +203,7 @@ describe("interactive wizard", () => {
 
     await expect(form).resolves.toEqual({
       apps: { kind: "options", values: ["both"] },
-      mcp: { kind: "options", values: ["linear"] },
+      mcp: { kind: "options", values: ["acme"] },
     });
   });
 
@@ -182,7 +229,7 @@ describe("interactive wizard", () => {
 
     await expect(form).resolves.toEqual({
       apps: { kind: "options", values: ["both"] },
-      mcp: { kind: "options", values: ["linear"] },
+      mcp: { kind: "options", values: ["acme"] },
     });
   });
 
@@ -206,7 +253,7 @@ describe("interactive wizard", () => {
 
     await expect(form).resolves.toEqual({
       apps: { kind: "options", values: ["both"] },
-      mcp: { kind: "options", values: ["linear"] },
+      mcp: { kind: "options", values: ["acme"] },
     });
   });
 
@@ -229,7 +276,7 @@ describe("interactive wizard", () => {
     );
     session.press("return");
 
-    await expect(form).resolves.toEqual({ mcp: { kind: "options", values: ["linear"] } });
+    await expect(form).resolves.toEqual({ mcp: { kind: "options", values: ["acme"] } });
   });
 
   it("honors ← when only the step's own chain has history", async () => {
@@ -282,7 +329,7 @@ describe("interactive wizard", () => {
     session.press("left");
     session.press("return");
 
-    await expect(form).resolves.toEqual({ mcp: { kind: "options", values: ["linear"] } });
+    await expect(form).resolves.toEqual({ mcp: { kind: "options", values: ["acme"] } });
   });
 
   it("commits a flow form and advances when → leaves its last tab", async () => {
@@ -299,7 +346,7 @@ describe("interactive wizard", () => {
     });
     session.press("right");
 
-    await expect(form).resolves.toEqual({ mcp: { kind: "options", values: ["linear"] } });
+    await expect(form).resolves.toEqual({ mcp: { kind: "options", values: ["acme"] } });
   });
 
   it("→ commits a re-seeded select answer without re-answering it", async () => {
@@ -350,7 +397,7 @@ describe("interactive wizard", () => {
     // Nothing ahead but Submit, so → left the form standing; only ↵ resolves it.
     session.press("return");
 
-    await expect(form).resolves.toEqual({ mcp: { kind: "options", values: ["linear"] } });
+    await expect(form).resolves.toEqual({ mcp: { kind: "options", values: ["acme"] } });
   });
 
   it("opens a select with the cursor on its current answer", async () => {
@@ -442,13 +489,13 @@ describe("interactive wizard", () => {
     session.press("return");
     await second;
 
-    // The stale "linear" line must not be the scrollback's last word about this step.
+    // The stale "acme" line must not be the scrollback's last word about this step.
     const summaries = session
       .output()
       .split("\n")
       .filter((line) => line.includes("✔ MCP"));
     expect(summaries).toHaveLength(2);
-    expect(summaries[1]).toContain("linear, context7");
+    expect(summaries[1]).toContain("acme, context7");
   });
 
   it("repaints against the new viewport when the terminal resizes", async () => {
@@ -468,6 +515,55 @@ describe("interactive wizard", () => {
     session.press("return");
     session.press("return");
     await form;
+  });
+
+  it("erases pessimistically when a resize shrinks the terminal mid-form", async () => {
+    const session = createSession();
+    const sized = Object.assign(session.stdout, { columns: 80, rows: 24 });
+    const io = createInteractiveWizardIo({
+      colorDepth: 0,
+      stdin: session.stdin,
+      stdout: session.stdout,
+    });
+    const wide: WizardQuestion = {
+      id: "pick",
+      kind: "select",
+      label: "Q",
+      options: [{ label: "x".repeat(60), value: "x" }],
+      prompt: "Pick",
+    };
+
+    const form = io.ask([wide]);
+    const firstFrame = session.output();
+    // The frame painted at 80 columns rewraps taller at 20; erasing with the stale row count
+    // would leave artifact rows, so the resize repaint must erase the recounted, larger height.
+    const expectedRows = firstFrame
+      .split("\n")
+      .slice(0, -1)
+      .reduce((sum, line) => sum + Math.max(1, Math.ceil(displayWidth(line) / 20)), 0);
+    sized.columns = 20;
+    session.stdout.emit("resize");
+    expect(session.output()).toContain(`\u001b[${String(expectedRows)}A`);
+
+    session.press("return");
+    await form;
+  });
+
+  it("registers a terminal-restore exit hook only while a form is live", async () => {
+    const session = createSession();
+    const io = createInteractiveWizardIo({
+      colorDepth: 0,
+      stdin: session.stdin,
+      stdout: session.stdout,
+    });
+    const before = process.listenerCount("exit");
+
+    const form = io.ask([APPS_QUESTION]);
+    expect(process.listenerCount("exit")).toBe(before + 1);
+    session.press("c", { ctrl: true });
+
+    await expect(form).resolves.toBe("aborted");
+    expect(process.listenerCount("exit")).toBe(before);
   });
 
   it("aborts on ctrl+c and restores the terminal", async () => {

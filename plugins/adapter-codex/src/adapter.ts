@@ -3,12 +3,10 @@ import { join } from "node:path";
 import {
   defineAdapter,
   detectExecutable,
-  type AdapterDetection,
-  type AdapterFileMap,
   type AdapterFileSpec,
+  type AdapterFilesInput,
   type AdapterProblem,
   type AdapterSourceFile,
-  type Environment,
   type Scope,
 } from "@tryaura/aura-sdk";
 
@@ -25,6 +23,10 @@ import { codexProjectInstructionFiles } from "./project-instructions.js";
 import { parseProjectTrust } from "./trust.js";
 
 export const codexAdapter = defineAdapter({
+  capabilities: {
+    // Codex loads its AGENTS.md chain whole and reads `@` references as prose.
+    instructions: { importStyle: "none", loading: "all-files" },
+  },
   detect: (environment) =>
     detectExecutable(environment, { authenticationArgs: ["login", "status"], binaryName: "codex" }),
   detectionScope: "the codex CLI on PATH (the desktop app is not checked)",
@@ -35,6 +37,7 @@ export const codexAdapter = defineAdapter({
     "Run `npm install -g @openai/codex@latest`, or update Codex with your package manager.",
   parse: ({ cwd, files, homeDir, projectRoot }) => {
     const mcp = files.get(SOURCE_IDS.mcp);
+    const mcpConfig = mcp === undefined ? EMPTY_MCP : parseMcpServers(mcp);
     const settings = parseCodexProjectSettings(mcp);
     const instructions = selectInstructionFiles(files, {
       homeDir,
@@ -43,12 +46,15 @@ export const codexAdapter = defineAdapter({
 
     return {
       instructionFiles: instructions.documents,
-      mcpServers: mcp?.content === undefined ? [] : parseMcpServers(mcp),
+      mcpServers: mcpConfig.servers,
       metadata: {
         [CODEX_PROJECT_TRUST_KEY]:
           mcp === undefined ? "unknown" : parseProjectTrust(mcp, { cwd, projectRoot }),
       },
-      problems: shadowedEntryProblems(instructions.shadowed),
+      problems: [
+        ...shadowedEntryProblems(instructions.shadowed),
+        ...unusableConfig(mcp, mcpConfig.malformed),
+      ],
       skills: [],
     };
   },
@@ -56,8 +62,40 @@ export const codexAdapter = defineAdapter({
     entryPath: "~/.codex/AGENTS.md",
     kind: "symlink",
   },
+  // Codex's configuration format churns from minor to minor, so support is pinned to the window
+  // this adapter's parsing was verified against and widened only after re-verification. Cursor's
+  // adapter takes the opposite bet: its format has been stable, so it declares a wide range.
   supportedRange: ">=0.146.0 <0.148.0",
 });
+
+/** What an absent file contributes, so `parse` reads the same whether or not one was found. */
+const EMPTY_MCP = Object.freeze({ malformed: false, servers: [] });
+
+/**
+ * Reports configuration that is present but unreadable.
+ *
+ * The failure this describes is invisible from the outside: Codex refuses the whole file, so every
+ * setting in it stops applying at once while the file still sits there looking configured. The
+ * message names that whole blast radius rather than only the MCP servers this module happens to
+ * parse — `config.toml` also carries project trust, and a reader told only about MCP would go
+ * looking for a second, unrelated fault. Silence is the wrong answer from a tool whose job is
+ * explaining that.
+ */
+function unusableConfig(
+  file: AdapterSourceFile | undefined,
+  malformed: boolean,
+): readonly AdapterProblem[] {
+  if (file === undefined || !malformed) {
+    return [];
+  }
+
+  return [
+    {
+      message: `Codex's configuration at ${file.spec.path} is not valid TOML, so Codex ignores the entire file: none of the MCP servers, project trust entries, or other settings it declares are in effect. Fix the file to restore them.`,
+      sourceId: file.spec.id,
+    },
+  ];
+}
 
 /** Reports an override that shadows the file Aura's own shared link writes to. */
 function shadowedEntryProblems(shadowed: readonly AdapterSourceFile[]): readonly AdapterProblem[] {
@@ -76,12 +114,11 @@ function shadowedEntryProblems(shadowed: readonly AdapterSourceFile[]): readonly
  * root markers and project candidate filenames, then read only the candidate Codex selects at each
  * level. Selected files carry the aggregate project-document byte limit into core's read.
  */
-function codexFiles(
-  environment: Environment,
-  _detection: AdapterDetection,
-  files: AdapterFileMap,
-  projectRoot: string | undefined,
-): readonly AdapterFileSpec[] {
+function codexFiles({
+  environment,
+  files,
+  projectRoot,
+}: AdapterFilesInput): readonly AdapterFileSpec[] {
   const codexHome = join(environment.homeDir, ".codex");
   const declarations: AdapterFileSpec[] = [
     ...instructionLevel(codexHome, SOURCE_IDS.instructions, "global"),

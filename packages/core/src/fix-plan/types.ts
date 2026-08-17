@@ -6,7 +6,7 @@ import type {
 } from "@tryaura/aura-sdk";
 
 import { pluralize } from "../pluralize.js";
-import { errorCode } from "./error-values.js";
+import { errorCode } from "../values.js";
 import type { JournalStatus } from "./journal-schema.js";
 
 /**

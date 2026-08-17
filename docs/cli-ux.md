@@ -32,7 +32,9 @@ implementation together.
 Rendered by `packages/cli/src/help.ts`; exact layouts pinned in `help.test.ts`.
 
 - `aura` / `aura --help` / `aura -h` — root screen: Get started → Everyday use → Help, then a
-  `Docs:` footer when branding defines one.
+  `Docs:` footer when branding defines one. The Help section lists `aura <command> --help`, and an
+  `aura --version` row exactly when branding carries a version (which is also when the flag is
+  registered at all).
 - `aura check --help` — Everyday use, Narrow it down, Fixing behavior, Scripting, Advanced, then
   the exit-code footer.
 - `aura setup --help` — Everyday use, Options (including every registered `--add` kind),
@@ -118,8 +120,9 @@ Tab states, in either row:
 
 ### States & navigation
 
-- ←/→ (and tab) move focus across the live form's tabs, and past its ends they move through the
-  flow: ← past the first tab _backs out of the form_ — the previous form reopens with the answers
+- ←/→ (and tab; shift-tab moves backward like ←) move focus across the live form's tabs, and past
+  its ends they move through the flow: shift-tab stops at the first tab, while ← past it _backs
+  out of the form_ — the previous form reopens with the answers
   it was given, all the way back to the first step — and → past the last tab _commits the form as
   it stands and advances_, so a backed-into flow retraces forward without re-answering. → never
   reaches Submit: it stops on the flow's last form, and on the Submit confirmation it is inert.
@@ -163,6 +166,30 @@ bar, so compact tabs lose no information.
   form's first completion and again only when a re-answer changed it, so back-and-forth
   navigation never stacks duplicate lines and the scrollback's last word is never a stale answer.
 
+### Preview overlay
+
+When any option of the active question carries a preview (`WizardOption.preview` — e.g. a
+snippet's full content), the footer hint gains a `p preview` segment. Pressing `p` with the
+cursor on such an option (inert on a disabled option, or one without a preview) replaces the
+whole frame with a scrollable overlay:
+
+```
+<option label, bold>
+
+<preview body>
+
+ ↑/↓ scroll · 12 more lines · esc/↵ return to picker
+```
+
+- The body is sanitized like all plugin text and hard-wrapped to the viewport width (never
+  narrower than 40 columns), then clipped to one screenful — title, two blank lines, the hint,
+  and a row of headroom are the only chrome.
+- The footer's `· N more lines` segment (singular `1 more line`) appears between `scroll` and
+  `esc/↵` only while lines remain below the window.
+- ↑/↓ scroll one row; page up/page down scroll ten. `esc`, `↵`, or `p` return to the picker with
+  the selection untouched; ctrl+c still aborts the wizard. While the overlay is open every other
+  key is inert.
+
 ### Implementation status
 
 The bar maps the whole flow in two rows: the orchestrator threads a `WizardFlowContext`
@@ -179,9 +206,14 @@ selections, and the confirmation's back re-runs the last step before re-planning
 Frames are also windowed to the terminal: a question body taller than the viewport is clipped
 around the cursor with dim `↑/↓ N more` markers (capacity is the viewport minus four chrome rows
 minus one per bar line), because the engine repaints by cursor-up erasure and an overflowing
-frame would leak rows into the scrollback. Width arithmetic counts display columns, not code
-points (East Asian and emoji characters occupy two), and a terminal resize repaints immediately
-against the new viewport.
+frame would leak rows into the scrollback. The clip window is measured in wrapped display rows,
+not logical lines — a label wider than the terminal counts for every row it wraps onto. Width
+arithmetic counts display columns, not code points (East Asian and emoji characters occupy two),
+and wrapping advances a grapheme cluster at a time, so an emoji written as a base plus a modifier
+counts the two columns it occupies rather than two per code point.
+A terminal resize repaints immediately against the new viewport, erasing with the larger of the
+old row count and the painted frame recounted at the new width, so a shrink leaves no artifact
+rows behind.
 
 One refinement remains open: a _multi-question_ form reopened via back lands on its first
 question tab (← from Archive opens the duplicates form on Duplicate 1, not Duplicate 4).

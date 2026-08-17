@@ -100,9 +100,25 @@ From a repository, run:
 aura check
 ```
 
-The current distribution checks application versions (`ENV-001`), authentication (`ENV-002`),
-repository ignore policy (`ENV-003`), and restrictive project settings (`ENV-004`). To read why a
-check exists without scanning applications or repository state, use:
+The current distribution ships thirteen checks:
+
+| ID        | What it verifies                                                  |
+| --------- | ----------------------------------------------------------------- |
+| `ENV-001` | Agent applications use supported versions.                        |
+| `ENV-002` | Agent applications are authenticated.                             |
+| `ENV-003` | Repository ignore rules separate personal and shared agent state. |
+| `ENV-004` | Agent settings allow the current project to run normally.         |
+| `INS-001` | Shared instructions exist.                                        |
+| `INS-002` | Agent applications load shared instructions.                      |
+| `INS-003` | Instruction guidance is not duplicated.                           |
+| `INS-004` | Legacy instruction files are consolidated.                        |
+| `INS-005` | Instruction guidance does not contradict itself.                  |
+| `INS-006` | Instruction links are valid and supported.                        |
+| `INS-007` | Instruction context stays within a practical budget.              |
+| `INS-008` | Instruction guidance respects global and project precedence.      |
+| `MGD-001` | Aura-managed instruction blocks have not changed by hand.         |
+
+To read why a check exists without scanning applications or repository state, use:
 
 ```sh
 aura check --explain ENV-003
@@ -112,5 +128,8 @@ Use `--json` for a machine-readable report, or with `--explain` for a machine-re
 `--detail` includes the underlying text for a scan diagnostic, and cannot be combined with
 `--explain`, which never scans.
 
-Checks report what they find; this build applies no fixes. `--explain` says whether a check could
-be fixed automatically, and states plainly that applying it is not available yet.
+Checks that declare automatic fixes can also apply them. `aura check --fix` previews every
+automatic fix and applies the combined plan after one confirmation. `--fix --dry-run` prepares and
+previews the same plan without confirming or writing; `--fix --interactive` adds guided remediation
+choices before the combined preview; `--fix --yes` applies without confirmation. `--explain` states
+whether a given check can be fixed automatically.

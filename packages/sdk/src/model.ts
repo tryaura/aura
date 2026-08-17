@@ -1,10 +1,11 @@
 import type {
   AdapterDetection,
   AdapterFileStatus,
-  AdapterSharedLinkKind,
   AdapterSupport,
   FileProblem,
 } from "./adapter.js";
+import type { AdapterCapabilities } from "./capabilities.js";
+import type { AdapterSharedLinkKind } from "./shared-link.js";
 import type { JsonObject, Scope } from "./common.js";
 import type { AuraManifestState } from "./manifest.js";
 import type { RepositoryModel } from "./repository.js";
@@ -237,6 +238,8 @@ export interface SharedInstructionsState {
 export interface AppModel extends Omit<AdapterSnapshot, "problems"> {
   /** The {@link Adapter.id} that produced this model. */
   readonly adapterId: string;
+  /** Carried verbatim from {@link Adapter.capabilities} so checks can read any adapter's declarations. */
+  readonly capabilities?: AdapterCapabilities | undefined;
   /** What detection found. */
   readonly detection: AdapterDetection;
   /** Human-readable application name. */

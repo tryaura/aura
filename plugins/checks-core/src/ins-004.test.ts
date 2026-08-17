@@ -57,7 +57,7 @@ describe("INS-004", () => {
     expect(findings).toEqual([]);
   });
 
-  it("provides setup guidance without moving a file before AURA-27", () => {
+  it("provides setup guidance without moving the file itself", () => {
     const workspace = model({
       instructionFiles: [
         document("/home/dev/.windsurfrules", "legacy", {

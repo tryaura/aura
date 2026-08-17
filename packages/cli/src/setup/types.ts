@@ -49,7 +49,7 @@ interface SnippetSelections {
  * Everything the wizard has decided so far, one optional slice per step id.
  *
  * A typed record rather than a stringly-keyed map: the planner switches on these exhaustively, and
- * a step that runs alone (AURA-30's `--add`) simply leaves the other slices absent, which the
+ * a step that runs alone (via `--add`) simply leaves the other slices absent, which the
  * planner resolves as "keep the current state for that concern".
  */
 export interface SetupSelections {

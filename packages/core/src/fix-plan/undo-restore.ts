@@ -10,7 +10,7 @@ import type {
   StoredWriteOperation,
 } from "./journal-schema.js";
 import { primaryPath, type SelectedOperation } from "./undo-preflight.js";
-import { errorMessage } from "./error-values.js";
+import { errorMessage } from "../values.js";
 import { FixPlanError, FixPlanUndoError, type FixPlanRollbackStatus } from "./types.js";
 
 type UndoAction = () => Promise<void>;

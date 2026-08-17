@@ -1,15 +1,25 @@
 name: CI
 
 on:
+  push:
+    branches: [main]
   pull_request:
   merge_group:
+
+# Never verify the same ref twice at once; the newer commit wins.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
+  # Only a packaging change can regress this, so pull requests skip it. Merge-queue entries and
+  # pushes to main still run it, and release.yml re-runs it before any tag is built.
   packages:
     name: Release packages
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -49,5 +59,7 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Verify
         env:
-          FALLOW_AUDIT_BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          # On a push to main, `github.event.before` is the previous tip — the same base the
+          # pull request was audited against.
+          FALLOW_AUDIT_BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
         run: pnpm run verify

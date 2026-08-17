@@ -1,3 +1,5 @@
+import { CLAUDE_CODE_ADAPTER_ID } from "@tryaura/adapter-claude-code";
+import { CODEX_ADAPTER_ID } from "@tryaura/adapter-codex";
 import { defineCheck } from "@tryaura/aura-sdk";
 
 const EXPLAIN = `Aura uses each application's non-interactive status command and reads only its exit code. It never starts a login flow while checking authentication, and applications without a safe status probe are left unknown rather than guessed.
@@ -28,10 +30,10 @@ export const env002 = defineCheck({
 
 function authenticationHint(appId: string, displayName: string): string {
   switch (appId) {
-    case "claude-code": {
+    case CLAUDE_CODE_ADAPTER_ID: {
       return "Run `claude auth login`, complete authentication, then run `aura check` again.";
     }
-    case "codex": {
+    case CODEX_ADAPTER_ID: {
       return "Run `codex login`, complete authentication, then run `aura check` again.";
     }
     default: {

@@ -1,6 +1,6 @@
 import { parseMarker } from "./markers.js";
 import { AURA_MANAGED_BLOCK_NOTICE } from "./protocol.js";
-import { advanceFence, type MarkdownFence, splitSourceLines } from "./source-lines.js";
+import { advanceMarkdownFence, type MarkdownFence, splitSourceLines } from "./source-lines.js";
 import type { ManagedBlockProblem } from "./types.js";
 
 interface MarkerScan {
@@ -20,7 +20,7 @@ function scanForMarkers(text: string): MarkerScan {
 
   for (const line of splitSourceLines(text)) {
     const previousFence = fence;
-    fence = advanceFence(line.text, fence);
+    fence = advanceMarkdownFence(line.text, fence);
     if (previousFence !== undefined || fence !== undefined) {
       continue;
     }
@@ -76,7 +76,7 @@ export function stripManagedMarkers(source: string): string {
 
   for (const line of splitSourceLines(source)) {
     const previousFence = fence;
-    fence = advanceFence(line.text, fence);
+    fence = advanceMarkdownFence(line.text, fence);
     const protectedByFence = previousFence !== undefined || fence !== undefined;
     const marker = protectedByFence ? undefined : parseMarker(line.text);
 

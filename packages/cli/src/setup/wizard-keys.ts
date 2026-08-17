@@ -5,7 +5,11 @@ export function tabDelta(keypress: Keypress): number | undefined {
   if (keypress.name === "left") {
     return -1;
   }
-  if (keypress.name === "right" || keypress.name === "tab") {
+  // Shift-tab arrives as a "tab" keypress with the shift flag set, and moves focus backward.
+  if (keypress.name === "tab") {
+    return keypress.shift ? -1 : 1;
+  }
+  if (keypress.name === "right") {
     return 1;
   }
   return undefined;

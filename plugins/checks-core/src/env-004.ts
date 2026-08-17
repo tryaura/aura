@@ -18,7 +18,7 @@ const RESTRICTIVE_MODES = new Set(["plan", "dontAsk"]);
 
 const EXPLAIN = `Claude Code can appear unable to work when its effective default permission mode is plan or dontAsk. Codex skips project-scoped configuration when a project is untrusted, so Aura also reports projects that are not explicitly trusted.
 
-Claude Code: edit the settings file named by the finding and choose default, acceptEdits, or auto as appropriate. Codex: edit ~/.codex/config.toml and add a \`[projects."<project-root>"]\` section with \`trust_level = "trusted"\` after reviewing the repository.`;
+Claude Code: edit the settings file named by the finding and choose default or acceptEdits as appropriate. Codex: edit ~/.codex/config.toml and add a \`[projects."<project-root>"]\` section with \`trust_level = "trusted"\` after reviewing the repository.`;
 
 export const env004 = defineCheck({
   defaultSeverity: "warn",
@@ -70,7 +70,10 @@ function claudeFindings(app: AppModel): readonly DetectedFinding[] {
 
 function codexFindings(app: AppModel): readonly DetectedFinding[] {
   const trust: ProjectTrust = readCodexProjectTrust(app) ?? "unknown";
-  if (trust === "trusted") {
+  // An unparseable config.toml is already reported by the adapter, naming the file and the fact
+  // that Codex ignores all of it. Adding "this project is not trusted" on top would present one
+  // broken file as two unrelated problems, and the trust claim would be guesswork besides.
+  if (trust === "trusted" || trust === "unreadable") {
     return [];
   }
   const path = sourcePath(app, CODEX_SOURCE_IDS.mcp);
@@ -104,7 +107,7 @@ function guidedFix(finding: Finding, model: WorkspaceModel): FixPlan | undefined
     }
     return {
       manualSteps: [
-        `Edit ${path} and set permissions.defaultMode to default, acceptEdits, or auto as appropriate.`,
+        `Edit ${path} and set permissions.defaultMode to default or acceptEdits as appropriate.`,
         "Restart Claude Code and run `aura check` again.",
       ],
       operations: [],

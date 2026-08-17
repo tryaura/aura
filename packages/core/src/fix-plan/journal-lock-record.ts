@@ -1,6 +1,6 @@
 import { lstat, readFile, rm } from "node:fs/promises";
 
-import { errorCode } from "./error-values.js";
+import { errorCode } from "../values.js";
 
 const LOCK_STALE_MS = 5 * 60 * 1000;
 const UNREADABLE_LOCK_GRACE_MS = 5 * 1000;

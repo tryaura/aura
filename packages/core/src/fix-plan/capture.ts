@@ -22,6 +22,7 @@ export type CapturedState =
   | SymlinkPathState;
 
 type CaptureFailure =
+  | { readonly kind: "budget-exhausted"; readonly remaining: number; readonly size: number }
   | { readonly kind: "oversized"; readonly size: number }
   | { readonly kind: "unsupported" };
 
@@ -44,7 +45,11 @@ export async function captureBefore(
   budget: RetentionBudget,
   action: string,
 ): Promise<{ readonly conflict: string } | { readonly state: CapturedState }> {
-  const captured = captureState(await inspectPath(path, validated.index, contentBudget(budget)));
+  const remaining = budget.remaining;
+  const captured = captureState(
+    await inspectPath(path, validated.index, contentBudget(budget)),
+    remaining,
+  );
   return "failure" in captured
     ? { conflict: describeFailure(captured.failure, action) }
     : { state: captured.state };
@@ -55,17 +60,28 @@ export async function captureBefore(
  *
  * A file whose contents did not fit the budget is refused rather than changed: an operation with no
  * captured `before` is one rollback could not undo, and a preview built from contents Aura never
- * read would describe a change it cannot make.
+ * read would describe a change it cannot make. Which budget it did not fit decides what the user
+ * is told: a file over the per-file ceiling is oversized wherever it appears, while a small file
+ * refused late in a long plan is a fact about the plan, not the file.
  */
-function captureState(state: PathState): CaptureResult {
+function captureState(state: PathState, remaining: number): CaptureResult {
   switch (state.kind) {
     case "unsupported": {
       return { failure: { kind: "unsupported" } };
     }
     case "file": {
-      return isCapturedFile(state)
-        ? { state }
-        : { failure: { kind: "oversized", size: state.size } };
+      if (isCapturedFile(state)) {
+        return { state };
+      }
+      return state.size > MAX_MUTABLE_FILE_BYTES
+        ? { failure: { kind: "oversized", size: state.size } }
+        : {
+            failure: {
+              kind: "budget-exhausted",
+              remaining: Math.max(0, remaining),
+              size: state.size,
+            },
+          };
     }
     case "directory":
     case "missing":
@@ -77,6 +93,9 @@ function captureState(state: PathState): CaptureResult {
 
 function describeFailure(failure: CaptureFailure, action: string): string {
   switch (failure.kind) {
+    case "budget-exhausted": {
+      return `file is ${failure.size} bytes but the plan has only ${failure.remaining} bytes of rollback capture left, so it cannot be ${action}: Aura only changes a file whose previous contents it captured, so the change stays reversible. Apply this plan in smaller pieces`;
+    }
     case "oversized": {
       return `file is ${failure.size} bytes and cannot be ${action}: Aura only changes a file whose previous contents it captured, so the change stays reversible`;
     }

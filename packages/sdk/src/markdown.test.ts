@@ -43,4 +43,16 @@ describe("Markdown code masking", () => {
       "Always  run tests before merging.",
     );
   });
+
+  it("masks fenced code including the fence markers", () => {
+    expect(maskMarkdownCode("Before\n```ts\nrun();\n```\nAfter")).toBe(
+      "Before\n     \n      \n   \nAfter",
+    );
+  });
+
+  it("does not close a four-backtick fence with a three-backtick line", () => {
+    const source = "````md\n```\nstill code\n````\nvisible";
+
+    expect(maskMarkdownCode(source)).toBe("      \n   \n          \n    \nvisible");
+  });
 });

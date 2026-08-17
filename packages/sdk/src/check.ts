@@ -167,8 +167,10 @@ interface AutomaticCheck extends CheckDefinition {
 
 interface GuidedCheck extends CheckDefinition {
   /**
-   * Legacy non-interactive remediation. Return `undefined` when choosing a resolution requires
-   * user intent; {@link guidedFixes} can still expose the available named choices.
+   * The required non-interactive remediation, used when no client can present {@link guidedFixes}.
+   *
+   * Return the plan a cautious default would pick, or `undefined` when choosing a resolution
+   * requires user intent; {@link guidedFixes} can still expose the available named choices.
    */
   readonly fix: (finding: Finding, model: WorkspaceModel) => FixPlan | undefined;
   readonly fixability: "guided";

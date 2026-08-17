@@ -48,10 +48,6 @@ export function requiredBoolean(
   return field;
 }
 
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 export function corrupt(path: string, message: string, cause?: unknown): FixPlanError {
   return new FixPlanError("journal-corrupt", `${message}: ${path}`, { cause, path });
 }

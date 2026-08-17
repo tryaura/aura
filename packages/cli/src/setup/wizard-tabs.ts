@@ -1,7 +1,6 @@
 import { safe } from "../safe-text.js";
-import type { Style } from "../style.js";
-import { displayWidth } from "./text-width.js";
-import type { WizardFrame, WizardQuestionView } from "./wizard-render.js";
+import { displayWidth } from "../text-width.js";
+import type { WizardFrame, WizardQuestionView, WizardStyle } from "./wizard-render.js";
 import type { WizardFlowStep } from "./wizard-types.js";
 
 /** Glyphs shared between the tab bar and the frame bodies; see docs/cli-ux.md. */
@@ -41,7 +40,7 @@ interface TabItem {
 export function renderTabBar(
   frame: WizardFrame,
   submitLocked: boolean,
-  style: Style,
+  style: WizardStyle,
   columns: number,
 ): readonly string[] {
   const step = frame.flow?.step;
@@ -65,7 +64,7 @@ export function renderTabBar(
 /** Fits one row into the terminal and styles its tabs. */
 function renderRow(
   items: readonly TabItem[],
-  style: Style,
+  style: WizardStyle,
   columns: number,
   prefix: string,
 ): string {

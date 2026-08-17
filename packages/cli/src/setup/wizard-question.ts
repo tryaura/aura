@@ -46,7 +46,9 @@ export function initialCursorRow(state: QuestionState | undefined): number {
 /** Edits the free-text draft; space types a space here rather than toggling anything. */
 export function editFreeText(keypress: Keypress, state: QuestionState): boolean {
   if (keypress.name === "backspace") {
-    state.text = state.text.slice(0, -1);
+    // Code points, not UTF-16 units: `printable` admits astral characters like emoji, and a
+    // string-index slice would cut one in half and leave a lone surrogate in the draft.
+    state.text = [...state.text].slice(0, -1).join("");
     return true;
   }
 

@@ -105,7 +105,7 @@ const adapter = defineAdapter({
     };
   },
   displayName: "Example Agent",
-  files(environment, detection) {
+  files({ detection, environment }) {
     if (!detection.installed) {
       return [];
     }

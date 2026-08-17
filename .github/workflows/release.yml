@@ -8,10 +8,40 @@ permissions:
   contents: read
 
 jobs:
+  # A tag can point at any commit, so releases re-run the full verify chain rather than trusting
+  # that the commit went through pull-request CI. Mirrors both jobs in ci.yml, including the
+  # clean-room packaging check that pull requests skip.
+  verify:
+    name: Verify
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Verify
+        run: pnpm run verify
+      - name: Verify release packages
+        run: pnpm verify:packages
+
   # Each target builds on its own runner rather than cross-compiling, so the smoke suite
-  # exercises the binary on the platform it ships to. See AURA-12.
+  # exercises the binary on the platform it ships to.
   build:
     name: Build ${{ matrix.target }}
+    needs: verify
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -60,8 +90,12 @@ jobs:
       # was compiled from, so the tag is what the artifact is held to.
       - name: Compile and smoke test binary
         run: pnpm run verify:binary
+      # Apache-2.0 §4 requires the license text to travel with every redistribution, so the
+      # tarball carries it next to the binary.
       - name: Package
-        run: tar -czf "aura-${{ matrix.target }}.tar.gz" -C distros/aura/dist aura
+        run: |
+          cp LICENSE distros/aura/dist/LICENSE
+          tar -czf "aura-${{ matrix.target }}.tar.gz" -C distros/aura/dist aura LICENSE
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:

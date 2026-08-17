@@ -150,7 +150,7 @@ function fixturePlugin(observe: (environment: Environment, childEnvironment: str
       };
     },
     displayName: "Fixture Agent",
-    files: (environment) => [
+    files: ({ environment }) => [
       {
         id: "config",
         kind: "config",

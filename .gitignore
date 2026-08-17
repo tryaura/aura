@@ -12,6 +12,9 @@ coverage/
 # TypeScript
 *.tsbuildinfo
 
+# macOS
+.DS_Store
+
 # Astro generated types and Wrangler local state
 .astro/
 .wrangler/

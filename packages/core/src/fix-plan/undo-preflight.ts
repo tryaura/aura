@@ -68,15 +68,15 @@ async function matchesBefore(entry: JournalHandle, operation: StoredOperation): 
   switch (operation.type) {
     case "move": {
       return (
-        (await matches(entry, operation.sourcePath, operation.sourceBefore)) &&
-        (await matches(entry, operation.destinationPath, { kind: "missing" }))
+        (await matches(entry, operation, operation.sourcePath, operation.sourceBefore)) &&
+        (await matches(entry, operation, operation.destinationPath, { kind: "missing" }))
       );
     }
     case "archive":
     case "remove":
     case "symlink":
     case "write": {
-      return matches(entry, operation.path, operation.before);
+      return matches(entry, operation, operation.path, operation.before);
     }
   }
 }
@@ -84,28 +84,32 @@ async function matchesBefore(entry: JournalHandle, operation: StoredOperation): 
 async function matchesAfter(entry: JournalHandle, operation: StoredOperation): Promise<boolean> {
   switch (operation.type) {
     case "archive": {
-      return matches(entry, operation.path, operation.after);
+      return matches(entry, operation, operation.path, operation.after);
     }
     case "move": {
       return (
-        (await matches(entry, operation.sourcePath, { kind: "missing" })) &&
-        (await matches(entry, operation.destinationPath, operation.sourceBefore))
+        (await matches(entry, operation, operation.sourcePath, { kind: "missing" })) &&
+        (await matches(entry, operation, operation.destinationPath, operation.sourceBefore))
       );
     }
     case "remove": {
-      return matches(entry, operation.path, { kind: "missing" });
+      return matches(entry, operation, operation.path, { kind: "missing" });
     }
     case "symlink": {
-      return matches(entry, operation.path, { kind: "symlink", target: operation.target });
+      return matches(entry, operation, operation.path, {
+        kind: "symlink",
+        target: operation.target,
+      });
     }
     case "write": {
-      return matches(entry, operation.path, operation.after);
+      return matches(entry, operation, operation.path, operation.after);
     }
   }
 }
 
 async function matches(
   entry: JournalHandle,
+  operation: StoredOperation,
   path: string,
   expected: StoredPathState,
 ): Promise<boolean> {
@@ -113,7 +117,9 @@ async function matches(
     expected.kind === "file" && expected.payload !== undefined
       ? await readPayload(entry.directory, expected)
       : undefined;
-  const current = await inspectPath(path, 0, content?.byteLength ?? 0);
+  // The real operation index, so an inspection failure names the operation being verified rather
+  // than blaming every conflict on "operation 0".
+  const current = await inspectPath(path, operation.index, content?.byteLength ?? 0);
   return statesEqual(toPathState(expected, content), current);
 }
 

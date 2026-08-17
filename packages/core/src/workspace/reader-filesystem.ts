@@ -4,6 +4,7 @@ import { lstat, open, opendir, readFile, readlink, realpath, stat } from "node:f
 
 import type { AdapterPathKind, FileProblem } from "@tryaura/aura-sdk";
 
+import { errorCode } from "../values.js";
 import { isEmbeddedAssetPath } from "./embedded-assets.js";
 import { MAX_DIRECTORY_ENTRIES, MAX_FILE_BYTES } from "./reader-limits.js";
 import type { FileReadOptions, PathContents } from "./reader.js";
@@ -288,11 +289,4 @@ function toProblem(error: unknown): FileProblem {
       return "unreadable";
     }
   }
-}
-
-function errorCode(error: unknown): string | undefined {
-  if (error instanceof Error && "code" in error && typeof error.code === "string") {
-    return error.code;
-  }
-  return undefined;
 }

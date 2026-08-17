@@ -211,8 +211,10 @@ describe("runUndo", () => {
     await fixture.setup();
     const manifest = join(fixture.homeDir, "agents", "aura.json");
 
+    // Declining and aborting both abandon the restore, and the documented contract folds them
+    // into one exit code: 1, aborted or declined at the prompt.
     const declined = await runUndo(fixture.request({}, { confirmations: ["declined"] }));
-    expect(declined).toBe(0);
+    expect(declined).toBe(1);
 
     const aborted = await runUndo(fixture.request({}, { confirmations: ["aborted"] }));
     expect(aborted).toBe(1);

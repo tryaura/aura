@@ -15,13 +15,13 @@ import {
 } from "./journal-schema.js";
 import {
   corrupt,
-  isRecord,
   optionalString,
   parseStatus,
   requiredBoolean,
   requiredNumber,
   requiredString,
 } from "./journal-parse-fields.js";
+import { isRecord } from "../values.js";
 
 export function parseManifest(text: string, path: string): JournalManifest {
   let value: unknown;

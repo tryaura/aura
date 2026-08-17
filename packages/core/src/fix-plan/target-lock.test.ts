@@ -100,12 +100,35 @@ describe("withTargetLocks", () => {
       }),
     ).rejects.toThrow("apply failed");
 
-    // Both lock directories exist but hold no records, so a second run acquires immediately.
+    // Every lock was released, so a second run acquires immediately.
     let entered = false;
     await withTargetLocks(targets, root, now, async () => {
       entered = true;
     });
     expect(entered).toBe(true);
+  });
+
+  it("removes emptied per-target lock directories instead of accumulating them", async () => {
+    const root = await createRoot();
+    const targets = [join(sep, "home", "a.json"), join(sep, "home", "b.json")];
+
+    await withTargetLocks(targets, root, now, async () => undefined);
+
+    await expect(readdir(join(root, ".target-locks"))).resolves.toEqual([]);
+  });
+
+  it("leaves a contender's directory alone when its record is still published", async () => {
+    const root = await createRoot();
+    const target = join(sep, "home", ".claude.json");
+
+    await withTargetLocks([target], root, now, async () => {
+      await expect(
+        withTargetLocks([target], root, now, async () => undefined),
+      ).rejects.toMatchObject({ code: "backup-error" });
+      // The outer lock is still held: its record survived the inner run's cleanup attempt.
+      const entries = await readdir(join(root, ".target-locks"));
+      expect(entries).toHaveLength(1);
+    });
   });
 });
 

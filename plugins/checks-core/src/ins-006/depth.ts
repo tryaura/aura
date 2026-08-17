@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 
+import { compareCodePoints } from "../ordering.js";
 import type { GraphFrame, InstructionGraph } from "./graph.js";
 
 export interface DepthOverflow {
@@ -14,9 +15,7 @@ export function findDepthOverflows(
   maximumHops: number,
 ): readonly DepthOverflow[] {
   const overflows: DepthOverflow[] = [];
-  const normalizedRoots = [...new Set(roots.map((path) => resolve(path)))].sort((left, right) =>
-    left.localeCompare(right),
-  );
+  const normalizedRoots = [...new Set(roots.map((path) => resolve(path)))].sort(compareCodePoints);
   for (const rootPath of normalizedRoots) {
     if (!graph.edges.has(rootPath)) {
       continue;

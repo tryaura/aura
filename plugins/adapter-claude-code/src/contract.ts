@@ -17,6 +17,7 @@ export const CLAUDE_CODE_SOURCE_IDS = Object.freeze({
   mcp: "claude-code.mcp.global",
   mcpProject: "claude-code.mcp.project",
   settingsGlobal: "claude-code.settings.global",
+  settingsLocal: "claude-code.settings.local",
   settingsProject: "claude-code.settings.project",
 });
 
@@ -35,14 +36,20 @@ export interface ClaudePermissionMode {
 /**
  * Reads the permission mode this adapter recorded, resolved across scopes.
  *
- * Which scope wins is Claude Code's rule, not a check's, so it is applied here: project settings
- * take precedence when they name a mode, and the global default applies otherwise. A check that
- * re-derived this would drift from the adapter that actually models the application.
+ * Which scope wins is Claude Code's rule, not a check's, so it is applied here:
+ * `.claude/settings.local.json` overrides the shared project settings, which override the global
+ * default. A check that re-derived this would drift from the adapter that actually models the
+ * application.
  */
 export function readClaudePermissionMode(app: AppModel): ClaudePermissionMode | undefined {
   const permissions = app.metadata?.[CLAUDE_PERMISSIONS_KEY];
   if (!isConfigRecord(permissions)) {
     return undefined;
+  }
+
+  const local = readMode(permissions["local"]);
+  if (local !== undefined) {
+    return { mode: local, sourceId: CLAUDE_CODE_SOURCE_IDS.settingsLocal };
   }
 
   const project = readMode(permissions["project"]);

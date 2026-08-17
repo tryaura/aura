@@ -87,6 +87,21 @@ describe("managed-block reader", () => {
     expect(readManagedBlock(source)).toEqual({ notes: [], status: "absent" });
   });
 
+  it("does not let a three-backtick line close a four-backtick fence around markers", () => {
+    const source = [
+      "# Documentation",
+      "````md",
+      "```",
+      "<!-- aura:begin -->",
+      "<!-- aura:end -->",
+      "````",
+      "",
+    ].join("\n");
+
+    // The ``` line is content of the ````-opened fence, so the markers stay ordinary text.
+    expect(readManagedBlock(source)).toEqual({ notes: [], status: "absent" });
+  });
+
   it("allows marker examples inside a snippet's fenced content", () => {
     const content = [
       "```html",

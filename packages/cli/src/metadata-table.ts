@@ -1,8 +1,8 @@
 import type { Finding, FindingMetadataTableColumn } from "@tryaura/aura-sdk";
 import { pluralize } from "@tryaura/core/pluralize";
-import stringWidth from "string-width";
 
 import { GRAPHEME_SEGMENTER, safeFindingText } from "./safe-text.js";
+import { displayWidth } from "./text-width.js";
 
 /**
  * How many rows one metadata table prints before the rest are summarized.
@@ -139,8 +139,4 @@ function fitTableCell(value: string): string {
 function padCell(value: string, width: number, rightAligned: boolean): string {
   const padding = " ".repeat(Math.max(0, width - displayWidth(value)));
   return rightAligned ? `${padding}${value}` : `${value}${padding}`;
-}
-
-function displayWidth(value: string): number {
-  return stringWidth(value);
 }

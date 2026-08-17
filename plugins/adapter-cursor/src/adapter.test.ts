@@ -10,6 +10,7 @@ import {
 import { describe, expect, it } from "vitest";
 
 import { cursorAdapter } from "./adapter.js";
+import { isConditionalCursorRule } from "./contract.js";
 
 describe("Cursor detection", () => {
   it("detects the first Cursor executable that reports a version", async () => {
@@ -80,10 +81,18 @@ describe("Cursor file specifications", () => {
     });
   });
 
+  it("declares the instruction-loading model checks read instead of hard-coding it", () => {
+    expect(cursorAdapter.capabilities).toEqual({
+      instructions: { importStyle: "at-import", loading: "import-graph" },
+    });
+  });
+
   it("declares modern, legacy, and AGENTS.md rules plus global and project MCP configuration", () => {
     const environment = environmentWithExec([], () => result(0));
 
-    expect(cursorAdapter.files(environment, { installed: true }, new Map())).toEqual([
+    expect(
+      cursorAdapter.files({ detection: { installed: true }, environment, files: new Map() }),
+    ).toEqual([
       {
         id: "cursor.rules.project",
         kind: "instructions",
@@ -147,7 +156,9 @@ describe("Cursor file specifications", () => {
       ],
     ]);
 
-    expect(cursorAdapter.files(environment, { installed: true }, files).slice(6)).toEqual([
+    expect(
+      cursorAdapter.files({ detection: { installed: true }, environment, files }).slice(6),
+    ).toEqual([
       {
         id: "cursor.rules.project/api.mdc",
         kind: "instructions",
@@ -170,6 +181,73 @@ describe("Cursor file specifications", () => {
         scope: "project",
       },
     ]);
+  });
+});
+
+describe("Cursor parsing", () => {
+  it("reports an MCP config that does not parse instead of claiming no servers", () => {
+    const broken: AdapterSourceFile = {
+      content: '{"mcpServers":',
+      exists: true,
+      spec: {
+        id: "cursor.mcp.project",
+        kind: "mcp",
+        path: "/workspace/.cursor/mcp.json",
+        scope: "project",
+      },
+    };
+    const snapshot = cursorAdapter.parse({
+      cwd: "/workspace",
+      detection: { installed: true },
+      files: new Map([[broken.spec.id, broken]]),
+      homeDir: "/home/dev",
+    });
+
+    expect(snapshot.mcpServers).toEqual([]);
+    expect(snapshot.problems).toEqual([
+      {
+        message:
+          "Cursor's MCP configuration at /workspace/.cursor/mcp.json is not a valid JSON object, so none of the servers it declares are loading — in Cursor either. Fix the file to restore them.",
+        sourceId: "cursor.mcp.project",
+      },
+    ]);
+  });
+
+  it("reports nothing for MCP files that are simply absent", () => {
+    const snapshot = cursorAdapter.parse({
+      cwd: "/workspace",
+      detection: { installed: true },
+      files: new Map(),
+      homeDir: "/home/dev",
+    });
+
+    expect(snapshot.problems).toEqual([]);
+  });
+});
+
+describe("Cursor rule activation contract", () => {
+  const document = (path: string, metadata?: Record<string, boolean>) => ({
+    content: "",
+    links: [],
+    ...(metadata === undefined ? {} : { metadata }),
+    path,
+    scope: "project" as const,
+    sourceId: "cursor.rules.project/example",
+  });
+
+  it("treats an .mdc rule as conditional unless alwaysApply opts in", () => {
+    expect(isConditionalCursorRule(document("/w/.cursor/rules/api.mdc"))).toBe(true);
+    expect(
+      isConditionalCursorRule(document("/w/.cursor/rules/api.mdc", { alwaysApply: false })),
+    ).toBe(true);
+    expect(
+      isConditionalCursorRule(document("/w/.cursor/rules/api.MDC", { alwaysApply: true })),
+    ).toBe(false);
+  });
+
+  it("never marks non-rule instruction files conditional", () => {
+    expect(isConditionalCursorRule(document("/w/AGENTS.md"))).toBe(false);
+    expect(isConditionalCursorRule(document("/w/.cursorrules"))).toBe(false);
   });
 });
 

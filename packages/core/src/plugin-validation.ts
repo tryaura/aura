@@ -1,3 +1,5 @@
+import { parse as parseSemver } from "semver";
+
 import type { Adapter, AuraPlugin } from "@tryaura/aura-sdk";
 
 import { sharedLinkViolations } from "./workspace/shared-links.js";
@@ -55,9 +57,6 @@ interface Contribution {
 
 /** Plugin ids become id namespaces, so `/` and anything shell- or path-surprising is refused. */
 const PLUGIN_ID_PATTERN = /^[a-z0-9][a-z0-9._-]*$/;
-
-const SEMVER_PATTERN =
-  /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*)?(?:\+[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*)?$/;
 
 export function createRegistryState(): RegistryState {
   return { owners: new Map(), violations: [] };
@@ -153,7 +152,7 @@ export function collectIdentityViolations(state: RegistryState, plugin: AuraPlug
     );
   }
 
-  if (!SEMVER_PATTERN.test(plugin.version)) {
+  if (canonicalSemver(plugin.version) !== plugin.version) {
     state.violations.push(
       `${formatPlugin(plugin)} declares version "${plugin.version}"; expected a semver version ` +
         `such as "1.0.0".`,
@@ -170,6 +169,16 @@ export function collectAdapterViolations(
   plugin: AuraPlugin,
 ): void {
   for (const adapter of adapters ?? []) {
+    // Adapter ids are deliberately unnamespaced — they name the application itself — so only the
+    // segment grammar is enforced: the same one a plugin id gets, since both end up in paths,
+    // reports, and lookups where an empty string or a "/" would be read as structure.
+    if (!PLUGIN_ID_PATTERN.test(adapter.id)) {
+      state.violations.push(
+        `${formatPlugin(plugin)} contributes adapter ID "${adapter.id}", which is not a usable ` +
+          `adapter ID; expected lowercase letters, digits, ".", "-", or "_", starting with a ` +
+          `letter or digit.`,
+      );
+    }
     for (const [name, link] of [
       ["sharedLink", adapter.sharedLink],
       ["projectSharedLink", adapter.projectSharedLink],
@@ -261,6 +270,23 @@ export function formatViolations(violations: readonly string[]): string {
       : `Aura cannot build the plugin registry (${violations.length} problems):`;
 
   return [heading, ...violations.map((violation) => `  - ${violation}`)].join("\n");
+}
+
+/**
+ * A version's canonical rendering, or `undefined` when it is not semver at all.
+ *
+ * Parsing alone is too weak for an identity field: `semver` also accepts a leading `v` and
+ * surrounding whitespace, so a version declared as "v1.0.0" or "1.0.0\n" would pass and then be
+ * carried around raw. Requiring the declaration to equal its canonical form refuses those while
+ * still accepting "1.2.3-rc.1+build.5" as written — build metadata has to be rebuilt by hand
+ * because `valid()` drops it.
+ */
+function canonicalSemver(version: string): string | undefined {
+  const parsed = parseSemver(version);
+  if (parsed === null) {
+    return undefined;
+  }
+  return parsed.build.length === 0 ? parsed.version : `${parsed.version}+${parsed.build.join(".")}`;
 }
 
 function formatPlugin(plugin: PluginIdentity): string {

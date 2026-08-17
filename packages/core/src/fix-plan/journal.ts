@@ -11,7 +11,7 @@ import {
   type StoredOperation,
 } from "./journal-schema.js";
 import type { ApplicableOperation, PreparedPlanState } from "./prepared.js";
-import { errorCode, errorMessage } from "./error-values.js";
+import { errorCode, errorMessage } from "../values.js";
 import { FixPlanError } from "./types.js";
 
 /** Creates the store, refusing to write through a symbolic link planted where it belongs. */

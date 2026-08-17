@@ -112,8 +112,10 @@ async function restoreBackup(request: UndoRequest, backup: ReadableBackup): Prom
       `Restore ${described}? This rewrites the files it changed.`,
     );
     if (confirmation !== "accepted") {
+      // Declining and aborting both end the run without restoring anything, and the documented
+      // contract folds them into one word: exit 1, aborted or declined at the prompt.
       stdout.write("\nLeft everything as it was.\n");
-      return confirmation === "aborted" ? 1 : 0;
+      return 1;
     }
   }
 

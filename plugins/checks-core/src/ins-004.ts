@@ -11,6 +11,7 @@ import {
 
 import { sha256 } from "./hashing.js";
 import { displayInstructionPath } from "./instruction-paths.js";
+import { compareCodePoints } from "./ordering.js";
 
 interface LegacyDocument {
   readonly document: InstructionDocument;
@@ -41,7 +42,7 @@ function legacyDocuments(documents: readonly InstructionDocument[]): readonly Le
     }
   }
   return [...byPath.values()].sort((left, right) =>
-    resolve(left.document.path).localeCompare(resolve(right.document.path)),
+    compareCodePoints(resolve(left.document.path), resolve(right.document.path)),
   );
 }
 

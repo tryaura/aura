@@ -2,6 +2,8 @@ import { resolve } from "node:path";
 
 import type { InstructionDocument } from "@tryaura/aura-sdk";
 
+import { compareCodePoints } from "../ordering.js";
+
 export interface InstructionGraph {
   readonly edges: ReadonlyMap<string, readonly string[]>;
 }
@@ -62,12 +64,9 @@ export function buildInstructionGraph(
 
   const edges = new Map<string, readonly string[]>();
   for (const [path, targets] of [...mutable.entries()].sort(([left], [right]) =>
-    left.localeCompare(right),
+    compareCodePoints(left, right),
   )) {
-    edges.set(
-      path,
-      [...targets].sort((left, right) => left.localeCompare(right)),
-    );
+    edges.set(path, [...targets].sort(compareCodePoints));
   }
   return Object.freeze({ edges });
 }
@@ -105,7 +104,7 @@ export function reachableInstructionPaths(
   const excluded = options.excluded ?? new Set<string>();
   const queued = [...new Set(roots.map((path) => resolve(path)))]
     .filter((path) => graph.edges.has(path) && !excluded.has(path))
-    .sort((left, right) => left.localeCompare(right))
+    .sort(compareCodePoints)
     .map((path) => ({ hops: 0, path }));
   const seen = new Set<string>();
 
@@ -125,7 +124,7 @@ export function reachableInstructionPaths(
     }
   }
 
-  return [...seen].sort((left, right) => left.localeCompare(right));
+  return [...seen].sort(compareCodePoints);
 }
 
 /** One node on an explicit walk stack, standing in for a call frame the walks refuse to use. */
@@ -145,7 +144,9 @@ export function findInstructionCycles(graph: InstructionGraph): readonly (readon
     }
   }
 
-  return [...cycles.values()].sort((left, right) => cycleKey(left).localeCompare(cycleKey(right)));
+  return [...cycles.values()].sort((left, right) =>
+    compareCodePoints(cycleKey(left), cycleKey(right)),
+  );
 }
 
 function findCyclesFromRoot(
@@ -219,7 +220,7 @@ function canonicalCycle(cycle: readonly string[]): readonly string[] {
   let best = [...paths];
   for (let index = 1; index < paths.length; index += 1) {
     const rotated = [...paths.slice(index), ...paths.slice(0, index)];
-    if (rotated.join("\u0000").localeCompare(best.join("\u0000")) < 0) {
+    if (compareCodePoints(rotated.join("\u0000"), best.join("\u0000")) < 0) {
       best = rotated;
     }
   }

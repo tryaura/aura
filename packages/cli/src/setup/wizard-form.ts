@@ -67,7 +67,7 @@ export function createFormSession(
    * retraces forward without re-answering.
    */
   const commitsForward = (keypress: Keypress): boolean =>
-    (keypress.name === "right" || keypress.name === "tab") &&
+    (keypress.name === "right" || (keypress.name === "tab" && !keypress.shift)) &&
     activeTab === tabCount - 1 &&
     hasFormAhead;
 
