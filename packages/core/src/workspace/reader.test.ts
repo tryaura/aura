@@ -24,11 +24,13 @@ describe("createFileReader", () => {
     const root = await createTemporaryDirectory();
     const path = join(root, "CLAUDE.md");
     await writeFile(path, "# instructions\n", "utf8");
+    await chmod(path, 0o644);
 
     await expect(read(path)).resolves.toEqual({
       content: "# instructions\n",
       exists: true,
       isDirectory: false,
+      mode: 0o644,
       pathKind: "file",
     });
   });
@@ -37,6 +39,7 @@ describe("createFileReader", () => {
     const root = await createTemporaryDirectory();
     const path = join(root, "AGENTS.md");
     await writeFile(path, "# instructions\n", "utf8");
+    await chmod(path, 0o600);
     const inspect = reader.inspect;
     if (inspect === undefined) {
       throw new Error("The production reader must support metadata-only inspection.");
@@ -45,6 +48,7 @@ describe("createFileReader", () => {
     await expect(inspect(path)).resolves.toEqual({
       exists: true,
       isDirectory: false,
+      mode: 0o600,
       pathKind: "file",
       size: 15,
     });
@@ -54,11 +58,13 @@ describe("createFileReader", () => {
     const root = await createTemporaryDirectory();
     const path = join(root, "AGENTS.md");
     await writeFile(path, "abcdef", "utf8");
+    await chmod(path, 0o644);
 
     await expect(reader.read(path, { maxBytes: 3 })).resolves.toEqual({
       content: "abc",
       exists: true,
       isDirectory: false,
+      mode: 0o644,
       pathKind: "file",
       size: 6,
     });
@@ -122,10 +128,12 @@ describe("createFileReader", () => {
     const root = await createTemporaryDirectory();
     const path = join(root, "history.jsonl");
     await writeFile(path, "x".repeat(MAX_FILE_BYTES + 1), "utf8");
+    await chmod(path, 0o644);
 
     await expect(read(path)).resolves.toEqual({
       exists: true,
       isDirectory: false,
+      mode: 0o644,
       pathKind: "file",
       problem: "too-large",
     });
@@ -144,6 +152,7 @@ describe("createFileReader", () => {
       expect(contents).toEqual({
         exists: true,
         isDirectory: false,
+        mode: 0o000,
         pathKind: "file",
         problem: "denied",
       });
@@ -155,12 +164,15 @@ describe("createFileReader", () => {
     const target = join(root, "real.md");
     const link = join(root, "link.md");
     await writeFile(target, "# real", "utf8");
+    await chmod(target, 0o644);
     await symlink(target, link);
 
+    // The mode of the file the link resolves to, which is the file whose contents were read.
     await expect(read(link)).resolves.toEqual({
       content: "# real",
       exists: true,
       isDirectory: false,
+      mode: 0o644,
       pathKind: "symlink",
       symlinkTarget: target,
     });

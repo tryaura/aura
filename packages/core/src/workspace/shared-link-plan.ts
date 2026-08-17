@@ -82,7 +82,22 @@ function planImportLine(
       blocked: `The Aura-managed block in ${link.entryPath} is malformed, so Aura will not rewrite the file. Repair or delete the block and run check --fix again.`,
     };
   }
+  if (reconciled.status === "unchanged" && observedStateHolds(sourceContent)) {
+    return { plan: convergedPlan(app) };
+  }
   return { plan: writePlan(app, link, reconciled.content, model.homeDir) };
+}
+
+/**
+ * Whether what the scan saw still describes the file when this plan is applied.
+ *
+ * A caller that supplies `sourceContent` is telling us it is about to replace the entry — setup
+ * passes `""` for a path it is archiving in the same plan. Reporting "already converged" from the
+ * pre-archive state would drop the operation the archive needs as its replacement, and an archive
+ * with no replacement removes the original outright.
+ */
+function observedStateHolds(sourceContent: string | undefined): boolean {
+  return sourceContent === undefined;
 }
 
 function unreadableInstructionEntry(
@@ -108,13 +123,25 @@ function planNativeCopy(
   sourceContent: string | undefined,
 ): SharedInstructionLinkPlan {
   const content = sourceContent ?? instructionEntry(app, link.entryPath)?.content;
-  if (status?.exists === true && sourceContent === undefined && content !== link.content) {
-    return {
-      blocked:
-        "The Aura wrapper path contains different content, so it is treated as user-owned and preserved. Persistent keep-yours state is tracked by AURA-24.",
-    };
+  const refusal = nativeCopyRefusal(status, sourceContent, content, link.content);
+  if (refusal !== undefined) {
+    return { blocked: refusal };
+  }
+  if (status?.exists === true && content === link.content && observedStateHolds(sourceContent)) {
+    return { plan: convergedPlan(app) };
   }
   return { plan: writePlan(app, link, link.content ?? "", model.homeDir) };
+}
+
+function nativeCopyRefusal(
+  status: AdapterFileStatus | undefined,
+  sourceContent: string | undefined,
+  content: string | undefined,
+  desired: string | undefined,
+): string | undefined {
+  return status?.exists === true && sourceContent === undefined && content !== desired
+    ? "The Aura wrapper path contains different content, so it is treated as user-owned and preserved. Persistent keep-yours state is tracked by AURA-24."
+    : undefined;
 }
 
 function planSymlink(
@@ -134,17 +161,43 @@ function planSymlink(
         "The existing file is user-owned. Consolidate its content before replacing it with a symlink.",
     };
   }
+  const target = options.symlinkTarget ?? model.sharedInstructions.path;
+  if (observedStateHolds(options.sourceContent) && pointsAt(status, target)) {
+    return { plan: convergedPlan(app) };
+  }
   return {
     plan: {
       operations: [
         {
           path: link.entryPath,
-          target: options.symlinkTarget ?? model.sharedInstructions.path,
+          target,
           type: "symlink",
         },
       ],
       summary: `Link ${app.displayName} to the shared instruction source.`,
     },
+  };
+}
+
+/**
+ * Whether the entry is already a symbolic link to `target`.
+ *
+ * Both sides are resolved, as everywhere else in this file: `symlinkTarget` is the raw `readlink`
+ * result, so comparing it verbatim would re-plan an identical link whenever the same path happens
+ * to be spelled differently.
+ */
+function pointsAt(status: AdapterFileStatus | undefined, target: string): boolean {
+  if (status?.pathKind !== "symlink" || status.symlinkTarget === undefined) {
+    return false;
+  }
+  return resolve(status.symlinkTarget) === resolve(target);
+}
+
+/** No work: the entry already loads the shared source, so the summary says so rather than promising a link. */
+function convergedPlan(app: AppModel): FixPlan {
+  return {
+    operations: [],
+    summary: `${app.displayName} already loads the shared instruction source.`,
   };
 }
 

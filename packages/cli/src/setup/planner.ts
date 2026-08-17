@@ -1,3 +1,5 @@
+import { isDeepStrictEqual } from "node:util";
+
 import type {
   AuraManifest,
   AuraManifestApp,
@@ -5,7 +7,11 @@ import type {
   FileOperation,
   FixPlan,
 } from "@tryaura/aura-sdk";
-import { createAuraManifestWriteOperation, createEmptyAuraManifest } from "@tryaura/core";
+import {
+  AURA_MANIFEST_FILE_MODE,
+  createAuraManifestWriteOperation,
+  createEmptyAuraManifest,
+} from "@tryaura/core";
 
 import { catalogEntryId, catalogEntryName, type AppCatalogEntry } from "./catalog.js";
 import { planInstructions } from "./instruction-planner.js";
@@ -41,9 +47,9 @@ export interface SetupPlanOutcome {
 /**
  * Turns the final selections into the one fix plan `setup` applies.
  *
- * Pure and total: it always emits the full desired state rather than a delta, so a machine that
- * already matches previews as all-noop and "first run and fifth run are the same flow" needs no
- * memory of previous runs. Files whose read hit a problem are returned as blockers with their
+ * Pure and total: it derives desired state from selections and emits operations only where the
+ * observed model differs, so "first run and fifth run are the same flow" does not rely on writes
+ * being discarded later. Files whose read hit a problem are returned as blockers with their
  * operations omitted — the kernel would conflict on them anyway, but a blocker names the reason
  * where the user decides, not after confirmation.
  */
@@ -66,13 +72,7 @@ export function planSetup(context: SetupStepContext): SetupPlanOutcome {
 
   if (context.manifest.status === "read-only") {
     blockers.push({ path: context.manifest.path, reason: context.manifest.problem.message });
-  } else if (
-    context.manifest.status === "ready" ||
-    baseline?.createManifest === true ||
-    (apps !== undefined && apps.managed.length > 0) ||
-    context.selections.instructions !== undefined ||
-    context.selections.snippets !== undefined
-  ) {
+  } else if (shouldWriteManifest(context, manifest, baseline?.createManifest === true, apps)) {
     operations.push(createAuraManifestWriteOperation(context.manifest, manifest));
   }
 
@@ -102,6 +102,35 @@ export function planSetup(context: SetupStepContext): SetupPlanOutcome {
       summary: "Set up Aura on this machine from your selections.",
     }),
   });
+}
+
+/**
+ * Whether the manifest needs rewriting.
+ *
+ * Content equality is not on its own enough to skip the write: core pins this file to
+ * {@link AURA_MANIFEST_FILE_MODE} while applying a write and nothing else on the machine repairs
+ * it, so a manifest whose bytes match but whose permissions have been widened still has work to do.
+ * A mode the scan could not observe is treated as correct rather than rewritten on every run.
+ */
+function shouldWriteManifest(
+  context: SetupStepContext,
+  desired: AuraManifest,
+  createManifest: boolean,
+  apps: SetupSelections["apps"],
+): boolean {
+  if (context.manifest.status === "ready") {
+    const mode = context.manifest.mode;
+    return (
+      !isDeepStrictEqual(context.manifest.value, desired) ||
+      (mode !== undefined && mode !== AURA_MANIFEST_FILE_MODE)
+    );
+  }
+  return (
+    createManifest ||
+    (apps !== undefined && apps.managed.length > 0) ||
+    context.selections.instructions !== undefined ||
+    context.selections.snippets !== undefined
+  );
 }
 
 function desiredManifest(

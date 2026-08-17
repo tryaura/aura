@@ -1,6 +1,6 @@
 import type { Writable } from "node:stream";
 
-import type { Environment } from "@tryaura/aura-sdk";
+import type { Environment, Finding } from "@tryaura/aura-sdk";
 import {
   applyFixPlan,
   buildWorkspaceModel,
@@ -38,7 +38,12 @@ export interface SetupRequest {
   readonly stateHomeDir: string;
   readonly stderr: Writable;
   readonly stdout: Writable;
-  /** Overrides the registered steps; tests exercise multi-step flows through this. */
+  /**
+   * The steps this run gathers, defaulting to every registered one.
+   *
+   * `setup --add <kind>` narrows it to a single step through {@link selectSetupSteps}; tests use the
+   * same seam to exercise one step in isolation.
+   */
   readonly steps?: readonly SetupStep[] | undefined;
   /** Whether the summary may quote the contents of the files it rewrites. */
   readonly withDetail: boolean;
@@ -49,8 +54,8 @@ export interface SetupRequest {
  *
  * Steps never write and the plan applies through the fix-plan kernel after one confirmation, so
  * backing out anywhere before that leaves the filesystem untouched by construction. A machine that
- * already matches the desired state previews as all-noop and skips both the confirmation and the
- * journal — the fifth run is the first run.
+ * already matches the desired state produces an empty operation plan and skips both confirmation
+ * and the journal — the fifth run is the first run.
  */
 export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
   const { branding, environment, io, stdout } = request;
@@ -68,24 +73,21 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
     return 2;
   }
 
-  // After the early return, because the steps are the only reason findings are needed here and the
-  // duplicate scan is quadratic in the paragraphs it compares.
-  const initialChecks = runChecks(request.registry.checks, model);
-  for (const diagnostic of initialChecks.diagnostics) {
-    // Message only, never `detail`: it is verbatim text from a check that read the user's files.
-    io.note(
-      `${diagnostic.checkId} could not run, so its findings are missing: ${diagnostic.message}`,
-    );
-  }
+  const steps = request.steps ?? SETUP_STEPS;
+  // After the early return, and only when a selected step reads them: the duplicate scan among the
+  // checks is quadratic in the paragraphs it compares, and `endOnGreen` runs its own pass anyway.
+  const initialFindings = steps.some((step) => step.needsFindings === true)
+    ? gatherFindings(request, model, io)
+    : undefined;
 
   const appCatalog = buildAppCatalog(request.registry.adapters, model, scan.skipped);
   const snippetCatalog = createSnippetCatalog(request.registry.snippets, model.manifest);
 
   const gathered = await gatherSelections(
-    request.steps ?? SETUP_STEPS,
+    steps,
     {
       appCatalog,
-      findings: initialChecks.findings,
+      ...(initialFindings === undefined ? {} : { findings: initialFindings }),
       manifest: model.manifest,
       model,
       snippetCatalog,
@@ -94,7 +96,7 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
   );
   if (gathered.status === "invalid-dependency") {
     request.stderr.write(
-      `${branding.displayName}: setup step "${safe(gathered.stepId)}" requires "${safe(gathered.dependencyId)}" to run first. Run the full setup flow.\n`,
+      `${branding.displayName}: the ${safe(gathered.stepTitle)} step needs ${safe(gathered.missing)}. Run ${branding.command} setup to establish it, then retry this command.\n`,
     );
     return 2;
   }
@@ -106,7 +108,7 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
 
   const outcome = planSetup({
     appCatalog,
-    findings: initialChecks.findings,
+    ...(initialFindings === undefined ? {} : { findings: initialFindings }),
     manifest: model.manifest,
     model,
     selections,
@@ -173,12 +175,29 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
   return endOnGreen(request, rescanned);
 }
 
+/** Runs the checks whose findings a step asked for, reporting the ones that could not run. */
+function gatherFindings(
+  request: SetupRequest,
+  model: WorkspaceScan["model"],
+  io: WizardIo,
+): readonly Finding[] {
+  const run = runChecks(request.registry.checks, model);
+  for (const diagnostic of run.diagnostics) {
+    // Message only, never `detail`: it is verbatim text from a check that read the user's files.
+    io.note(
+      `${diagnostic.checkId} could not run, so its findings are missing: ${diagnostic.message}`,
+    );
+  }
+  return run.findings;
+}
+
 type GatherSelectionsResult =
   | { readonly status: "aborted" }
   | {
-      readonly dependencyId: string;
+      /** What is missing and which step wanted it, both already in user-facing words. */
+      readonly missing: string;
       readonly status: "invalid-dependency";
-      readonly stepId: string;
+      readonly stepTitle: string;
     }
   | { readonly selections: SetupSelections; readonly status: "ready" };
 
@@ -190,11 +209,18 @@ async function gatherSelections(
   let selections: SetupSelections = {};
   const completedSteps = new Set<string>();
   for (const step of steps) {
-    const dependencyId = step.dependsOn?.find((id) => !completedSteps.has(id));
-    if (dependencyId !== undefined) {
-      return { dependencyId, status: "invalid-dependency", stepId: step.id };
+    const stepContext = { ...context, selections };
+    const prerequisite = step.prerequisites?.find(
+      (candidate) => !completedSteps.has(candidate.id) && !candidate.isSatisfied(stepContext),
+    );
+    if (prerequisite !== undefined) {
+      return {
+        missing: prerequisite.title,
+        status: "invalid-dependency",
+        stepTitle: step.title,
+      };
     }
-    const outcome = await step.gather({ ...context, selections }, io);
+    const outcome = await step.gather(stepContext, io);
     if (outcome === SETUP_ABORTED) {
       return { status: "aborted" };
     }
@@ -212,7 +238,7 @@ function renderConvergedSetup(
 ): void {
   output.write("\n");
   if (preview.manualSteps.length === 0 && notices.length === 0) {
-    output.write("Already converged — nothing to change.\n\n");
+    output.write("Already converged — nothing to do.\n\n");
     return;
   }
   renderSetupSummary(preview, [], notices, withDetail, output);

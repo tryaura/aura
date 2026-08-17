@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -40,25 +40,19 @@ describe("planSetup", () => {
     expect(outcome.blockers).toEqual([]);
   });
 
-  it("always rewrites an existing manifest so state converges", async () => {
-    const model = await scan(async (homeDir) => {
-      await mkdir(join(homeDir, "agents"), { recursive: true });
-      await writeFile(
-        join(homeDir, "agents", "aura.json"),
-        `${JSON.stringify({
-          apps: {},
-          mcpServers: [],
-          ownership: {},
-          schemaVersion: 1,
-          skills: [],
-          snippets: [],
-        })}\n`,
-        "utf8",
-      );
-    });
+  it("omits an existing manifest when its parsed state and mode already match", async () => {
+    const model = await scan(seedManifest(0o600));
+
+    const outcome = planSetup(context(model, false));
+    expect(operationPaths(outcome)).toEqual([]);
+  });
+
+  it("rewrites a matching manifest whose permissions were widened", async () => {
+    const model = await scan(seedManifest(0o644));
 
     const outcome = planSetup(context(model, false));
     expect(operationPaths(outcome)).toEqual([join(model.homeDir, "agents", "aura.json")]);
+    expect(outcome.plan.operations[0]).toMatchObject({ mode: 0o600, type: "write" });
   });
 
   it("returns a read-only manifest as a blocker instead of an operation", async () => {
@@ -250,6 +244,27 @@ function context(model: WorkspaceModel, createManifest: boolean): SetupStepConte
     model,
     selections: { baseline: { createManifest } },
     snippetCatalog: emptySnippetCatalog(),
+  };
+}
+
+/** Writes a manifest that already holds the desired empty state, at an exact mode. */
+function seedManifest(mode: number): (homeDir: string) => Promise<void> {
+  return async (homeDir) => {
+    const path = join(homeDir, "agents", "aura.json");
+    await mkdir(join(homeDir, "agents"), { recursive: true });
+    await writeFile(
+      path,
+      `${JSON.stringify({
+        apps: {},
+        mcpServers: [],
+        ownership: {},
+        schemaVersion: 1,
+        skills: [],
+        snippets: [],
+      })}\n`,
+      "utf8",
+    );
+    await chmod(path, mode);
   };
 }
 

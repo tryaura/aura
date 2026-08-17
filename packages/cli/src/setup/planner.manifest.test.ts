@@ -31,7 +31,7 @@ describe("planSetup manifest app safety", () => {
   });
 
   it("round-trips a __proto__ app id as an own data property", () => {
-    const source = `{"apps":{"__proto__":{"managed":true,"note":"keep"}},"mcpServers":[],"ownership":{},"schemaVersion":1,"skills":[],"snippets":[]}`;
+    const source = `{"apps":{"__proto__":{"managed":false,"note":"keep"}},"mcpServers":[],"ownership":{},"schemaVersion":1,"skills":[],"snippets":[]}`;
     const outcome = planSetup(context(source, catalog("__proto__"), ["__proto__"]));
     const operation = outcome.plan.operations[0];
     if (operation?.type !== "write") {
@@ -43,6 +43,17 @@ describe("planSetup manifest app safety", () => {
     expect(outcome.manifest.apps["__proto__"]).toEqual({ managed: true, note: "keep" });
     expect(Object.hasOwn(written.apps, "__proto__")).toBe(true);
     expect(written.apps["__proto__"]).toEqual({ managed: true, note: "keep" });
+  });
+
+  // The convergence check compares desired against parsed state with `isDeepStrictEqual`, and both
+  // sides carry `__proto__` as an own data property. A comparison that walked the prototype chain
+  // instead would call these equal-looking manifests different and rewrite the file every run.
+  it("plans nothing when a __proto__ app id already matches", () => {
+    const source = `{"apps":{"__proto__":{"managed":true,"note":"keep"}},"mcpServers":[],"ownership":{},"schemaVersion":1,"skills":[],"snippets":[]}`;
+    const outcome = planSetup(context(source, catalog("__proto__"), ["__proto__"]));
+
+    expect(outcome.plan.operations).toEqual([]);
+    expect(Object.hasOwn(outcome.manifest.apps, "__proto__")).toBe(true);
   });
 });
 

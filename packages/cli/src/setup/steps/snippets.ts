@@ -3,7 +3,7 @@ import { SETUP_ABORTED, type SetupStep, type SetupStepContext } from "../types.j
 import { selectedValues, type WizardOption } from "../wizard-types.js";
 
 export const snippetsStep: SetupStep = {
-  dependsOn: ["instructions"],
+  addKind: "snippet",
   gather: async (context, io) => {
     const catalog = await context.snippetCatalog.load();
     const previous = previousSnippetIds(context);
@@ -36,6 +36,15 @@ export const snippetsStep: SetupStep = {
     };
   },
   id: "snippets",
+  prerequisites: [
+    {
+      id: "instructions",
+      isSatisfied: (context) =>
+        context.model.sharedInstructions.exists &&
+        context.model.sharedInstructions.problem === undefined,
+      title: "a readable shared instruction file",
+    },
+  ],
   title: "Snippets",
 };
 

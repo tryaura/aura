@@ -1,15 +1,18 @@
 import { existsSync } from "node:fs";
-import { mkdir, readdir, readFile, readlink } from "node:fs/promises";
+import { chmod, mkdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { Readable, Writable } from "node:stream";
 
 import { runCli, type CliRuntime } from "@tryaura/aura-cli";
 import {
+  captureFilesystem,
   claudeCodeShimResponses,
   codexShimResponses,
   createClaudeCodeSeed,
   createSeedBuilder,
   cursorShimResponses,
+  expectConvergedTwice,
+  runSetup as runSeededSetup,
   type TestSeed,
 } from "@tryaura/aura-testkit";
 import { describe, expect, it } from "vitest";
@@ -31,13 +34,67 @@ describe("aura setup", () => {
     await expect(readFile(manifestPath, "utf8")).resolves.toContain('"schemaVersion": 1');
     await expect(readFile(sharedPath, "utf8")).resolves.toBe("# Shared agent instructions\n");
 
-    const afterFirst = await snapshot(seed);
+    const afterFirst = await captureFilesystem(seed);
     for (let iteration = 2; iteration <= 5; iteration += 1) {
       const repeat = await run(seed, ["setup", "--yes"]);
       expect(repeat.exitCode).toBe(0);
-      expect(repeat.stdout).toContain("Already converged — nothing to change.");
+      expect(repeat.stdout).toContain("Already converged — nothing to do.");
     }
-    await expect(snapshot(seed)).resolves.toEqual(afterFirst);
+    await expect(captureFilesystem(seed)).resolves.toEqual(afterFirst);
+  });
+
+  it("runs only the registered snippet addition after full setup", async () => {
+    await using seed = await createSeedBuilder().build();
+    await runSeededSetup({ distro: AURA_DISTRO, seed });
+
+    const targeted = await runSeededSetup({
+      args: ["--add", "snippet"],
+      distro: AURA_DISTRO,
+      seed,
+    });
+
+    expect(targeted.exitCode).toBe(0);
+    expect(targeted.diffs).toEqual([]);
+    expect(targeted.stdout).toContain("Already converged — nothing to do.");
+    expect(targeted.stdout).not.toContain("No agent applications were detected.");
+    expect(targeted.stdout).not.toContain("The Aura manifest is already in place.");
+  });
+
+  it("preserves non-canonical manifest bytes when targeted state is semantically unchanged", async () => {
+    const manifest =
+      '{"snippets":[],"skills":[],"schemaVersion":1,"ownership":{},"mcpServers":[],"apps":{}}\n';
+    await using seed = await createSeedBuilder()
+      .homeFile("agents/AGENTS.md", "# Shared agent instructions\n")
+      .homeFile("agents/aura.json", manifest)
+      .build();
+    const manifestPath = join(seed.homeDir, "agents", "aura.json");
+    // At the mode Aura enforces, so this asserts byte preservation and nothing about mode repair.
+    await chmod(manifestPath, 0o600);
+
+    const targeted = await runSeededSetup({
+      args: ["--add", "snippet"],
+      distro: AURA_DISTRO,
+      seed,
+    });
+
+    expect(targeted.exitCode).toBe(0);
+    expect(targeted.diffs).toEqual([]);
+    await expect(readFile(manifestPath, "utf8")).resolves.toBe(manifest);
+  });
+
+  it("repairs manifest permissions even when its parsed state is unchanged", async () => {
+    await using seed = await createSeedBuilder().build();
+    await runSeededSetup({ distro: AURA_DISTRO, seed });
+    const manifestPath = join(seed.homeDir, "agents", "aura.json");
+    const before = await readFile(manifestPath, "utf8");
+    await chmod(manifestPath, 0o644);
+
+    const repaired = await runSeededSetup({ distro: AURA_DISTRO, seed });
+
+    expect(repaired.exitCode).toBe(0);
+    expect((await stat(manifestPath)).mode & 0o777).toBe(0o600);
+    // Nothing else moved: the run existed only to take the permissions back.
+    await expect(readFile(manifestPath, "utf8")).resolves.toBe(before);
   });
 
   it("refuses to run the wizard when there is nobody to answer it", async () => {
@@ -66,7 +123,9 @@ describe("aura setup", () => {
   it("offers the whole registry as not found on a machine with no apps", async () => {
     await using seed = await createSeedBuilder().build();
 
-    const result = await run(seed, ["setup", "--yes"]);
+    const { first: result } = await expectConvergedTwice(seed, () =>
+      runSeededSetup({ distro: AURA_DISTRO, seed }),
+    );
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain(
@@ -86,7 +145,9 @@ describe("aura setup", () => {
   it("pre-selects a detected application and stores it in the manifest", async () => {
     await using seed = await createClaudeCodeSeed({ authenticated: true, version: "2.1.233" });
 
-    const result = await run(seed, ["setup", "--yes"]);
+    const { first: result } = await expectConvergedTwice(seed, () =>
+      runSeededSetup({ distro: AURA_DISTRO, seed }),
+    );
 
     expect(result.stdout).toContain("✓ Claude Code 2.1.233 (authenticated)");
     expect(result.stdout).toContain(
@@ -105,7 +166,9 @@ describe("aura setup", () => {
       .shim("cursor", cursorShimResponses({ version: "3.11.0" }))
       .build();
 
-    const result = await run(seed, ["setup", "--yes"]);
+    const { first: result } = await expectConvergedTwice(seed, () =>
+      runSeededSetup({ distro: AURA_DISTRO, seed }),
+    );
 
     expect(result.stdout).toContain("✓ Claude Code 2.1.233 (authenticated)");
     expect(result.stdout).toContain("✓ Codex 0.147.0 (authenticated)");
@@ -161,14 +224,14 @@ describe("aura setup", () => {
 
   it("stops at the plan under --dry-run without writing", async () => {
     await using seed = await createSeedBuilder().build();
-    const before = await snapshot(seed);
+    const before = await captureFilesystem(seed);
 
     const result = await run(seed, ["setup", "--dry-run"]);
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain(`create ${join(seed.homeDir, "agents", "aura.json")}`);
     expect(result.stdout).toContain("Dry run: nothing was written.");
-    await expect(snapshot(seed)).resolves.toEqual(before);
+    await expect(captureFilesystem(seed)).resolves.toEqual(before);
   });
 });
 
@@ -207,35 +270,4 @@ class CapturedOutput extends Writable {
     this.text += Buffer.isBuffer(chunk) ? chunk.toString("utf8") : String(chunk);
     callback();
   }
-}
-
-async function snapshot(seed: TestSeed): Promise<readonly string[]> {
-  return [
-    ...(await snapshotTree(seed.homeDir, "home")),
-    ...(await snapshotTree(seed.workspaceDir, "workspace")),
-  ];
-}
-
-async function snapshotTree(root: string, label: string): Promise<readonly string[]> {
-  const snapshotEntries: string[] = [];
-
-  async function visit(directory: string, relativeDirectory: string): Promise<void> {
-    const entries = await readdir(directory, { withFileTypes: true });
-    entries.sort((left, right) => left.name.localeCompare(right.name));
-    for (const entry of entries) {
-      const path = join(directory, entry.name);
-      const relativePath = join(relativeDirectory, entry.name);
-      if (entry.isDirectory()) {
-        snapshotEntries.push(`directory:${relativePath}`);
-        await visit(path, relativePath);
-      } else if (entry.isSymbolicLink()) {
-        snapshotEntries.push(`symlink:${relativePath}:${await readlink(path)}`);
-      } else {
-        snapshotEntries.push(`file:${relativePath}:${await readFile(path, "utf8")}`);
-      }
-    }
-  }
-
-  await visit(root, label);
-  return snapshotEntries;
 }
