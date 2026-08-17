@@ -1,7 +1,6 @@
 import { lstat, mkdir, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import type { WorkspaceModel } from "@tryaura/aura-sdk";
 import { afterEach, describe, expect, expectTypeOf, it } from "vitest";
 
 import {
@@ -183,7 +182,7 @@ describe("durable fix-plan backup store", () => {
     await expect(readFile(first, "utf8")).resolves.toBe("before first\n");
     await expect(readFile(second, "utf8")).resolves.toBe("after second\n");
 
-    await expect(listFixPlanBackups({ model: fixture.model })).resolves.toMatchObject([
+    await expect(listFixPlanBackups({ homeDir: fixture.model.homeDir })).resolves.toMatchObject([
       { operationCount: 1, status: "applied", undoable: true },
       { id: older.backupId, status: "undone", undoable: false },
     ]);
@@ -207,7 +206,7 @@ describe("durable fix-plan backup store", () => {
       });
     }
 
-    const backups = await listFixPlanBackups({ model: fixture.model });
+    const backups = await listFixPlanBackups({ homeDir: fixture.model.homeDir });
     expect(backups).toHaveLength(MAX_JOURNAL_ENTRIES);
     expect(backups.every((backup) => backup.status === "applied")).toBe(true);
     // The newest entry keeps the highest tiebreaker, so retention never files a new entry behind
@@ -256,7 +255,7 @@ describe("durable fix-plan backup store", () => {
 
   it("exports the typed backup listing", () => {
     expectTypeOf(listFixPlanBackups).returns.resolves.toEqualTypeOf<readonly FixPlanBackup[]>();
-    expectTypeOf<FixPlanBackupListOptions["model"]>().toEqualTypeOf<WorkspaceModel>();
+    expectTypeOf<FixPlanBackupListOptions["homeDir"]>().toEqualTypeOf<string>();
     expectTypeOf<FixPlanBackupStatus>().toEqualTypeOf<
       "aborted" | "applied" | "pending" | "undone" | "unreadable"
     >();

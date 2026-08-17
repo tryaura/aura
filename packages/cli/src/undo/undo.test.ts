@@ -1,4 +1,4 @@
-import { access, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { PassThrough } from "node:stream";
@@ -71,6 +71,7 @@ async function createFixture(): Promise<Fixture> {
     setup: async () => {
       const exitCode = await runSetup({
         branding: BRANDING,
+        colorDepth: 0,
         dryRun: false,
         environment,
         io: createScriptedWizardIo({ output: stdout.stream }),
@@ -165,6 +166,19 @@ describe("runUndo", () => {
 
     expect(exitCode).toBe(2);
     expect(fixture.stderr()).toContain("no backup named 2020-01-01T00-00-00-000Z");
+  });
+
+  it("names the reason when the requested backup cannot be read", async () => {
+    const fixture = await createFixture();
+    await fixture.setup();
+    const entry = await backupEntry(fixture.homeDir);
+    const id = basename(entry);
+    await writeFile(join(entry, "manifest.json"), "{broken\n", "utf8");
+
+    const exitCode = await runUndo(fixture.request({ backupId: id, yes: true }));
+
+    expect(exitCode).toBe(2);
+    expect(fixture.stderr()).toContain(`backup ${id} cannot be read`);
   });
 
   it("refuses a backup that is already undone", async () => {

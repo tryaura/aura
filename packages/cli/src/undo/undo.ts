@@ -1,6 +1,6 @@
 import type { Writable } from "node:stream";
 
-import type { Environment, WorkspaceModel } from "@tryaura/aura-sdk";
+import type { Environment } from "@tryaura/aura-sdk";
 import {
   buildWorkspaceModel,
   FixPlanError,
@@ -35,37 +35,35 @@ export interface UndoRequest {
 type ReadableBackup = Exclude<FixPlanBackup, { status: "unreadable" }>;
 
 /**
- * The `undo` flow: scan, pick a journal entry, confirm once, restore.
+ * The `undo` flow: read the journal, pick an entry, confirm once, restore.
  *
- * The workspace is scanned first because the model decides which roots a restore may write to —
- * the same policy the fix that made the backup ran under. The entry is pinned by id before the
- * prompt, so what the user confirmed is exactly what gets restored even if another run stages a
- * newer backup in between.
+ * The entry is pinned by id before the prompt, so what the user confirmed is exactly what gets
+ * restored even if another run stages a newer backup in between. The workspace model — the policy
+ * deciding which roots a restore may write to, the same one the fix that made the backup ran
+ * under — is built only once a restore will actually write; listing, dry runs, and refusals stay
+ * pure journal reads.
  */
 export async function runUndo(request: UndoRequest): Promise<CliExitCode> {
   const { branding, stdout } = request;
 
-  const scan = await buildWorkspaceModel({
-    adapters: request.registry.adapters,
-    environment: request.environment,
-    snippets: request.registry.snippets,
-  });
-
   try {
-    const backups = await listFixPlanBackups({ model: scan.model });
+    const backups = await listFixPlanBackups({ homeDir: request.environment.homeDir });
     if (request.list) {
       renderBackupList(backups, branding, stdout);
       return 0;
     }
 
-    const readable = backups.filter(isReadable);
-    const unreadable = backups.length - readable.length;
-
     if (request.backupId !== undefined) {
-      const named = readable.find((backup) => backup.id === request.backupId);
+      const named = backups.find((backup) => backup.id === request.backupId);
       if (named === undefined) {
         request.stderr.write(
-          `${branding.displayName}: no backup named ${safe(request.backupId)} can be restored. Run ${branding.command} undo --list to see every backup.\n`,
+          `${branding.displayName}: no backup named ${safe(request.backupId)} exists. Run ${branding.command} undo --list to see every backup.\n`,
+        );
+        return 2;
+      }
+      if (!isReadable(named)) {
+        request.stderr.write(
+          `${branding.displayName}: backup ${safe(named.id)} cannot be read — ${safe(named.reason)}.\n`,
         );
         return 2;
       }
@@ -75,9 +73,11 @@ export async function runUndo(request: UndoRequest): Promise<CliExitCode> {
         );
         return 2;
       }
-      return await restoreBackup(request, scan.model, named);
+      return await restoreBackup(request, named);
     }
 
+    const readable = backups.filter(isReadable);
+    const unreadable = backups.length - readable.length;
     const latest = readable.find((backup) => backup.undoable);
     if (latest === undefined) {
       if (unreadable > 0) {
@@ -89,17 +89,13 @@ export async function runUndo(request: UndoRequest): Promise<CliExitCode> {
       stdout.write("Nothing to undo.\n");
       return 0;
     }
-    return await restoreBackup(request, scan.model, latest);
+    return await restoreBackup(request, latest);
   } catch (error) {
     return reportUndoFailure(error, request);
   }
 }
 
-async function restoreBackup(
-  request: UndoRequest,
-  model: WorkspaceModel,
-  backup: ReadableBackup,
-): Promise<CliExitCode> {
+async function restoreBackup(request: UndoRequest, backup: ReadableBackup): Promise<CliExitCode> {
   const { stdout } = request;
   const described = `backup ${safe(backup.id)} (${String(backup.operationCount)} operation(s))`;
 
@@ -120,9 +116,14 @@ async function restoreBackup(
     }
   }
 
+  const scan = await buildWorkspaceModel({
+    adapters: request.registry.adapters,
+    environment: request.environment,
+    snippets: request.registry.snippets,
+  });
   const result = await undoFixPlan({
     backupId: backup.id,
-    model,
+    model: scan.model,
     now: request.environment.now,
     stateHomeDir: request.stateHomeDir,
   });

@@ -31,13 +31,13 @@ interface Selection {
 export async function listFixPlanBackups(
   options: FixPlanBackupListOptions,
 ): Promise<readonly FixPlanBackup[]> {
-  const root = await openBackupRoot(options.model.homeDir);
+  const root = await openBackupRoot(options.homeDir);
   if (root === undefined) {
     return Object.freeze([]);
   }
 
   const backups: FixPlanBackup[] = [];
-  for await (const entry of readJournal(root, options.model.homeDir)) {
+  for await (const entry of readJournal(root, options.homeDir)) {
     backups.push(describe(entry));
   }
   return Object.freeze(backups);

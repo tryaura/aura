@@ -1,32 +1,38 @@
 import type { Writable } from "node:stream";
 
-import type { FixCandidate, FixOperationPreview, PreparedFixPlan } from "@tryaura/core";
+import type { FixOperationPreview, PreparedFixPlan, prepareFixCandidates } from "@tryaura/core";
 import type { Check, Finding } from "@tryaura/aura-sdk";
 
 import { safe, safeMultiline } from "./render.js";
 import type { CliBranding } from "./types.js";
 
+/** A prepared plan that still knows which physical preview belongs to which candidate. */
+type AttributedFixPlan = Extract<
+  Awaited<ReturnType<typeof prepareFixCandidates>>,
+  { prepared: PreparedFixPlan }
+>;
+
 /**
  * Shows what applying the plan would do; only the shape of each change unless `withDetail`.
  *
- * The preview is one flat list covering every candidate's operations in plan order, so each
- * candidate takes the next `plan.operations.length` of them — the same slicing the report uses.
+ * The preview is not positionally aligned with the candidates: coalescing lets several same-path
+ * writes share one physical operation, so attribution goes through `operationPreviewIndexes` — the
+ * same way the report reads it — and a shared operation prints under every check that asked for it.
  * Grouping them under the check that proposed each change is what lets the user judge the plan:
  * the findings themselves have not been printed yet at this point in the flow.
  */
 export function renderFixPreview(
-  candidates: readonly FixCandidate[],
-  prepared: PreparedFixPlan,
-  manualSteps: readonly string[],
+  plan: AttributedFixPlan,
   withDetail: boolean,
   output: Writable,
 ): void {
-  output.write(`Fix preview: ${safe(prepared.preview.summary)}\n`);
-  let operationIndex = 0;
-  for (const candidate of candidates) {
-    const count = candidate.plan.operations.length;
-    const operations = prepared.preview.operations.slice(operationIndex, operationIndex + count);
-    operationIndex += count;
+  output.write(`Fix preview: ${safe(plan.prepared.preview.summary)}\n`);
+  const previews = plan.prepared.preview.operations;
+  for (const [candidateIndex, candidate] of plan.candidates.entries()) {
+    const operations = (plan.operationPreviewIndexes[candidateIndex] ?? []).flatMap((index) => {
+      const operation = previews[index];
+      return operation === undefined ? [] : [operation];
+    });
     if (operations.every((operation) => operation.effect === "noop")) {
       continue;
     }
@@ -36,7 +42,7 @@ export function renderFixPreview(
   if (!withDetail) {
     output.write("\nRe-run with --detail to see the full diff of every change.\n");
   }
-  renderManualSteps(manualSteps, output);
+  renderManualSteps(plan.manualSteps, output);
 }
 
 /**

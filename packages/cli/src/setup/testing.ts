@@ -92,6 +92,7 @@ export async function createFixture(): Promise<Fixture> {
       });
       return {
         branding: BRANDING,
+        colorDepth: 0,
         dryRun: false,
         environment,
         io: createScriptedWizardIo({ ...(forms === undefined ? {} : { forms }), output: stdout }),

@@ -64,4 +64,21 @@ describe("runFixes report messages", () => {
     expect(headerIndex).toBeGreaterThan(-1);
     expect(operationIndex).toBeGreaterThan(headerIndex);
   });
+
+  it("previews every candidate when same-path writes coalesce into one operation", async () => {
+    const automatic = automaticCheck();
+    const stdout = new TextOutput();
+
+    await runFixes(
+      request({
+        checks: [automatic],
+        dryRun: true,
+        findings: [finding(automatic, "first"), finding(automatic, "second")],
+        stdout,
+      }),
+    );
+
+    const headers = stdout.text.split("[fixture/AUTO] Write automatic.md.").length - 1;
+    expect(headers).toBe(2);
+  });
 });

@@ -139,7 +139,7 @@ function renderNextSteps(report: CheckReport, branding: CliBranding, output: Wri
   const manual = report.findings.filter((finding) => finding.fixability === "manual").length;
 
   const lines: string[] = [];
-  if (auto > 0 && !applied) {
+  if (auto > 0) {
     lines.push(
       `${String(auto)} finding(s) can be fixed automatically — run ${branding.command} check --fix`,
     );
@@ -158,8 +158,7 @@ function renderNextSteps(report: CheckReport, branding: CliBranding, output: Wri
     return;
   }
   const heading = applied ? "Remaining work" : "Next steps";
-  const count = applied ? guided + manual : auto + guided + manual;
-  renderGroup("·", `${heading} (${String(count)})`, lines, output);
+  renderGroup("·", `${heading} (${String(auto + guided + manual)})`, lines, output);
 }
 
 /** Marks the findings a fix run could act on; manual ones carry no tag, only guidance. */

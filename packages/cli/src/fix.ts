@@ -144,13 +144,7 @@ export async function runFixes(request: FixRequest): Promise<FixOutcome> {
     };
   }
 
-  renderFixPreview(
-    prepared.candidates,
-    prepared.prepared,
-    prepared.manualSteps,
-    request.withDetail,
-    request.stdout,
-  );
+  renderFixPreview(prepared, request.withDetail, request.stdout);
 
   if (prepared.prepared.preview.conflictedOperationCount > 0) {
     request.stderr.write(

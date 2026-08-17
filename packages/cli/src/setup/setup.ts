@@ -30,8 +30,8 @@ import type { WizardIo } from "./wizard-types.js";
 /** Everything one `setup` run needs, so the flow does not reach back into the command object. */
 export interface SetupRequest {
   readonly branding: CliBranding;
-  /** How much color the closing report may use; defaults to none. */
-  readonly colorDepth?: number | undefined;
+  /** How much color the closing report may use. */
+  readonly colorDepth: number;
   readonly dryRun: boolean;
   readonly environment: Environment;
   readonly io: WizardIo;
@@ -261,6 +261,6 @@ function endOnGreen(request: SetupRequest, scan: WorkspaceScan): CliExitCode {
     skipped: scan.skipped,
     withDetail: request.withDetail,
   });
-  renderHuman(report, request.branding, request.stdout, request.colorDepth ?? 0);
+  renderHuman(report, request.branding, request.stdout, request.colorDepth);
   return report.summary.exitCode;
 }

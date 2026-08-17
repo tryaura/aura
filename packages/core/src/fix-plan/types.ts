@@ -117,7 +117,8 @@ export interface FixPlanUndoOptions {
 }
 
 export interface FixPlanBackupListOptions {
-  readonly model: WorkspaceModel;
+  /** The home directory whose backup store to read; listing needs no workspace scan. */
+  readonly homeDir: string;
 }
 
 /** One entry in the durable backup store. */
