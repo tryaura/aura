@@ -68,7 +68,7 @@ export function diffManagedSnippet(
   return createTwoFilesPatch(
     `${path} (edited)`,
     `${path} (canonical)`,
-    editedContent,
+    canonicalizeManagedSnippet(editedContent),
     canonicalizeManagedSnippet(canonicalContent),
     "edited",
     "canonical",

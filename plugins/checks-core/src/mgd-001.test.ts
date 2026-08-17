@@ -1,9 +1,11 @@
+/* eslint-disable max-lines -- the MGD-001 detection and guided-choice matrix shares model fixtures. */
 import type { AppModel, Finding, WorkspaceModel } from "@tryaura/aura-sdk";
 import {
   hashManagedSnippet,
   parseAuraManifest,
   readManagedBlock,
   reconcileManagedBlock,
+  reconcileManagedSnippet,
   runChecks,
 } from "@tryaura/core";
 import { describe, expect, it } from "vitest";
@@ -33,6 +35,41 @@ describe("MGD-001", () => {
     expect(findings.map((finding) => finding.locations?.[0]?.line)).toEqual([4, 7]);
     expect(JSON.stringify(findings)).not.toContain("private first edit");
     expect(JSON.stringify(findings)).not.toContain("private second edit");
+  });
+
+  it("reports an edit whose marker hash was re-stamped against the manifest anchor", () => {
+    const edited = managedSource([{ content: "old canonical", id: SNIPPET_ID }]).replace(
+      "old canonical\n",
+      "re-stamped edit\n",
+    );
+    const restamped = reconcileManagedSnippet(edited, SNIPPET_ID, { kind: "keep" });
+    const workspace = managedWorkspace(restamped.content);
+
+    const finding = onlyFinding(workspace);
+
+    expect(readManagedBlock(restamped.content)).toMatchObject({
+      block: { snippets: [expect.objectContaining({ hashMatches: true })] },
+      status: "present",
+    });
+    expect(finding.id).toBe(`aura.shared-instructions:${SNIPPET_ID}`);
+  });
+
+  it("reports an unterminated fence that hides a managed block", () => {
+    const source = `# Doc\n\`\`\`\n${managedSource([{ content: "canonical", id: SNIPPET_ID }])}`;
+    const workspace = managedWorkspace(source);
+    const finding = onlyFinding(workspace);
+    const choices = managedBlockHashCheck.guidedFixes?.(finding, workspace) ?? [];
+
+    expect(finding).toMatchObject({
+      id: "aura.shared-instructions:unterminated-fence",
+      metadata: { kind: "unterminated-fence" },
+    });
+    expect(choices).toEqual([
+      expect.objectContaining({
+        id: "close-fence",
+        plan: expect.objectContaining({ operations: [] }),
+      }),
+    ]);
   });
 
   it("reports one stable malformed finding and offers no executable resolution", () => {
@@ -80,9 +117,11 @@ describe("MGD-001", () => {
       pinned: true,
       version: "1.0.0",
     });
-    expect(
-      runChecks([managedBlockHashCheck], withShared(workspace, fileWrite.content)).findings,
-    ).toEqual([]);
+    const rescanned = {
+      ...withShared(workspace, fileWrite.content),
+      manifest: parseAuraManifest(manifestWrite.content, manifestWrite.path),
+    };
+    expect(runChecks([managedBlockHashCheck], rescanned).findings).toEqual([]);
   });
 
   it("restores the registry's current content and advances the manifest selection", () => {
@@ -123,6 +162,18 @@ describe("MGD-001", () => {
     expect(choice.plan.manualSteps?.[0]).toContain(`${PATH} at lines 4-6`);
   });
 
+  it("normalizes CRLF on both sides of the manual merge diff", () => {
+    const edited = managedSource([{ content: "canonical", id: SNIPPET_ID }])
+      .replace("canonical\n", "hand edit\n")
+      .replaceAll("\n", "\r\n");
+    const workspace = managedWorkspace(edited);
+    const choice = choiceById(onlyFinding(workspace), workspace, "merge");
+
+    expect(choice.details?.()).not.toContain("\r");
+    expect(choice.details?.()).toContain("-hand edit");
+    expect(choice.details?.()).toContain("+current canonical");
+  });
+
   it("says so when it can write the file but not the manifest entry", () => {
     const edited = managedSource([{ content: "canonical", id: SNIPPET_ID }]).replace(
       "canonical\n",
@@ -154,7 +205,28 @@ describe("MGD-001", () => {
     const choices = managedBlockHashCheck.guidedFixes?.(finding, workspace) ?? [];
 
     expect(choices.map((choice) => choice.id)).toEqual(["keep", "merge"]);
+    expect(choices[0]?.plan.manualSteps?.[0]).toContain("Create /home/dev/agents/aura.json");
     expect(choices[1]?.details).toBeUndefined();
+  });
+
+  it("throws when a detected mismatch can no longer build its resolution context", () => {
+    const workspace = model();
+    const stale: Finding = {
+      checkId: "MGD-001",
+      id: "stale",
+      message: "Stale finding.",
+      metadata: {
+        kind: "hash-mismatch",
+        snippetId: "missing/snippet",
+        sourceId: "aura.shared-instructions",
+      },
+      scope: "global",
+      severity: "warn",
+    };
+
+    expect(() => managedBlockHashCheck.guidedFixes?.(stale, workspace)).toThrow(
+      "is no longer available",
+    );
   });
 
   it("skips symlink instruction entries and deduplicates regular paths", () => {

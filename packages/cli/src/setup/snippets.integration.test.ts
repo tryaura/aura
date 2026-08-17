@@ -6,12 +6,15 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   AURA_MANAGED_BLOCK_NOTICE,
   createPluginRegistry,
+  hashManagedSnippet,
   reconcileManagedBlock,
+  reconcileManagedSnippet,
 } from "@tryaura/core";
 
 import { runSetup } from "./setup.js";
 import {
   installedIds,
+  isRecord,
   manifestIds,
   manifestSnippets,
   snippet,
@@ -130,7 +133,8 @@ describe("snippet setup integration", () => {
     ).resolves.toBe(0);
     const sharedPath = join(fixture.homeDir, "agents", "AGENTS.md");
     const edited = (await readFile(sharedPath, "utf8")).replace("Rules.\n", "Rules, my way.\n");
-    await writeFile(sharedPath, edited, "utf8");
+    const restamped = reconcileManagedSnippet(edited, "fixture/rules", { kind: "keep" });
+    await writeFile(sharedPath, restamped.content, "utf8");
 
     await expect(runSetup(fixture.request(registry, answers(["fixture/rules"])))).resolves.toBe(0);
 
@@ -138,6 +142,54 @@ describe("snippet setup integration", () => {
       'Snippet "fixture/rules" was edited by hand since Aura wrote it; the edit is being replaced.',
     );
     await expect(readFile(sharedPath, "utf8")).resolves.toContain("Rules.\n");
+  });
+
+  it("preserves a kept pinned snippet across setup until it is deselected", async () => {
+    const fixture = await createFixture();
+    const sourcePath = join(fixture.workspace, "rules.md");
+    await writeFile(sourcePath, "Registry rules.\n", "utf8");
+    const registry = createPluginRegistry([
+      snippetPlugin([snippet("fixture/rules", sourcePath, "general", "Rules")]),
+    ]);
+    await expect(
+      runSetup(fixture.request(registry, answers(["fixture/rules"], true))),
+    ).resolves.toBe(0);
+
+    const sharedPath = join(fixture.homeDir, "agents", "AGENTS.md");
+    const manifestPath = join(fixture.homeDir, "agents", "aura.json");
+    const edited = (await readFile(sharedPath, "utf8")).replace(
+      "Registry rules.\n",
+      "Rules I kept.\n",
+    );
+    const kept = reconcileManagedSnippet(edited, "fixture/rules", { kind: "keep" });
+    const manifest: unknown = JSON.parse(await readFile(manifestPath, "utf8"));
+    if (!isRecord(manifest) || !Array.isArray(manifest["snippets"])) {
+      throw new Error("Expected manifest snippets.");
+    }
+    const selected = manifest["snippets"][0];
+    if (!isRecord(selected)) {
+      throw new Error("Expected one manifest snippet.");
+    }
+    selected["hash"] = hashManagedSnippet("Rules I kept.");
+    selected["pinned"] = true;
+    await Promise.all([
+      writeFile(sharedPath, kept.content, "utf8"),
+      writeFile(manifestPath, `${JSON.stringify(manifest, undefined, 2)}\n`, "utf8"),
+    ]);
+    const before = await snapshot(fixture.homeDir);
+
+    await expect(runSetup(fixture.request(registry, answers(["fixture/rules"])))).resolves.toBe(0);
+    await expect(snapshot(fixture.homeDir)).resolves.toEqual(before);
+
+    const missingPinned = "# Shared agent instructions\n";
+    await writeFile(sharedPath, missingPinned, "utf8");
+    await expect(runSetup(fixture.request(registry, answers(["fixture/rules"])))).resolves.toBe(2);
+    await expect(readFile(sharedPath, "utf8")).resolves.toBe(missingPinned);
+
+    await writeFile(sharedPath, kept.content, "utf8");
+    await expect(runSetup(fixture.request(registry, answers([])))).resolves.toBe(0);
+    expect(await installedIds(fixture.homeDir)).toEqual([]);
+    expect(await manifestIds(fixture.homeDir)).toEqual([]);
   });
 
   it("preserves and reports a tagged section absent from the manifest ledger", async () => {
@@ -183,6 +235,24 @@ describe("snippet setup integration", () => {
 
     await expect(runSetup(fixture.request(registry, answers(["fixture/rules"])))).resolves.toBe(2);
     await expect(readFile(sharedPath, "utf8")).resolves.toBe(edited);
+  });
+
+  it("blocks setup when an unterminated fence hides the existing managed block", async () => {
+    const fixture = await createFixture();
+    const sourcePath = join(fixture.workspace, "rules.md");
+    await writeFile(sourcePath, "Rules.\n", "utf8");
+    const registry = createPluginRegistry([
+      snippetPlugin([snippet("fixture/rules", sourcePath, "general", "Rules")]),
+    ]);
+    await expect(
+      runSetup(fixture.request(registry, answers(["fixture/rules"], true))),
+    ).resolves.toBe(0);
+    const sharedPath = join(fixture.homeDir, "agents", "AGENTS.md");
+    const hidden = `\`\`\`\n${await readFile(sharedPath, "utf8")}`;
+    await writeFile(sharedPath, hidden, "utf8");
+
+    await expect(runSetup(fixture.request(registry, answers(["fixture/rules"])))).resolves.toBe(2);
+    await expect(readFile(sharedPath, "utf8")).resolves.toBe(hidden);
   });
 });
 

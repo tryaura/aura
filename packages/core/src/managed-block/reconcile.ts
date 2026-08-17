@@ -60,6 +60,17 @@ export function reconcileParsedManagedBlock(
     return invalidResult(source, current.notes, desired.problems);
   }
 
+  const hiddenMarker = current.notes.find((note) => note.code === "unterminated-fence");
+  if (hiddenMarker !== undefined) {
+    return invalidResult(source, current.notes, [
+      Object.freeze({
+        code: "unterminated-fence",
+        line: hiddenMarker.line,
+        message: hiddenMarker.message,
+      }),
+    ]);
+  }
+
   if (current.status !== "invalid") {
     const block = current.status === "present" ? current.block : undefined;
     const rendered = renderLedgerSnippets(source, block, desired.prepared, options);
@@ -71,6 +82,12 @@ export function reconcileParsedManagedBlock(
     return settle(source, buildContent(source, rendered, current), notes);
   }
   if (options.onInvalid !== "repair") {
+    return invalidResult(source, current.notes, current.problems);
+  }
+  // Once parsing failed there is no reliable block ledger to distinguish owned sections from
+  // sections that must survive byte-for-byte. Repairing under a ledger would preserve their text
+  // but erase their markers and ownership, so fail closed instead.
+  if (options.ownedSnippetIds !== undefined) {
     return invalidResult(source, current.notes, current.problems);
   }
 
@@ -164,21 +181,55 @@ function overwrittenNotes(
     return [];
   }
   const controlled = controlledSnippetIds(desired, options);
+  const desiredById = new Map(desired.map((snippet) => [snippet.id, snippet]));
   const preserved = new Set(options.preserveSnippetIds ?? []);
-  return current.block.snippets
-    .filter(
-      (snippet) =>
-        !snippet.hashMatches &&
-        (options.ownedSnippetIds === undefined || controlled.has(snippet.id)) &&
-        !preserved.has(snippet.id),
-    )
-    .map((snippet) =>
+  return current.block.snippets.flatMap((snippet): readonly ManagedBlockNote[] => {
+    if (
+      (options.ownedSnippetIds !== undefined && !controlled.has(snippet.id)) ||
+      preserved.has(snippet.id) ||
+      !handEdited(snippet, options)
+    ) {
+      return [];
+    }
+
+    const replacement = desiredById.get(snippet.id);
+    // Dropping a section destroys the hand edit just as surely as writing over it does, so it gets
+    // its own note rather than none: the point of this notice is that work is about to be lost.
+    if (replacement === undefined) {
+      return [
+        Object.freeze({
+          code: "removed-snippet" as const,
+          line: snippet.startLine,
+          message: `Snippet "${snippet.id}" was edited by hand since Aura wrote it; the edit is being removed.`,
+        }),
+      ];
+    }
+    if (replacement.hash === snippet.computedHash) {
+      return [];
+    }
+    return [
       Object.freeze({
         code: "overwritten-snippet" as const,
         line: snippet.startLine,
         message: `Snippet "${snippet.id}" was edited by hand since Aura wrote it; the edit is being replaced.`,
       }),
-    );
+    ];
+  });
+}
+
+/**
+ * Whether a section differs from what Aura last recorded for it.
+ *
+ * The marker hash is written by whoever wrote the marker, so a re-stamped section certifies itself
+ * and `hashMatches` alone cannot tell a hand edit from a catalog upgrade. The manifest is the only
+ * record the editor did not control; fall back to the marker only when there is no manifest entry.
+ */
+function handEdited(
+  snippet: { readonly computedHash: string; readonly hashMatches: boolean; readonly id: string },
+  options: ManagedBlockReconcileOptions,
+): boolean {
+  const previousHash = options.previousSnippetHashes?.get(snippet.id);
+  return previousHash === undefined ? !snippet.hashMatches : previousHash !== snippet.computedHash;
 }
 
 function repairNotes(problems: readonly ManagedBlockProblem[]): readonly ManagedBlockNote[] {

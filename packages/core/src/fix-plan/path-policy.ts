@@ -9,6 +9,8 @@ import { describeRoots, matchRoot, resolveAllowedRoots, type AllowedRoot } from 
 import { operationError } from "./types.js";
 
 export interface ValidatedOperation {
+  /** Earlier write operation that owns this exact path and will absorb this operation. */
+  readonly coalescesWith?: number | undefined;
   readonly index: number;
   readonly operation: FileOperation;
   readonly paths: readonly string[];
@@ -49,31 +51,77 @@ export async function validatePlanPaths(
   // always the earliest offending one.
   for (const [index, operation] of plan.operations.entries()) {
     const paths = mutationPaths(operation);
+    let coalescesWith: number | undefined;
 
     for (const path of paths) {
       assertPathShape(path, policy, index);
-      claimPath(claims, path, index, policy.caseInsensitive);
+      const resolvedPath = resolve(path);
+      const exactOwner = claims.exact.get(comparablePath(resolvedPath, policy.caseInsensitive));
+      // Only a write can be absorbed by an earlier write, and `mutationPaths` gives a write exactly
+      // one path, so at most one owner is ever considered for an operation.
+      const allowedExactOwner =
+        operation.type === "write"
+          ? coalescedWriteOwner(resolvedPath, exactOwner, operations)
+          : undefined;
+      claimPath(claims, path, index, policy.caseInsensitive, allowedExactOwner);
+      coalescesWith = allowedExactOwner;
       probes.push({ includeFinalPath: false, operationIndex: index, path });
     }
 
-    if (operation.type === "symlink") {
-      assertPathShape(operation.target, policy, index);
-      probes.push({ includeFinalPath: true, operationIndex: index, path: operation.target });
-    }
-    if (operation.type === "archive" && operation.replacement?.type === "symlink") {
-      assertPathShape(operation.replacement.target, policy, index);
-      probes.push({
-        includeFinalPath: true,
-        operationIndex: index,
-        path: operation.replacement.target,
-      });
-    }
+    collectReferenceProbes(operation, policy, index, probes);
 
-    operations.push({ index, operation, paths: Object.freeze(paths) });
+    operations.push({
+      ...(coalescesWith === undefined ? {} : { coalescesWith }),
+      index,
+      operation,
+      paths: Object.freeze(paths),
+    });
   }
 
   await runProbes(probes, policy.roots, policy.caseInsensitive);
   return Object.freeze(operations);
+}
+
+/**
+ * The earlier write that may absorb this one, or undefined when the overlap is a hard conflict.
+ *
+ * `operations` is pushed once per plan operation in plan order, so an operation's index is also its
+ * position.
+ */
+function coalescedWriteOwner(
+  resolvedPath: string,
+  exactOwner: number | undefined,
+  operations: readonly ValidatedOperation[],
+): number | undefined {
+  const owner = exactOwner === undefined ? undefined : operations[exactOwner];
+  if (owner?.operation.type !== "write") {
+    return undefined;
+  }
+  // The claim key is case-folded whenever `detectCaseInsensitive` cannot decide, and it answers
+  // "insensitive" when in doubt. Widening that way stays safe while it only ever raises a conflict;
+  // it is not safe for coalescing, where two genuinely distinct files would merge into one write
+  // and the second spelling would never reach disk. Merge only literally identical paths.
+  return resolve(owner.operation.path) === resolvedPath ? exactOwner : undefined;
+}
+
+function collectReferenceProbes(
+  operation: FileOperation,
+  policy: PathPolicy,
+  operationIndex: number,
+  probes: AncestorProbe[],
+): void {
+  if (operation.type === "symlink") {
+    assertPathShape(operation.target, policy, operationIndex);
+    probes.push({ includeFinalPath: true, operationIndex, path: operation.target });
+  }
+  if (operation.type === "archive" && operation.replacement?.type === "symlink") {
+    assertPathShape(operation.replacement.target, policy, operationIndex);
+    probes.push({
+      includeFinalPath: true,
+      operationIndex,
+      path: operation.replacement.target,
+    });
+  }
 }
 
 /** Rechecks ancestors immediately before a mutation to narrow symlink race windows. */

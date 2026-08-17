@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- the guided and automatic CLI flow matrix shares one request fixture. */
 import { writeFileSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -139,6 +140,30 @@ describe("runFixes guided remediation", () => {
     expect(legacy.fixes).toHaveLength(1);
     expect(legacyWizard.questions[0]?.[0]?.options[0]?.label).toBe("Use suggested resolution");
     expect(legacyWizard.questions[0]?.[0]?.options.at(-1)?.label).toBe("Skip");
+  });
+
+  it("reports guided choice construction failures instead of silently hiding choices", async () => {
+    const guided = guidedCheck({
+      guidedFixes: () => {
+        throw new Error("resolution context disappeared");
+      },
+    });
+
+    const outcome = await runFixes(
+      request({
+        checks: [guided],
+        findings: [finding(guided, "guided")],
+        interactive: true,
+        wizard: scriptedWizard([]),
+      }),
+    );
+
+    expect(outcome.fixDiagnostics).toEqual([
+      expect.objectContaining({
+        detail: "resolution context disappeared",
+        message: expect.stringContaining("failed while building guided choices"),
+      }),
+    ]);
   });
 
   it("confirms once and applies automatic and guided choices as one plan", async () => {
