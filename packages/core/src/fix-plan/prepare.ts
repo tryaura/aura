@@ -1,18 +1,16 @@
 import { Buffer } from "node:buffer";
+import { resolve } from "node:path";
 
-import type {
-  MovePathOperation,
-  RemovePathOperation,
-  SymlinkOperation,
-  WriteFileOperation,
-} from "@tryaura/aura-sdk";
+import type { MovePathOperation, SymlinkOperation, WriteFileOperation } from "@tryaura/aura-sdk";
 
 import { captureBefore, findUnwritablePath, spendBudget, type RetentionBudget } from "./capture.js";
-import { renderMoveDiff, renderRemoveDiff, renderSymlinkDiff, renderWriteDiff } from "./diff.js";
+import { renderMoveDiff, renderSymlinkDiff, renderWriteDiff } from "./diff.js";
 import { MAX_RETAINED_PLAN_BYTES } from "./limits.js";
+import { comparablePath } from "./claims.js";
 import { createPathPolicy, validatePlanPaths, type ValidatedOperation } from "./path-policy.js";
 import { prepareArchive } from "./prepare-archive.js";
 import { createEnforcedModes, resolveWriteMode, type EnforcedModes } from "./prepare-modes.js";
+import { prepareRemove } from "./prepare-remove.js";
 import { prepareWriteGroup } from "./prepare-write-group.js";
 import {
   conflict,
@@ -25,6 +23,7 @@ import { inspectPath, isCapturedFile } from "./state.js";
 import type { FixPlanPreview, FixPlanPreviewOptions } from "./types.js";
 import { writeRejection } from "./write-validation.js";
 
+// fallow-ignore-next-line complexity -- coordinates preparation across the closed operation union.
 export async function prepareOperations(
   options: FixPlanPreviewOptions,
 ): Promise<{ readonly preview: FixPlanPreview; readonly state: PreparedPlanState }> {
@@ -34,6 +33,15 @@ export async function prepareOperations(
   const operations: PreparedOperation[] = [];
   const enforcedMode = createEnforcedModes(options.model.homeDir, policy.caseInsensitive);
   const readOnly = manifestConflict(options.model);
+  const removeClaims = new Map<string, number>();
+  for (const operation of validated) {
+    if (operation.operation.type === "remove") {
+      removeClaims.set(
+        comparablePath(resolve(operation.operation.path), policy.caseInsensitive),
+        operation.index,
+      );
+    }
+  }
   const operationOwners = options.plan.operations.map((_operation, index) => index);
   const followers = new Map<number, ValidatedOperation[]>();
   for (const operation of validated) {
@@ -60,7 +68,13 @@ export async function prepareOperations(
     operations.push(
       readOnly === undefined
         ? group === undefined
-          ? await prepareOperation(operation, budget, enforcedMode)
+          ? await prepareOperation(
+              operation,
+              budget,
+              enforcedMode,
+              removeClaims,
+              policy.caseInsensitive,
+            )
           : await prepareWriteGroup([operation, ...group], budget, enforcedMode)
         : conflict(operation, readOnly),
     );
@@ -108,6 +122,8 @@ async function prepareOperation(
   operation: ValidatedOperation,
   budget: RetentionBudget,
   enforcedMode: EnforcedModes,
+  removeClaims: ReadonlyMap<string, number>,
+  caseInsensitive: boolean,
 ): Promise<PreparedOperation> {
   const blocked = await findUnwritablePath(operation);
   if (blocked !== undefined) {
@@ -122,7 +138,7 @@ async function prepareOperation(
       return prepareMove(operation.operation, operation);
     }
     case "remove": {
-      return prepareRemove(operation.operation, operation, budget);
+      return prepareRemove(operation.operation, operation, budget, removeClaims, caseInsensitive);
     }
     case "symlink": {
       return prepareSymlink(operation.operation, operation, budget);
@@ -171,33 +187,6 @@ async function prepareWrite(
       renderWriteDiff(operation.path, before, operation.content, operation.mode, mode),
     ),
     type: "write",
-  };
-}
-
-async function prepareRemove(
-  operation: RemovePathOperation,
-  validated: ValidatedOperation,
-  budget: RetentionBudget,
-): Promise<PreparedOperation> {
-  const captured = await captureBefore(validated, operation.path, budget, "removed");
-  if ("conflict" in captured) {
-    return conflict(validated, captured.conflict);
-  }
-
-  const before = captured.state;
-  if (before.kind === "missing") {
-    return noop(validated);
-  }
-  if (before.kind === "directory" && !before.empty) {
-    return conflict(validated, "remove accepts only an empty directory");
-  }
-
-  spendBudget(budget, before);
-  return {
-    before,
-    operation,
-    preview: createPreview(validated, "remove", renderRemoveDiff(operation.path, before)),
-    type: "remove",
   };
 }
 

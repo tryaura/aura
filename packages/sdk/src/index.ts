@@ -25,6 +25,8 @@ export type {
   AdapterImportStyle,
   AdapterInstructionCapabilities,
   AdapterInstructionLoading,
+  AdapterSkillCapabilities,
+  AdapterSkillDirectory,
 } from "./capabilities.js";
 export type {
   Check,
@@ -49,14 +51,23 @@ export type {
 } from "./common.js";
 export type {
   ContentContribution,
+  BundledSkillSource,
   DirectoryContentSource,
+  DriverSkillSource,
   FileContentSource,
   McpServerDef,
   Preset,
+  PrivateDirectorySkillSource,
+  ResolvedSkillFile,
+  ResolvedSkillListing,
+  ResolvedSkillPack,
   SkillListing,
   SkillPack,
   SkillSource,
+  SkillSourceId,
+  SkillSourceDriver,
   Snippet,
+  StandardDirectorySkillSource,
 } from "./content.js";
 export { defineAdapter, defineCheck, definePlugin } from "./define.js";
 export { detectExecutable } from "./detect.js";
@@ -88,6 +99,7 @@ export type {
   AuraManifestEntry,
   AuraManifestOwnership,
   AuraManifestProblem,
+  AuraManifestSkill,
   AuraManifestSnippet,
   AuraManifestState,
   AuraManifestV1,
@@ -97,7 +109,6 @@ export type {
   AdapterSnapshot,
   AppModel,
   HttpMcpTransport,
-  InstalledSkill,
   InstructionDocument,
   InstructionLink,
   InstructionLinkKind,
@@ -109,6 +120,12 @@ export type {
   StdioMcpTransport,
   WorkspaceModel,
 } from "./model.js";
+export type {
+  InstalledSkill,
+  ResolvedSkillDirectory,
+  SharedSkillEntry,
+  SharedSkillState,
+} from "./skill-model.js";
 export type {
   GitignoreModel,
   GitignorePattern,
@@ -139,3 +156,10 @@ export type { AtImportContext } from "./imports.js";
 export type { AuraPlugin } from "./plugin.js";
 export { detectLineEnding, splitSourceLines } from "./text.js";
 export type { SourceLine } from "./text.js";
+export {
+  parseInstalledSkills,
+  parseSkillFrontmatter,
+  resolveSkillDirectory,
+  skillDirectorySpecs,
+} from "./skill.js";
+export type { SkillFrontmatter } from "./skill.js";

@@ -9,12 +9,14 @@ import type { WorkspaceModel } from "./model.js";
 
 /** Everything a {@link WorkspaceModel} needs that a test almost never cares about. */
 const EMPTY_MODEL = {
+  availableSkills: [],
   availableSnippets: [],
   apps: [],
   cwd: "/workspace",
   homeDir: "/home/dev",
   instructionFiles: [],
   mcpServers: [],
+  sharedSkills: [],
   skills: [],
 } as const;
 

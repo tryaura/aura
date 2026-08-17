@@ -2,15 +2,19 @@ import type {
   AuraManifest,
   AuraManifestApp,
   AuraManifestOwnership,
+  AuraManifestSkill,
   AuraManifestSnippet,
   JsonObject,
   JsonValue,
+  SkillSourceId,
 } from "@tryaura/aura-sdk";
 
 import { isRecord } from "../values.js";
 import { AURA_MANIFEST_SCHEMA_VERSION } from "./protocol.js";
 
 const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
+const SKILL_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
+const SKILL_SOURCE_PATTERN = /^(?:directory|driver|plugin):[^\s:]+$/u;
 
 /**
  * How deep the manifest may nest.
@@ -49,9 +53,58 @@ export function validateAuraManifest(value: unknown): AuraManifest {
     mcpServers: objectArray(source["mcpServers"], "$.mcpServers"),
     ownership: ownership(source["ownership"]),
     schemaVersion: AURA_MANIFEST_SCHEMA_VERSION,
-    skills: objectArray(source["skills"], "$.skills"),
+    skills: skills(source["skills"]),
     snippets: snippets(source["snippets"]),
   });
+}
+
+function skills(value: JsonValue | undefined): readonly AuraManifestSkill[] {
+  if (!Array.isArray(value)) {
+    throw invalid("$.skills", "must be an array");
+  }
+
+  const ids = new Set<string>();
+  return Object.freeze(
+    value.map((candidate, index) => {
+      const path = `$.skills[${String(index)}]`;
+      const skill = requiredObject(candidate, path);
+      const id = requiredString(skill, "id", path);
+      if (id.length > 64 || !SKILL_ID_PATTERN.test(id)) {
+        throw invalid(`${path}.id`, "must be a kebab-case skill ID of at most 64 characters");
+      }
+      if (ids.has(id)) {
+        throw invalid(`${path}.id`, "must not duplicate another selected skill ID");
+      }
+      ids.add(id);
+      const source = requiredSkillSource(skill, path);
+      const treeHash = requiredString(skill, "treeHash", path);
+      if (!SHA256_PATTERN.test(treeHash)) {
+        throw invalid(`${path}.treeHash`, "must be a lowercase SHA-256 hash");
+      }
+      return Object.freeze({
+        ...skill,
+        id,
+        pinned: requiredBoolean(skill, "pinned", path),
+        source,
+        treeHash,
+        version: requiredString(skill, "version", path),
+      });
+    }),
+  );
+}
+
+function requiredSkillSource(value: JsonObject, path: string): SkillSourceId {
+  const source = requiredString(value, "source", path);
+  if (!SKILL_SOURCE_PATTERN.test(source)) {
+    throw invalid(`${path}.source`, "must be a plugin:, directory:, or driver: source ID");
+  }
+  if (source.startsWith("plugin:")) {
+    return `plugin:${source.slice("plugin:".length)}`;
+  }
+  if (source.startsWith("directory:")) {
+    return `directory:${source.slice("directory:".length)}`;
+  }
+  return `driver:${source.slice("driver:".length)}`;
 }
 
 export class UnsupportedAuraManifestVersionError extends Error {

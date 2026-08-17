@@ -40,17 +40,11 @@ export interface AuraCliContext extends BaseContext {
   /** Home directory captured at the process boundary, before any `--home` override. */
   readonly defaultHomeDir: string;
   readonly registry: PluginRegistry;
-  /**
-   * Where machine-readable output goes.
-   *
-   * Separate from `stdout` so that `--json` can hand plugin output a different stream: a document
-   * a script parses must not share a channel with whatever a plugin decided to print.
-   */
+  /** Machine-readable output, kept apart from plugin-written `stdout`. */
   readonly report: Writable;
 }
 
 export class CheckCommand extends Command<AuraCliContext> {
-  // fallow-ignore-next-line unused-class-member -- Clipanion reads command metadata at registration.
   static override paths = [["check"]];
   // fallow-ignore-next-line unused-class-member -- Clipanion reads command metadata at registration.
   static override usage = Command.Usage({
@@ -119,6 +113,7 @@ export class CheckCommand extends Command<AuraCliContext> {
         adapters: selected.adapters,
         environment,
         snippets: this.context.registry.snippets,
+        skills: this.context.registry.skills,
       });
       let run = runChecks(selected.checks, scan.model);
       let fixRunDiagnostics: readonly DiagnosticSource[] = [];
@@ -158,6 +153,7 @@ export class CheckCommand extends Command<AuraCliContext> {
             adapters: selected.adapters,
             environment,
             snippets: this.context.registry.snippets,
+            skills: this.context.registry.skills,
           });
           run = runChecks(selected.checks, scan.model);
         }

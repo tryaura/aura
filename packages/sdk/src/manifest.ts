@@ -1,4 +1,5 @@
 import type { FileProblem } from "./adapter.js";
+import type { SkillSourceId } from "./content.js";
 
 /**
  * One entry in a manifest section this release does not define.
@@ -36,6 +37,20 @@ export interface AuraManifestSnippet {
   readonly version: string;
 }
 
+/** One managed skill and the exact source tree selected for it. */
+export interface AuraManifestSkill {
+  /** Source-local skill identifier and shared installation directory name. */
+  readonly id: string;
+  /** Whether automatic source updates are suppressed for this selection. */
+  readonly pinned: boolean;
+  /** Stable source provenance such as `plugin:official` or `directory:agenticskills`. */
+  readonly source: SkillSourceId;
+  /** Deterministic signature of every file in the installed skill tree. */
+  readonly treeHash: string;
+  /** Source version selected when the skill was installed. */
+  readonly version: string;
+}
+
 /** The exact entries Aura last wrote for one application. */
 export interface AuraManifestOwnership {
   /** Managed file or managed-block references owned by Aura. */
@@ -53,8 +68,8 @@ export interface AuraManifestV1 {
   /** What Aura owns in each application's configuration, keyed by adapter id. */
   readonly ownership: Readonly<Record<string, AuraManifestOwnership>>;
   readonly schemaVersion: 1;
-  /** Reserved for manifest skill selections introduced by the skills milestone. */
-  readonly skills: readonly AuraManifestEntry[];
+  /** Managed skill selections and their source provenance. */
+  readonly skills: readonly AuraManifestSkill[];
   /** Managed snippet selections. */
   readonly snippets: readonly AuraManifestSnippet[];
 }

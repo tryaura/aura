@@ -57,6 +57,8 @@ export interface PreparedWriteOperation extends PreparedBase {
 
 export interface PreparedRemoveOperation extends PreparedBase {
   readonly before: CapturedFileState | DirectoryPathState | SymlinkPathState;
+  /** This non-empty directory becomes empty through earlier removes in the same plan. */
+  readonly removalGroupDirectory?: true | undefined;
   readonly operation: RemovePathOperation;
   readonly type: "remove";
 }

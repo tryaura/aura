@@ -91,6 +91,7 @@ describe("Codex versioned fixtures", () => {
         `${seed.homeDir}/.codex/AGENTS.override.md`,
         `${seed.homeDir}/.codex/AGENTS.md`,
         `${seed.homeDir}/.codex/config.toml`,
+        `${seed.homeDir}/.codex/skills`,
         `${seed.workspaceDir}/AGENTS.md`,
       ]);
       await expect(seed.invocations("codex")).resolves.toEqual([

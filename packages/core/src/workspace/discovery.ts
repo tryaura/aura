@@ -6,6 +6,7 @@ import type {
   AdapterSourceFile,
   Environment,
 } from "@tryaura/aura-sdk";
+import { join } from "node:path";
 
 import type { ScanDiagnostic } from "./diagnostics.js";
 import type { FileReader } from "./reader.js";
@@ -75,7 +76,14 @@ export async function discoverAdapterFiles(
     }
 
     const reads = await Promise.all(
-      newSpecs.map((spec) => readSpec(spec, { adapter, projectBoundary, reader })),
+      newSpecs.map((spec) =>
+        readSpec(spec, {
+          adapter,
+          projectBoundary,
+          reader,
+          sharedSkillsRoot: join(environment.homeDir, "agents", "skills"),
+        }),
+      ),
     );
     for (const read of reads) {
       files.set(read.file.spec.id, read.file);

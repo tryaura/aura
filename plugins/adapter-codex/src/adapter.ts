@@ -3,9 +3,12 @@ import { join } from "node:path";
 import {
   defineAdapter,
   detectExecutable,
+  parseInstalledSkills,
+  skillDirectorySpecs,
   type AdapterFileSpec,
   type AdapterFilesInput,
   type AdapterProblem,
+  type AdapterSkillDirectory,
   type AdapterSourceFile,
   type Scope,
 } from "@tryaura/aura-sdk";
@@ -22,10 +25,15 @@ import { parseMcpServers } from "./mcp.js";
 import { codexProjectInstructionFiles } from "./project-instructions.js";
 import { parseProjectTrust } from "./trust.js";
 
+const SKILL_DIRECTORIES: readonly AdapterSkillDirectory[] = Object.freeze([
+  { entryPath: "~/.codex/skills", id: SOURCE_IDS.skillsGlobal },
+]);
+
 export const codexAdapter = defineAdapter({
   capabilities: {
     // Codex loads its AGENTS.md chain whole and reads `@` references as prose.
     instructions: { importStyle: "none", loading: "all-files" },
+    skills: { directories: SKILL_DIRECTORIES },
   },
   detect: (environment) =>
     detectExecutable(environment, { authenticationArgs: ["login", "status"], binaryName: "codex" }),
@@ -35,7 +43,8 @@ export const codexAdapter = defineAdapter({
   id: CODEX_ADAPTER_ID,
   installHint:
     "Run `npm install -g @openai/codex@latest`, or update Codex with your package manager.",
-  parse: ({ cwd, files, homeDir, projectRoot }) => {
+  parse: (input) => {
+    const { cwd, files, homeDir, projectRoot } = input;
     const mcp = files.get(SOURCE_IDS.mcp);
     const mcpConfig = mcp === undefined ? EMPTY_MCP : parseMcpServers(mcp);
     const settings = parseCodexProjectSettings(mcp);
@@ -55,7 +64,7 @@ export const codexAdapter = defineAdapter({
         ...shadowedEntryProblems(instructions.shadowed),
         ...unusableConfig(mcp, mcpConfig.malformed),
       ],
-      skills: [],
+      skills: parseInstalledSkills(CODEX_ADAPTER_ID, input, SKILL_DIRECTORIES),
     };
   },
   sharedLink: {
@@ -114,11 +123,8 @@ function shadowedEntryProblems(shadowed: readonly AdapterSourceFile[]): readonly
  * root markers and project candidate filenames, then read only the candidate Codex selects at each
  * level. Selected files carry the aggregate project-document byte limit into core's read.
  */
-function codexFiles({
-  environment,
-  files,
-  projectRoot,
-}: AdapterFilesInput): readonly AdapterFileSpec[] {
+function codexFiles(input: AdapterFilesInput): readonly AdapterFileSpec[] {
+  const { environment, files, projectRoot } = input;
   const codexHome = join(environment.homeDir, ".codex");
   const declarations: AdapterFileSpec[] = [
     ...instructionLevel(codexHome, SOURCE_IDS.instructions, "global"),
@@ -129,6 +135,7 @@ function codexFiles({
       path: join(codexHome, "config.toml"),
       scope: "global",
     },
+    ...skillDirectorySpecs(input, SKILL_DIRECTORIES),
   ];
 
   const config = files.get(SOURCE_IDS.mcp);

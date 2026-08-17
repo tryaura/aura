@@ -1,13 +1,20 @@
+/* eslint-disable max-lines -- one kernel safety matrix exercises cross-operation invariants. */
 import { Buffer } from "node:buffer";
 import { execFile } from "node:child_process";
-import { chmod, lstat, mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { join, sep } from "node:path";
 import { promisify } from "node:util";
 
 import type { FixPlan } from "@tryaura/aura-sdk";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { executeFixPlan, FixPlanError, previewFixPlan } from "../index.js";
+import {
+  applyFixPlan,
+  executeFixPlan,
+  FixPlanError,
+  prepareFixPlan,
+  previewFixPlan,
+} from "../index.js";
 import { MAX_MUTABLE_FILE_BYTES } from "./limits.js";
 import { createFixPlanFixture, type FixPlanFixture } from "./testing.js";
 
@@ -179,6 +186,91 @@ describe("fix-plan path safety", () => {
       operationIndex: 1,
     });
     await expect(lstat(fine)).rejects.toHaveProperty("code", "ENOENT");
+  });
+
+  it("accepts a bottom-up group that removes every child before its directories", async () => {
+    const fixture = await createFixture();
+    const root = join(fixture.workspace, "skill");
+    const nested = join(root, "references");
+    const skillFile = join(root, "SKILL.md");
+    const reference = join(nested, "guide.md");
+    await mkdir(nested, { recursive: true });
+    await writeFile(skillFile, "skill\n", "utf8");
+    await writeFile(reference, "guide\n", "utf8");
+
+    const plan: FixPlan = {
+      operations: [
+        { path: skillFile, type: "remove" },
+        { path: reference, type: "remove" },
+        { path: nested, type: "remove" },
+        { path: root, type: "remove" },
+      ],
+      summary: "Remove a complete skill tree.",
+    };
+
+    const result = await executeFixPlan({ model: fixture.model, now, plan });
+
+    expect(result.preview.conflictedOperationCount).toBe(0);
+    expect(result.appliedOperationCount).toBe(4);
+    await expect(lstat(root)).rejects.toHaveProperty("code", "ENOENT");
+  });
+
+  it("does not let a nested removal group hide a conflicting child write", async () => {
+    const fixture = await createFixture();
+    const root = join(fixture.workspace, "skill");
+    const removed = join(root, "old.md");
+    const written = join(root, "new.md");
+    await mkdir(root);
+    await writeFile(removed, "old\n", "utf8");
+
+    const plan: FixPlan = {
+      operations: [
+        { path: removed, type: "remove" },
+        { content: "new\n", path: written, type: "write" },
+        { path: root, type: "remove" },
+      ],
+      summary: "Reject mixed nested mutations.",
+    };
+
+    await expect(previewFixPlan({ model: fixture.model, plan })).rejects.toMatchObject({
+      code: "path-conflict",
+      operationIndex: 2,
+    });
+  });
+
+  it("rolls back a nested removal group when a later operation becomes stale", async () => {
+    const fixture = await createFixture();
+    const root = join(fixture.workspace, "skill");
+    const nested = join(root, "references");
+    const skillFile = join(root, "SKILL.md");
+    const reference = join(nested, "guide.md");
+    const stale = join(fixture.workspace, "stale.md");
+    await mkdir(nested, { recursive: true });
+    await writeFile(skillFile, "skill\n", "utf8");
+    await writeFile(reference, "guide\n", "utf8");
+    await writeFile(stale, "before\n", "utf8");
+    const plan: FixPlan = {
+      operations: [
+        { path: skillFile, type: "remove" },
+        { path: reference, type: "remove" },
+        { path: nested, type: "remove" },
+        { path: root, type: "remove" },
+        { content: "planned\n", path: stale, type: "write" },
+      ],
+      summary: "Roll back a stale removal plan.",
+    };
+    const prepared = await prepareFixPlan({ model: fixture.model, plan });
+    await writeFile(stale, "changed\n", "utf8");
+
+    await expect(applyFixPlan(prepared, { now })).rejects.toMatchObject({
+      code: "filesystem-changed",
+      operationIndex: 4,
+      rollback: "complete",
+    });
+
+    await expect(readFile(skillFile, "utf8")).resolves.toBe("skill\n");
+    await expect(readFile(reference, "utf8")).resolves.toBe("guide\n");
+    await expect(readFile(stale, "utf8")).resolves.toBe("changed\n");
   });
 
   it.skipIf(process.platform === "win32")(

@@ -36,6 +36,19 @@ export interface AdapterInstructionCapabilities {
   readonly loading?: AdapterInstructionLoading | undefined;
 }
 
+/** One application directory that consumes Agent Skills. */
+export interface AdapterSkillDirectory {
+  /** Stable source-file id used by the adapter's read side. */
+  readonly id: string;
+  /** Portable `~/...` or `./...` path resolved from the captured environment. */
+  readonly entryPath: string;
+}
+
+/** Declarative Agent Skills support for one application. */
+export interface AdapterSkillCapabilities {
+  readonly directories: readonly AdapterSkillDirectory[];
+}
+
 /**
  * Facts an adapter declares about its application, read by checks instead of per-adapter tables.
  *
@@ -46,4 +59,6 @@ export interface AdapterInstructionCapabilities {
 export interface AdapterCapabilities {
   /** How the application loads instruction files. */
   readonly instructions?: AdapterInstructionCapabilities | undefined;
+  /** Where this application discovers Agent Skills; omission means unsupported. */
+  readonly skills?: AdapterSkillCapabilities | undefined;
 }

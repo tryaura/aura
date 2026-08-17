@@ -10,7 +10,7 @@ import {
   type McpServerDef,
   type Preset,
   type SkillPack,
-  type SkillSource,
+  type SkillSourceDriver,
   type Snippet,
 } from "@tryaura/aura-sdk";
 
@@ -67,7 +67,7 @@ const preset: Preset = {
   version: "1.0.0",
 };
 
-const skillSource: SkillSource = {
+const skillSource: SkillSourceDriver = {
   description: "Resolves skills from an example source.",
   id: "example/source",
   async list(environment) {

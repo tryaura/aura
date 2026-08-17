@@ -1,13 +1,13 @@
 import type { Adapter } from "./adapter.js";
 import type { Check } from "./check.js";
-import type { McpServerDef, Preset, SkillPack, SkillSource, Snippet } from "./content.js";
+import type { McpServerDef, Preset, SkillPack, SkillSourceDriver, Snippet } from "./content.js";
 
 /**
  * Everything a plugin contributes to an Aura distribution.
  *
  * Every contribution slot is optional; a plugin may supply only checks, only content, or any
  * combination. Aura core loads a plugin the same way it loads any dependency, and a plugin runs
- * with the full privileges of the process: {@link Adapter.detect} and the {@link SkillSource}
+ * with the full privileges of the process: {@link Adapter.detect} and the {@link SkillSourceDriver}
  * methods can execute commands. Install plugins you trust as you would any other dependency.
  *
  * The declarative shapes elsewhere in this SDK — pure checks, data-only {@link FixPlan}s — exist
@@ -28,9 +28,9 @@ export interface AuraPlugin {
   /**
    * Stable plugin identifier, unique across a distribution.
    *
-   * Lowercase letters, digits, `.`, `-`, and `_`, starting with a letter or digit. Every check,
-   * snippet, skill, MCP server, preset, and skill source id must be namespaced under it, such as
-   * `"acme/rules"` for plugin `"acme"`. {@link Adapter.id} is the one exception — see there.
+   * Lowercase letters, digits, `.`, `-`, and `_`, starting with a letter or digit. Checks,
+   * snippets, MCP servers, presets, and skill source drivers are namespaced under it, such as
+   * `"acme/rules"`. Bundled skills use source-local IDs; adapters name applications globally.
    */
   readonly id: string;
   /** MCP server definitions this plugin offers for installation. */
@@ -42,7 +42,7 @@ export interface AuraPlugin {
   /** Skill directories bundled with this plugin. */
   readonly skills?: readonly SkillPack[] | undefined;
   /** Drivers that discover skills outside this plugin's package. */
-  readonly skillSources?: readonly SkillSource[] | undefined;
+  readonly skillSources?: readonly SkillSourceDriver[] | undefined;
   /** Markdown fragments this plugin offers for installation. */
   readonly snippets?: readonly Snippet[] | undefined;
   /** Semver version of the plugin, reported alongside findings it produces. */

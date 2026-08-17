@@ -35,6 +35,8 @@ export interface PathContents {
   readonly size?: number | undefined;
   /** Raw target of the final path entry when it is a symbolic link. */
   readonly symlinkTarget?: string | undefined;
+  /** Present only when an unbounded regular-file read did not decode as strict UTF-8. */
+  readonly utf8Valid?: false | undefined;
 }
 
 /** Optional bounds for one content read. */

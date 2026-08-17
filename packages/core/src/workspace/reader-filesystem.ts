@@ -1,4 +1,4 @@
-import { Buffer } from "node:buffer";
+import { Buffer, isUtf8 } from "node:buffer";
 import type { Stats } from "node:fs";
 import { lstat, open, opendir, readFile, readlink, realpath, stat } from "node:fs/promises";
 
@@ -193,12 +193,19 @@ async function readRegularFile(
     return { ...metadata, exists: true, isDirectory: false, problem: "too-large" };
   }
   try {
+    if (maxBytes === undefined) {
+      const content = await readFile(path);
+      return {
+        ...metadata,
+        content: content.toString("utf8"),
+        exists: true,
+        isDirectory: false,
+        ...(isUtf8(content) ? {} : { utf8Valid: false }),
+      };
+    }
     return {
       ...metadata,
-      content:
-        maxBytes === undefined
-          ? await readFile(path, "utf8")
-          : await readPrefix(path, Math.min(maxBytes, stats.size)),
+      content: await readPrefix(path, Math.min(maxBytes, stats.size)),
       exists: true,
       isDirectory: false,
     };

@@ -16,8 +16,8 @@ import { operationError } from "./types.js";
  * other overlap is still a hard conflict.
  */
 export interface ClaimIndex {
-  /** Every ancestor directory of a claimed path, mapped to the operation that claimed it. */
-  readonly ancestors: Map<string, number>;
+  /** Every ancestor directory of a claimed path, mapped to all operations below it. */
+  readonly ancestors: Map<string, Set<number>>;
   /** Each claimed path itself, mapped to the operation that claimed it. */
   readonly exact: Map<string, number>;
 }
@@ -32,6 +32,7 @@ export function claimPath(
   operationIndex: number,
   caseInsensitive: boolean,
   allowedExactOwner?: number | undefined,
+  allowedNestedOwners?: ReadonlySet<number> | undefined,
 ): void {
   const resolvedPath = resolve(path);
   const key = comparablePath(resolvedPath, caseInsensitive);
@@ -42,12 +43,14 @@ export function claimPath(
   // Three ways to overlap: the same path twice, a path inside an earlier one, or a path containing
   // an earlier one.
   const exactOwner = claims.exact.get(key);
+  const descendantOwner = [...(claims.ancestors.get(key) ?? [])].find(
+    (owner) => allowedNestedOwners?.has(owner) !== true,
+  );
+  const ancestorOwner = ancestorKeys
+    .map((ancestorKey) => claims.exact.get(ancestorKey))
+    .find((owner) => owner !== undefined && allowedNestedOwners?.has(owner) !== true);
   const conflict =
-    (exactOwner === allowedExactOwner ? undefined : exactOwner) ??
-    claims.ancestors.get(key) ??
-    ancestorKeys
-      .map((ancestorKey) => claims.exact.get(ancestorKey))
-      .find((owner) => owner !== undefined);
+    (exactOwner === allowedExactOwner ? undefined : exactOwner) ?? descendantOwner ?? ancestorOwner;
 
   if (conflict !== undefined) {
     throw operationError(
@@ -62,8 +65,11 @@ export function claimPath(
     claims.exact.set(key, operationIndex);
   }
   for (const ancestorKey of ancestorKeys) {
-    if (!claims.ancestors.has(ancestorKey)) {
-      claims.ancestors.set(ancestorKey, operationIndex);
+    const owners = claims.ancestors.get(ancestorKey);
+    if (owners === undefined) {
+      claims.ancestors.set(ancestorKey, new Set([operationIndex]));
+    } else {
+      owners.add(operationIndex);
     }
   }
 }

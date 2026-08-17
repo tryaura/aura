@@ -24,7 +24,7 @@ describe("createPluginRegistry", () => {
     const alphaCheck = createCheck("alpha/SEC-001");
     const coreCheck = createCheck("INS-001");
     const alphaSnippet = createSnippet("alpha/rules");
-    const alphaSkill = createSkill("alpha/review");
+    const alphaSkill = createSkill("review");
     const alphaSkillSource = createSkillSource("alpha/registry");
     const alphaMcpServer = createMcpServer("alpha/search");
     const alphaPreset = createPreset("alpha/starter");
@@ -52,7 +52,12 @@ describe("createPluginRegistry", () => {
     expect(registry.adapters).toEqual([alphaAdapter, coreAdapter]);
     expect(registry.checks).toEqual([alphaCheck, coreCheck]);
     expect(registry.snippets).toEqual([alphaSnippet]);
-    expect(registry.skills).toEqual([alphaSkill]);
+    expect(registry.skills).toEqual([
+      {
+        skill: alphaSkill,
+        source: { id: "plugin:alpha", kind: "bundled", name: "alpha" },
+      },
+    ]);
     expect(registry.skillSources).toEqual([alphaSkillSource]);
     expect(registry.mcpServers).toEqual([alphaMcpServer]);
     expect(registry.presets).toEqual([alphaPreset]);
@@ -64,7 +69,7 @@ describe("createPluginRegistry", () => {
       checks: [createCheck("alpha/SEC-001")],
       mcpCatalog: [createMcpServer("alpha/search")],
       presets: [createPreset("alpha/starter")],
-      skills: [createSkill("alpha/review")],
+      skills: [createSkill("review")],
       skillSources: [createSkillSource("alpha/registry")],
       snippets: [createSnippet("alpha/rules")],
     });
@@ -77,7 +82,7 @@ describe("createPluginRegistry", () => {
     expect(registry.ownerOf("check", "alpha/SEC-001")).toBe(alpha);
     expect(registry.ownerOf("mcp-server", "alpha/search")).toBe(alpha);
     expect(registry.ownerOf("preset", "alpha/starter")).toBe(alpha);
-    expect(registry.ownerOf("skill-pack", "alpha/review")).toBe(alpha);
+    expect(registry.ownerOf("skill-pack", "plugin:alpha/review")).toBe(alpha);
     expect(registry.ownerOf("skill-source", "alpha/registry")).toBe(alpha);
     expect(registry.ownerOf("snippet", "alpha/rules")).toBe(alpha);
     // A bare check id carries no namespace, so ownership cannot be recovered from the id alone.
@@ -130,5 +135,35 @@ describe("createPluginRegistry", () => {
     expect(emptyError.message).toContain('contributes adapter ID ""');
     expect(slashError.message).toContain('contributes adapter ID "agents/one"');
     expect(slashError.message).toContain("expected lowercase letters, digits");
+  });
+
+  it.each(["Review", "review_skill", "review/skill", "-review", `${"a".repeat(65)}`])(
+    "rejects invalid source-local skill ID %s",
+    (id) => {
+      const error = captureRegistryError([createPlugin("alpha", { skills: [createSkill(id)] })]);
+
+      expect(error.message).toContain(`skill-pack ID "${id}"`);
+      expect(error.message).toContain("kebab-case local skill ID");
+    },
+  );
+
+  it("rejects duplicate local IDs within one bundled source", () => {
+    const error = captureRegistryError([
+      createPlugin("alpha", { skills: [createSkill("review"), createSkill("review")] }),
+    ]);
+
+    expect(error.message).toContain('duplicate skill-pack ID "plugin:alpha/review"');
+  });
+
+  it("allows the same local ID in different bundled sources", () => {
+    const registry = createPluginRegistry([
+      createPlugin("alpha", { skills: [createSkill("review")] }),
+      createPlugin("beta", { skills: [createSkill("review")] }),
+    ]);
+
+    expect(registry.skills.map(({ source, skill }) => [source.id, skill.id])).toEqual([
+      ["plugin:alpha", "review"],
+      ["plugin:beta", "review"],
+    ]);
   });
 });
