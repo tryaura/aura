@@ -97,6 +97,8 @@ export type ApplicableOperation =
 
 export interface PreparedPlanState {
   readonly model: WorkspaceModel;
+  /** Original operation index to the physical operation index that absorbed it. */
+  readonly operationOwners: readonly number[];
   readonly operations: readonly PreparedOperation[];
   readonly policy: PathPolicy;
 }

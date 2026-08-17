@@ -63,6 +63,22 @@ export async function prepareFixPlan(options: FixPlanPreviewOptions): Promise<Pr
 }
 
 /**
+ * Resolves every source-plan operation to its physical preview, by source-plan index.
+ *
+ * Write coalescing means the two are no longer positionally aligned: several source operations can
+ * share one preview, and an operation dropped before preview has none. An entry is undefined when
+ * the source operation has no preview of its own.
+ */
+export function preparedPreviewIndexes(prepared: PreparedFixPlan): readonly (number | undefined)[] {
+  const previewByOwner = new Map(
+    prepared.preview.operations.map((operation, index) => [operation.index, index]),
+  );
+  return Object.freeze(
+    prepared[PREPARED_STATE].operationOwners.map((owner) => previewByOwner.get(owner)),
+  );
+}
+
+/**
  * Applies a plan prepared by {@link prepareFixPlan}.
  *
  * Refuses a plan with any blocked operation rather than applying it in part. If an operation fails

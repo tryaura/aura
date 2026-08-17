@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { readManagedBlock, reconcileManagedBlock, reconcileParsedManagedBlock } from "../index.js";
+import {
+  hashManagedSnippet,
+  readManagedBlock,
+  reconcileManagedBlock,
+  reconcileParsedManagedBlock,
+} from "../index.js";
 
 describe("managed-block ledger reconciliation", () => {
   it("removes only ledger-owned snippets and preserves foreign sections byte-for-byte", () => {
@@ -78,5 +83,45 @@ describe("managed-block ledger reconciliation", () => {
     expect(reconcileParsedManagedBlock(initial, readManagedBlock(initial), desired)).toEqual(
       reconcileManagedBlock(initial, desired),
     );
+  });
+
+  it("does not repair an invalid block when doing so would erase ledger ownership", () => {
+    const source = "before\n<!-- aura:end -->\nafter\n";
+
+    const result = reconcileManagedBlock(source, [{ content: "Rules", id: "official/rules" }], {
+      onInvalid: "repair",
+      ownedSnippetIds: ["official/rules"],
+    });
+
+    expect(result).toMatchObject({ content: source, status: "invalid" });
+  });
+
+  it("reports a hand-edited snippet that is about to be dropped", () => {
+    const original = reconcileManagedBlock("", [{ content: "old", id: "official/rules" }]);
+    const edited = original.content.replace("old\n", "hand edit\n");
+
+    const removed = reconcileManagedBlock(edited, [], {
+      ownedSnippetIds: ["official/rules"],
+      previousSnippetHashes: new Map([["official/rules", hashManagedSnippet("old")]]),
+    });
+
+    expect(removed.notes).toContainEqual(
+      expect.objectContaining({ code: "removed-snippet", line: 3 }),
+    );
+  });
+
+  it("does not confuse a snippet id that names an Object.prototype member", () => {
+    const original = reconcileManagedBlock("", [{ content: "old", id: "constructor" }]);
+
+    const upgraded = reconcileManagedBlock(
+      original.content,
+      [{ content: "new", id: "constructor" }],
+      {
+        ownedSnippetIds: ["constructor"],
+        previousSnippetHashes: new Map([["constructor", hashManagedSnippet("old")]]),
+      },
+    );
+
+    expect(upgraded.notes).toEqual([]);
   });
 });

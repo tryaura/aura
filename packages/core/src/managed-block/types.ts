@@ -57,7 +57,8 @@ export type ManagedBlockProblemCode =
   | "nested-snippet"
   | "orphan-outer-end"
   | "orphan-snippet-marker"
-  | "outer-end-before-snippet-end";
+  | "outer-end-before-snippet-end"
+  | "unterminated-fence";
 
 export interface ManagedBlockProblem {
   readonly code: ManagedBlockProblemCode;
@@ -66,15 +67,16 @@ export interface ManagedBlockProblem {
   readonly message: string;
 }
 
-/** Stable categories for state a caller should report but that never blocks reconciliation. */
+/** Stable categories for source state a caller should report. */
 type ManagedBlockNoteCode =
   | "overwritten-snippet"
   | "preserved-unowned-snippet"
+  | "removed-snippet"
   | "repaired-invalid-block"
   | "unmanaged-content"
   | "unterminated-fence";
 
-/** Non-fatal source state reconciliation can preserve and repair automatically. */
+/** Source state discovered alongside the main parser result. */
 export interface ManagedBlockNote {
   readonly code: ManagedBlockNoteCode;
   /** One-based source line, absent when the underlying problem had no location. */
@@ -111,6 +113,14 @@ export interface ManagedBlockReconcileOptions {
    * When present, existing snippets outside this ledger and the desired set are preserved verbatim.
    */
   readonly ownedSnippetIds?: readonly string[] | undefined;
+  /**
+   * Last manifest-recorded hashes for owned snippets, used to identify actual hand edits.
+   *
+   * A map rather than a record because snippet ids come from parsing a user-editable file, and the
+   * id grammar admits `constructor` and `toString`: a record lookup would answer those with an
+   * inherited function while claiming to return a string.
+   */
+  readonly previousSnippetHashes?: ReadonlyMap<string, string> | undefined;
   /** Owned snippet ids whose existing sections must be preserved verbatim for this run. */
   readonly preserveSnippetIds?: readonly string[] | undefined;
 }

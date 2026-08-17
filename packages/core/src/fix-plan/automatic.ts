@@ -3,7 +3,7 @@ import type { Check, Finding, FixPlan, WorkspaceModel } from "@tryaura/aura-sdk"
 import type { CheckDiagnostic } from "../checks.js";
 import { describeFailure } from "../workspace/diagnostics.js";
 
-import { prepareFixPlan, type PreparedFixPlan } from "./execute.js";
+import { prepareFixPlan, type PreparedFixPlan, preparedPreviewIndexes } from "./execute.js";
 
 /** One finding together with the plan its check produced. */
 export interface FixCandidate {
@@ -18,15 +18,33 @@ export interface AutomaticFixOptions {
   readonly model: WorkspaceModel;
 }
 
-export interface PreparedFixCandidates {
-  readonly candidates: readonly FixCandidate[];
-  readonly manualSteps: readonly string[];
-  readonly prepared?: PreparedFixPlan | undefined;
-}
+/**
+ * Selected candidates and the single transaction they were merged into.
+ *
+ * A union rather than one shape with optional members: write coalescing broke the old assumption
+ * that previews line up positionally with `candidate.plan.operations`, so a caller that has a
+ * `prepared` plan must read `operationPreviewIndexes` to know which preview belongs to which
+ * candidate. Pairing the two makes the alternative — a plan with no attribution to read — not
+ * expressible.
+ */
+export type PreparedFixCandidates =
+  | {
+      readonly candidates: readonly FixCandidate[];
+      readonly manualSteps: readonly string[];
+      readonly operationPreviewIndexes?: undefined;
+      readonly prepared?: undefined;
+    }
+  | {
+      readonly candidates: readonly FixCandidate[];
+      readonly manualSteps: readonly string[];
+      /** Physical preview indexes attributed to each candidate after write coalescing. */
+      readonly operationPreviewIndexes: readonly (readonly number[])[];
+      readonly prepared: PreparedFixPlan;
+    };
 
-export interface AutomaticFixes extends PreparedFixCandidates {
+export type AutomaticFixes = PreparedFixCandidates & {
   readonly diagnostics: readonly CheckDiagnostic[];
-}
+};
 
 export interface AutomaticFixCandidates {
   readonly candidates: readonly FixCandidate[];
@@ -91,16 +109,30 @@ export async function prepareFixCandidates(options: {
     return Object.freeze({ candidates, manualSteps });
   }
 
+  const prepared = await prepareFixPlan({
+    model: options.model,
+    plan: {
+      manualSteps: [...manualSteps],
+      operations,
+      summary: `Apply ${String(candidates.length)} fix(es).`,
+    },
+  });
+  const previewIndexes = preparedPreviewIndexes(prepared);
+  let sourceOperationIndex = 0;
+  const operationPreviewIndexes = candidates.map((candidate) =>
+    Object.freeze(
+      candidate.plan.operations.flatMap(() => {
+        const previewIndex = previewIndexes[sourceOperationIndex];
+        sourceOperationIndex += 1;
+        return previewIndex === undefined ? [] : [previewIndex];
+      }),
+    ),
+  );
+
   return Object.freeze({
     candidates,
     manualSteps,
-    prepared: await prepareFixPlan({
-      model: options.model,
-      plan: {
-        manualSteps: [...manualSteps],
-        operations,
-        summary: `Apply ${String(candidates.length)} fix(es).`,
-      },
-    }),
+    operationPreviewIndexes: Object.freeze(operationPreviewIndexes),
+    prepared,
   });
 }

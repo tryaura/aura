@@ -9,6 +9,7 @@ import {
   type ManagedBlockWriteResult,
   readManagedBlock,
   reconcileManagedBlock,
+  reconcileManagedSnippet,
 } from "../index.js";
 
 describe("managed-block reconciliation", () => {
@@ -111,6 +112,53 @@ describe("managed-block reconciliation", () => {
           'Snippet "official/rules" was edited by hand since Aura wrote it; the edit is being replaced.',
       },
     ]);
+  });
+
+  it("uses the previous manifest hash to report a re-stamped edit", () => {
+    const original = reconcileManagedBlock("", [{ content: "canonical", id: "official/rules" }]);
+    const edited = original.content.replace("canonical\n", "hand edit\n");
+    const restamped = reconcileManagedSnippet(edited, "official/rules", { kind: "keep" });
+    const updated = reconcileManagedBlock(
+      restamped.content,
+      [{ content: "canonical", id: "official/rules" }],
+      {
+        ownedSnippetIds: ["official/rules"],
+        previousSnippetHashes: new Map([["official/rules", hashManagedSnippet("canonical")]]),
+      },
+    );
+
+    expect(updated.notes).toContainEqual(
+      expect.objectContaining({ code: "overwritten-snippet", line: 3 }),
+    );
+  });
+
+  it("does not call removals or ordinary catalog upgrades hand-edit replacements", () => {
+    const original = reconcileManagedBlock("", [{ content: "old", id: "official/rules" }]);
+    const previousSnippetHashes = new Map([["official/rules", hashManagedSnippet("old")]]);
+
+    const removed = reconcileManagedBlock(original.content, [], {
+      ownedSnippetIds: ["official/rules"],
+      previousSnippetHashes,
+    });
+    const upgraded = reconcileManagedBlock(
+      original.content,
+      [{ content: "new", id: "official/rules" }],
+      { ownedSnippetIds: ["official/rules"], previousSnippetHashes },
+    );
+
+    expect(removed.notes).toEqual([]);
+    expect(upgraded.notes).toEqual([]);
+  });
+
+  it("fails closed when an unterminated fence hides Aura markers", () => {
+    const source = `# Doc\n\`\`\`\n${AURA_MANAGED_BLOCK_BEGIN}\n${AURA_MANAGED_BLOCK_END}\n`;
+    const result = reconcileManagedBlock(source, [{ content: "new", id: "official/rules" }]);
+
+    expect(result).toMatchObject({
+      content: source,
+      problems: [{ code: "unterminated-fence", line: 3 }],
+      status: "invalid",
+    });
   });
 
   it("hoists stray block text byte-for-byte and then becomes idempotent", () => {

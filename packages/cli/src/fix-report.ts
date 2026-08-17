@@ -6,10 +6,11 @@ import type { ReportFix } from "./report.js";
 /**
  * Shapes one prepared candidate per report entry, pairing each with its own rendered operations.
  *
- * The preview is one flat list covering every candidate's operations in plan order, so each
- * candidate takes the next `plan.operations.length` of them. A candidate that contributes no
- * operation is left out entirely: it changed no file, and the finding it came from is still in the
- * report to say what remains.
+ * The preview is not positionally aligned with the candidates: coalescing lets several same-path
+ * writes share one physical operation, so two candidates can legitimately report the same preview.
+ * `operationPreviewIndexes` carries that attribution. A candidate that contributes no operation is
+ * left out entirely: it changed no file, and the finding it came from is still in the report to say
+ * what remains.
  */
 export function reportFixes(
   prepared: Awaited<ReturnType<typeof prepareFixCandidates>>,
@@ -18,14 +19,16 @@ export function reportFixes(
   message?: string,
 ): readonly ReportFix[] {
   const previews = prepared.prepared?.preview.operations ?? [];
-  let operationIndex = 0;
-  return prepared.candidates.flatMap((candidate) => {
-    const count = candidate.plan.operations.length;
-    const operations = previews.slice(operationIndex, operationIndex + count);
-    operationIndex += count;
-    if (count === 0) {
+  return prepared.candidates.flatMap((candidate, candidateIndex) => {
+    if (candidate.plan.operations.length === 0) {
       return [];
     }
+    const operations = (prepared.operationPreviewIndexes?.[candidateIndex] ?? []).flatMap(
+      (index) => {
+        const operation = previews[index];
+        return operation === undefined ? [] : [operation];
+      },
+    );
     return [
       Object.freeze({
         checkId: candidate.checkId,

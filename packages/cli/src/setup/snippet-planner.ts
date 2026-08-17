@@ -47,15 +47,26 @@ export function planSnippets(context: SetupStepContext, source: string): Snippet
     return entry === undefined ? [] : [entry];
   });
   const unavailable = selectedEntries.filter((entry) => entry.status === "unavailable");
+  const pinned = selection.selected.filter((id) => previousById.get(id)?.pinned === true);
+  const pinnedIds = new Set(pinned);
+  const preserved = [...unavailable.map((entry) => entry.id), ...pinned];
   const parsed = readManagedBlock(source);
-  const blockers = snippetBlockers(context.model.sharedInstructions.path, parsed, unavailable);
+  const blockers = snippetBlockers(
+    context.model.sharedInstructions.path,
+    parsed,
+    unavailable,
+    pinned.filter((id) => !unavailable.some((entry) => entry.id === id)),
+  );
 
   const desired = selectedEntries.flatMap((entry) =>
-    entry.status === "available" ? [{ content: entry.content, id: entry.id }] : [],
+    entry.status === "available" && !pinnedIds.has(entry.id)
+      ? [{ content: entry.content, id: entry.id }]
+      : [],
   );
   const reconciled = reconcileParsedManagedBlock(source, parsed, desired, {
     ownedSnippetIds: previous.map((entry) => entry.id),
-    preserveSnippetIds: unavailable.map((entry) => entry.id),
+    preserveSnippetIds: preserved,
+    previousSnippetHashes: new Map(previous.map((entry) => [entry.id, entry.hash])),
   });
   collectReconcileBlockers(context.model.sharedInstructions.path, parsed, reconciled, blockers);
   const manifestSnippets = desiredManifestSnippets(selection.selected, catalog, previousById);
@@ -77,6 +88,7 @@ function snippetBlockers(
   path: string,
   parsed: ManagedBlockReadResult,
   unavailable: readonly { readonly id: string }[],
+  pinned: readonly string[],
 ): SetupBlocker[] {
   const blockers: SetupBlocker[] = [];
   if (parsed.status === "invalid") {
@@ -98,6 +110,14 @@ function snippetBlockers(
       blockers.push({
         path,
         reason: `Previously selected snippet "${entry.id}" is unavailable and its managed section is missing. Reinstall the plugin that provides it, or clear it in the snippets step to drop it.`,
+      });
+    }
+  }
+  for (const id of pinned) {
+    if (!existingIds.has(id)) {
+      blockers.push({
+        path,
+        reason: `Pinned snippet "${id}" is missing from the managed block. Restore the section or clear it in the snippets step to drop it.`,
       });
     }
   }
@@ -124,13 +144,16 @@ function desiredManifestSnippets(
   previousById: ReadonlyMap<string, AuraManifestSnippet>,
 ): readonly AuraManifestSnippet[] {
   return selectedIds.flatMap((id): readonly AuraManifestSnippet[] => {
+    const preserved = previousById.get(id);
+    if (preserved?.pinned === true) {
+      return [preserved];
+    }
     const entry = catalog.get(id);
     if (entry?.status === "available") {
       return [
         { hash: hashManagedSnippet(entry.content), id, pinned: false, version: entry.version },
       ];
     }
-    const preserved = previousById.get(id);
     return preserved === undefined ? [] : [preserved];
   });
 }

@@ -10,6 +10,10 @@ import { operationError } from "./types.js";
  * Two operations touching the same file, or one touching a directory the other writes inside, would
  * make the second one's captured `before` state a lie. Indexing the ancestors of every claim turns
  * detecting that from a scan of all prior claims into a lookup.
+ *
+ * Consecutive writes to one literal path are the exception: they share a claim, and
+ * `prepareWriteGroup` reconciles them against a single captured `before` by three-way merge. Every
+ * other overlap is still a hard conflict.
  */
 export interface ClaimIndex {
   /** Every ancestor directory of a claimed path, mapped to the operation that claimed it. */
@@ -27,6 +31,7 @@ export function claimPath(
   path: string,
   operationIndex: number,
   caseInsensitive: boolean,
+  allowedExactOwner?: number | undefined,
 ): void {
   const resolvedPath = resolve(path);
   const key = comparablePath(resolvedPath, caseInsensitive);
@@ -36,8 +41,9 @@ export function claimPath(
 
   // Three ways to overlap: the same path twice, a path inside an earlier one, or a path containing
   // an earlier one.
+  const exactOwner = claims.exact.get(key);
   const conflict =
-    claims.exact.get(key) ??
+    (exactOwner === allowedExactOwner ? undefined : exactOwner) ??
     claims.ancestors.get(key) ??
     ancestorKeys
       .map((ancestorKey) => claims.exact.get(ancestorKey))
@@ -52,7 +58,9 @@ export function claimPath(
     );
   }
 
-  claims.exact.set(key, operationIndex);
+  if (exactOwner === undefined) {
+    claims.exact.set(key, operationIndex);
+  }
   for (const ancestorKey of ancestorKeys) {
     if (!claims.ancestors.has(ancestorKey)) {
       claims.ancestors.set(ancestorKey, operationIndex);
@@ -70,7 +78,9 @@ export function comparablePath(path: string, caseInsensitive: boolean): string {
  * The answer matters because on a case-insensitive volume `AGENTS.md` and `agents.md` are one file:
  * treating them as two would let one operation quietly undo another. When the probe cannot decide —
  * a name with no letters to flip, or a directory that is not there — it answers insensitive, which
- * only ever widens overlap detection.
+ * only ever widens overlap detection. Widening is safe because it can only ever raise a conflict:
+ * coalescing deliberately does not key off this answer, since merging two spellings that turned out
+ * to be different files would drop one of them.
  */
 export async function detectCaseInsensitive(directory: string): Promise<boolean> {
   const flipped = flipCase(basename(directory));
