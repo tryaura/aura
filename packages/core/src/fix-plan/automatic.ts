@@ -96,11 +96,16 @@ export async function prepareAutomaticFixes(options: AutomaticFixOptions): Promi
   return Object.freeze({ ...prepared, diagnostics: collected.diagnostics });
 }
 
-/** Merges selected per-finding plans into the single transaction the kernel will apply. */
-export async function prepareFixCandidates(options: {
+/** Everything {@link prepareFixCandidates} needs. */
+export interface FixCandidatePreparationOptions {
   readonly candidates: readonly FixCandidate[];
   readonly model: WorkspaceModel;
-}): Promise<PreparedFixCandidates> {
+}
+
+/** Merges selected per-finding plans into the single transaction the kernel will apply. */
+export async function prepareFixCandidates(
+  options: FixCandidatePreparationOptions,
+): Promise<PreparedFixCandidates> {
   const candidates = Object.freeze([...options.candidates]);
   const manualSteps = Object.freeze([
     ...new Set(candidates.flatMap((candidate) => candidate.plan.manualSteps ?? [])),

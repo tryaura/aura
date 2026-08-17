@@ -21,6 +21,9 @@ pnpm build
 node distros/aura/dist/main.js --help
 ```
 
+A source build reports `--version` as `0.0.0`: the real version is stamped into the manifest only
+by release CI when a tag is built.
+
 Use the built entry point for a first, read-only scan:
 
 ```sh
@@ -161,7 +164,7 @@ Check exit codes are stable enough to gate CI on:
 | `packages/sdk`     | `@tryaura/aura-sdk` — the public plugin API. No runtime dependencies.     |
 | `packages/core`    | Environment, workspace model, checks, fix-plan execution, managed blocks. |
 | `packages/cli`     | `runCli(distro)` — the command shell a distribution is built on.          |
-| `packages/testkit` | Integration helpers used across package test suites.                      |
+| `packages/testkit` | Seeded machines and CLI harnesses for distro and plugin tests.            |
 | `plugins/*`        | Adapters (Claude Code, Codex, Cursor), core checks, official content.     |
 | `distros/aura`     | The `aura` binary: branding plus the plugin list, composed at build time. |
 | `apps/web`         | Marketing landing and Starlight docs, deployed on Cloudflare Workers.     |

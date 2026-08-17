@@ -35,11 +35,25 @@ export const CODEX_ADAPTER_ID = "codex";
 /** Metadata key holding a {@link ProjectTrust}. */
 export const CODEX_PROJECT_TRUST_KEY = "projectTrust";
 
-/** Whether Codex will apply project-scoped configuration for the current project. */
-export type ProjectTrust = "trusted" | "unknown" | "untrusted";
+/**
+ * Whether Codex will apply project-scoped configuration for the current project.
+ *
+ * `"unreadable"` is kept apart from `"unknown"`: a file Codex cannot parse says nothing about
+ * trust, and the adapter already reports the unparseable file itself. A check that folded the two
+ * together would announce an untrusted project as a second, unrelated-looking symptom of the one
+ * broken file.
+ */
+export type ProjectTrust = "trusted" | "unknown" | "unreadable" | "untrusted";
+
+const PROJECT_TRUST_VALUES: readonly ProjectTrust[] = Object.freeze([
+  "trusted",
+  "unknown",
+  "unreadable",
+  "untrusted",
+]);
 
 /** Reads this adapter's trust marker back out of an {@link AppModel}. */
 export function readCodexProjectTrust(app: AppModel): ProjectTrust | undefined {
   const trust = app.metadata?.[CODEX_PROJECT_TRUST_KEY];
-  return trust === "trusted" || trust === "untrusted" || trust === "unknown" ? trust : undefined;
+  return PROJECT_TRUST_VALUES.find((value) => value === trust);
 }

@@ -5,7 +5,7 @@ import { parseMcpServers } from "./mcp.js";
 
 describe("Cursor MCP configuration", () => {
   it("normalizes stdio and remote servers without retaining secret values", () => {
-    const servers = parseMcpServers(
+    const { servers } = parseMcpServers(
       mcpFile(
         JSON.stringify({
           mcpServers: {
@@ -57,7 +57,7 @@ describe("Cursor MCP configuration", () => {
   });
 
   it("recognizes explicit HTTP and SSE transports and omits malformed entries", () => {
-    const servers = parseMcpServers(
+    const { servers } = parseMcpServers(
       mcpFile(
         JSON.stringify({
           mcpServers: {
@@ -79,8 +79,10 @@ describe("Cursor MCP configuration", () => {
     ]);
   });
 
-  it("returns no servers for malformed JSON", () => {
-    expect(parseMcpServers(mcpFile("{"))).toEqual([]);
+  it("distinguishes a config without servers from one that does not parse", () => {
+    expect(parseMcpServers(mcpFile("{}"))).toEqual({ malformed: false, servers: [] });
+    expect(parseMcpServers(mcpFile("{"))).toEqual({ malformed: true, servers: [] });
+    expect(parseMcpServers(mcpFile("[1, 2]"))).toEqual({ malformed: true, servers: [] });
   });
 });
 

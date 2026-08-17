@@ -1,7 +1,7 @@
 import type { Stats } from "node:fs";
 import { lstat, opendir, readFile, readlink } from "node:fs/promises";
 
-import { errorCode, errorMessage } from "./error-values.js";
+import { errorCode, errorMessage } from "../values.js";
 import { FixPlanError, operationError } from "./types.js";
 
 export interface MissingPathState {

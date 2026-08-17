@@ -7,7 +7,7 @@ import { createPathPolicy, type PathPolicy } from "./path-policy.js";
 import { targetPaths, withTargetLocks } from "./target-lock.js";
 import { preflightUndo } from "./undo-preflight.js";
 import { restoreOperations, rollForward } from "./undo-restore.js";
-import { errorMessage } from "./error-values.js";
+import { errorMessage } from "../values.js";
 import {
   FixPlanError,
   FixPlanUndoError,

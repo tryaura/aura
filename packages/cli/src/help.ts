@@ -38,7 +38,14 @@ export function renderRootHelp(branding: CliBranding): string {
         title: "Everyday use",
       },
       {
-        rows: [{ term: `${bin} <command> --help`, text: "Full flag reference for a command" }],
+        rows: [
+          { term: `${bin} <command> --help`, text: "Full flag reference for a command" },
+          // The version command only registers when branding carries a version (run.ts), so the
+          // row appears exactly when the flag exists.
+          ...(branding.version === undefined
+            ? []
+            : [{ term: `${bin} --version`, text: "Print the version and exit" }]),
+        ],
         title: "Help",
       },
     ],
@@ -158,7 +165,7 @@ export function renderUndoHelp(branding: CliBranding): string {
       { rows: advancedRows(), title: "Advanced" },
     ],
     [
-      "Exit codes: 0 restored or nothing to undo · 1 aborted · 2 conflicts · 3 operational failures",
+      "Exit codes: 0 restored or nothing to undo · 1 aborted or declined at the prompt · 2 conflicts · 3 operational failures",
     ],
   );
 }

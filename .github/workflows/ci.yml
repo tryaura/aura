@@ -1,8 +1,15 @@
 name: CI
 
 on:
+  push:
+    branches: [main]
   pull_request:
   merge_group:
+
+# Never verify the same ref twice at once; the newer commit wins.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -49,5 +56,7 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Verify
         env:
-          FALLOW_AUDIT_BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          # On a push to main, `github.event.before` is the previous tip — the same base the
+          # pull request was audited against.
+          FALLOW_AUDIT_BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
         run: pnpm run verify

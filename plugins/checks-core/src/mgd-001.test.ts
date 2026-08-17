@@ -33,6 +33,9 @@ describe("MGD-001", () => {
       "aura.shared-instructions:official/second",
     ]);
     expect(findings.map((finding) => finding.locations?.[0]?.line)).toEqual([4, 7]);
+    // The message names the file the way the rest of the report does, not by raw absolute path.
+    expect(findings[0]?.message).toContain("~/agents/AGENTS.md");
+    expect(findings[0]?.message).not.toContain("/home/dev/agents/AGENTS.md");
     expect(JSON.stringify(findings)).not.toContain("private first edit");
     expect(JSON.stringify(findings)).not.toContain("private second edit");
   });

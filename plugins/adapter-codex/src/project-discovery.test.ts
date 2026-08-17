@@ -1,4 +1,4 @@
-import type { AdapterSourceFile, Environment } from "@tryaura/aura-sdk";
+import type { AdapterFileSpec, AdapterSourceFile, Environment } from "@tryaura/aura-sdk";
 import { describe, expect, it } from "vitest";
 
 import { codexAdapter } from "./adapter.js";
@@ -32,12 +32,7 @@ describe("Codex project discovery", () => {
   it("uses configured fallback filenames after standard candidates are absent", () => {
     const config = configSource('project_doc_fallback_filenames = ["CLAUDE.md"]\n');
     const testEnvironment = environment("/repo/app");
-    const first = codexAdapter.files(
-      testEnvironment,
-      { installed: true },
-      new Map([entry(config)]),
-      "/repo",
-    );
+    const first = declareFiles(testEnvironment, new Map([entry(config)]), "/repo");
     const probes = first.filter(
       (spec) => spec.kind === "probe" && spec.id.startsWith("codex.instructions.project"),
     );
@@ -50,9 +45,9 @@ describe("Codex project discovery", () => {
       });
     }
 
-    const selected = codexAdapter
-      .files(testEnvironment, { installed: true }, files, "/repo")
-      .filter((spec) => spec.kind === "instructions" && spec.scope === "project");
+    const selected = declareFiles(testEnvironment, files, "/repo").filter(
+      (spec) => spec.kind === "instructions" && spec.scope === "project",
+    );
 
     expect(selected).toEqual([
       {
@@ -69,12 +64,7 @@ describe("Codex project discovery", () => {
   it("bounds selected reads by the aggregate project document budget", () => {
     const config = configSource("project_doc_max_bytes = 8\n");
     const testEnvironment = environment("/repo/app");
-    const first = codexAdapter.files(
-      testEnvironment,
-      { installed: true },
-      new Map([entry(config)]),
-      "/repo",
-    );
+    const first = declareFiles(testEnvironment, new Map([entry(config)]), "/repo");
     const files = new Map<string, AdapterSourceFile>([entry(config)]);
     for (const probe of first.filter(
       (spec) => spec.kind === "probe" && spec.id.startsWith("codex.instructions.project"),
@@ -87,9 +77,9 @@ describe("Codex project discovery", () => {
       });
     }
 
-    const declarations = codexAdapter
-      .files(testEnvironment, { installed: true }, files, "/repo")
-      .filter((spec) => spec.kind === "instructions" && spec.scope === "project");
+    const declarations = declareFiles(testEnvironment, files, "/repo").filter(
+      (spec) => spec.kind === "instructions" && spec.scope === "project",
+    );
 
     expect(declarations.map((spec) => [spec.path, spec.maxBytes])).toEqual([
       ["/repo/AGENTS.md", 8],
@@ -101,8 +91,7 @@ describe("Codex project discovery", () => {
     const config = configSource(
       'project_doc_fallback_filenames = ["../outside.md", "nested/rules.md", "CLAUDE.md"]\n',
     );
-    const paths = codexAdapter
-      .files(environment("/repo"), { installed: true }, new Map([entry(config)]), "/repo")
+    const paths = declareFiles(environment("/repo"), new Map([entry(config)]), "/repo")
       .filter((spec) => spec.id.startsWith("codex.instructions.project"))
       .map((spec) => spec.path);
 
@@ -112,12 +101,7 @@ describe("Codex project discovery", () => {
   it("uses a configured root marker without requiring Git", () => {
     const config = configSource('project_root_markers = ["package.json"]\n');
     const testEnvironment = environment("/workspace/app");
-    const first = codexAdapter.files(
-      testEnvironment,
-      { installed: true },
-      new Map([entry(config)]),
-      undefined,
-    );
+    const first = declareFiles(testEnvironment, new Map([entry(config)]), undefined);
     const files = new Map<string, AdapterSourceFile>([entry(config)]);
     for (const probe of first.filter((spec) => spec.id.startsWith("codex.project-root."))) {
       files.set(probe.id, {
@@ -127,9 +111,9 @@ describe("Codex project discovery", () => {
       });
     }
 
-    const candidates = codexAdapter
-      .files(testEnvironment, { installed: true }, files, undefined)
-      .filter((spec) => spec.id.startsWith("codex.instructions.project"));
+    const candidates = declareFiles(testEnvironment, files, undefined).filter((spec) =>
+      spec.id.startsWith("codex.instructions.project"),
+    );
 
     expect(candidates.map((spec) => spec.path)).toEqual([
       "/workspace/AGENTS.override.md",
@@ -147,14 +131,11 @@ describe("Codex project discovery", () => {
 
   it("disables parent traversal when project_root_markers is empty", () => {
     const config = configSource("project_root_markers = []\n");
-    const candidates = codexAdapter
-      .files(
-        environment("/repo/packages/app"),
-        { installed: true },
-        new Map([entry(config)]),
-        "/repo",
-      )
-      .filter((spec) => spec.id.startsWith("codex.instructions.project"));
+    const candidates = declareFiles(
+      environment("/repo/packages/app"),
+      new Map([entry(config)]),
+      "/repo",
+    ).filter((spec) => spec.id.startsWith("codex.instructions.project"));
 
     expect(candidates.map((spec) => spec.path)).toEqual([
       "/repo/packages/app/AGENTS.override.md",
@@ -174,10 +155,17 @@ function projectSpecs(
   cwd: string,
   projectRoot: string | undefined,
 ): readonly (readonly [string, string])[] {
-  return codexAdapter
-    .files(environment(cwd), { installed: true }, new Map([entry(configSource(""))]), projectRoot)
+  return declareFiles(environment(cwd), new Map([entry(configSource(""))]), projectRoot)
     .filter((spec) => spec.kind === "probe" && spec.id.startsWith("codex.instructions.project"))
     .map((spec) => [spec.id, spec.path] as const);
+}
+
+function declareFiles(
+  environment: Environment,
+  files: ReadonlyMap<string, AdapterSourceFile>,
+  projectRoot: string | undefined,
+): readonly AdapterFileSpec[] {
+  return codexAdapter.files({ detection: { installed: true }, environment, files, projectRoot });
 }
 
 function configSource(content: string): AdapterSourceFile {

@@ -20,12 +20,12 @@ describe("legacy instruction inventory adapter", () => {
   });
 
   it("declares every inventoried path at home, the repository root, and the invocation directory", () => {
-    const specs = legacyInstructionsAdapter.files(
-      environment(),
-      { installed: true },
-      new Map(),
-      "/repo",
-    );
+    const specs = legacyInstructionsAdapter.files({
+      detection: { installed: true },
+      environment: environment(),
+      files: new Map(),
+      projectRoot: "/repo",
+    });
 
     expect(specs).toHaveLength(27);
     expect(specs.map((spec) => spec.path)).toEqual([
@@ -40,12 +40,12 @@ describe("legacy instruction inventory adapter", () => {
   });
 
   it("keeps current instruction formats in the inventory so other checks still see them", () => {
-    const specs = legacyInstructionsAdapter.files(
-      { ...environment(), cwd: "/repo" },
-      { installed: true },
-      new Map(),
-      "/repo",
-    );
+    const specs = legacyInstructionsAdapter.files({
+      detection: { installed: true },
+      environment: { ...environment(), cwd: "/repo" },
+      files: new Map(),
+      projectRoot: "/repo",
+    });
     const current = specs.filter((spec) =>
       CURRENT_NAMES.some((name) => spec.path.endsWith(`/${name}`)),
     );
@@ -55,12 +55,12 @@ describe("legacy instruction inventory adapter", () => {
   });
 
   it("declares each project base once when the repository root is the invocation directory", () => {
-    const specs = legacyInstructionsAdapter.files(
-      { ...environment(), cwd: "/repo" },
-      { installed: true },
-      new Map(),
-      "/repo",
-    );
+    const specs = legacyInstructionsAdapter.files({
+      detection: { installed: true },
+      environment: { ...environment(), cwd: "/repo" },
+      files: new Map(),
+      projectRoot: "/repo",
+    });
 
     expect(specs.map((spec) => spec.path)).toEqual([
       ...INVENTORY_NAMES.map((name) => `/home/dev/${name}`),
@@ -69,12 +69,12 @@ describe("legacy instruction inventory adapter", () => {
   });
 
   it("parses readable files with stable legacy metadata and source ids", () => {
-    const specs = legacyInstructionsAdapter.files(
-      environment(),
-      { installed: true },
-      new Map(),
-      "/repo",
-    );
+    const specs = legacyInstructionsAdapter.files({
+      detection: { installed: true },
+      environment: environment(),
+      files: new Map(),
+      projectRoot: "/repo",
+    });
     const selected = specs.filter(
       (spec) => spec.path.endsWith(".windsurfrules") || spec.path.endsWith("GEMINI.md"),
     );

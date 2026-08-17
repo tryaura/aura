@@ -54,9 +54,9 @@ export async function discoverAdapterFiles(
   const files = new Map<string, AdapterSourceFile>();
   const specs = new Map<string, AdapterFileSpec>();
 
-  for (let round = 0; round < MAX_ADAPTER_FILE_ROUNDS; round += 1) {
+  for (let round = 0; ; round += 1) {
     const newSpecs = collectNewSpecs(
-      adapter.files(environment, detection, new Map(files), projectRoot),
+      adapter.files({ detection, environment, files: new Map(files), projectRoot }),
       specs,
     );
 
@@ -82,8 +82,6 @@ export async function discoverAdapterFiles(
       diagnostics.push(...read.diagnostics);
     }
   }
-
-  throw new Error(`file discovery did not stabilize within ${MAX_ADAPTER_FILE_ROUNDS} rounds`);
 }
 
 /** Picks the specs this round introduced, rejecting a declaration set that contradicts itself. */

@@ -4,17 +4,28 @@ export type {
   AdapterFileKind,
   AdapterFileMap,
   AdapterFileSpec,
+  AdapterFilesInput,
   AdapterFileStatus,
   AdapterPathKind,
   AdapterParseInput,
-  AdapterSharedLink,
-  AdapterSharedLinkKind,
   AdapterSourceFile,
   AdapterSupport,
   AdapterSupportStatus,
   FileProblem,
 } from "./adapter.js";
-export { SHARED_INSTRUCTIONS_TEMPLATE_TOKEN } from "./adapter.js";
+export type {
+  AdapterContentSharedLink,
+  AdapterSharedLink,
+  AdapterSharedLinkKind,
+  AdapterSymlinkSharedLink,
+} from "./shared-link.js";
+export { SHARED_INSTRUCTIONS_TEMPLATE_TOKEN } from "./shared-link.js";
+export type {
+  AdapterCapabilities,
+  AdapterImportStyle,
+  AdapterInstructionCapabilities,
+  AdapterInstructionLoading,
+} from "./capabilities.js";
 export type {
   Check,
   DetectedFinding,
@@ -116,6 +127,8 @@ export {
 export { collectJsonMcpServers, parseJsonMcpServers } from "./mcp-config.js";
 export type { JsonMcpConfigOptions } from "./mcp-config.js";
 export { maskMarkdownCode } from "./markdown.js";
+export { advanceMarkdownFence } from "./markdown-fence.js";
+export type { MarkdownFence } from "./markdown-fence.js";
 export {
   isFileReference,
   isInstructionReference,

@@ -4,26 +4,23 @@ import {
   defineAdapter,
   detectExecutable,
   SHARED_INSTRUCTIONS_TEMPLATE_TOKEN,
-  type AdapterDetection,
   type AdapterFileMap,
   type AdapterFileSpec,
+  type AdapterFilesInput,
+  type AdapterProblem,
   type AdapterSourceFile,
-  type Environment,
 } from "@tryaura/aura-sdk";
 
+import { CURSOR_ADAPTER_ID, CURSOR_SOURCE_IDS as SOURCE_IDS } from "./contract.js";
 import { parseMcpServers } from "./mcp.js";
 import { parseRuleFile } from "./rules.js";
 
-const SOURCE_IDS = Object.freeze({
-  agents: "cursor.rules.project.agents",
-  aura: "cursor.rules.project/aura-owned",
-  legacyRules: "cursor.rules.project.legacy",
-  mcpGlobal: "cursor.mcp.global",
-  mcpProject: "cursor.mcp.project",
-  rulesProject: "cursor.rules.project",
-});
-
 export const cursorAdapter = defineAdapter({
+  capabilities: {
+    // Rules and AGENTS.md are roots; `@` references pull further files in. Which rules are roots
+    // at all is per-document knowledge, published as `isConditionalCursorRule` in the contract.
+    instructions: { importStyle: "at-import", loading: "import-graph" },
+  },
   /**
    * Cursor exposes no command that reports credential state, so detection stops at `--version`.
    *
@@ -36,19 +33,24 @@ export const cursorAdapter = defineAdapter({
   detectionScope: "the cursor shell command on PATH (the editor itself is not checked)",
   displayName: "Cursor",
   files: cursorFiles,
-  id: "cursor",
+  id: CURSOR_ADAPTER_ID,
   installHint:
     "Use Help > Check for Updates in Cursor, or install the latest release from https://cursor.com/downloads.",
-  parse: ({ files, homeDir }) => ({
-    instructionFiles: [...files.values()]
-      .filter(isInstructionSource)
-      .map((file) => parseRuleFile(file, homeDir)),
-    mcpServers: [SOURCE_IDS.mcpGlobal, SOURCE_IDS.mcpProject].flatMap((id) => {
+  parse: ({ files, homeDir }) => {
+    const mcpFiles = [SOURCE_IDS.mcpGlobal, SOURCE_IDS.mcpProject].flatMap((id) => {
       const file = files.get(id);
-      return file?.content === undefined ? [] : parseMcpServers(file);
-    }),
-    skills: [],
-  }),
+      return file === undefined ? [] : [{ config: parseMcpServers(file), file }];
+    });
+
+    return {
+      instructionFiles: [...files.values()]
+        .filter(isInstructionSource)
+        .map((file) => parseRuleFile(file, homeDir)),
+      mcpServers: mcpFiles.flatMap(({ config }) => config.servers),
+      problems: mcpFiles.flatMap(({ config, file }) => unusableMcp(file, config.malformed)),
+      skills: [],
+    };
+  },
   sharedLink: {
     entryPath: "./.cursor/rules/aura.mdc",
     kind: "native-copy",
@@ -61,8 +63,31 @@ export const cursorAdapter = defineAdapter({
       "",
     ].join("\n"),
   },
+  // Cursor's MCP and rules formats have been stable across major releases, so a wide verified
+  // range costs little. Codex's adapter takes the opposite bet: its configuration format churns
+  // per minor release, so it pins a narrow verified window instead.
   supportedRange: ">=0.45.0 <4.0.0",
 });
+
+/**
+ * Reports MCP configuration that is present but unreadable.
+ *
+ * The failure this describes is invisible from the outside: Cursor refuses the whole file, so
+ * every server in it stops working at once while the file still sits there looking configured.
+ * Silence is the wrong answer from a tool whose job is explaining that.
+ */
+function unusableMcp(file: AdapterSourceFile, malformed: boolean): readonly AdapterProblem[] {
+  if (!malformed) {
+    return [];
+  }
+
+  return [
+    {
+      message: `Cursor's MCP configuration at ${file.spec.path} is not a valid JSON object, so none of the servers it declares are loading — in Cursor either. Fix the file to restore them.`,
+      sourceId: file.spec.id,
+    },
+  ];
+}
 
 /**
  * Declares Cursor's configuration, expanding the project rules directory to a fixed point.
@@ -76,11 +101,7 @@ export const cursorAdapter = defineAdapter({
  * `AGENTS.md` is read at the project root; Cursor also honors nested ones in subdirectories,
  * which would take a walk of the whole tree that no adapter should ask for.
  */
-function cursorFiles(
-  environment: Environment,
-  _detection: AdapterDetection,
-  files: AdapterFileMap,
-): readonly AdapterFileSpec[] {
+function cursorFiles({ environment, files }: AdapterFilesInput): readonly AdapterFileSpec[] {
   return [
     {
       id: SOURCE_IDS.rulesProject,

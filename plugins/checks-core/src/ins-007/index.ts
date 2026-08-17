@@ -12,14 +12,16 @@ import {
 } from "@tryaura/aura-sdk";
 import { pluralize } from "@tryaura/core/pluralize";
 
+import { isConditionalCursorRule } from "@tryaura/adapter-cursor";
+
 import { structuralFindingId } from "../finding-id.js";
-import { isConditionalCursorRule } from "../instruction-paragraphs.js";
+import { instructionCapabilities } from "../instruction-capabilities.js";
+import { compareCodePoints } from "../ordering.js";
 import {
   instructionGraphFor,
   reachableInstructionPaths,
   type InstructionGraph,
 } from "../ins-006/graph.js";
-import { DEPTH_LIMITS } from "../ins-006/links.js";
 
 export const DEFAULT_CONTEXT_BUDGET_BYTES = 32_000;
 export const LARGE_CONTEXT_BUDGET_BYTES = 80_000;
@@ -126,28 +128,24 @@ function classifyDocuments(
   workspaceDocuments: ReadonlyMap<string, InstructionDocument>,
 ): ClassifiedDocuments | undefined {
   const appDocuments = documentMap(app.instructionFiles);
-  if (app.adapterId === "codex") {
+  const capabilities = instructionCapabilities(app);
+  if (capabilities.loading === "all-files") {
     return { conditional: [], effective: [...appDocuments.values()] };
   }
-  if (app.adapterId === "claude-code") {
-    const maximumHops = DEPTH_LIMITS.get(app.adapterId);
-    return {
-      conditional: [],
-      effective: documentsAtPaths(
-        reachableInstructionPaths(graph, [...appDocuments.keys()], { maximumHops }),
-        appDocuments,
-        workspaceDocuments,
-      ),
-    };
-  }
-  if (app.adapterId === "cursor") {
+  if (capabilities.loading === "import-graph") {
+    // Which of an application's declared files attach only conditionally is per-document knowledge
+    // the Cursor adapter publishes; documents from adapters without that concept never match the
+    // predicate, so applying it uniformly costs the others nothing.
     const conditional = [...appDocuments.values()].filter(isConditionalCursorRule);
     const excluded = new Set(conditional.map((document) => resolve(document.path)));
     const roots = [...appDocuments.values()]
       .filter((document) => !isConditionalCursorRule(document))
       .map((document) => document.path);
     const effective = documentsAtPaths(
-      reachableInstructionPaths(graph, roots, { excluded }),
+      reachableInstructionPaths(graph, roots, {
+        excluded,
+        maximumHops: capabilities.importDepthLimit,
+      }),
       appDocuments,
       workspaceDocuments,
     );
@@ -166,9 +164,9 @@ function documentMap(
     .map((document) => ({ document, path: resolve(document.path) }))
     .sort(
       (left, right) =>
-        left.path.localeCompare(right.path) ||
-        left.document.sourceId.localeCompare(right.document.sourceId) ||
-        left.document.content.localeCompare(right.document.content),
+        compareCodePoints(left.path, right.path) ||
+        compareCodePoints(left.document.sourceId, right.document.sourceId) ||
+        compareCodePoints(left.document.content, right.document.content),
     );
   for (const { document, path } of sorted) {
     if (!result.has(path)) {
@@ -205,7 +203,7 @@ function findingFor(app: AppModel, classified: ClassifiedDocuments): DetectedFin
     conditional: true,
   }));
   const breakdown = [...effectiveFiles, ...conditionalFiles].sort(
-    (left, right) => right.bytes - left.bytes || left.path.localeCompare(right.path),
+    (left, right) => right.bytes - left.bytes || compareCodePoints(left.path, right.path),
   );
   const files: readonly JsonObject[] = breakdown.slice(0, MAX_REPORTED_FILES).map((file) => ({
     bytes: file.bytes,

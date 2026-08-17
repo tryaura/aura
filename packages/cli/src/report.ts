@@ -34,6 +34,29 @@ export function createCheckExplanation(check: Check): CheckExplanation {
   });
 }
 
+/**
+ * The document a `--json` run emits when the run itself failed unexpectedly.
+ *
+ * `--json` promises exactly one parseable document on stdout (docs/cli-ux.md), and an operational
+ * failure still owes the caller that document — an empty stdout on exit 3 breaks every consumer
+ * that parses unconditionally. Nothing was established about the machine, so every list is empty,
+ * one diagnostic names the failure, and the status carries exit 3. The human explanation goes to
+ * stderr as on any other failure; `detail` stays withheld here for the same reason
+ * {@link toReportDiagnostic} withholds it without `--detail`.
+ */
+export function createOperationalFailureReport(message: string, detail?: string): CheckReport {
+  return createCheckReport({
+    adapters: [],
+    apps: [],
+    checkDiagnostics: [{ checkId: "cli", detail, message }],
+    checks: [],
+    findings: [],
+    scanDiagnostics: [],
+    skipped: [],
+    withDetail: detail !== undefined,
+  });
+}
+
 export interface CheckReportInput {
   readonly adapters: readonly Adapter[];
   readonly apps: readonly AppModel[];

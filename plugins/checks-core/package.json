@@ -19,6 +19,7 @@
   "dependencies": {
     "@tryaura/adapter-claude-code": "workspace:*",
     "@tryaura/adapter-codex": "workspace:*",
+    "@tryaura/adapter-cursor": "workspace:*",
     "@tryaura/aura-sdk": "workspace:*",
     "@tryaura/content-official": "workspace:*",
     "@tryaura/core": "workspace:*",

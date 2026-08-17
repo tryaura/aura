@@ -206,6 +206,7 @@ function expectClaudeSources(scan: WorkspaceScan, seed: TestSeed): void {
     `${seed.homeDir}/.claude.json`,
     `${seed.workspaceDir}/.mcp.json`,
     `${seed.homeDir}/.claude/settings.json`,
+    `${seed.workspaceDir}/.claude/settings.local.json`,
     `${seed.workspaceDir}/.claude/settings.json`,
   ]);
   expect(scan.model.apps[0]?.metadata).toEqual({

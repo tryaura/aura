@@ -25,6 +25,7 @@ describe("help screens", () => {
 
         Help
           acme <command> --help    Full flag reference for a command
+          acme --version           Print the version and exit
 
         Docs: https://example.com/docs
       "
@@ -37,6 +38,8 @@ describe("help screens", () => {
 
     expect(help.startsWith("Aura\n")).toBe(true);
     expect(help).not.toContain("Docs:");
+    // Without a version the flag is never registered (run.ts), so the row must not advertise it.
+    expect(help).not.toContain("--version");
   });
 
   it("renders the check screen grouped by task, plumbing last", () => {
@@ -110,7 +113,7 @@ describe("help screens", () => {
           --home <dir>             Override the home directory
           --path <dir>             Override the executable search path
 
-        Exit codes: 0 restored or nothing to undo · 1 aborted · 2 conflicts · 3 operational failures
+        Exit codes: 0 restored or nothing to undo · 1 aborted or declined at the prompt · 2 conflicts · 3 operational failures
       "
     `);
   });

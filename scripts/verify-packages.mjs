@@ -277,7 +277,7 @@ async function main() {
     run("node", ["smoke.mjs"], consumer);
 
     process.stdout.write(
-      "Verified release-ready 0.1.0 tarballs and the acmedev clean-room distro.\n",
+      `Verified release-ready ${EXPECTED_VERSION} tarballs and the acmedev clean-room distro.\n`,
     );
   } finally {
     if (process.env.AURA_KEEP_PACKAGE_TEMP === "1") {

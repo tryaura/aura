@@ -2,10 +2,9 @@ import { join, resolve as resolvePath } from "node:path";
 
 import {
   defineAdapter,
-  type AdapterFileMap,
   type AdapterFileSpec,
+  type AdapterFilesInput,
   type AdapterSourceFile,
-  type Environment,
   type InstructionDocument,
   type Scope,
 } from "@tryaura/aura-sdk";
@@ -61,12 +60,7 @@ export const legacyInstructionsAdapter = defineAdapter({
  * repository root. A file left in a subpackage is exactly the forgotten kind this inventory exists
  * to surface, so both bases are searched and the overlap is dropped rather than the difference.
  */
-function legacyFiles(
-  environment: Environment,
-  _detection: { readonly installed: boolean },
-  _files: AdapterFileMap,
-  projectRoot: string | undefined,
-): readonly AdapterFileSpec[] {
+function legacyFiles({ environment, projectRoot }: AdapterFilesInput): readonly AdapterFileSpec[] {
   const projectBases = [
     ...new Set([projectRoot, environment.cwd].filter(isBase).map((base) => resolvePath(base))),
   ];

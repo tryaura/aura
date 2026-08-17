@@ -1,6 +1,7 @@
 import { safe } from "../safe-text.js";
 import { createStyle, type Style } from "../style.js";
-import { wrapPreviewLines } from "./text-width.js";
+import { wrapPreviewLines } from "../text-width.js";
+import { clipBody } from "./wizard-clip.js";
 import { DONE, renderTabBar, UNANSWERED } from "./wizard-tabs.js";
 import type { WizardFlowContext, WizardQuestion } from "./wizard-types.js";
 
@@ -91,6 +92,7 @@ export function renderWizardFrame(
       body.focus,
       viewport.rows - FRAME_BASE_CHROME_ROWS - barLines.length,
       style,
+      viewport.columns,
     ),
   );
 
@@ -98,35 +100,21 @@ export function renderWizardFrame(
   return `${lines.join("\n")}\n`;
 }
 
-/** The arrow already marks the active tab, so its styling must not add visible-width markers. */
-function createWizardStyle(colorDepth: number): Style {
+/** Base styling plus the inverse-video marker only the wizard's tab bar applies. */
+export interface WizardStyle extends Style {
+  /**
+   * The `▶` arrow already marks the active tab, so this must not add visible-width markers: the
+   * tab-bar width arithmetic counts glyph columns only, and styling has to stay zero-width.
+   */
+  readonly active: (text: string) => string;
+}
+
+function createWizardStyle(colorDepth: number): WizardStyle {
   const style = createStyle(colorDepth);
   return {
     ...style,
     active: colorDepth <= 0 ? (text) => text : (text) => `\u001b[7m${text}\u001b[27m`,
   };
-}
-
-/** Windows the body to `capacity` rows, keeping the focused row visible with `more` markers. */
-function clipBody(
-  lines: readonly string[],
-  focus: number,
-  capacity: number,
-  style: Style,
-): readonly string[] {
-  const room = Math.max(1, capacity);
-  if (lines.length <= room) {
-    return lines;
-  }
-  // Two rows are reserved for the markers, so the window never grows past the capacity.
-  const visible = Math.max(1, room - 2);
-  const offset = Math.min(Math.max(focus - Math.floor(visible / 2), 0), lines.length - visible);
-  const below = lines.length - offset - visible;
-  return [
-    ...(offset > 0 ? [style.dim(`   ↑ ${String(offset)} more`)] : []),
-    ...lines.slice(offset, offset + visible),
-    ...(below > 0 ? [style.dim(`   ↓ ${String(below)} more`)] : []),
-  ];
 }
 
 /** One collapsed line per answered question, printed once a form resolves. */

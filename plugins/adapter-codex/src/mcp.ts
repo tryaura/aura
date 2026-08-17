@@ -12,9 +12,28 @@ import {
 } from "@tryaura/aura-sdk";
 import { parse } from "smol-toml";
 
-export function parseMcpServers(file: AdapterSourceFile): readonly McpServer[] {
+/** What `config.toml` contributed to the MCP model. */
+export interface CodexMcpConfig {
+  /**
+   * Whether the file held something other than parseable TOML.
+   *
+   * Kept apart from an empty server list because the two need opposite advice: one user has no MCP
+   * servers, the other has servers that are silently not loading.
+   */
+  readonly malformed: boolean;
+  readonly servers: readonly McpServer[];
+}
+
+export function parseMcpServers(file: AdapterSourceFile): CodexMcpConfig {
   const root = parseConfigObject(file.content, parse);
-  return collectMcpServers(file, "codex", root?.["mcp_servers"], parseTransport);
+  if (root === undefined) {
+    return { malformed: file.content !== undefined, servers: [] };
+  }
+
+  return {
+    malformed: false,
+    servers: collectMcpServers(file, "codex", root["mcp_servers"], parseTransport),
+  };
 }
 
 function parseTransport(candidate: unknown): McpTransport | undefined {

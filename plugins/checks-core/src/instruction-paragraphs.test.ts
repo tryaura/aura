@@ -1,10 +1,7 @@
+import { isConditionalCursorRule } from "@tryaura/adapter-cursor";
 import { describe, expect, it } from "vitest";
 
-import {
-  extractParagraphs,
-  isConditionalCursorRule,
-  normalizeParagraph,
-} from "./instruction-paragraphs.js";
+import { extractParagraphs, normalizeParagraph } from "./instruction-paragraphs.js";
 import { document } from "./testing.js";
 
 describe("instruction paragraph extraction", () => {

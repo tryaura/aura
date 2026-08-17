@@ -5,9 +5,9 @@ import {
   detectExecutable,
   SHARED_INSTRUCTIONS_TEMPLATE_TOKEN,
   type AdapterFileSpec,
+  type AdapterFilesInput,
   type AdapterProblem,
   type AdapterSourceFile,
-  type Environment,
   type JsonObject,
 } from "@tryaura/aura-sdk";
 
@@ -24,6 +24,9 @@ import { parsePermissionSettings } from "./settings.js";
 const GLOBAL_INSTRUCTIONS_SEGMENTS = Object.freeze([".claude", "CLAUDE.md"]);
 
 export const claudeCodeAdapter = defineAdapter({
+  capabilities: {
+    instructions: { importDepthLimit: 5, importStyle: "at-import", loading: "import-graph" },
+  },
   detect: (environment) =>
     detectExecutable(environment, { authenticationArgs: ["auth", "status"], binaryName: "claude" }),
   detectionScope: "the claude CLI on PATH (the desktop app is not checked)",
@@ -47,10 +50,11 @@ export const claudeCodeAdapter = defineAdapter({
       // one directory was given. Nothing is collapsed — two scopes configuring the same name is
       // itself a finding, and a model that deduplicated could not report it.
       mcpServers: [...global.globalServers, ...project.servers, ...global.localServers],
-      metadata: permissionMetadata(
-        files.get(SOURCE_IDS.settingsGlobal),
-        files.get(SOURCE_IDS.settingsProject),
-      ),
+      metadata: permissionMetadata({
+        global: files.get(SOURCE_IDS.settingsGlobal),
+        local: files.get(SOURCE_IDS.settingsLocal),
+        project: files.get(SOURCE_IDS.settingsProject),
+      }),
       problems: [
         ...unusableMcp(globalFile, global.malformed),
         ...unusableMcp(projectFile, project.malformed),
@@ -99,20 +103,16 @@ function unusableMcp(
 }
 
 function permissionMetadata(
-  globalSettings: AdapterSourceFile | undefined,
-  projectSettings: AdapterSourceFile | undefined,
+  settings: Readonly<Record<"global" | "local" | "project", AdapterSourceFile | undefined>>,
 ): JsonObject | undefined {
   const summaries: Record<string, JsonObject> = {};
-  if (globalSettings !== undefined) {
-    const summary = parsePermissionSettings(globalSettings);
-    if (summary !== undefined) {
-      summaries["global"] = summary;
+  for (const [scope, file] of Object.entries(settings)) {
+    if (file === undefined) {
+      continue;
     }
-  }
-  if (projectSettings !== undefined) {
-    const summary = parsePermissionSettings(projectSettings);
+    const summary = parsePermissionSettings(file);
     if (summary !== undefined) {
-      summaries["project"] = summary;
+      summaries[scope] = summary;
     }
   }
   return Object.keys(summaries).length === 0 ? undefined : { [CLAUDE_PERMISSIONS_KEY]: summaries };
@@ -128,8 +128,11 @@ function permissionMetadata(
  *
  * Permission settings remain intentionally narrow: ENV-004 needs their effective default mode,
  * but the model records only that mode and rule counts rather than permission entries.
+ * `settings.local.json` is declared alongside the shared project settings because it is the
+ * highest-precedence file Claude Code reads here: a claim about the effective mode that ignored
+ * it could be false on the very machine being scanned.
  */
-function claudeFiles(environment: Environment): readonly AdapterFileSpec[] {
+function claudeFiles({ environment }: AdapterFilesInput): readonly AdapterFileSpec[] {
   return [
     {
       id: SOURCE_IDS.instructions,
@@ -165,6 +168,13 @@ function claudeFiles(environment: Environment): readonly AdapterFileSpec[] {
       optional: true,
       path: join(environment.homeDir, ".claude", "settings.json"),
       scope: "global",
+    },
+    {
+      id: SOURCE_IDS.settingsLocal,
+      kind: "config",
+      optional: true,
+      path: join(environment.cwd, ".claude", "settings.local.json"),
+      scope: "project",
     },
     {
       id: SOURCE_IDS.settingsProject,

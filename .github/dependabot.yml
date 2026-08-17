@@ -1,0 +1,19 @@
+# Weekly, grouped dependency updates. `versioning-strategy: increase` rewrites the exact pins the
+# repo uses rather than widening them to ranges. Minor and patch updates land as one grouped PR;
+# majors stay separate so each breaking change is reviewed on its own.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    versioning-strategy: increase
+    groups:
+      npm-minor-patch:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

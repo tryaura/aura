@@ -3,6 +3,7 @@
 import {
   defineCheck,
   definePlugin,
+  type AdapterSharedLink,
   type Check,
   type DetectedFinding,
   type DirectoryContentSource,
@@ -128,6 +129,19 @@ const invalidFixPlan: FixPlan = {
   summary: "Invalid fix",
 };
 
+// @ts-expect-error A symlink shared link points at the source directly and carries no template.
+const symlinkLinkWithTemplate: AdapterSharedLink = {
+  entryPath: "~/.example/AGENTS.md",
+  kind: "symlink",
+  lineTemplate: "@{{sharedInstructions}}",
+};
+
+// @ts-expect-error An import-line shared link must carry the content template it writes.
+const importLinkWithoutTemplate: AdapterSharedLink = {
+  entryPath: "~/.example/AGENTS.md",
+  kind: "import-line",
+};
+
 const worldWritableFixPlan: FixPlan = {
   operations: [
     {
@@ -147,4 +161,6 @@ void invalidSnippet;
 void snippetAsPreset;
 void presetAsMcpServer;
 void invalidFixPlan;
+void symlinkLinkWithTemplate;
+void importLinkWithoutTemplate;
 void worldWritableFixPlan;

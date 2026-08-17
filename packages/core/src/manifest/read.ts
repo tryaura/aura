@@ -1,18 +1,8 @@
 import type { AuraManifestProblem, AuraManifestState, FileProblem } from "@tryaura/aura-sdk";
 
+import { FILE_PROBLEM_MESSAGES } from "../file-problem-messages.js";
 import type { PathContents } from "../workspace/reader.js";
 import { parseAuraManifest } from "./codec.js";
-
-const FILE_PROBLEM_MESSAGES: Readonly<Record<FileProblem, string>> = {
-  denied: "permission was denied",
-  loop: "the path is a loop of symbolic links",
-  "outside-project": "the path resolves outside the allowed project",
-  resources: "the system ran out of resources while reading it",
-  "too-large": "the file is too large to read safely",
-  "too-many-entries": "the path contains too many entries",
-  unreadable: "the filesystem reported an error",
-  unsupported: "the path is not a readable regular file",
-};
 
 /** Turns core's bounded filesystem read into the manifest state exposed to checks. */
 export function readAuraManifest(path: string, contents: PathContents): AuraManifestState {

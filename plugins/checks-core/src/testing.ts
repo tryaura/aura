@@ -1,6 +1,10 @@
 import { resolve } from "node:path";
 
+import claudeCodePlugin from "@tryaura/adapter-claude-code";
+import codexPlugin from "@tryaura/adapter-codex";
+import cursorPlugin from "@tryaura/adapter-cursor";
 import type {
+  AdapterCapabilities,
   AppModel,
   Check,
   DetectedFinding,
@@ -17,6 +21,21 @@ import type {
 import { createWorkspaceModel } from "@tryaura/aura-sdk/testing";
 import { runChecks } from "@tryaura/core";
 
+/**
+ * What core would carry into {@link AppModel.capabilities} for a bundled adapter's id.
+ *
+ * Fixtures name real adapter ids without building real scans, so the helper mirrors core's
+ * copy-from-the-adapter step by reading the same declarations off the bundled plugins. Any other
+ * id stays undeclared, exactly like a third-party adapter that declares nothing.
+ */
+const BUNDLED_CAPABILITIES: ReadonlyMap<string, AdapterCapabilities> = new Map(
+  [claudeCodePlugin, codexPlugin, cursorPlugin].flatMap((plugin) =>
+    (plugin.adapters ?? []).flatMap((adapter) =>
+      adapter.capabilities === undefined ? [] : [[adapter.id, adapter.capabilities] as const],
+    ),
+  ),
+);
+
 /** Canonical shared instruction path every fixture in this package agrees on. */
 export const SHARED_PATH = "/home/dev/agents/AGENTS.md";
 
@@ -27,6 +46,8 @@ export const READY = "Aura can add the missing link with check --fix.";
 export interface TestAppOptions {
   readonly adapterId?: string;
   readonly authenticated?: boolean;
+  /** Overrides what the fixture derives from {@link BUNDLED_CAPABILITIES} for `adapterId`. */
+  readonly capabilities?: AdapterCapabilities;
   readonly displayName?: string;
   readonly installHint?: string;
   readonly instructionFiles?: readonly InstructionDocument[];
@@ -66,8 +87,10 @@ export function app(options: TestAppOptions = {}): AppModel {
             symlinkTarget: source.symlinkTarget,
           },
         ];
+  const capabilities = options.capabilities ?? BUNDLED_CAPABILITIES.get(adapterId);
   return {
     adapterId,
+    ...(capabilities === undefined ? {} : { capabilities }),
     detection: {
       authenticated: options.authenticated,
       installed: true,

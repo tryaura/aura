@@ -170,6 +170,31 @@ describe("durable fix-plan undo", () => {
     await expect(readFile(path, "utf8")).resolves.toBe("after\n");
   });
 
+  it("attributes a preflight inspection failure to the operation being verified", async () => {
+    const fixture = await createFixture();
+    const first = join(fixture.workspace, "first.md");
+    const nested = join(fixture.workspace, "nested");
+    const second = join(nested, "second.md");
+    const plan: FixPlan = {
+      operations: [
+        { content: "one\n", path: first, type: "write" },
+        { content: "two\n", path: second, type: "write" },
+      ],
+      summary: "Two writes.",
+    };
+    await executeFixPlan({ model: fixture.model, now, plan });
+    // Replace the second target's parent directory with a regular file, so inspecting the second
+    // path fails with something other than "missing".
+    await rm(nested, { recursive: true });
+    await writeFile(nested, "not a directory\n", "utf8");
+
+    await expect(undoFixPlan({ model: fixture.model, now })).rejects.toMatchObject({
+      code: "filesystem-error",
+      message: expect.stringContaining("Fix operation 1"),
+      operationIndex: 1,
+    });
+  });
+
   it("rolls restored paths forward when directory cleanup fails", async () => {
     const fixture = await createFixture();
     const directory = join(fixture.workspace, "generated");

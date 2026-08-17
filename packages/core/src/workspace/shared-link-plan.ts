@@ -140,7 +140,7 @@ function nativeCopyRefusal(
   desired: string | undefined,
 ): string | undefined {
   return status?.exists === true && sourceContent === undefined && content !== desired
-    ? "The Aura wrapper path contains different content, so it is treated as user-owned and preserved. Persistent keep-yours state is tracked by AURA-24."
+    ? "The Aura wrapper path contains different content, so it is treated as user-owned and preserved."
     : undefined;
 }
 

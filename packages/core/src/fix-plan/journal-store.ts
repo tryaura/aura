@@ -12,7 +12,7 @@ import type {
   PathState,
   SymlinkPathState,
 } from "./state.js";
-import { errorCode } from "./error-values.js";
+import { errorCode } from "../values.js";
 import { FixPlanError } from "./types.js";
 
 export async function storeOperation(

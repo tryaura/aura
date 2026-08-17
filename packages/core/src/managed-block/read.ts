@@ -7,7 +7,7 @@ import { type Marker, parseMarker } from "./markers.js";
 import { addProblem, type OpenBlock, type OpenSnippet } from "./parse-state.js";
 import { AURA_MANAGED_BLOCK_NOTICE } from "./protocol.js";
 import {
-  advanceFence,
+  advanceMarkdownFence,
   type MarkdownFence,
   splitSourceLines,
   type SourceLine,
@@ -67,7 +67,7 @@ function processSourceLine(state: ReadState, line: SourceLine, source: string): 
 /** Advances fence state, remembering the first marker the currently open fence is hiding. */
 function advanceFenceState(state: ReadState, line: SourceLine): boolean {
   const previousFence = state.fence;
-  state.fence = advanceFence(line.text, state.fence);
+  state.fence = advanceMarkdownFence(line.text, state.fence);
 
   if (state.fence === undefined) {
     state.suppressedMarkerLine = undefined;

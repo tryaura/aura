@@ -107,10 +107,18 @@ describe("Codex global model", () => {
     });
   });
 
+  it("declares that whole files load and imports stay prose, for checks to read", () => {
+    expect(codexAdapter.capabilities).toEqual({
+      instructions: { importStyle: "none", loading: "all-files" },
+    });
+  });
+
   it("declares global instructions and configuration before project discovery", () => {
     const environment = environmentWithExec([], () => result(0));
 
-    expect(codexAdapter.files(environment, { installed: true }, new Map(), undefined)).toEqual([
+    expect(
+      codexAdapter.files({ detection: { installed: true }, environment, files: new Map() }),
+    ).toEqual([
       {
         id: "codex.instructions.global.override",
         kind: "instructions",

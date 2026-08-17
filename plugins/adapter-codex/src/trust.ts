@@ -20,7 +20,14 @@ export type TrustLookup = ProjectLookup;
  */
 export function parseProjectTrust(file: AdapterSourceFile, lookup: TrustLookup): ProjectTrust {
   const root = parseConfigObject(file.content, parse);
-  const projects = root?.["projects"];
+  if (root === undefined) {
+    // A file present but unparseable is not "no trust entry": Codex ignores the whole file, so
+    // nothing can be concluded about trust, and the adapter's own problem already names the cause.
+    // Content core could not read is a different story — that failure is reported upstream, and
+    // this reader has simply seen nothing.
+    return file.content === undefined ? "unknown" : "unreadable";
+  }
+  const projects = root["projects"];
   if (!isConfigRecord(projects)) {
     return "unknown";
   }

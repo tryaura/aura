@@ -9,6 +9,7 @@ import {
   type RepositoryPackageManifest,
 } from "@tryaura/aura-sdk";
 
+import { isRecord } from "../values.js";
 import type { FileReader } from "./reader.js";
 
 const GIT_TIMEOUT_MS = 5_000;
@@ -105,7 +106,7 @@ function parsePackageManifest(
   } catch {
     return undefined;
   }
-  if (!isObject(value)) {
+  if (!isRecord(value)) {
     return undefined;
   }
 
@@ -114,17 +115,13 @@ function parsePackageManifest(
   return {
     ...(name.length > 0 ? { name } : {}),
     path,
-    scripts: isObject(scripts)
+    scripts: isRecord(scripts)
       ? Object.entries(scripts)
           .filter((entry) => typeof entry[1] === "string")
           .map((entry) => entry[0])
           .sort()
       : [],
   };
-}
-
-function isObject(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 async function readGitignore(path: string, reader: FileReader): Promise<GitignoreModel> {

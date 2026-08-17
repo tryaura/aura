@@ -112,7 +112,7 @@ export function consolidationPlugin(): AuraPlugin {
   const adapter = defineAdapter({
     detect: () => Promise.resolve({ installed: true, version: "1.0.0" }),
     displayName: "Fixture Agent",
-    files: (environment) => [
+    files: ({ environment }) => [
       instructionSpec(ids[0] ?? "claude", join(environment.homeDir, ".claude", "CLAUDE.md")),
       instructionSpec(ids[1] ?? "cursor", join(environment.homeDir, ".cursorrules")),
       instructionSpec(ids[2] ?? "windsurf", join(environment.homeDir, ".windsurfrules")),
@@ -195,7 +195,7 @@ export function projectConsolidationPlugin(): AuraPlugin {
       defineAdapter({
         detect: () => Promise.resolve({ installed: true, version: "1.0.0" }),
         displayName: "Project Claude",
-        files: (environment) => [
+        files: ({ environment }) => [
           {
             id: "project-claude",
             kind: "instructions",

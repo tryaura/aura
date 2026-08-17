@@ -3,7 +3,7 @@ import { link, lstat, mkdir, open, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 
 import { inspectLock, removeObservedLock, type LockOwner } from "./journal-lock-record.js";
-import { errorCode, errorMessage } from "./error-values.js";
+import { errorCode, errorMessage } from "../values.js";
 import { FixPlanError } from "./types.js";
 
 const LOCK_NAME = ".lock";
@@ -45,8 +45,7 @@ export async function withLockDirectory<Result>(
 
 async function acquire(directory: string, subject: string, now: () => Date): Promise<HeldLock> {
   try {
-    await ensureLockDirectory(directory, subject, now);
-    const lock = await publishLock(directory, now());
+    const lock = await ensureAndPublish(directory, subject, now);
     try {
       const contenders = await activeContenders(directory, now, lock.path);
       if (contenders.length > 0) {
@@ -66,6 +65,35 @@ async function acquire(directory: string, subject: string, now: () => Date): Pro
       path: directory,
     });
   }
+}
+
+/**
+ * Publishes this run's record, recreating the lock directory if it vanished in between.
+ *
+ * Target-lock cleanup removes a lock directory once it is empty, so a run arriving just as another
+ * finishes can pass {@link ensureLockDirectory} and find the directory already gone by the time it
+ * writes. That is the same vanishing-directory case {@link lockDirectoryState} answers with
+ * "retry", and without it the ENOENT surfaces as `could not lock <subject>` — an internal error
+ * where the run should have simply taken the lock. One retry is enough: losing the race twice
+ * means another run keeps recreating the directory, which is contention, and contention is what
+ * the contender scan below is for.
+ */
+async function ensureAndPublish(
+  directory: string,
+  subject: string,
+  now: () => Date,
+): Promise<HeldLock> {
+  await ensureLockDirectory(directory, subject, now);
+  try {
+    return await publishLock(directory, now());
+  } catch (error) {
+    if (errorCode(error) !== "ENOENT") {
+      throw error;
+    }
+  }
+
+  await ensureLockDirectory(directory, subject, now);
+  return publishLock(directory, now());
 }
 
 /** Unique entries in a permanent directory make stale cleanup ownership-safe. */

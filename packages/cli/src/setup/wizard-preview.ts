@@ -1,4 +1,4 @@
-import { wrapPreviewLines } from "./text-width.js";
+import { wrapPreviewLines } from "../text-width.js";
 import type { Keypress } from "./wizard-types.js";
 import type { WizardPreview } from "./wizard-render.js";
 

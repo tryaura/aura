@@ -9,6 +9,13 @@ export default defineConfig({
      * pass or fail for code nobody edited.
      */
     exclude: ["**/node_modules/**", "**/dist/**", "**/.git/**"],
+    /*
+     * Report-only visibility via `pnpm test:coverage`; deliberately not part of `verify` and
+     * without thresholds, so coverage informs review rather than gating it.
+     */
+    coverage: {
+      provider: "v8",
+    },
     /**
      * Above the SDK's own 5s probe ceiling, which the default 5s test timeout exactly matched.
      *

@@ -96,7 +96,7 @@ const adapter = defineAdapter({
   },
   detectionScope: "the acme-agent CLI on PATH",
   displayName: "Acme Agent",
-  files(environment, detection) {
+  files({ detection, environment }) {
     if (!detection.installed) {
       return [];
     }
@@ -256,8 +256,10 @@ plugin module:
 const url = new URL("./content/preset.json", import.meta.url).href;
 ```
 
-Do not use cwd-relative paths. Filesystem existence and content schema validation occur when the
-plugin registry loads the contribution.
+Do not use cwd-relative paths. The registry validates declared shapes — ids, semver versions, the
+API version, shared-link declarations — when it loads a contribution, but it does not open content
+URLs. Snippet sources are read during a workspace scan, and an unreadable or malformed snippet
+surfaces there as a diagnostic; other content sources are not read until the contribution is used.
 
 `Snippet`, `SkillPack`, `McpServerDef`, and `Preset` share the `ContentContribution` fields and are
 distinguished by a `kind` discriminant, so a snippet cannot be passed where a preset is expected.

@@ -4,23 +4,9 @@ import type { DetectedFinding, InstructionDocument, WorkspaceModel } from "@trya
 import { pluralize } from "@tryaura/core/pluralize";
 
 import { structuralFindingId } from "../finding-id.js";
+import { instructionCapabilities } from "../instruction-capabilities.js";
 import { displayInstructionPath } from "../instruction-paths.js";
-
-/** Which applications activate an `@` import in a file they read, and which read it as prose. */
-export const IMPORT_SUPPORT: ReadonlyMap<string, boolean> = new Map([
-  ["claude-code", true],
-  ["codex", false],
-  ["cursor", true],
-]);
-
-/**
- * How many import hops each application follows before it stops loading.
- *
- * Read by every check that reasons about which files an application ends up with, so that they
- * cannot disagree about where a chain stops. Applications absent from the map follow chains as far
- * as they go.
- */
-export const DEPTH_LIMITS: ReadonlyMap<string, number> = new Map([["claude-code", 5]]);
+import { compareCodePoints } from "../ordering.js";
 
 /**
  * How many link findings one instruction file may contribute before the rest are summarized.
@@ -67,7 +53,7 @@ export interface LinkReporting {
 export function linkReporting(model: WorkspaceModel): LinkReporting {
   const supported = new Map<string, boolean>();
   for (const app of model.apps) {
-    const supports = IMPORT_SUPPORT.get(app.adapterId) !== false;
+    const supports = instructionCapabilities(app).importStyle !== "none";
     for (const document of app.instructionFiles) {
       const path = resolve(document.path);
       supported.set(path, (supported.get(path) ?? false) || supports);
@@ -99,7 +85,7 @@ function reportableRoots(model: WorkspaceModel): readonly string[] {
   for (const document of model.instructionFiles) {
     roots.add(dirname(resolve(document.path)));
   }
-  return [...roots].sort((left, right) => left.localeCompare(right));
+  return [...roots].sort(compareCodePoints);
 }
 
 export function isWithin(target: string, roots: readonly string[]): boolean {
@@ -130,7 +116,7 @@ export function observedLinks(documents: readonly InstructionDocument[]): readon
     }
   }
   return [...links.entries()]
-    .sort(([left], [right]) => left.localeCompare(right))
+    .sort(([left], [right]) => compareCodePoints(left, right))
     .map(([, link]) => link);
 }
 

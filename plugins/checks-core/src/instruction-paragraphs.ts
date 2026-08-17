@@ -1,5 +1,6 @@
-import { extname, resolve } from "node:path";
+import { resolve } from "node:path";
 
+import { isConditionalCursorRule } from "@tryaura/adapter-cursor";
 import { maskMarkdownCode, type InstructionDocument, type Scope } from "@tryaura/aura-sdk";
 
 import { sha256 } from "./hashing.js";
@@ -236,13 +237,6 @@ function isMarkdownTable(lines: readonly string[]): boolean {
 
 function isLicenseBoilerplate(lines: readonly string[]): boolean {
   return LICENSE_START_PATTERN.test(lines.join(" ").trim());
-}
-
-/** Cursor only always-loads an MDC rule when its frontmatter explicitly opts in. */
-export function isConditionalCursorRule(document: InstructionDocument): boolean {
-  return (
-    extname(document.path).toLowerCase() === ".mdc" && document.metadata?.["alwaysApply"] !== true
-  );
 }
 
 function compareParagraphs(left: InstructionParagraph, right: InstructionParagraph): number {

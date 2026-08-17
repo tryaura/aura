@@ -15,6 +15,7 @@ import {
   type InstructionParagraph,
 } from "../instruction-paragraphs.js";
 import { displayInstructionPath, instructionLineRange } from "../instruction-paths.js";
+import { compareCodePoints } from "../ordering.js";
 import {
   collectAxisHits,
   findAxisConflicts,
@@ -98,8 +99,8 @@ function duplicatePairs(documents: readonly InstructionDocument[]): readonly Dup
 
   return [...pairs.values()].sort(
     (left, right) =>
-      left.globalPath.localeCompare(right.globalPath) ||
-      left.projectPath.localeCompare(right.projectPath),
+      compareCodePoints(left.globalPath, right.globalPath) ||
+      compareCodePoints(left.projectPath, right.projectPath),
   );
 }
 
@@ -124,7 +125,7 @@ function addParagraphLocation(
   });
   locations.sort(
     (left, right) =>
-      left.path.localeCompare(right.path) ||
+      compareCodePoints(left.path, right.path) ||
       left.startLine - right.startLine ||
       left.endLine - right.endLine,
   );

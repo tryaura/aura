@@ -1,30 +1,11 @@
+import type { AdapterCapabilities } from "./capabilities.js";
 import type { JsonObject, Scope } from "./common.js";
 import type { Environment } from "./environment.js";
 import type { AdapterSnapshot } from "./model.js";
+import type { AdapterSharedLink } from "./shared-link.js";
 
 /** What an adapter expects a declared filesystem path to contain. */
 export type AdapterFileKind = "config" | "instructions" | "mcp" | "probe" | "skills";
-
-/** Placeholder an adapter uses inside a shared-instruction link template. */
-export const SHARED_INSTRUCTIONS_TEMPLATE_TOKEN = "{{sharedInstructions}}";
-
-/** How Aura wires an application's instruction entry point to the shared source. */
-export type AdapterSharedLinkKind = "import-line" | "native-copy" | "symlink";
-
-/** Declarative write-side support for linking one application to Aura's shared instructions. */
-export interface AdapterSharedLink {
-  /**
-   * Application entry path. `~/...` resolves from home; `./...` resolves from the workspace cwd.
-   */
-  readonly entryPath: string;
-  /** How core should materialize the link. */
-  readonly kind: AdapterSharedLinkKind;
-  /**
-   * Content to reconcile or write, containing exactly one
-   * {@link SHARED_INSTRUCTIONS_TEMPLATE_TOKEN}. Required except for `symlink`.
-   */
-  readonly lineTemplate?: string | undefined;
-}
 
 /** What kind of filesystem entry supplied an adapter source. */
 export type AdapterPathKind = "directory" | "file" | "symlink";
@@ -157,6 +138,25 @@ export interface AdapterSupport {
   readonly version?: string | undefined;
 }
 
+/** Everything {@link Adapter.files} is given. */
+export interface AdapterFilesInput {
+  /** What detection found. */
+  readonly detection: AdapterDetection;
+  /**
+   * The injected system seams, for building declared paths from {@link Environment.homeDir} and
+   * {@link Environment.cwd}. `files` must not touch the filesystem through it or anything else.
+   */
+  readonly environment: Environment;
+  /** Every source file core has read so far, keyed by its stable spec id. Empty on the first call. */
+  readonly files: AdapterFileMap;
+  /**
+   * Repository root containing {@link Environment.cwd}, resolved by core before the first call and
+   * `undefined` outside a repository. It is the same value {@link AdapterParseInput.projectRoot}
+   * carries.
+   */
+  readonly projectRoot?: string | undefined;
+}
+
 /** Everything {@link Adapter.parse} is given. */
 export interface AdapterParseInput {
   /** Directory Aura was invoked from. */
@@ -179,6 +179,13 @@ export interface AdapterParseInput {
  * contents into a normalized snapshot.
  */
 export interface Adapter {
+  /**
+   * Declarative facts about the application, read by checks instead of hard-coded adapter tables.
+   *
+   * Optional, with documented per-field fallbacks, so an adapter that declares nothing keeps its
+   * pre-capability behavior.
+   */
+  readonly capabilities?: AdapterCapabilities | undefined;
   /**
    * Probes the system for the application.
    *
@@ -211,18 +218,12 @@ export interface Adapter {
    * spec is unchanged. Must not touch the filesystem: use the supplied results to discover child
    * paths and let `exists` report read outcomes.
    *
-   * `projectRoot` is the repository containing {@link Environment.cwd}, resolved by core before the
-   * first call and `undefined` outside a repository. An application that reads configuration from
-   * the repository root — or from every directory between it and the invocation directory — needs
-   * it to declare those paths at all, since {@link Environment} deliberately carries no filesystem
-   * access of its own. It is the same value {@link AdapterParseInput.projectRoot} carries.
+   * An application that reads configuration from the repository root — or from every directory
+   * between it and the invocation directory — needs {@link AdapterFilesInput.projectRoot} to
+   * declare those paths at all, since {@link Environment} deliberately carries no filesystem
+   * access of its own.
    */
-  readonly files: (
-    environment: Environment,
-    detection: AdapterDetection,
-    files: AdapterFileMap,
-    projectRoot: string | undefined,
-  ) => readonly AdapterFileSpec[];
+  readonly files: (input: AdapterFilesInput) => readonly AdapterFileSpec[];
   /**
    * Stable adapter identifier, unique across all loaded plugins.
    *

@@ -1,3 +1,5 @@
+import { advanceMarkdownFence, type MarkdownFence } from "./markdown-fence.js";
+
 const INDENTED_CODE_COLUMNS = 4;
 const TAB_STOP = 4;
 const LIST_MARKER_PATTERN = /^(?:[-*+]|\d{1,9}[.)])(?:[ \t]+|$)/u;
@@ -5,24 +7,10 @@ const LIST_MARKER_PATTERN = /^(?:[-*+]|\d{1,9}[.)])(?:[ \t]+|$)/u;
 /** Replaces Markdown code with spaces while preserving offsets and line boundaries. */
 export function maskMarkdownCode(content: string): string {
   const characters = content.split("");
-  const indentedCode = findIndentedCodeLines(content);
-  let fence: "```" | "~~~" | undefined;
+  const maskedLines = findCodeLines(content);
 
   for (let index = 0; index < characters.length;) {
-    const marker = content.slice(index, index + 3);
-    if (fence !== undefined) {
-      if (marker === fence && isLineStart(content, index)) {
-        fence = undefined;
-      }
-      index = maskUntilLineEnd(characters, content, index);
-      continue;
-    }
-    if (indentedCode.has(index)) {
-      index = maskUntilLineEnd(characters, content, index);
-      continue;
-    }
-    if ((marker === "```" || marker === "~~~") && isLineStart(content, index)) {
-      fence = marker;
+    if (maskedLines.has(index)) {
       index = maskUntilLineEnd(characters, content, index);
       continue;
     }
@@ -37,32 +25,33 @@ export function maskMarkdownCode(content: string): string {
 }
 
 /**
- * Start offsets of the lines Markdown reads as an indented code block.
+ * Start offsets of the lines Markdown reads as code: fenced blocks and indented blocks.
+ *
+ * Fences follow the shared CommonMark tracker, so a block opened with four backticks stays open
+ * past a three-backtick line here exactly as it does in managed-block parsing.
  *
  * Indentation on its own does not make a line code. Four spaces cannot interrupt a paragraph, and
  * inside a list they are simply how a nested item or a continuation line is written — the guidance
  * these documents are made of. So the threshold moves with the enclosing list item, and only a
  * line that opens a fresh block can qualify.
  */
-function findIndentedCodeLines(content: string): ReadonlySet<number> {
+function findCodeLines(content: string): ReadonlySet<number> {
   const starts = new Set<number>();
   let offset = 0;
-  let fence: string | undefined;
+  let fence: MarkdownFence | undefined;
   let listColumn = 0;
   let opensBlock = true;
 
   for (const line of content.split("\n")) {
     const start = offset;
     offset += line.length + 1;
-    const body = line.trim();
-    if (body.length === 0) {
+    if (line.trim().length === 0) {
       opensBlock = true;
       continue;
     }
-    if (fence !== undefined) {
-      fence = body.startsWith(fence) ? undefined : fence;
-    } else if (body.startsWith("```") || body.startsWith("~~~")) {
-      fence = body.slice(0, 3);
+    const next = advanceMarkdownFence(line, fence);
+    if (fence !== undefined || next !== undefined) {
+      starts.add(start);
     } else {
       const scan = scanBlockLine(line, listColumn, opensBlock);
       listColumn = scan.listColumn;
@@ -70,6 +59,7 @@ function findIndentedCodeLines(content: string): ReadonlySet<number> {
         starts.add(start);
       }
     }
+    fence = next;
     opensBlock = false;
   }
 
@@ -107,11 +97,6 @@ function indentColumn(line: string): number {
     column += TAB_STOP - (column % TAB_STOP);
   }
   return column;
-}
-
-function isLineStart(content: string, index: number): boolean {
-  const lineStart = content.lastIndexOf("\n", index - 1) + 1;
-  return content.slice(lineStart, index).trim().length === 0;
 }
 
 function maskUntilLineEnd(characters: string[], content: string, start: number): number {

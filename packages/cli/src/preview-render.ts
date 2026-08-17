@@ -3,6 +3,7 @@ import type { Writable } from "node:stream";
 import type { FixOperationPreview, PreparedFixPlan, prepareFixCandidates } from "@tryaura/core";
 import type { Check, Finding } from "@tryaura/aura-sdk";
 
+import { operationsForCandidate } from "./fix-report.js";
 import { safe, safeMultiline } from "./safe-text.js";
 import type { CliBranding } from "./types.js";
 
@@ -15,11 +16,10 @@ type AttributedFixPlan = Extract<
 /**
  * Shows what applying the plan would do; only the shape of each change unless `withDetail`.
  *
- * The preview is not positionally aligned with the candidates: coalescing lets several same-path
- * writes share one physical operation, so attribution goes through `operationPreviewIndexes` — the
- * same way the report reads it — and a shared operation prints under every check that asked for it.
- * Grouping them under the check that proposed each change is what lets the user judge the plan:
- * the findings themselves have not been printed yet at this point in the flow.
+ * Attribution goes through {@link operationsForCandidate} — the same way the report reads it — so
+ * a coalesced operation prints under every check that asked for it. Grouping them under the check
+ * that proposed each change is what lets the user judge the plan: the findings themselves have not
+ * been printed yet at this point in the flow.
  */
 export function renderFixPreview(
   plan: AttributedFixPlan,
@@ -27,12 +27,8 @@ export function renderFixPreview(
   output: Writable,
 ): void {
   output.write(`Fix preview: ${safe(plan.prepared.preview.summary)}\n`);
-  const previews = plan.prepared.preview.operations;
   for (const [candidateIndex, candidate] of plan.candidates.entries()) {
-    const operations = (plan.operationPreviewIndexes[candidateIndex] ?? []).flatMap((index) => {
-      const operation = previews[index];
-      return operation === undefined ? [] : [operation];
-    });
+    const operations = operationsForCandidate(plan, candidateIndex);
     if (operations.every((operation) => operation.effect === "noop")) {
       continue;
     }

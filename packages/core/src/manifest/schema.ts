@@ -7,6 +7,7 @@ import type {
   JsonValue,
 } from "@tryaura/aura-sdk";
 
+import { isRecord } from "../values.js";
 import { AURA_MANIFEST_SCHEMA_VERSION } from "./protocol.js";
 
 const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
@@ -221,10 +222,6 @@ function define<T>(target: Record<string, T>, key: string, value: T): void {
     value,
     writable: true,
   });
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function isJsonObject(value: JsonValue | undefined): value is JsonObject {

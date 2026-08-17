@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { createCheckReport, type CheckExplanation, type CheckReport } from "./report.js";
+import {
+  createCheckReport,
+  createOperationalFailureReport,
+  type CheckExplanation,
+  type CheckReport,
+} from "./report.js";
 import {
   assertValidCheckOutput,
   parseCheckExplanation,
@@ -111,6 +116,23 @@ describe("check-output-v1.schema.json", () => {
     });
 
     expect(parseCheckReport(JSON.stringify(report))).toEqual(report);
+  });
+
+  it("validates the operational-failure document --json emits on exit 3", () => {
+    const report = createOperationalFailureReport(
+      "check failed unexpectedly. This is a bug in a plugin or the CLI.",
+    );
+
+    // The --json contract promises exactly one parseable document on stdout; the run failing is
+    // no excuse, so the failure itself must serialize as a valid v1 report.
+    expect(report.status).toBe("operational-error");
+    expect(report.summary.exitCode).toBe(3);
+    expect(report.diagnostics).toHaveLength(1);
+    expect(parseCheckReport(JSON.stringify(report))).toEqual(report);
+
+    const detailed = createOperationalFailureReport("check failed unexpectedly.", "boom");
+    expect(detailed.diagnostics[0]?.detail).toBe("boom");
+    expect(parseCheckReport(JSON.stringify(detailed))).toEqual(detailed);
   });
 
   it("validates the explanation envelope", () => {

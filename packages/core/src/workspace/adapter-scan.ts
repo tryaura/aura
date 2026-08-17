@@ -114,6 +114,7 @@ export async function scanAdapter(adapter: Adapter, context: ScanContext): Promi
   return {
     app: {
       adapterId: adapter.id,
+      ...(adapter.capabilities === undefined ? {} : { capabilities: adapter.capabilities }),
       detection,
       displayName: adapter.displayName,
       ...(adapter.installHint === undefined ? {} : { installHint: adapter.installHint }),

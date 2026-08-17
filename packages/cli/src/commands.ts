@@ -24,7 +24,13 @@ import { fixOptionRejection } from "./check-options.js";
 import { selectChecks, type CheckSelection } from "./check-selection.js";
 import { runFixes } from "./fix.js";
 import { createCheckReport, type DiagnosticSource, type ReportFix } from "./report.js";
-import { renderExplanation, renderExplanationJson, renderHuman, renderJson } from "./render.js";
+import {
+  renderExplanation,
+  renderExplanationJson,
+  renderHuman,
+  renderJson,
+  renderOperationalFailureJson,
+} from "./render.js";
 import { safe } from "./safe-text.js";
 import type { CliBranding, CliExitCode } from "./types.js";
 
@@ -179,6 +185,10 @@ export class CheckCommand extends Command<AuraCliContext> {
 
       return report.summary.exitCode;
     } catch (error) {
+      // `--json` promises one parseable document on stdout even when the run itself fails.
+      if (this.json) {
+        renderOperationalFailureJson(error, this.detail, this.context.report);
+      }
       return reportUnexpectedFailure(
         error,
         "check",
