@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- durable undo scenarios share the same journal fixture. */
 import { chmod, lstat, mkdir, readFile, readlink, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -70,6 +71,35 @@ describe("durable fix-plan undo", () => {
     await expect(lstat(link)).rejects.toHaveProperty("code", "ENOENT");
     await expect(lstat(join(fixture.workspace, "nested"))).rejects.toHaveProperty("code", "ENOENT");
     await expect(readlink(link)).rejects.toHaveProperty("code", "ENOENT");
+  });
+
+  it("restores nested directories removed as one bottom-up group", async () => {
+    const fixture = await createFixture();
+    const root = join(fixture.workspace, "skill");
+    const nested = join(root, "references");
+    const skillFile = join(root, "SKILL.md");
+    const reference = join(nested, "guide.md");
+    await mkdir(nested, { recursive: true });
+    await writeFile(skillFile, "skill\n", "utf8");
+    await writeFile(reference, "guide\n", "utf8");
+    const plan: FixPlan = {
+      operations: [
+        { path: skillFile, type: "remove" },
+        { path: reference, type: "remove" },
+        { path: nested, type: "remove" },
+        { path: root, type: "remove" },
+      ],
+      summary: "Remove a complete skill tree.",
+    };
+
+    await executeFixPlan({ model: fixture.model, now, plan });
+    await expect(undoFixPlan({ model: fixture.model, now })).resolves.toMatchObject({
+      restoredOperationCount: 4,
+      status: "undone",
+    });
+
+    await expect(readFile(skillFile, "utf8")).resolves.toBe("skill\n");
+    await expect(readFile(reference, "utf8")).resolves.toBe("guide\n");
   });
 
   it("walks backward through successful plans with timestamp collisions", async () => {

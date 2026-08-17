@@ -25,7 +25,15 @@ Every top-level section is required, including sections that are still empty:
       "pinned": false
     }
   ],
-  "skills": [],
+  "skills": [
+    {
+      "id": "review",
+      "source": "plugin:official",
+      "version": "1.0.0",
+      "treeHash": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+      "pinned": false
+    }
+  ],
   "mcpServers": [],
   "ownership": {
     "claude-code": {
@@ -37,8 +45,14 @@ Every top-level section is required, including sections that are still empty:
 ```
 
 `apps` records which detected applications Aura should manage. Snippet versions and hashes record
-the exact selected content; a pinned snippet is kept at that revision. The `skills` and
-`mcpServers` arrays accept object entries and are populated by their corresponding setup features.
+the exact selected content; a pinned snippet is kept at that revision. Each skill records its
+source-local, kebab-case `id`, stable source provenance, source version, deterministic tree hash,
+and pin state. Source provenance starts with `plugin:`, `directory:`, or `driver:`. A pinned skill
+keeps its recorded revision. `mcpServers` is populated by its corresponding setup feature.
+
+Aura installs each managed skill once below `~/agents/skills/<id>` and links supported application
+skill directories to that shared copy. Two sources may publish the same local ID, but a manifest
+cannot select both at once because they would share the same installation directory.
 
 ## Ownership ledger
 

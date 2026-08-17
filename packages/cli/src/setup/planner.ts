@@ -1,5 +1,3 @@
-import { isDeepStrictEqual } from "node:util";
-
 import type {
   AuraManifest,
   AuraManifestApp,
@@ -7,15 +5,13 @@ import type {
   FileOperation,
   FixPlan,
 } from "@tryaura/aura-sdk";
-import {
-  AURA_MANIFEST_FILE_MODE,
-  createAuraManifestWriteOperation,
-  createEmptyAuraManifest,
-} from "@tryaura/core";
+import { createAuraManifestWriteOperation, createEmptyAuraManifest } from "@tryaura/core";
 
 import { catalogEntryId, catalogEntryName, type AppCatalogEntry } from "./catalog.js";
 import { planInstructions } from "./instruction-planner.js";
+import { shouldWriteManifest } from "./manifest-write.js";
 import { planSnippets } from "./snippet-planner.js";
+import { planSkills } from "./skill-planner.js";
 import type { SetupSelections, SetupStepContext } from "./types.js";
 
 /** A file the plan refuses to touch, and the reason the user can act on. */
@@ -61,12 +57,15 @@ export function planSetup(context: SetupStepContext): SetupPlanOutcome {
   blockers.push(...instructionPlan.blockers);
   const snippetPlan = planSetupSnippets(context, instructionPlan.operations);
   blockers.push(...snippetPlan.blockers);
+  const skillPlan = planSkills(context);
+  blockers.push(...skillPlan.blockers);
   const manifest = desiredManifest(
     context.manifest,
     apps,
     context.appCatalog,
     instructionPlan.ownership,
     context.selections.snippets === undefined ? undefined : snippetPlan.manifestSnippets,
+    skillPlan.manifestSkills,
   );
   const baseline = context.selections.baseline;
 
@@ -85,6 +84,7 @@ export function planSetup(context: SetupStepContext): SetupPlanOutcome {
   }
 
   operations.push(
+    ...skillPlan.operations,
     ...withPlannedSharedContent(
       instructionPlan.operations,
       context.model.sharedInstructions.path,
@@ -97,40 +97,15 @@ export function planSetup(context: SetupStepContext): SetupPlanOutcome {
     manifest,
     notices: snippetPlan.notices,
     plan: Object.freeze({
-      manualSteps: Object.freeze([...appManualSteps(context), ...instructionPlan.manualSteps]),
+      manualSteps: Object.freeze([
+        ...appManualSteps(context),
+        ...instructionPlan.manualSteps,
+        ...skillPlan.manualSteps,
+      ]),
       operations: Object.freeze(operations),
       summary: "Set up Aura on this machine from your selections.",
     }),
   });
-}
-
-/**
- * Whether the manifest needs rewriting.
- *
- * Content equality is not on its own enough to skip the write: core pins this file to
- * {@link AURA_MANIFEST_FILE_MODE} while applying a write and nothing else on the machine repairs
- * it, so a manifest whose bytes match but whose permissions have been widened still has work to do.
- * A mode the scan could not observe is treated as correct rather than rewritten on every run.
- */
-function shouldWriteManifest(
-  context: SetupStepContext,
-  desired: AuraManifest,
-  createManifest: boolean,
-  apps: SetupSelections["apps"],
-): boolean {
-  if (context.manifest.status === "ready") {
-    const mode = context.manifest.mode;
-    return (
-      !isDeepStrictEqual(context.manifest.value, desired) ||
-      (mode !== undefined && mode !== AURA_MANIFEST_FILE_MODE)
-    );
-  }
-  return (
-    createManifest ||
-    (apps !== undefined && apps.managed.length > 0) ||
-    context.selections.instructions !== undefined ||
-    context.selections.snippets !== undefined
-  );
 }
 
 function desiredManifest(
@@ -139,6 +114,7 @@ function desiredManifest(
   appCatalog: readonly AppCatalogEntry[],
   ownershipUpdates: ReadonlyMap<string, readonly string[]>,
   snippets: AuraManifest["snippets"] | undefined,
+  skills: AuraManifest["skills"],
 ): AuraManifest {
   const base = state.status === "ready" ? state.value : createEmptyAuraManifest();
   const ownership = desiredOwnership(base, ownershipUpdates);
@@ -146,7 +122,8 @@ function desiredManifest(
     apps === undefined
       ? { ...base, ownership }
       : { ...base, apps: desiredApps(base, apps, appCatalog), ownership };
-  return snippets === undefined ? withApps : { ...withApps, snippets };
+  const withSkills = { ...withApps, skills };
+  return snippets === undefined ? withSkills : { ...withSkills, snippets };
 }
 
 function planSetupSnippets(

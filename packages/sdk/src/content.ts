@@ -51,8 +51,20 @@ export interface Snippet extends ContentContribution {
   readonly source: FileContentSource;
 }
 
+/** Fields shared by a skill listing and its resolved directory. */
+export interface SkillListing {
+  /** One sentence describing what this skill does. */
+  readonly description: string;
+  /** Source-local, kebab-case identifier and installation directory name. */
+  readonly id: string;
+  /** Human-readable name. */
+  readonly name: string;
+  /** Semver version of the skill. */
+  readonly version: string;
+}
+
 /** A skill directory a user can install. */
-export interface SkillPack extends ContentContribution {
+export interface SkillPack extends SkillListing {
   /** Discriminant. */
   readonly kind: "skill-pack";
   /** The skill directory. */
@@ -75,16 +87,13 @@ export interface Preset extends ContentContribution {
   readonly source: FileContentSource;
 }
 
-/** A skill advertised by a {@link SkillSource}, before its contents are resolved. */
-export type SkillListing = ContentContribution;
-
 /**
  * A driver that discovers skills somewhere other than the plugin's own package.
  *
  * Both methods may use {@link Environment.exec}, so they run at build time rather than during a
  * check run.
  */
-export interface SkillSource {
+export interface SkillSourceDriver {
   /** One sentence describing where the skills come from. */
   readonly description: string;
   /** Stable identifier, namespaced by the owning {@link AuraPlugin.id}. */
@@ -103,4 +112,64 @@ export interface SkillSource {
     environment: Environment,
     skillIds: readonly string[],
   ) => Promise<ReadonlyMap<string, SkillPack>>;
+}
+
+/** Stable provenance carried by resolved packs and manifest selections. */
+export type SkillSourceId = `directory:${string}` | `driver:${string}` | `plugin:${string}`;
+
+/** A plugin's bundled skill collection. */
+export interface BundledSkillSource {
+  readonly id: Extract<SkillSourceId, `plugin:${string}`>;
+  readonly kind: "bundled";
+  readonly name: string;
+}
+
+/** A public directory speaking Aura's standard skill-directory protocol. */
+export interface StandardDirectorySkillSource {
+  readonly id: Extract<SkillSourceId, `directory:${string}`>;
+  readonly kind: "directory";
+  readonly name: string;
+  readonly url: string;
+}
+
+/** A standard directory authenticated with a token read from the named environment variable. */
+export interface PrivateDirectorySkillSource {
+  readonly id: Extract<SkillSourceId, `directory:${string}`>;
+  readonly kind: "private-directory";
+  readonly name: string;
+  readonly tokenEnv: string;
+  readonly url: string;
+}
+
+/** A build-time driver for a non-standard skill directory protocol. */
+export interface DriverSkillSource {
+  readonly driver: SkillSourceDriver;
+  readonly id: Extract<SkillSourceId, `driver:${string}`>;
+  readonly kind: "driver";
+  readonly name: string;
+}
+
+/** Stable source metadata paired with a source-local skill id. */
+export type SkillSource =
+  | BundledSkillSource
+  | DriverSkillSource
+  | PrivateDirectorySkillSource
+  | StandardDirectorySkillSource;
+
+/** One normalized UTF-8 file in a resolved skill pack. */
+export interface ResolvedSkillFile {
+  readonly content: string;
+  /** Portable, slash-separated path relative to the skill root. */
+  readonly path: string;
+}
+
+/** A catalog entry paired with the source that advertised its local id. */
+export interface ResolvedSkillListing extends SkillListing {
+  readonly source: SkillSource;
+}
+
+/** A source-attached skill directory ready for preview or fix-plan writes. */
+export interface ResolvedSkillPack extends ResolvedSkillListing {
+  readonly files: readonly ResolvedSkillFile[];
+  readonly treeHash: string;
 }

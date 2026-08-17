@@ -123,6 +123,7 @@ async function restoreBackup(request: UndoRequest, backup: ReadableBackup): Prom
     adapters: request.registry.adapters,
     environment: request.environment,
     snippets: request.registry.snippets,
+    skills: request.registry.skills,
   });
   const result = await undoFixPlan({
     backupId: backup.id,

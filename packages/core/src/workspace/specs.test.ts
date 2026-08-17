@@ -2,7 +2,12 @@ import type { AdapterFileSpec } from "@tryaura/aura-sdk";
 import { describe, expect, it } from "vitest";
 
 import { buildWorkspaceModel } from "../index.js";
-import { createMemoryReader, createTestAdapter, createTestEnvironment } from "./testing.js";
+import {
+  createMemoryReader,
+  createTestAdapter,
+  createTestEnvironment,
+  DIRECTORY,
+} from "./testing.js";
 
 const REQUIRED: AdapterFileSpec = {
   id: "config",
@@ -156,6 +161,30 @@ describe("declared path handling", () => {
       problem: "outside-project",
     });
     expect(diagnostics[0]?.message).toContain("outside /workspace");
+  });
+
+  it("allows project skill links only into Aura's canonical shared skill root", async () => {
+    const spec: AdapterFileSpec = {
+      id: "skills/review",
+      kind: "skills",
+      optional: true,
+      path: "/workspace/.claude/skills/review",
+      scope: "project",
+    };
+    const adapter = createTestAdapter({ files: () => [spec] });
+    const reader = createMemoryReader(
+      { [spec.path]: DIRECTORY, "/home/dev/agents/skills/review": DIRECTORY },
+      { links: { [spec.path]: "/home/dev/agents/skills/review" } },
+    );
+
+    const { diagnostics, model } = await buildWorkspaceModel({
+      adapters: [adapter],
+      environment: createTestEnvironment({ cwd: "/workspace", homeDir: "/home/dev" }),
+      reader,
+    });
+
+    expect(diagnostics).toEqual([]);
+    expect(model.apps[0]?.sourceFiles[0]).toMatchObject({ exists: true, problem: undefined });
   });
 
   it("honors an adapter-discovered project boundary after canonicalizing it", async () => {

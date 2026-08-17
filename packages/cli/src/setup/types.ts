@@ -1,4 +1,10 @@
-import type { AuraManifestState, Finding, Scope, WorkspaceModel } from "@tryaura/aura-sdk";
+import type {
+  AuraManifestSkill,
+  AuraManifestState,
+  Finding,
+  Scope,
+  WorkspaceModel,
+} from "@tryaura/aura-sdk";
 
 import type { AppCatalogEntry } from "./catalog.js";
 import type { SnippetCatalog } from "./snippets.js";
@@ -45,6 +51,15 @@ interface SnippetSelections {
   readonly selected: readonly string[];
 }
 
+export interface SkillSelection {
+  readonly id: string;
+  readonly source: AuraManifestSkill["source"];
+}
+
+interface SkillSelections {
+  readonly selected: readonly SkillSelection[];
+}
+
 /**
  * Everything the wizard has decided so far, one optional slice per step id.
  *
@@ -57,6 +72,7 @@ export interface SetupSelections {
   readonly baseline?: BaselineSelections | undefined;
   readonly instructions?: InstructionSelections | undefined;
   readonly snippets?: SnippetSelections | undefined;
+  readonly skills?: SkillSelections | undefined;
 }
 
 export interface SetupStepContext {

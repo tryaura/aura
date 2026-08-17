@@ -1,36 +1,18 @@
-import { fileURLToPath } from "node:url";
-
-import type {
-  Adapter,
-  AppModel,
-  Environment,
-  ResolvedSnippet,
-  Snippet,
-  WorkspaceModel,
-} from "@tryaura/aura-sdk";
+import type { Adapter, AppModel, Environment, Snippet, WorkspaceModel } from "@tryaura/aura-sdk";
 
 import { auraManifestDiagnostics } from "../manifest/diagnostic.js";
+import type { RegisteredSkillPack } from "../plugin-registry.js";
 import { resolveAuraManifestPath } from "../manifest/protocol.js";
 import { readAuraManifest } from "../manifest/read.js";
-import {
-  canonicalizeManagedSnippet,
-  hashCanonicalManagedSnippet,
-} from "../managed-block/protocol.js";
-import { managedSnippetContentProblems } from "../managed-block/scan.js";
 import { type ScanContext, scanAdapter, type SkippedApp } from "./adapter-scan.js";
 import type { ScanDiagnostic } from "./diagnostics.js";
 import { createDocumentResolver } from "./documents.js";
-import { isEmbeddedAssetPath } from "./embedded-assets.js";
 import { findProjectRoot } from "./project-root.js";
-import {
-  createCachingReader,
-  createFileReader,
-  type FileReader,
-  type PathContents,
-} from "./reader.js";
-import { MAX_SNIPPET_BYTES } from "./reader-limits.js";
+import { createCachingReader, createFileReader, type FileReader } from "./reader.js";
 import { scanRepository } from "./repository.js";
 import { sharedInstructionsPath, toSharedInstructions } from "./shared-links.js";
+import { resolveBundledSkills, scanSharedSkills } from "./skills.js";
+import { resolveSnippets } from "./snippets.js";
 
 export type { SkippedApp } from "./adapter-scan.js";
 
@@ -47,12 +29,10 @@ export interface WorkspaceScanOptions {
   readonly environment: Environment;
   /** Filesystem access. Defaults to the real one. */
   readonly reader?: FileReader | undefined;
-  /**
-   * Registry snippets to resolve during the same read pass, each bounded by
-   * {@link MAX_SNIPPET_BYTES}. A snippet that cannot be resolved is reported as a diagnostic and
-   * left out of the model rather than surfaced as a partial one.
-   */
+  /** Registry snippets to resolve during the same read pass. */
   readonly snippets?: readonly Snippet[] | undefined;
+  /** Bundled skills paired with their owning plugin source. */
+  readonly skills?: readonly RegisteredSkillPack[] | undefined;
 }
 
 /** The outcome of one scan: what the machine looks like, and what went wrong while looking. */
@@ -95,19 +75,26 @@ export async function buildWorkspaceModel(options: WorkspaceScanOptions): Promis
   const sharedPath = sharedInstructionsPath(environment);
   const manifestPath = resolveAuraManifestPath(environment.homeDir);
 
-  // The repository scan needs only the project root, so it runs alongside the adapters rather than
-  // after them: its Git probes are latency the scan would otherwise pay end to end.
-  const [scans, root, repository, sharedContents, manifestContents, resolvedSnippets] =
-    await Promise.all([
-      Promise.all(options.adapters.map((adapter) => scanAdapter(adapter, context))),
-      projectRoot,
-      projectRoot.then((found) =>
-        found === undefined ? undefined : scanRepository(found, environment, reader),
-      ),
-      reader.read(sharedPath),
-      reader.read(manifestPath),
-      resolveSnippets(options.snippets ?? [], reader),
-    ]);
+  // Start every independent scan before awaiting any one of them.
+  const scansPending = Promise.all(
+    options.adapters.map((adapter) => scanAdapter(adapter, context)),
+  );
+  const repositoryPending = projectRoot.then((found) =>
+    found === undefined ? undefined : scanRepository(found, environment, reader),
+  );
+  const sharedContentsPending = reader.read(sharedPath);
+  const manifestContentsPending = reader.read(manifestPath);
+  const resolvedSnippetsPending = resolveSnippets(options.snippets ?? [], reader);
+  const resolvedSkillsPending = resolveBundledSkills(options.skills ?? [], reader);
+  const sharedSkillsPending = scanSharedSkills(environment, reader);
+  const scans = await scansPending;
+  const root = await projectRoot;
+  const repository = await repositoryPending;
+  const sharedContents = await sharedContentsPending;
+  const manifestContents = await manifestContentsPending;
+  const resolvedSnippets = await resolvedSnippetsPending;
+  const resolvedSkills = await resolvedSkillsPending;
+  const sharedSkills = await sharedSkillsPending;
 
   const apps: AppModel[] = [];
   const diagnostics: ScanDiagnostic[] = [];
@@ -125,10 +112,12 @@ export async function buildWorkspaceModel(options: WorkspaceScanOptions): Promis
   const manifest = readAuraManifest(manifestPath, manifestContents);
   diagnostics.push(...auraManifestDiagnostics(manifest));
   diagnostics.push(...resolvedSnippets.diagnostics);
+  diagnostics.push(...resolvedSkills.diagnostics);
 
   return {
     diagnostics,
     model: {
+      availableSkills: resolvedSkills.skills,
       availableSnippets: resolvedSnippets.snippets,
       apps,
       cwd: environment.cwd,
@@ -139,6 +128,7 @@ export async function buildWorkspaceModel(options: WorkspaceScanOptions): Promis
       projectRoot: root,
       ...(repository === undefined ? {} : { repository }),
       sharedInstructions: toSharedInstructions(sharedPath, sharedContents),
+      sharedSkills,
       skills: apps.flatMap((app) => app.skills),
     },
     skipped,
@@ -159,130 +149,6 @@ async function canonicalizeEnvironmentPaths(
     cwd: cwd ?? environment.cwd,
     homeDir: homeDir ?? environment.homeDir,
   });
-}
-
-/** The core-owned adapter id standing in for snippet resolution, which no adapter performs. */
-const SNIPPET_DIAGNOSTIC_ID = "core/snippets";
-
-/** One resolved snippet, or the reason it could not be resolved. */
-type SnippetOutcome =
-  | { readonly diagnostic: ScanDiagnostic; readonly kind: "failed" }
-  | { readonly kind: "resolved"; readonly snippet: ResolvedSnippet };
-
-interface ResolvedSnippets {
-  readonly diagnostics: readonly ScanDiagnostic[];
-  readonly snippets: readonly ResolvedSnippet[];
-}
-
-/**
- * Reads and hashes every registered snippet, reporting each one it had to drop.
- *
- * A dropped snippet is invisible in the model, and the features built on it — restoring a
- * hand-edited managed block, most of all — degrade into saying the registry never offered it.
- * That reads as a missing registration rather than an unreadable file, so every failure gets a
- * diagnostic naming the snippet and what actually went wrong.
- */
-async function resolveSnippets(
-  snippets: readonly Snippet[],
-  reader: FileReader,
-): Promise<ResolvedSnippets> {
-  const outcomes = await Promise.all(snippets.map((snippet) => resolveSnippet(snippet, reader)));
-
-  return Object.freeze({
-    diagnostics: Object.freeze(
-      outcomes.filter((outcome) => outcome.kind === "failed").map((outcome) => outcome.diagnostic),
-    ),
-    snippets: Object.freeze(
-      outcomes.filter((outcome) => outcome.kind === "resolved").map((outcome) => outcome.snippet),
-    ),
-  });
-}
-
-async function resolveSnippet(snippet: Snippet, reader: FileReader): Promise<SnippetOutcome> {
-  let path: string;
-  try {
-    path = fileURLToPath(snippet.source.url);
-  } catch {
-    return failedSnippet(
-      `Snippet "${snippet.id}" declares a source that is not an absolute file: URL, so its content is unavailable.`,
-      "files",
-    );
-  }
-
-  const contents = await reader.read(path, { maxBytes: MAX_SNIPPET_BYTES });
-  const read = readSnippetSource(snippet, path, contents);
-  if (read.message !== undefined) {
-    return failedSnippet(read.message, "read", path);
-  }
-
-  const content = canonicalizeManagedSnippet(read.content);
-  const problem = managedSnippetContentProblems(snippet.id, content)[0];
-  if (problem !== undefined) {
-    return failedSnippet(problem.message, "parse", path);
-  }
-
-  return {
-    kind: "resolved",
-    snippet: Object.freeze({
-      content,
-      description: snippet.description,
-      hash: hashCanonicalManagedSnippet(content),
-      id: snippet.id,
-      name: snippet.name,
-      version: snippet.version,
-    }),
-  };
-}
-
-/** Usable snippet text, or the one sentence saying why this read produced none. */
-type SnippetSource =
-  | { readonly content: string; readonly message?: undefined }
-  | { readonly content?: undefined; readonly message: string };
-
-function readSnippetSource(snippet: Snippet, path: string, source: PathContents): SnippetSource {
-  if (!source.exists) {
-    // Inside a compiled executable a missing snippet is a build mistake, not a broken machine:
-    // the Markdown was never embedded. Say which flags embed it rather than blaming the filesystem.
-    return {
-      message: isEmbeddedAssetPath(path)
-        ? `Snippet "${snippet.id}" was not embedded in this executable, so its content is unavailable. Compile it with the snippet Markdown as extra "bun build" entrypoints, "--loader .md:file", and "--asset-naming=content/snippets/[name].[ext]".`
-        : `Snippet "${snippet.id}" points at a file that does not exist, so its content is unavailable.`,
-    };
-  }
-  if (source.isDirectory) {
-    return {
-      message: `Snippet "${snippet.id}" points at a directory rather than a Markdown file, so its content is unavailable.`,
-    };
-  }
-  if (source.problem !== undefined || source.content === undefined) {
-    return {
-      message: `Snippet "${snippet.id}" could not be read (${source.problem ?? "unknown"}), so its content is unavailable.`,
-    };
-  }
-  // A truncated snippet still parses and still hashes, so it would restore as a silently shortened
-  // file. Size is only reported when a bound was requested, which is exactly this call.
-  if (source.size !== undefined && source.size > MAX_SNIPPET_BYTES) {
-    return {
-      message: `Snippet "${snippet.id}" is larger than the ${String(MAX_SNIPPET_BYTES)} byte snippet limit, so its content is unavailable.`,
-    };
-  }
-  return { content: source.content };
-}
-
-function failedSnippet(
-  message: string,
-  phase: ScanDiagnostic["phase"],
-  path?: string,
-): SnippetOutcome {
-  return {
-    diagnostic: {
-      adapterId: SNIPPET_DIAGNOSTIC_ID,
-      message,
-      ...(path === undefined ? {} : { path }),
-      phase,
-    },
-    kind: "failed",
-  };
 }
 
 /**

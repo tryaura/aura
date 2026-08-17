@@ -1,13 +1,26 @@
 /* eslint-disable max-lines -- one end-to-end setup matrix shares the same filesystem fixtures. */
-import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  readlink,
+  realpath,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { PassThrough } from "node:stream";
+import { pathToFileURL } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createEnvironment, createPluginRegistry, type PluginRegistry } from "@tryaura/core";
-import type { Environment } from "@tryaura/aura-sdk";
+import { definePlugin, type Adapter, type Environment } from "@tryaura/aura-sdk";
+import claudeCodePlugin from "@tryaura/adapter-claude-code";
+import codexPlugin from "@tryaura/adapter-codex";
 
 import { appsPlugin, BRANDING, findingPlugin } from "../testing.js";
 import { runSetup, type SetupRequest } from "./setup.js";
@@ -101,6 +114,79 @@ describe("runSetup", () => {
     const exitCode = await runSetup(fixture.request());
 
     expect(exitCode).toBe(0);
+    expect(fixture.stdout()).toContain("Already converged — nothing to do.");
+    await expect(snapshot(fixture.homeDir)).resolves.toEqual(before);
+  });
+
+  it("installs a bundled skill into Claude Code and Codex and converges twice", async () => {
+    const fixture = await createFixture();
+    const pack = join(fixture.homeDir, "fixture-pack");
+    await mkdir(join(pack, "references"), { recursive: true });
+    await writeFile(join(pack, "SKILL.md"), "---\nname: review\n---\n# Review\n", "utf8");
+    await writeFile(join(pack, "references", "guide.md"), "Guide\n", "utf8");
+    const installedClaude = {
+      ...firstAdapter(claudeCodePlugin.adapters),
+      detect: () => Promise.resolve({ installed: true }),
+    };
+    const installedCodex = {
+      ...firstAdapter(codexPlugin.adapters),
+      detect: () => Promise.resolve({ installed: true }),
+    };
+    const registry = createPluginRegistry([
+      findingPlugin("info", []),
+      definePlugin({
+        adapters: [installedClaude, installedCodex],
+        apiVersion: 1,
+        id: "fixture-skills",
+        name: "Fixture Skills",
+        skills: [
+          {
+            description: "Review code.",
+            id: "review",
+            kind: "skill-pack",
+            name: "Review",
+            source: { type: "directory", url: pathToFileURL(pack).href },
+            version: "1.0.0",
+          },
+        ],
+        version: "1.0.0",
+      }),
+    ]);
+    const step: SetupStep = {
+      gather: (context) =>
+        Promise.resolve({
+          ...context.selections,
+          apps: { managed: ["claude-code", "codex"] },
+          skills: { selected: [{ id: "review", source: "plugin:fixture-skills" }] },
+        }),
+      id: "fixture-skills",
+      title: "fixture skills",
+    };
+
+    const firstExit = await runSetup(fixture.request({}, { registry, steps: [step] }));
+    expect(firstExit, `${fixture.stdout()}\n${fixture.stderr()}`).toBe(0);
+    const manifest = JSON.parse(
+      await readFile(join(fixture.homeDir, "agents", "aura.json"), "utf8"),
+    );
+    expect(manifest.skills).toEqual([
+      {
+        id: "review",
+        pinned: false,
+        source: "plugin:fixture-skills",
+        treeHash: expect.stringMatching(/^[0-9a-f]{64}$/u),
+        version: "1.0.0",
+      },
+    ]);
+    const sharedSkill = join(await realpath(fixture.homeDir), "agents", "skills", "review");
+    await expect(readlink(join(fixture.homeDir, ".claude", "skills", "review"))).resolves.toBe(
+      sharedSkill,
+    );
+    await expect(readlink(join(fixture.homeDir, ".codex", "skills", "review"))).resolves.toBe(
+      sharedSkill,
+    );
+
+    const before = await snapshot(fixture.homeDir);
+    expect(await runSetup(fixture.request({}, { registry, steps: [step] }))).toBe(0);
     expect(fixture.stdout()).toContain("Already converged — nothing to do.");
     await expect(snapshot(fixture.homeDir)).resolves.toEqual(before);
   });
@@ -370,6 +456,14 @@ function stubStep(id: string): SetupStep {
   };
 }
 
+function firstAdapter(adapters: readonly Adapter[] | undefined): Adapter {
+  const adapter = adapters?.[0];
+  if (adapter === undefined) {
+    throw new Error("expected an adapter fixture");
+  }
+  return adapter;
+}
+
 function capture(): { readonly read: () => string; readonly stream: PassThrough } {
   const stream = new PassThrough();
   stream.setEncoding("utf8");
@@ -386,7 +480,9 @@ async function snapshot(directory: string): Promise<Readonly<Record<string, stri
   const walk = async (current: string): Promise<void> => {
     for (const entry of await readdir(current, { withFileTypes: true })) {
       const path = join(current, entry.name);
-      if (entry.isDirectory()) {
+      if (entry.isSymbolicLink()) {
+        entries[relative(directory, path)] = `symlink:${await readlink(path)}`;
+      } else if (entry.isDirectory()) {
         entries[`${relative(directory, path)}/`] = "directory";
         await walk(path);
       } else {

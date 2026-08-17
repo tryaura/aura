@@ -4,8 +4,9 @@ import type {
   Check,
   McpServerDef,
   Preset,
+  BundledSkillSource,
   SkillPack,
-  SkillSource,
+  SkillSourceDriver,
   Snippet,
 } from "@tryaura/aura-sdk";
 
@@ -54,9 +55,15 @@ export interface PluginRegistry {
   readonly ownerOf: (kind: ContributionKind, id: string) => AuraPlugin | undefined;
   readonly plugins: readonly AuraPlugin[];
   readonly presets: readonly Preset[];
-  readonly skills: readonly SkillPack[];
-  readonly skillSources: readonly SkillSource[];
+  readonly skills: readonly RegisteredSkillPack[];
+  readonly skillSources: readonly SkillSourceDriver[];
   readonly snippets: readonly Snippet[];
+}
+
+/** A bundled skill paired with the plugin source that owns its local id. */
+export interface RegisteredSkillPack {
+  readonly skill: SkillPack;
+  readonly source: BundledSkillSource;
 }
 
 /** Everything accepted so far, one list per contribution kind. */
@@ -66,8 +73,8 @@ interface CollectedContributions {
   readonly mcpServers: McpServerDef[];
   readonly plugins: AuraPlugin[];
   readonly presets: Preset[];
-  readonly skills: SkillPack[];
-  readonly skillSources: SkillSource[];
+  readonly skills: RegisteredSkillPack[];
+  readonly skillSources: SkillSourceDriver[];
   readonly snippets: Snippet[];
 }
 
@@ -150,7 +157,34 @@ function collectCandidate(
   collectChecks(state, plugin.checks, plugin, allowsBareCheckIds, collected.checks);
   collectNamespaced(state, "mcp-server", plugin.mcpCatalog, plugin, collected.mcpServers);
   collectNamespaced(state, "preset", plugin.presets, plugin, collected.presets);
-  collectNamespaced(state, "skill-pack", plugin.skills, plugin, collected.skills);
+  collectSkills(state, plugin, collected.skills);
   collectNamespaced(state, "skill-source", plugin.skillSources, plugin, collected.skillSources);
   collectNamespaced(state, "snippet", plugin.snippets, plugin, collected.snippets);
+}
+
+const SKILL_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
+
+function collectSkills(
+  state: RegistryState,
+  plugin: AuraPlugin,
+  collected: RegisteredSkillPack[],
+): void {
+  const source: BundledSkillSource = {
+    id: `plugin:${plugin.id}`,
+    kind: "bundled",
+    name: plugin.name,
+  };
+  for (const skill of plugin.skills ?? []) {
+    if (skill.id.length > 64 || !SKILL_ID_PATTERN.test(skill.id)) {
+      state.violations.push(
+        `Plugin "${plugin.name}" (${plugin.id}) contributes skill-pack ID "${skill.id}"; ` +
+          "expected a kebab-case local skill ID of at most 64 characters.",
+      );
+      continue;
+    }
+    const identity = `${source.id}/${skill.id}`;
+    if (claimId(state, "skill-pack", identity, plugin)) {
+      collected.push({ skill, source });
+    }
+  }
 }

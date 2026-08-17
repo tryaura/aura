@@ -104,7 +104,7 @@ export interface ExecResult {
 /**
  * Ambient state injected into plugins, so nothing reads `process` or the clock directly.
  *
- * Only {@link Adapter.detect}, {@link Adapter.files}, and the {@link SkillSource} methods receive
+ * Only {@link Adapter.detect}, {@link Adapter.files}, and {@link SkillSourceDriver} methods receive
  * an `Environment`. Checks and fixes never do — see {@link Check}.
  */
 export interface Environment {

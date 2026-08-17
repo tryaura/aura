@@ -10,6 +10,7 @@ export const CODEX_SOURCE_IDS = Object.freeze({
   instructions: "codex.instructions.global",
   instructionsProject: "codex.instructions.project",
   mcp: "codex.mcp.global",
+  skillsGlobal: "codex.skills.global",
 });
 
 /**

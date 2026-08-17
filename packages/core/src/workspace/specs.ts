@@ -28,6 +28,8 @@ export interface SpecReadOptions {
    */
   readonly projectBoundary: string | undefined;
   readonly reader: FileReader;
+  /** Canonical Aura-owned skill root that project skill links may deliberately bridge to. */
+  readonly sharedSkillsRoot?: string | undefined;
 }
 
 /**
@@ -148,6 +150,7 @@ interface ProjectEscape {
   readonly path: string;
 }
 
+// fallow-ignore-next-line complexity -- each guard preserves one project-boundary security case.
 async function findEscape(
   spec: AdapterFileSpec,
   options: SpecReadOptions,
@@ -168,7 +171,13 @@ async function findEscape(
     return { boundary: requestedBoundary, path: spec.path };
   }
   const resolved = await options.reader.realPath(spec.path);
-  if (resolved === undefined || contains(projectBoundary, resolved)) {
+  if (
+    resolved === undefined ||
+    contains(projectBoundary, resolved) ||
+    (spec.kind === "skills" &&
+      options.sharedSkillsRoot !== undefined &&
+      contains(options.sharedSkillsRoot, resolved))
+  ) {
     return undefined;
   }
 

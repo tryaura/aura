@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- the manifest protocol matrix keeps every v1 field together. */
 import { describe, expect, it } from "vitest";
 
 import {
@@ -43,7 +44,16 @@ describe("Aura manifest protocol", () => {
         },
       },
       schemaVersion: 1,
-      skills: [{ id: "official/review", source: { kind: "future" } }],
+      skills: [
+        {
+          channel: "nightly",
+          id: "review",
+          pinned: false,
+          source: "plugin:official",
+          treeHash: HASH,
+          version: "1.2.3",
+        },
+      ],
       snippets: [
         {
           hash: HASH,
@@ -143,6 +153,67 @@ describe("Aura manifest protocol", () => {
         snippets: [{ hash: "short", id: "x", pinned: false, version: "1" }],
       },
       "$.snippets[0].hash",
+      "lowercase SHA-256",
+    ],
+    [
+      {
+        apps: {},
+        mcpServers: [],
+        ownership: {},
+        schemaVersion: 1,
+        skills: [
+          { id: "review", pinned: false, source: "plugin:one", treeHash: HASH, version: "1" },
+          { id: "review", pinned: false, source: "plugin:two", treeHash: HASH, version: "1" },
+        ],
+        snippets: [],
+      },
+      "$.skills[1].id",
+      "must not duplicate",
+    ],
+    [
+      {
+        apps: {},
+        mcpServers: [],
+        ownership: {},
+        schemaVersion: 1,
+        skills: [
+          { id: "Review", pinned: false, source: "plugin:official", treeHash: HASH, version: "1" },
+        ],
+        snippets: [],
+      },
+      "$.skills[0].id",
+      "kebab-case skill ID",
+    ],
+    [
+      {
+        apps: {},
+        mcpServers: [],
+        ownership: {},
+        schemaVersion: 1,
+        skills: [{ id: "review", pinned: false, source: "official", treeHash: HASH, version: "1" }],
+        snippets: [],
+      },
+      "$.skills[0].source",
+      "plugin:, directory:, or driver:",
+    ],
+    [
+      {
+        apps: {},
+        mcpServers: [],
+        ownership: {},
+        schemaVersion: 1,
+        skills: [
+          {
+            id: "review",
+            pinned: false,
+            source: "plugin:official",
+            treeHash: "short",
+            version: "1",
+          },
+        ],
+        snippets: [],
+      },
+      "$.skills[0].treeHash",
       "lowercase SHA-256",
     ],
     [

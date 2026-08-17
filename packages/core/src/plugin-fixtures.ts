@@ -5,7 +5,7 @@ import type {
   Preset,
   SkillListing,
   SkillPack,
-  SkillSource,
+  SkillSourceDriver,
   Snippet,
 } from "@tryaura/aura-sdk";
 
@@ -20,7 +20,7 @@ export interface PluginFixtureOptions {
   readonly name?: string | undefined;
   readonly presets?: readonly Preset[] | undefined;
   readonly skills?: readonly SkillPack[] | undefined;
-  readonly skillSources?: readonly SkillSource[] | undefined;
+  readonly skillSources?: readonly SkillSourceDriver[] | undefined;
   readonly snippets?: readonly Snippet[] | undefined;
   readonly version?: string | undefined;
 }
@@ -116,7 +116,7 @@ export function createPreset(id: string): Preset {
   };
 }
 
-export function createSkillSource(id: string): SkillSource {
+export function createSkillSource(id: string): SkillSourceDriver {
   return {
     description: "Fixture skill source.",
     id,

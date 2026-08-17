@@ -23,9 +23,10 @@ Every slot is optional.
 
 ## Namespacing
 
-Every contribution `id` must be namespaced under the plugin's own `id`. Plugin `acme` contributes
-`acme/rules`, never `rules`. The registry validates versions, IDs, collisions, and referenced
-content before any of it is used.
+Most contribution IDs are namespaced under the plugin's own ID. Plugin `acme` contributes
+`acme/rules`, never `rules`. Bundled skills are the exception: their kebab-case IDs are local to
+their source, so `review` from `plugin:acme` and `review` from another source can coexist in the
+catalog. The registry validates versions, IDs, and composite source/skill collisions.
 
 ## Content references
 

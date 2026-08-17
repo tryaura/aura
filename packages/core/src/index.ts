@@ -78,7 +78,12 @@ export type {
   ManagedSnippetResolution,
 } from "./managed-block/types.js";
 export { createPluginRegistry } from "./plugin-registry.js";
-export type { PluginRegistry, PluginRegistryOptions } from "./plugin-registry.js";
+/** @public */
+export type {
+  PluginRegistry,
+  PluginRegistryOptions,
+  RegisteredSkillPack,
+} from "./plugin-registry.js";
 export { SUPPORTED_PLUGIN_API_VERSION } from "./plugin-validation.js";
 export type { ContributionKind, PluginCandidate } from "./plugin-validation.js";
 export { buildWorkspaceModel } from "./workspace/build.js";

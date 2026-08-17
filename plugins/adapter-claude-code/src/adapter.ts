@@ -3,10 +3,13 @@ import { join } from "node:path";
 import {
   defineAdapter,
   detectExecutable,
+  parseInstalledSkills,
   SHARED_INSTRUCTIONS_TEMPLATE_TOKEN,
+  skillDirectorySpecs,
   type AdapterFileSpec,
   type AdapterFilesInput,
   type AdapterProblem,
+  type AdapterSkillDirectory,
   type AdapterSourceFile,
   type JsonObject,
 } from "@tryaura/aura-sdk";
@@ -22,10 +25,15 @@ import { parsePermissionSettings } from "./settings.js";
 
 /** Path segments {@link claudeFiles} appends to the home directory for the global instructions. */
 const GLOBAL_INSTRUCTIONS_SEGMENTS = Object.freeze([".claude", "CLAUDE.md"]);
+const SKILL_DIRECTORIES: readonly AdapterSkillDirectory[] = Object.freeze([
+  { entryPath: "~/.claude/skills", id: SOURCE_IDS.skillsGlobal },
+  { entryPath: "./.claude/skills", id: SOURCE_IDS.skillsProject },
+]);
 
 export const claudeCodeAdapter = defineAdapter({
   capabilities: {
     instructions: { importDepthLimit: 5, importStyle: "at-import", loading: "import-graph" },
+    skills: { directories: SKILL_DIRECTORIES },
   },
   detect: (environment) =>
     detectExecutable(environment, { authenticationArgs: ["auth", "status"], binaryName: "claude" }),
@@ -34,7 +42,8 @@ export const claudeCodeAdapter = defineAdapter({
   files: claudeFiles,
   id: CLAUDE_CODE_ADAPTER_ID,
   installHint: "Run `claude update`, or reinstall Claude Code from https://claude.ai/install.",
-  parse: ({ cwd, files, homeDir }) => {
+  parse: (input) => {
+    const { cwd, files, homeDir } = input;
     const globalFile = files.get(SOURCE_IDS.mcp);
     const projectFile = files.get(SOURCE_IDS.mcpProject);
     const global =
@@ -59,7 +68,7 @@ export const claudeCodeAdapter = defineAdapter({
         ...unusableMcp(globalFile, global.malformed),
         ...unusableMcp(projectFile, project.malformed),
       ],
-      skills: [],
+      skills: parseInstalledSkills(CLAUDE_CODE_ADAPTER_ID, input, SKILL_DIRECTORIES),
     };
   },
   projectSharedLink: {
@@ -132,7 +141,8 @@ function permissionMetadata(
  * highest-precedence file Claude Code reads here: a claim about the effective mode that ignored
  * it could be false on the very machine being scanned.
  */
-function claudeFiles({ environment }: AdapterFilesInput): readonly AdapterFileSpec[] {
+function claudeFiles(input: AdapterFilesInput): readonly AdapterFileSpec[] {
+  const { environment } = input;
   return [
     {
       id: SOURCE_IDS.instructions,
@@ -183,5 +193,6 @@ function claudeFiles({ environment }: AdapterFilesInput): readonly AdapterFileSp
       path: join(environment.cwd, ".claude", "settings.json"),
       scope: "project",
     },
+    ...skillDirectorySpecs(input, SKILL_DIRECTORIES),
   ];
 }

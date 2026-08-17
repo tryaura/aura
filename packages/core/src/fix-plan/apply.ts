@@ -102,7 +102,11 @@ async function applyRemove(
   const index = prepared.preview.index;
   const before = prepared.before;
 
-  await verifyPath(path, before, index, plan);
+  if (prepared.removalGroupDirectory === true && before.kind === "directory") {
+    await verifyEmptiedDirectory(path, before, index, plan);
+  } else {
+    await verifyPath(path, before, index, plan);
+  }
 
   if (before.kind === "directory") {
     await rmdir(path);
@@ -124,6 +128,24 @@ async function applyRemove(
   return undoStep(index, undefined, async () => {
     await symlink(before.target, path);
   });
+}
+
+async function verifyEmptiedDirectory(
+  path: string,
+  expected: Extract<PathState, { readonly kind: "directory" }>,
+  operationIndex: number,
+  plan: PreparedPlanState,
+): Promise<void> {
+  await revalidateMutationPath(path, plan.policy, operationIndex);
+  const current = await inspectPath(path, operationIndex, 0);
+  if (current.kind !== "directory" || !current.empty || current.mode !== expected.mode) {
+    throw operationError(
+      "filesystem-changed",
+      operationIndex,
+      `directory did not become empty through its removal group: ${path}`,
+      { path },
+    );
+  }
 }
 
 async function applySymlink(

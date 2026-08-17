@@ -110,6 +110,9 @@ describe("Codex global model", () => {
   it("declares that whole files load and imports stay prose, for checks to read", () => {
     expect(codexAdapter.capabilities).toEqual({
       instructions: { importStyle: "none", loading: "all-files" },
+      skills: {
+        directories: [{ entryPath: "~/.codex/skills", id: "codex.skills.global" }],
+      },
     });
   });
 
@@ -138,6 +141,13 @@ describe("Codex global model", () => {
         kind: "mcp",
         optional: true,
         path: "/home/dev/.codex/config.toml",
+        scope: "global",
+      },
+      {
+        id: "codex.skills.global",
+        kind: "skills",
+        optional: true,
+        path: "/home/dev/.codex/skills",
         scope: "global",
       },
     ]);

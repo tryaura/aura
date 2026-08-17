@@ -8,7 +8,9 @@ import type { AdapterCapabilities } from "./capabilities.js";
 import type { AdapterSharedLinkKind } from "./shared-link.js";
 import type { JsonObject, Scope } from "./common.js";
 import type { AuraManifestState } from "./manifest.js";
+import type { ResolvedSkillPack } from "./content.js";
 import type { RepositoryModel } from "./repository.js";
+import type { InstalledSkill, ResolvedSkillDirectory, SharedSkillState } from "./skill-model.js";
 
 /** A plugin snippet whose bundled source was resolved during the workspace scan. */
 export interface ResolvedSnippet {
@@ -140,26 +142,6 @@ export interface McpServer {
   readonly transport: McpTransport;
 }
 
-/** A skill present on disk for one agent application. */
-export interface InstalledSkill {
-  /** The {@link Adapter.id} that parsed this entry. */
-  readonly appId: string;
-  /** Skill identifier as recorded by the application. */
-  readonly id: string;
-  /** The name a user types to invoke the skill, when it differs from `id`. */
-  readonly invocationName?: string | undefined;
-  /** Human-readable skill name. */
-  readonly name: string;
-  /** Absolute path to the skill directory. */
-  readonly path: string;
-  /** Whether this is user-level or workspace-level state. */
-  readonly scope: Scope;
-  /** The {@link SkillSource.id} or {@link AdapterFileSpec.id} this skill came from. */
-  readonly sourceId?: string | undefined;
-  /** Installed version, when the skill declares one. */
-  readonly version?: string | undefined;
-}
-
 /**
  * A file an adapter read successfully but could not use.
  *
@@ -253,6 +235,8 @@ export interface AppModel extends Omit<AdapterSnapshot, "problems"> {
    * retained alongside the documents parsed out of them.
    */
   readonly sourceFiles: readonly AdapterFileStatus[];
+  /** Resolved directories where this application discovers skills. */
+  readonly skillDirectories?: readonly ResolvedSkillDirectory[] | undefined;
   /** How this application can be wired to the repository's shared instructions. */
   readonly projectSharedLink?: ResolvedSharedLink | undefined;
   /** How this application can be wired to the shared instruction source, when declared. */
@@ -275,6 +259,8 @@ export interface AppModel extends Omit<AdapterSnapshot, "problems"> {
  * so a check sees configuration contributed by adapters from other plugins.
  */
 export interface WorkspaceModel {
+  /** Bundled skill packs whose directory sources resolved in this run. */
+  readonly availableSkills?: readonly ResolvedSkillPack[] | undefined;
   /** Registry snippets whose bundled Markdown sources were readable in this run. */
   readonly availableSnippets: readonly ResolvedSnippet[];
   /** Every detected application. */
@@ -295,6 +281,8 @@ export interface WorkspaceModel {
   readonly repository?: RepositoryModel | undefined;
   /** Canonical `~/agents/AGENTS.md` source read independently of any application adapter. */
   readonly sharedInstructions: SharedInstructionsState;
+  /** Skill trees installed in Aura's canonical shared directory. */
+  readonly sharedSkills?: readonly SharedSkillState[] | undefined;
   /** Installed skills across every application. */
   readonly skills: readonly InstalledSkill[];
 }

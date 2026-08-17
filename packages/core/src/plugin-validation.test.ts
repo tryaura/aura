@@ -134,10 +134,10 @@ describe("plugin validation", () => {
         candidates: [
           createPlugin("alpha", {
             name: "Alpha Plugin",
-            skills: [createSkill("alpha/review"), createSkill("alpha/review")],
+            skills: [createSkill("review"), createSkill("review")],
           }),
         ],
-        id: "alpha/review",
+        id: "plugin:alpha/review",
         kind: "skill-pack",
         offendingPlugin: "Alpha Plugin",
         originalPlugin: "Alpha Plugin",
@@ -211,11 +211,6 @@ describe("plugin validation", () => {
         candidates: [createPlugin("acme", { name: "Acme", snippets: [createSnippet("rules")] })],
         id: "rules",
         kind: "snippet",
-      },
-      {
-        candidates: [createPlugin("acme", { name: "Acme", skills: [createSkill("other/review")] })],
-        id: "other/review",
-        kind: "skill-pack",
       },
       {
         candidates: [createPlugin("acme", { mcpCatalog: [createMcpServer("q")], name: "Acme" })],

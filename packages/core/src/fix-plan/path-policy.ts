@@ -46,6 +46,7 @@ export async function validatePlanPaths(
   const claims = createClaimIndex();
   const operations: ValidatedOperation[] = [];
   const probes: AncestorProbe[] = [];
+  const removeOwners = new Set<number>();
 
   // The synchronous checks run first and in plan order, so the operation a caller is told about is
   // always the earliest offending one.
@@ -63,7 +64,14 @@ export async function validatePlanPaths(
         operation.type === "write"
           ? coalescedWriteOwner(resolvedPath, exactOwner, operations)
           : undefined;
-      claimPath(claims, path, index, policy.caseInsensitive, allowedExactOwner);
+      claimPath(
+        claims,
+        path,
+        index,
+        policy.caseInsensitive,
+        allowedExactOwner,
+        operation.type === "remove" ? removeOwners : undefined,
+      );
       coalescesWith = allowedExactOwner;
       probes.push({ includeFinalPath: false, operationIndex: index, path });
     }
@@ -76,6 +84,9 @@ export async function validatePlanPaths(
       operation,
       paths: Object.freeze(paths),
     });
+    if (operation.type === "remove") {
+      removeOwners.add(index);
+    }
   }
 
   await runProbes(probes, policy.roots, policy.caseInsensitive);

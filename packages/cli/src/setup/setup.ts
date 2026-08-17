@@ -64,6 +64,7 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
     adapters: request.registry.adapters,
     environment,
     snippets: request.registry.snippets,
+    skills: request.registry.skills,
   });
   const model = scan.model;
 
@@ -126,6 +127,7 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
     adapters: request.registry.adapters,
     environment,
     snippets: request.registry.snippets,
+    skills: request.registry.skills,
   });
   return endOnGreen(request, rescanned);
 }

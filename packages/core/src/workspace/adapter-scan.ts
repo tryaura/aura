@@ -1,3 +1,4 @@
+import { resolveSkillDirectory } from "@tryaura/aura-sdk";
 import type {
   Adapter,
   AdapterDetection,
@@ -122,6 +123,9 @@ export async function scanAdapter(adapter: Adapter, context: ScanContext): Promi
       mcpServers: snapshot.mcpServers,
       metadata: snapshot.metadata,
       skills: snapshot.skills,
+      skillDirectories: (adapter.capabilities?.skills?.directories ?? []).map((directory) =>
+        resolveSkillDirectory(directory, context.environment.homeDir, context.environment.cwd),
+      ),
       // Contents are dropped here: they were consumed by parse and are not retained beside the
       // documents parsed out of them.
       sourceFiles: [...discovery.files.values()]

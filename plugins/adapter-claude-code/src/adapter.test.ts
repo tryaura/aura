@@ -107,6 +107,12 @@ describe("Claude Code file specifications", () => {
   it("declares the instruction-loading model checks read instead of hard-coding it", () => {
     expect(claudeCodeAdapter.capabilities).toEqual({
       instructions: { importDepthLimit: 5, importStyle: "at-import", loading: "import-graph" },
+      skills: {
+        directories: [
+          { entryPath: "~/.claude/skills", id: "claude-code.skills.global" },
+          { entryPath: "./.claude/skills", id: "claude-code.skills.project" },
+        ],
+      },
     });
   });
 
@@ -167,6 +173,20 @@ describe("Claude Code file specifications", () => {
         kind: "config",
         optional: true,
         path: "/workspace/.claude/settings.json",
+        scope: "project",
+      },
+      {
+        id: "claude-code.skills.global",
+        kind: "skills",
+        optional: true,
+        path: "/home/dev/.claude/skills",
+        scope: "global",
+      },
+      {
+        id: "claude-code.skills.project",
+        kind: "skills",
+        optional: true,
+        path: "/workspace/.claude/skills",
         scope: "project",
       },
     ]);

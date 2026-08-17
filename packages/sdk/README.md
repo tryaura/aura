@@ -21,14 +21,15 @@ Create plugins with `definePlugin`. A plugin declares an `id`, a `name`, a `vers
 - `mcpCatalog` references JSON MCP catalog entries.
 - `presets` references JSON preset definitions.
 
-Aura v1 accepts only plugins with `apiVersion: 1`. The registry validates the version, IDs,
-collisions, and referenced content before use. Every contribution `id` must be namespaced under
-the plugin's own `id`, so plugin `acme` contributes `acme/rules`.
+Aura v1 accepts only plugins with `apiVersion: 1`. The registry validates versions, IDs, and
+collisions before use. Most contribution IDs are namespaced under the plugin's own ID, so plugin
+`acme` contributes `acme/rules`. Bundled skill IDs are source-local kebab-case names such as
+`review`; their full identity is `(plugin:acme, review)`.
 
 ## Trust model
 
 **A plugin runs with the full privileges of the Aura process.** `Adapter.detect` and the
-`SkillSource` methods receive an `Environment` and can execute commands. Install plugins with the
+`SkillSourceDriver` methods receive an `Environment` and can execute commands. Install plugins with the
 same care you apply to any other dependency; Aura does not sandbox them.
 
 The declarative shapes in this SDK exist for _previewability_, not isolation. Checks are pure so a
@@ -240,7 +241,7 @@ Write the scope, not the outcome: Aura adds the outcome itself, and only for an 
 `detect` returned `installed: false`. One that threw is reported with no scope at all, beside a
 diagnostic naming the failure, because it never established where the application was not.
 
-`SkillSource.resolve` takes every requested id at once and returns a `ReadonlyMap`, so resolving a
+`SkillSourceDriver.resolve` takes every requested id at once and returns a `ReadonlyMap`, so resolving a
 listing costs one round trip instead of one per skill. Ids that cannot be resolved are omitted
 rather than throwing.
 
