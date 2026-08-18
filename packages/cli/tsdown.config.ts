@@ -20,6 +20,7 @@ const RUNTIME_PACKAGES = [
   "smol-toml",
   "string-width",
   "typanion",
+  "undici",
 ];
 
 const source = (path: string): string => fileURLToPath(new URL(path, import.meta.url));

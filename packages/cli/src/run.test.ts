@@ -1,5 +1,6 @@
 /* eslint-disable max-lines -- one end-to-end CLI matrix shares the same injected runtime fixtures. */
 import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
@@ -44,6 +45,45 @@ describe("runCli", () => {
     expect(exitCode).toBe(0);
     expect(capture.stdout.text).toContain("✓ Passed (1)");
     expect(capture.stdout.text).toContain("1 passed, 0 informational, 0 warnings, 0 errors");
+  });
+
+  it("performs remote MCP probes only with --online", async () => {
+    let requests = 0;
+    const server = createServer((_request, response) => {
+      requests += 1;
+      response.statusCode = 404;
+      response.end();
+    });
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", resolve);
+    });
+
+    try {
+      const address = server.address();
+      if (address === null || typeof address === "string") {
+        throw new Error("Expected the MCP probe fixture to listen on a TCP port.");
+      }
+      const plugin = remoteMcpProbePlugin(`http://127.0.0.1:${String(address.port)}/mcp`);
+      const offline = createCapture(["check"]);
+      const online = createCapture(["check", "--online"]);
+
+      expect(await runCli(distro([plugin]), offline.runtime)).toBe(0);
+      expect(requests).toBe(0);
+      expect(await runCli(distro([plugin]), online.runtime)).toBe(2);
+      expect(requests).toBe(1);
+      expect(online.stdout.text).toContain("remote probe failed");
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => {
+          if (error === undefined) {
+            resolve();
+          } else {
+            reject(error);
+          }
+        });
+      });
+    }
   });
 
   it("emits deterministic JSON without human decoration", async () => {
@@ -762,3 +802,50 @@ describe("runCli", () => {
     expect(capture.stdout.text).toContain("undo");
   });
 });
+
+function remoteMcpProbePlugin(url: string) {
+  return definePlugin({
+    adapters: [
+      defineAdapter({
+        detect: () => Promise.resolve({ installed: true }),
+        displayName: "Remote Fixture",
+        files: () => [],
+        id: "remote-fixture",
+        parse: () => ({
+          instructionFiles: [],
+          mcpServers: [
+            {
+              appId: "remote-fixture",
+              name: "remote",
+              scope: "global",
+              sourceId: "remote-fixture.mcp.global",
+              transport: { type: "http", url },
+            },
+          ],
+          skills: [],
+        }),
+        supportedRange: ">=1",
+      }),
+    ],
+    apiVersion: 1,
+    checks: [
+      defineCheck({
+        defaultSeverity: "error",
+        detect: (model) =>
+          model.mcpServers.some((server) =>
+            server.probes?.some((probe) => probe.kind === "url" && probe.status === "error"),
+          )
+            ? [{ id: "remote", message: "remote probe failed" }]
+            : [],
+        explain: "The remote fixture should be reachable.",
+        fixability: "manual",
+        id: "remote-probe/MCP-003",
+        scope: "global",
+        title: "Remote fixture is reachable",
+      }),
+    ],
+    id: "remote-probe",
+    name: "Remote Probe",
+    version: "1.0.0",
+  });
+}

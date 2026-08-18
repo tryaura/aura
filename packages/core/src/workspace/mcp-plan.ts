@@ -6,6 +6,7 @@ import type {
   FileOperation,
   FixPlan,
   McpConvergenceBlocker,
+  McpServer,
   OwnedServerEntry,
   WorkspaceModel,
 } from "@tryaura/aura-sdk";
@@ -17,6 +18,12 @@ import type { AppMcpConvergence, AppMcpConvergenceResult } from "./mcp-convergen
 export interface ManifestMcpConvergence {
   readonly blockers: readonly McpConvergenceBlocker[];
   readonly plan?: FixPlan | undefined;
+}
+
+/** Ledger-checked result of asking Aura to stop managing one configured MCP server. */
+export interface McpServerRemovalPlan extends ManifestMcpConvergence {
+  /** True only when the ownership ledger authorizes Aura to remove this name. */
+  readonly owned: boolean;
 }
 
 /**
@@ -67,7 +74,80 @@ export function planManifestMcpConvergence(
   return computed;
 }
 
-function computeConvergence(model: WorkspaceModel, appId: string): ManifestMcpConvergence {
+/**
+ * Removes one Aura-owned server from one application while preserving its selection elsewhere.
+ *
+ * The configuration write and updated manifest/ownership ledger share one fix plan. Names outside
+ * the ledger, unmanaged applications, and identities a name-only ledger cannot distinguish are
+ * returned as blockers for a guided check to turn into manual steps.
+ */
+export function planMcpServerRemoval(
+  model: WorkspaceModel,
+  server: McpServer,
+): McpServerRemovalPlan {
+  const state = model.manifest;
+  if (state.status !== "ready") {
+    return {
+      blockers: [
+        {
+          message:
+            state.status === "read-only"
+              ? state.problem.message
+              : "The Aura manifest does not exist, so this server is outside Aura's ownership ledger.",
+          path: state.path,
+        },
+      ],
+      owned: false,
+    };
+  }
+  const manifest = state.value;
+  const owned = manifest.ownership[server.appId]?.mcpServerNames.includes(server.name) === true;
+  if (!owned) {
+    return {
+      blockers: [
+        {
+          message: `MCP server ${server.name} is outside Aura's ownership ledger.`,
+          scope: server.scope,
+          sourceId: server.sourceId,
+        },
+      ],
+      owned: false,
+    };
+  }
+  if (manifest.apps[server.appId]?.managed !== true) {
+    return {
+      blockers: [
+        {
+          message: `Application ${server.appId} is not managed by Aura, so Aura will not rewrite its MCP configuration.`,
+          scope: server.scope,
+          sourceId: server.sourceId,
+        },
+      ],
+      owned: true,
+    };
+  }
+  if (ambiguousRemoval(model, server)) {
+    return {
+      blockers: [
+        {
+          message: `MCP server name ${server.name} identifies more than one configured or desired entry for ${server.appId}, and Aura's ledger cannot remove only one safely.`,
+          scope: server.scope,
+          sourceId: server.sourceId,
+        },
+      ],
+      owned: true,
+    };
+  }
+
+  return { ...computeConvergence(model, server.appId, withoutServer(manifest, server)), owned };
+}
+
+// fallow-ignore-next-line complexity -- preserves the planner's explicit manifest and ownership terminal states.
+function computeConvergence(
+  model: WorkspaceModel,
+  appId: string,
+  desiredManifest?: AuraManifest,
+): ManifestMcpConvergence {
   const manifestState = model.manifest;
   if (manifestState.status === "read-only") {
     return { blockers: [{ message: manifestState.problem.message, path: manifestState.path }] };
@@ -82,7 +162,7 @@ function computeConvergence(model: WorkspaceModel, appId: string): ManifestMcpCo
   }
   // Unmanaged means Aura leaves the application alone, not that it undoes itself: the ownership
   // ledger is kept so that re-enabling management picks up where it left off.
-  const manifest = manifestState.value;
+  const manifest = desiredManifest ?? manifestState.value;
   if (manifest.apps[appId]?.managed !== true) {
     return { blockers: [] };
   }
@@ -96,7 +176,7 @@ function computeConvergence(model: WorkspaceModel, appId: string): ManifestMcpCo
     : {
         blockers: [],
         plan: {
-          operations: ledgeredOperations(manifestState, appId, planned),
+          operations: ledgeredOperations(manifestState, manifest, appId, planned),
           summary: `Converge ${target.app.displayName}'s MCP configuration from the Aura manifest.`,
         },
       };
@@ -105,16 +185,50 @@ function computeConvergence(model: WorkspaceModel, appId: string): ManifestMcpCo
 /** The application writes, plus the ledger update when what Aura owns actually changed. */
 function ledgeredOperations(
   state: ReadyManifest,
+  manifest: AuraManifest,
   appId: string,
   planned: AppMcpConvergenceResult,
 ): readonly FileOperation[] {
-  const next = withOwnership(state.value, appId, planned.ownedNames);
+  const next = withOwnership(manifest, appId, planned.ownedNames);
   return [
     ...planned.operations,
     ...(isDeepStrictEqual(next, state.value)
       ? []
       : [createAuraManifestWriteOperation(state, next)]),
   ];
+}
+
+function withoutServer(manifest: AuraManifest, server: McpServer): AuraManifest {
+  const mcpServers = manifest.mcpServers.flatMap((entry) => {
+    if (entry.name !== server.name || entry.scope !== server.scope) {
+      return [entry];
+    }
+    const apps = entry.apps.filter((appId) => appId !== server.appId);
+    return apps.length === 0 ? [] : [{ ...entry, apps }];
+  });
+  return { ...manifest, mcpServers };
+}
+
+function ambiguousRemoval(model: WorkspaceModel, server: McpServer): boolean {
+  const configured = model.mcpServers.filter(
+    (candidate) => candidate.appId === server.appId && candidate.name === server.name,
+  );
+  if (
+    configured.length > 1 ||
+    configured.some(
+      (candidate) => candidate.scope !== server.scope || candidate.sourceId !== server.sourceId,
+    )
+  ) {
+    return true;
+  }
+  if (model.manifest.status !== "ready") {
+    return false;
+  }
+  return (
+    model.manifest.value.mcpServers.filter(
+      (entry) => entry.name === server.name && entry.apps.includes(server.appId),
+    ).length > 1
+  );
 }
 
 type ReadyManifest = Extract<WorkspaceModel["manifest"], { readonly status: "ready" }>;

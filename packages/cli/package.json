@@ -66,7 +66,8 @@
     "semver": "7.8.5",
     "smol-toml": "1.8.0",
     "string-width": "4.2.3",
-    "typanion": "3.14.0"
+    "typanion": "3.14.0",
+    "undici": "7.29.0"
   },
   "devDependencies": {
     "@tryaura/adapter-claude-code": "workspace:*",

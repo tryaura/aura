@@ -73,6 +73,9 @@ export function createClaudeCodeSeed(options: ClaudeCodeSeedOptions): Promise<Te
         ) + "\n",
       )
       .shim("claude", claudeCodeShimResponses(options))
+      // MCP-003 resolves configured commands on PATH without executing them.
+      .shim("npx", [{ args: [] }])
+      .shim("project-docs-server", [{ args: [] }])
       .build()
   );
 }

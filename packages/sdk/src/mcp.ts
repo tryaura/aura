@@ -14,6 +14,18 @@ const SECRET_NAME_PATTERN =
 const SECRET_VALUE_PATTERN =
   /^(?:sk|pk|rk)[-_]|^(?:gh[opsur]|github_pat)_|^xox[abpsr]-|^AKIA[0-9A-Z]{16}$/u;
 
+/**
+ * Whether a value Aura sanitized still carries the placeholder it left behind.
+ *
+ * {@link sanitizeMcpUrl} replaces every query value and every credential-shaped path segment, so a
+ * URL holding the placeholder no longer addresses the endpoint the user configured. Anything that
+ * would act on the value rather than display it — a reachability probe, say — has to be able to
+ * tell the difference.
+ */
+export function hasMcpRedaction(value: string): boolean {
+  return value.includes(REDACTED);
+}
+
 /** Whether a string contains a token recognizable by Aura's MCP redaction boundary. */
 export function isMcpCredentialLiteral(value: string): boolean {
   return value

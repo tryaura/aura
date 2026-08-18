@@ -29,7 +29,8 @@
   "dependencies": {
     "@tryaura/aura-sdk": "workspace:*",
     "diff": "^9.0.0",
-    "semver": "^7.8.5"
+    "semver": "^7.8.5",
+    "undici": "^7.29.0"
   },
   "devDependencies": {
     "@types/node": "24.13.3",

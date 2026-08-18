@@ -17,7 +17,8 @@
     "ignore",
     "publint",
     "semver",
-    "smol-toml"
+    "smol-toml",
+    "undici"
   ],
   "ignoreUnresolvedImports": ["./content/**"],
   "health": {
