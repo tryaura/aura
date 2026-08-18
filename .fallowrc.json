@@ -8,6 +8,7 @@
     "packages/cli/src/bin.ts",
     "packages/cli/src/index.release.ts",
     "packages/*/tsdown*.config.ts",
+    "examples/acme-distribution/build.mjs",
     "examples/acme-distribution/smoke.mjs",
     "examples/acme-distribution/src/main.ts"
   ],

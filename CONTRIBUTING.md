@@ -75,10 +75,16 @@ and the snapshots together.
 - `pnpm verify:packages` is the clean-room check: it packs the trio, validates tarball contents
   and manifests (no install hooks, no private-dependency leaks), installs only those tarballs into
   an isolated copy of `examples/acme-distribution`, typechecks it, and compiles and smoke-tests the
-  branded binary with Bun. Pull
-  requests skip it; it runs on merge-queue entries, on pushes to `main`, and again at tag time.
-  Run it locally when you touch a public manifest, an entry point, or the files a published
-  package ships.
+  branded binary with Bun. It rewrites the copied manifest from an explicit field list rather than
+  inheriting the example's, so a script added to the example can never run inside the install this
+  check exists to prove inert. Pull requests skip it; it runs on merge-queue entries, on pushes to
+  `main`, and again at tag time. Run it locally when you touch a public manifest, an entry point,
+  or the files a published package ships.
+- `examples/*` are workspace members, so `pnpm verify` typechecks and lints them on every pull
+  request. Their dependencies are `workspace:*`; the clean room re-resolves those three to packed
+  tarballs. Both the example's `build.mjs` and the clean room derive the binary's content
+  entrypoints from `examples/acme-distribution/content-entrypoints.mjs` — Bun embeds only the
+  files it is given, and silently omits the rest, so that list has exactly one definition.
 - Pushing a `v*` tag triggers `.github/workflows/release.yml`: a `verify` job running the full
   gate chain and `verify:packages` gates per-target builds (linux/darwin × x64/arm64), each of
   which stamps the tag version into `distros/aura`, compiles and smoke-tests the binary

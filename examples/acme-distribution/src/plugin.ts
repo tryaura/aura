@@ -1,14 +1,14 @@
-import { defineCheck, definePlugin, type WorkspaceModel } from "@tryaura/aura-sdk";
+import {
+  defineCheck,
+  definePlugin,
+  pluginContentUrl,
+  type WorkspaceModel,
+} from "@tryaura/aura-sdk";
 
 import { ACME_AGENT_ID, acmeAgentAdapter } from "./internal-agent.js";
 
-const EMBEDDED_MODULE_PREFIX = "file:///$bunfs/";
-
 function contentUrl(path: string): string {
-  const relativePath = import.meta.url.startsWith(EMBEDDED_MODULE_PREFIX)
-    ? `./content/${path}`
-    : `../content/${path}`;
-  return new URL(relativePath, import.meta.url).href;
+  return pluginContentUrl(import.meta.url, path);
 }
 
 const distributionCheck = defineCheck({

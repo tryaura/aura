@@ -7,12 +7,8 @@
     "optionalPeerDependencies": "warn"
   },
   "workspaces": {
-    ".": {
-      "entry": [
-        "examples/acme-distribution/smoke.mjs",
-        "examples/acme-distribution/src/main.ts",
-        "examples/acme-distribution/src/plugin.ts"
-      ]
+    "examples/*": {
+      "entry": ["src/main.ts"]
     },
     "distros/*": {
       "entry": ["src/**/*.test.ts", "src/**/*.smoke.ts"],

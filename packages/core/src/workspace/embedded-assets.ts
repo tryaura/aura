@@ -11,7 +11,7 @@
  * not ship a Windows binary. Keeping the constant here makes a Bun change a one-line edit.
  */
 const EMBEDDED_ASSET_PREFIX = "/$bunfs/";
-const EMBEDDED_ASSET_ROOT = "/$bunfs/root/";
+const EMBEDDED_ASSET_ROOT = "/$bunfs/root";
 
 /** Whether `path` addresses a file embedded in a compiled single-file executable. */
 export function isEmbeddedAssetPath(path: string): boolean {
@@ -26,11 +26,13 @@ export function isEmbeddedAssetPath(path: string): boolean {
  * to synthesize exactly the immediate children the filesystem would have returned.
  */
 export function embeddedDirectoryEntries(path: string): readonly string[] | undefined {
-  if (!path.startsWith(EMBEDDED_ASSET_ROOT)) {
+  // `resolve` and `join` strip the trailing slash a `file:` directory URL carries, so the root is
+  // reached under both spellings and every deeper path is normalized to one form before matching.
+  if (path !== EMBEDDED_ASSET_ROOT && !path.startsWith(`${EMBEDDED_ASSET_ROOT}/`)) {
     return undefined;
   }
 
-  const relative = path.slice(EMBEDDED_ASSET_ROOT.length).replace(/\/+$/u, "");
+  const relative = path.slice(EMBEDDED_ASSET_ROOT.length).replace(/^\/+|\/+$/gu, "");
   const prefix = relative.length === 0 ? "" : `${relative}/`;
   const entries = new Set<string>();
   for (const name of embeddedFileNames()) {
@@ -45,8 +47,25 @@ export function embeddedDirectoryEntries(path: string): readonly string[] | unde
   return entries.size === 0 ? undefined : [...entries].sort();
 }
 
+/**
+ * `Bun.embeddedFiles` is fixed for the life of the process, but a directory walk asks for the index
+ * once per path per reader operation, so deriving the names every time makes a tree of D
+ * directories over N assets cost O(D·N) string work. Caching on the identity of the `Bun` global
+ * keeps that to one pass, and still re-derives when a test swaps the global out.
+ */
+let cachedRuntime: unknown;
+let cachedNames: readonly string[] = [];
+
 function embeddedFileNames(): readonly string[] {
   const runtime: unknown = Reflect.get(globalThis, "Bun");
+  if (runtime !== cachedRuntime) {
+    cachedRuntime = runtime;
+    cachedNames = readEmbeddedFileNames(runtime);
+  }
+  return cachedNames;
+}
+
+function readEmbeddedFileNames(runtime: unknown): readonly string[] {
   if (!isRecord(runtime)) {
     return [];
   }

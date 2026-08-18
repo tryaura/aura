@@ -7,19 +7,21 @@ This is a complete private Aura distribution. It adds:
 - an `acme-release` Agent Skill; and
 - a credential-safe Acme source-control MCP catalog entry.
 
-The repository's `pnpm verify:packages` command copies this project into a clean directory,
-installs only locally packed public Aura packages, typechecks it, compiles a Linux binary in CI,
-and runs `smoke.mjs` against that binary.
+It is a workspace member, so `pnpm typecheck` at the repository root covers it on every pull
+request. Its dependencies are `workspace:*` for that reason; a real internal distribution pins
+published versions instead.
 
-The Aura packages are release candidates and are not published yet, so use the repository-level
-verification command for now:
+`pnpm verify:packages` copies this project into a clean directory, re-resolves those three
+dependencies to locally packed tarballs, typechecks it, compiles a binary, and runs `smoke.mjs`
+against it. That command builds with `content-entrypoints.mjs`, the same module `build.mjs` uses,
+so the binary CI verifies embeds exactly the files a local build embeds:
 
 ```sh
 pnpm verify:packages
 ```
 
-After the packages are published, install the example's dependencies, copy the official CLI
-snippet assets from `node_modules/@tryaura/aura-cli/content` into `content`, and run:
+To build and smoke-test the binary in place, stage the official CLI snippet assets from
+`node_modules/@tryaura/aura-cli/content` into `content/` first, then:
 
 ```sh
 pnpm verify

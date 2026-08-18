@@ -19,11 +19,13 @@ acmedev/
 ├── content/
 │   ├── mcp/source-control.json
 │   ├── skills/acme-release/SKILL.md
+│   ├── skills/acme-release/references/checklist.md
 │   └── snippets/engineering.md
-└── src/
-    ├── internal-agent.ts
-    ├── plugin.ts
-    └── main.ts
+├── src/
+│   ├── internal-agent.ts
+│   ├── plugin.ts
+│   └── main.ts
+└── build.mjs
 ```
 
 :::caution[Only load trusted plugins]
@@ -195,6 +197,10 @@ The contribution's skill ID is source-local and kebab-case. Aura installs the se
 at `~/agents/skills/acme-release` and links it into every managed agent that declares compatible
 skill directories.
 
+A skill is a whole directory, so auxiliary files go beside `SKILL.md` and travel with it — the
+example adds `references/checklist.md`. Aura resolves the tree recursively, in a compiled binary
+as well as from source.
+
 ## 4. Add an MCP catalog entry
 
 Create `content/mcp/source-control.json`. The payload describes a credential-safe transport; it
@@ -244,17 +250,12 @@ Create `src/plugin.ts`. Every snippet and MCP ID is namespaced under `acme`; bun
 IDs are the exception and remain source-local.
 
 ```ts
-import { definePlugin } from "@tryaura/aura-sdk";
+import { definePlugin, pluginContentUrl } from "@tryaura/aura-sdk";
 
 import { acmeAgentAdapter } from "./internal-agent.js";
 
-const EMBEDDED_MODULE_PREFIX = "file:///$bunfs/";
-
 function contentUrl(path: string): string {
-  const relativePath = import.meta.url.startsWith(EMBEDDED_MODULE_PREFIX)
-    ? `./content/${path}`
-    : `../content/${path}`;
-  return new URL(relativePath, import.meta.url).href;
+  return pluginContentUrl(import.meta.url, path);
 }
 
 export default definePlugin({
@@ -297,8 +298,10 @@ export default definePlugin({
 });
 ```
 
-The source URLs must be absolute `file:` URLs relative to the plugin module. Aura validates that
-the referenced files exist and that their payloads are valid when it scans the workspace.
+The source URLs must be absolute `file:` URLs relative to the plugin module. `pluginContentUrl`
+builds them, resolving `content/` beside `src/` during development and beside the plugin module
+itself inside a compiled executable, where Bun flattens both onto one virtual root. Aura validates
+that the referenced files exist and that their payloads are valid when it scans the workspace.
 
 ## 6. Compose the distribution
 
@@ -317,7 +320,7 @@ const distro: CliDistro = {
     description: "Acme's agent configuration doctor",
     displayName: "Acme Dev",
     docsUrl: "https://engineering.acme.example/acmedev",
-    version: "1.0.0",
+    version: "0.1.0",
   },
   plugins: [...OFFICIAL_PLUGINS, internalPlugin],
   registry: OFFICIAL_REGISTRY_OPTIONS,
@@ -353,26 +356,52 @@ For automated coverage, use `createSeedBuilder`, `runSetup`, `runCheck`, and `ru
 
 Follow the staging instructions in
 [Author a distribution](/docs/guides/distributions/#compile-with-bun) so the official snippet
-assets are present under `content/`. Then compile the internal content as additional Bun
-entrypoints:
+assets are present under `content/`.
 
-```sh
-bun build src/main.ts \
-  content/snippets/*.md \
-  content/skills/acme-release/SKILL.md \
-  content/mcp/*.json \
-  --compile \
-  --loader .md:file \
-  --loader .json:file \
-  --asset-naming='[dir]/[name].[ext]' \
-  --no-compile-autoload-dotenv \
-  --no-compile-autoload-bunfig \
-  --outfile dist/acmedev
+Bun embeds only the files named as build entrypoints, and it does not warn about the ones you left
+out. A skill file missing from the command line does not fail the build; it produces an executable
+whose skill tree is quietly missing that file. Derive the list from the directory instead of
+maintaining it by hand. Create `build.mjs`:
+
+```js
+import { spawnSync } from "node:child_process";
+import { readdir } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const root = dirname(fileURLToPath(import.meta.url));
+const paths = await readdir(join(root, "content"), { recursive: true });
+const assets = paths
+  .filter((path) => path.endsWith(".md") || path.endsWith(".json"))
+  .map((path) => `content/${path}`)
+  .sort();
+
+const result = spawnSync(
+  "bun",
+  [
+    "build",
+    "src/main.ts",
+    ...assets,
+    "--compile",
+    "--asset-naming=[dir]/[name].[ext]",
+    "--loader",
+    ".md:file",
+    "--loader",
+    ".json:file",
+    "--no-compile-autoload-dotenv",
+    "--no-compile-autoload-bunfig",
+    "--outfile",
+    "dist/acmedev",
+  ],
+  { cwd: root, stdio: "inherit" },
+);
+
+process.exit(result.status ?? 1);
 ```
 
-List every file in each skill directory as an entrypoint; otherwise an auxiliary script or
-reference can be present during development and missing from the executable. Preserve the
-`content/...` directory structure because the plugin resolves those stable embedded paths.
+`--asset-naming=[dir]/[name].[ext]` preserves the `content/...` directory structure inside the
+executable, which is the layout `pluginContentUrl` resolves against at runtime. Flattening it
+strands every content source.
 
 Finally, run `dist/acmedev --version`, the binary smoke suite, and the repository's full typecheck,
 test, lint, and formatting checks. Publish the executable through the internal software channel;

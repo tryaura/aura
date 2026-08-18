@@ -2,11 +2,16 @@
 import assert from "node:assert/strict";
 import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 
+import { contentEntrypoints } from "../examples/acme-distribution/content-entrypoints.mjs";
+import { PACKAGES, assertPackageTarball } from "./package-contract.mjs";
+
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const EXAMPLE_PATH = "examples/acme-distribution";
+const EXCLUDED_FROM_CONSUMER = new Set(["dist", "node_modules"]);
 // Both pinned elsewhere: the toolchain in .bun-version (which CI also feeds to setup-bun), and the
 // release version in the SDK manifest, which every other package is then asserted to match.
 const BUN_VERSION = (await readFile(join(ROOT, ".bun-version"), "utf8")).trim();
@@ -17,55 +22,6 @@ const EXPECTED_VERSION = JSON.parse(
 // of Node's 1 MiB default. Exceeding it kills the child with an ENOBUFS error that reads as an
 // unexplained tar failure, so give the capture room the bundle will not grow into.
 const MAX_CAPTURED_BYTES = 256 * 1024 * 1024;
-const INSTALL_HOOKS = ["install", "postinstall", "preinstall", "prepare"];
-const PACKAGES = [
-  {
-    allowed: [/^package\/(?:LICENSE|README\.md|package\.json)$/, /^package\/dist\//],
-    name: "@tryaura/aura-sdk",
-    path: "packages/sdk",
-    required: [
-      "package/LICENSE",
-      "package/README.md",
-      "package/dist/index.d.ts",
-      "package/dist/index.js",
-      "package/dist/testing.d.ts",
-      "package/dist/testing.js",
-    ],
-  },
-  {
-    allowed: [
-      /^package\/(?:LICENSE|README\.md|package\.json)$/,
-      /^package\/content\/snippets\/[^/]+\.md$/,
-      /^package\/dist\//,
-      /^package\/schema\/check-output-v1\.schema\.json$/,
-    ],
-    name: "@tryaura/aura-cli",
-    path: "packages/cli",
-    required: [
-      "package/LICENSE",
-      "package/README.md",
-      "package/content/snippets/commit-conventions.md",
-      "package/dist/bin/aura.js",
-      "package/dist/index.d.ts",
-      "package/dist/index.js",
-      "package/dist/plugins/index.d.ts",
-      "package/dist/plugins/index.js",
-      "package/schema/check-output-v1.schema.json",
-    ],
-  },
-  {
-    allowed: [/^package\/(?:LICENSE|README\.md|package\.json)$/, /^package\/dist\//],
-    name: "@tryaura/aura-testkit",
-    path: "packages/testkit",
-    required: [
-      "package/LICENSE",
-      "package/README.md",
-      "package/dist/index.d.ts",
-      "package/dist/index.js",
-    ],
-  },
-];
-
 function run(command, args, cwd = ROOT) {
   const result = spawnSync(command, args, {
     cwd,
@@ -87,64 +43,6 @@ function run(command, args, cwd = ROOT) {
 
 async function readManifest(path) {
   return JSON.parse(await readFile(join(ROOT, path, "package.json"), "utf8"));
-}
-
-function assertAllowedFiles(packageSpec, files) {
-  for (const file of files) {
-    assert.ok(
-      packageSpec.allowed.some((pattern) => pattern.test(file)),
-      `${packageSpec.name} includes unexpected tarball file ${file}`,
-    );
-  }
-  for (const required of packageSpec.required) {
-    assert.ok(files.includes(required), `${packageSpec.name} is missing ${required}`);
-  }
-}
-
-function assertPublicDependencies(manifest) {
-  for (const dependency of Object.keys(manifest.dependencies ?? {})) {
-    if (dependency.startsWith("@tryaura/")) {
-      assert.ok(
-        dependency === "@tryaura/aura-cli" || dependency === "@tryaura/aura-sdk",
-        `${manifest.name} leaks private dependency ${dependency}`,
-      );
-    }
-  }
-}
-
-/**
- * A published package that runs code on install would execute during the very step this harness
- * uses to prove the tarballs are inert, so the harness installs with `--ignore-scripts` and refuses
- * to ship a manifest that would have needed them.
- */
-function assertNoInstallHooks(manifest) {
-  for (const hook of INSTALL_HOOKS) {
-    assert.ok(
-      manifest.scripts?.[hook] === undefined,
-      `${manifest.name} declares a ${hook} script, which would run on every consumer's install`,
-    );
-  }
-}
-
-function assertPackageContract(manifest) {
-  if (manifest.name === "@tryaura/aura-sdk") {
-    assert.deepEqual(manifest.dependencies ?? {}, {});
-    assert.deepEqual(Object.keys(manifest.exports).sort(), [".", "./testing"]);
-  }
-  if (manifest.name === "@tryaura/aura-cli") {
-    assert.deepEqual(manifest.bin, { aura: "./dist/bin/aura.js" });
-    assert.deepEqual(Object.keys(manifest.exports).sort(), [
-      ".",
-      "./plugins",
-      "./schema/check-output-v1.json",
-    ]);
-    assert.equal(manifest.dependencies["@tryaura/aura-sdk"], EXPECTED_VERSION);
-  }
-  if (manifest.name === "@tryaura/aura-testkit") {
-    assert.deepEqual(Object.keys(manifest.exports), ["."]);
-    assert.equal(manifest.dependencies["@tryaura/aura-cli"], EXPECTED_VERSION);
-    assert.equal(manifest.dependencies["@tryaura/aura-sdk"], EXPECTED_VERSION);
-  }
 }
 
 async function main() {
@@ -175,12 +73,7 @@ async function main() {
       const files = run("tar", ["-tzf", archivePath]).split("\n").filter(Boolean);
       const manifest = JSON.parse(run("tar", ["-xOf", archivePath, "package/package.json"]));
 
-      assertAllowedFiles(packageSpec, files);
-      assert.equal(manifest.name, packageSpec.name);
-      assert.equal(manifest.version, EXPECTED_VERSION);
-      assertPublicDependencies(manifest);
-      assertNoInstallHooks(manifest);
-      assertPackageContract(manifest);
+      assertPackageTarball({ expectedVersion: EXPECTED_VERSION, files, manifest, packageSpec });
       if (packageSpec.name === "@tryaura/aura-cli") {
         const runtimeFiles = files.filter((file) => file.endsWith(".js"));
         const runtime = run("tar", ["-xOf", archivePath, ...runtimeFiles]);
@@ -198,13 +91,24 @@ async function main() {
     const testkitArchive = archiveByName.get("@tryaura/aura-testkit");
     assert.ok(sdkArchive && cliArchive && testkitArchive);
 
-    await cp(join(ROOT, "examples/acme-distribution"), consumer, { recursive: true });
-    const exampleManifest = JSON.parse(await readFile(join(consumer, "package.json"), "utf8"));
+    // `examples/acme-distribution` is a workspace member, so it carries a linked `node_modules` and
+    // may carry a local `dist`. Copying either would defeat the point of installing from tarballs.
+    await cp(join(ROOT, EXAMPLE_PATH), consumer, {
+      filter: (source) => !EXCLUDED_FROM_CONSUMER.has(basename(source)),
+      recursive: true,
+    });
+    const exampleManifest = await readManifest(EXAMPLE_PATH);
     await writeFile(
       join(consumer, "package.json"),
       `${JSON.stringify(
         {
-          ...exampleManifest,
+          // An explicit pick, not a spread: the example's manifest is free to grow fields, and an
+          // install hook arriving through one would run inside the very install this proves inert.
+          name: "acmedev-clean-room",
+          packageManager: exampleManifest.packageManager,
+          private: true,
+          type: exampleManifest.type,
+          version: exampleManifest.version,
           dependencies: {
             "@tryaura/aura-cli": `file:${cliArchive}`,
             "@tryaura/aura-sdk": `file:${sdkArchive}`,
@@ -249,10 +153,9 @@ async function main() {
     const bunAvailable = spawnSync("bun", ["--version"], { encoding: "utf8" }).status === 0;
     const bunCommand = bunAvailable ? "bun" : "pnpm";
     const bunArguments = bunAvailable ? [] : ["dlx", `bun@${BUN_VERSION}`];
-    const contentEntries = (await readdir(join(consumer, "content"), { recursive: true }))
-      .filter((path) => path.endsWith(".json") || path.endsWith(".md"))
-      .sort()
-      .map((path) => `content/${path}`);
+    // The same list `build.mjs` derives, so the binary CI verifies embeds exactly the files the
+    // example's own build embeds. Only the Bun launcher differs, because CI may not have Bun.
+    const contentEntries = await contentEntrypoints(consumer);
     run(
       bunCommand,
       [

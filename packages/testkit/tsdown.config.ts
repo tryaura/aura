@@ -3,7 +3,10 @@ import { defineConfig } from "tsdown";
 export default defineConfig({
   attw: { level: "error", profile: "esm-only" },
   deps: {
-    alwaysBundle: ["@tryaura/core", "diff", "semver"],
+    // Every dependency of the bundled `@tryaura/core`, not just the ones it reaches today: an
+    // omission here emits a bare import into the tarball for a package testkit does not declare,
+    // and neither attw nor publint inspects runtime imports for undeclared dependencies.
+    alwaysBundle: ["@tryaura/core", "diff", "semver", "undici"],
     dts: { neverBundle: true },
     neverBundle: true,
     onlyBundle: false,
