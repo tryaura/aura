@@ -1,0 +1,26 @@
+{
+  "name": "acme-distribution-example",
+  "version": "0.0.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "build:binary": "bun build src/main.ts content/snippets/*.md content/skills/acme-release/SKILL.md content/mcp/*.json --compile --loader .md:file --loader .json:file --asset-naming='[dir]/[name].[ext]' --no-compile-autoload-dotenv --no-compile-autoload-bunfig --outfile dist/acmedev",
+    "smoke": "node smoke.mjs",
+    "typecheck": "tsc --project tsconfig.json",
+    "verify": "pnpm typecheck && pnpm build:binary && pnpm smoke"
+  },
+  "dependencies": {
+    "@tryaura/aura-cli": "0.1.0",
+    "@tryaura/aura-sdk": "0.1.0",
+    "@tryaura/aura-testkit": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "typescript": "7.0.2"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "pnpm@11.21.0"
+}

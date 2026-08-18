@@ -1,17 +1,19 @@
 #!/usr/bin/env node
-import { runCli } from "@tryaura/aura-cli";
+import { runCli, type CliDistro } from "@tryaura/aura-cli";
 import { OFFICIAL_PLUGINS, OFFICIAL_REGISTRY_OPTIONS } from "@tryaura/aura-cli/plugins";
 
-import { acmePlugin } from "./plugin.js";
+import internalPlugin from "./plugin.js";
 
-await runCli({
+const distro: CliDistro = {
   branding: {
     command: "acmedev",
-    description: "Acme's branded agent configuration doctor",
+    description: "Acme's agent configuration doctor",
     displayName: "Acme Dev",
     docsUrl: "https://engineering.acme.example/acmedev",
     version: "0.1.0",
   },
-  plugins: [...OFFICIAL_PLUGINS, acmePlugin],
+  plugins: [...OFFICIAL_PLUGINS, internalPlugin],
   registry: OFFICIAL_REGISTRY_OPTIONS,
-});
+};
+
+await runCli(distro);

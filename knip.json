@@ -9,9 +9,9 @@
   "workspaces": {
     ".": {
       "entry": [
-        "scripts/fixtures/distro-consumer/smoke.mjs",
-        "scripts/fixtures/distro-consumer/src/main.ts",
-        "scripts/fixtures/distro-consumer/src/plugin.ts"
+        "examples/acme-distribution/smoke.mjs",
+        "examples/acme-distribution/src/main.ts",
+        "examples/acme-distribution/src/plugin.ts"
       ]
     },
     "distros/*": {

@@ -5,6 +5,10 @@ description: Compose, brand, test, and compile a private Aura distribution.
 
 An Aura distribution is a small executable that chooses branding and a build-time plugin list around `runCli`. It does not discover plugins from an end user's machine.
 
+For a complete private-plugin example that bundles an internal agent adapter, snippets, skills,
+and MCP definitions, follow
+[Build an internal distribution](/docs/guides/internal-distribution/).
+
 > The `0.1.0` packages are release candidates and are not published to npm yet. Use local tarballs until publication is enabled in a later milestone.
 
 ## Set up the project

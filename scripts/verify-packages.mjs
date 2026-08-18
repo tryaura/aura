@@ -198,11 +198,13 @@ async function main() {
     const testkitArchive = archiveByName.get("@tryaura/aura-testkit");
     assert.ok(sdkArchive && cliArchive && testkitArchive);
 
-    await cp(join(ROOT, "scripts/fixtures/distro-consumer"), consumer, { recursive: true });
+    await cp(join(ROOT, "examples/acme-distribution"), consumer, { recursive: true });
+    const exampleManifest = JSON.parse(await readFile(join(consumer, "package.json"), "utf8"));
     await writeFile(
       join(consumer, "package.json"),
       `${JSON.stringify(
         {
+          ...exampleManifest,
           dependencies: {
             "@tryaura/aura-cli": `file:${cliArchive}`,
             "@tryaura/aura-sdk": `file:${sdkArchive}`,
@@ -212,11 +214,6 @@ async function main() {
             "@types/node": "24.13.3",
             typescript: "7.0.2",
           },
-          name: "acmedev-clean-room",
-          packageManager: "pnpm@11.21.0",
-          private: true,
-          type: "module",
-          version: "0.0.0",
         },
         null,
         2,
@@ -252,20 +249,23 @@ async function main() {
     const bunAvailable = spawnSync("bun", ["--version"], { encoding: "utf8" }).status === 0;
     const bunCommand = bunAvailable ? "bun" : "pnpm";
     const bunArguments = bunAvailable ? [] : ["dlx", `bun@${BUN_VERSION}`];
-    const snippetEntries = (await readdir(join(consumer, "content/snippets")))
+    const contentEntries = (await readdir(join(consumer, "content"), { recursive: true }))
+      .filter((path) => path.endsWith(".json") || path.endsWith(".md"))
       .sort()
-      .map((filename) => `content/snippets/${filename}`);
+      .map((path) => `content/${path}`);
     run(
       bunCommand,
       [
         ...bunArguments,
         "build",
         "src/main.ts",
-        ...snippetEntries,
+        ...contentEntries,
         "--compile",
-        "--asset-naming=content/snippets/[name].[ext]",
+        "--asset-naming=[dir]/[name].[ext]",
         "--loader",
         ".md:file",
+        "--loader",
+        ".json:file",
         "--no-compile-autoload-dotenv",
         "--no-compile-autoload-bunfig",
         "--outfile",
@@ -277,7 +277,7 @@ async function main() {
     run("node", ["smoke.mjs"], consumer);
 
     process.stdout.write(
-      `Verified release-ready ${EXPECTED_VERSION} tarballs and the acmedev clean-room distro.\n`,
+      `Verified release-ready ${EXPECTED_VERSION} tarballs and examples/acme-distribution.\n`,
     );
   } finally {
     if (process.env.AURA_KEEP_PACKAGE_TEMP === "1") {

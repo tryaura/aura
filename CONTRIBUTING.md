@@ -74,7 +74,8 @@ and the snapshots together.
   `scripts/verify-packages.mjs` asserts every public manifest against the SDK's version.
 - `pnpm verify:packages` is the clean-room check: it packs the trio, validates tarball contents
   and manifests (no install hooks, no private-dependency leaks), installs only those tarballs into
-  an isolated consumer, typechecks it, and compiles and runs a branded distro with Bun. Pull
+  an isolated copy of `examples/acme-distribution`, typechecks it, and compiles and smoke-tests the
+  branded binary with Bun. Pull
   requests skip it; it runs on merge-queue entries, on pushes to `main`, and again at tag time.
   Run it locally when you touch a public manifest, an entry point, or the files a published
   package ships.
