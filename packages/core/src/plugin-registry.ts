@@ -2,6 +2,7 @@ import type {
   Adapter,
   AuraPlugin,
   Check,
+  DirectorySkillSource,
   McpServerDef,
   Preset,
   BundledSkillSource,
@@ -9,6 +10,9 @@ import type {
   SkillSourceDriver,
   Snippet,
 } from "@tryaura/aura-sdk";
+
+import { directorySourceProblem } from "./skills/directory-config.js";
+import { skillIdProblem } from "./skills/path-guards.js";
 
 import {
   claimId,
@@ -55,6 +59,7 @@ export interface PluginRegistry {
   readonly ownerOf: (kind: ContributionKind, id: string) => AuraPlugin | undefined;
   readonly plugins: readonly AuraPlugin[];
   readonly presets: readonly Preset[];
+  readonly skillDirectories: readonly DirectorySkillSource[];
   readonly skills: readonly RegisteredSkillPack[];
   readonly skillSources: readonly SkillSourceDriver[];
   readonly snippets: readonly Snippet[];
@@ -73,6 +78,7 @@ interface CollectedContributions {
   readonly mcpServers: McpServerDef[];
   readonly plugins: AuraPlugin[];
   readonly presets: Preset[];
+  readonly skillDirectories: DirectorySkillSource[];
   readonly skills: RegisteredSkillPack[];
   readonly skillSources: SkillSourceDriver[];
   readonly snippets: Snippet[];
@@ -96,6 +102,7 @@ export function createPluginRegistry(
     mcpServers: [],
     plugins: [],
     presets: [],
+    skillDirectories: [],
     skills: [],
     skillSources: [],
     snippets: [],
@@ -120,6 +127,7 @@ export function createPluginRegistry(
     ownerOf: (kind: ContributionKind, id: string) => state.owners.get(kind)?.get(id),
     plugins: Object.freeze(collected.plugins),
     presets: Object.freeze(collected.presets),
+    skillDirectories: Object.freeze(collected.skillDirectories),
     skills: Object.freeze(collected.skills),
     skillSources: Object.freeze(collected.skillSources),
     snippets: Object.freeze(collected.snippets),
@@ -157,12 +165,34 @@ function collectCandidate(
   collectChecks(state, plugin.checks, plugin, allowsBareCheckIds, collected.checks);
   collectNamespaced(state, "mcp-server", plugin.mcpCatalog, plugin, collected.mcpServers);
   collectNamespaced(state, "preset", plugin.presets, plugin, collected.presets);
+  collectSkillDirectories(state, plugin, collected.skillDirectories);
   collectSkills(state, plugin, collected.skills);
   collectNamespaced(state, "skill-source", plugin.skillSources, plugin, collected.skillSources);
   collectNamespaced(state, "snippet", plugin.snippets, plugin, collected.snippets);
 }
 
-const SKILL_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
+/**
+ * Directory ids are global, like adapter ids: `directory:agenticskills` names a place, so two
+ * plugins registering it must collide rather than coexist under separate namespaces.
+ */
+function collectSkillDirectories(
+  state: RegistryState,
+  plugin: AuraPlugin,
+  collected: DirectorySkillSource[],
+): void {
+  for (const source of plugin.skillDirectories ?? []) {
+    const problem = directorySourceProblem(source);
+    if (problem !== undefined) {
+      state.violations.push(
+        `Plugin "${plugin.name}" (${plugin.id}) skill directory "${source.id}" ${problem}.`,
+      );
+      continue;
+    }
+    if (claimId(state, "skill-directory", source.id, plugin)) {
+      collected.push(source);
+    }
+  }
+}
 
 function collectSkills(
   state: RegistryState,
@@ -175,7 +205,7 @@ function collectSkills(
     name: plugin.name,
   };
   for (const skill of plugin.skills ?? []) {
-    if (skill.id.length > 64 || !SKILL_ID_PATTERN.test(skill.id)) {
+    if (skillIdProblem(skill.id) !== undefined) {
       state.violations.push(
         `Plugin "${plugin.name}" (${plugin.id}) contributes skill-pack ID "${skill.id}"; ` +
           "expected a kebab-case local skill ID of at most 64 characters.",

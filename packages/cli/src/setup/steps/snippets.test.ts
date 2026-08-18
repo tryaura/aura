@@ -9,6 +9,7 @@ import type { AuraManifestState, Snippet } from "@tryaura/aura-sdk";
 import { createWorkspaceModel } from "@tryaura/aura-sdk/testing";
 
 import { createSnippetCatalog } from "../snippets.js";
+import { emptySkillCatalog } from "../testing.js";
 import type { SetupStepContext } from "../types.js";
 import { createScriptedWizardIo } from "../wizard-scripted.js";
 import type { WizardAnswers, WizardOption, WizardQuestion } from "../wizard-types.js";
@@ -118,6 +119,7 @@ function context(snippets: readonly Snippet[], manifest: AuraManifestState): Set
       sharedInstructions: { exists: false, path: "/home/dev/agents/AGENTS.md" },
     }),
     selections: {},
+    skillCatalog: emptySkillCatalog(),
     snippetCatalog: createSnippetCatalog(snippets, manifest),
   };
 }

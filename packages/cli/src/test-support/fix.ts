@@ -96,9 +96,11 @@ export function environment(
     cwd: root,
     exec: () => Promise.resolve({ exitCode: 0, stderr: "", stdout: "" }),
     homeDir: root,
+    httpGet: () => Promise.resolve({ kind: "failure", reason: "network" }),
     now,
     pathEntries: [],
     platform: "darwin",
+    readVariable: () => undefined,
   };
 }
 

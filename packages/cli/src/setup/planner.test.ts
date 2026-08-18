@@ -9,7 +9,7 @@ import type { WorkspaceModel } from "@tryaura/aura-sdk";
 
 import type { AppCatalogEntry } from "./catalog.js";
 import { planSetup } from "./planner.js";
-import { emptySnippetCatalog } from "./testing.js";
+import { emptySkillCatalog, emptySnippetCatalog } from "./testing.js";
 import type { SetupStepContext } from "./types.js";
 
 const temporaryDirectories: string[] = [];
@@ -114,6 +114,7 @@ describe("planSetup", () => {
       manifest: model.manifest,
       model,
       selections: { apps: { managed: ["kept", "added"] } },
+      skillCatalog: emptySkillCatalog(),
       snippetCatalog: emptySnippetCatalog(),
     });
 
@@ -133,6 +134,7 @@ describe("planSetup", () => {
       manifest: model.manifest,
       model,
       selections: { apps: { managed: ["app"] } },
+      skillCatalog: emptySkillCatalog(),
       snippetCatalog: emptySnippetCatalog(),
     });
 
@@ -194,6 +196,7 @@ describe("planSetup", () => {
       manifest: model.manifest,
       model,
       selections: { apps: { managed: ["hinted", "hintless"] } },
+      skillCatalog: emptySkillCatalog(),
       snippetCatalog: emptySnippetCatalog(),
     });
 
@@ -243,6 +246,7 @@ function context(model: WorkspaceModel, createManifest: boolean): SetupStepConte
     manifest: model.manifest,
     model,
     selections: { baseline: { createManifest, selected: createManifest ? ["manifest"] : [] } },
+    skillCatalog: emptySkillCatalog(),
     snippetCatalog: emptySnippetCatalog(),
   };
 }

@@ -1,12 +1,15 @@
 import type {
   Adapter,
   Check,
+  DirectorySkillSource,
   McpServerDef,
   Preset,
+  PrivateDirectorySkillSource,
   SkillListing,
   SkillPack,
   SkillSourceDriver,
   Snippet,
+  StandardDirectorySkillSource,
 } from "@tryaura/aura-sdk";
 
 import { createPluginRegistry, type PluginCandidate, type PluginRegistryOptions } from "./index.js";
@@ -19,6 +22,7 @@ export interface PluginFixtureOptions {
   readonly mcpCatalog?: readonly McpServerDef[] | undefined;
   readonly name?: string | undefined;
   readonly presets?: readonly Preset[] | undefined;
+  readonly skillDirectories?: readonly DirectorySkillSource[] | undefined;
   readonly skills?: readonly SkillPack[] | undefined;
   readonly skillSources?: readonly SkillSourceDriver[] | undefined;
   readonly snippets?: readonly Snippet[] | undefined;
@@ -34,6 +38,7 @@ export function createPlugin(id: string, options: PluginFixtureOptions = {}): Pl
     mcpCatalog: options.mcpCatalog,
     name: options.name ?? id,
     presets: options.presets,
+    skillDirectories: options.skillDirectories,
     skills: options.skills,
     skillSources: options.skillSources,
     snippets: options.snippets,
@@ -113,6 +118,31 @@ export function createPreset(id: string): Preset {
     name: id,
     source: { type: "file", url: "file:///fixture/preset.json" },
     version: "1.0.0",
+  };
+}
+
+export function createSkillDirectory(
+  name: string,
+  overrides: Partial<Omit<StandardDirectorySkillSource, "kind">> = {},
+): DirectorySkillSource {
+  return {
+    id: overrides.id ?? `directory:${name}`,
+    kind: "directory",
+    name: overrides.name ?? name,
+    url: overrides.url ?? `https://${name}.example`,
+  };
+}
+
+export function createPrivateSkillDirectory(
+  name: string,
+  overrides: Partial<Omit<PrivateDirectorySkillSource, "kind">> = {},
+): DirectorySkillSource {
+  return {
+    id: overrides.id ?? `directory:${name}`,
+    kind: "private-directory",
+    name: overrides.name ?? name,
+    tokenEnv: overrides.tokenEnv ?? "ACME_SKILLS_TOKEN",
+    url: overrides.url ?? `https://${name}.example`,
   };
 }
 

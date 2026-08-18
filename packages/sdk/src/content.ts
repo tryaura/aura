@@ -149,6 +149,9 @@ export interface DriverSkillSource {
   readonly name: string;
 }
 
+/** A remote skill directory Aura's built-in client can talk to. Pure config, never code. */
+export type DirectorySkillSource = PrivateDirectorySkillSource | StandardDirectorySkillSource;
+
 /** Stable source metadata paired with a source-local skill id. */
 export type SkillSource =
   | BundledSkillSource

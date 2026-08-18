@@ -104,6 +104,17 @@ otherwise reach an application without ever passing the header rules — and eve
 scanned for credential literals before it is kept. Each check runs on both manifest reads and
 writes, so an unsafe definition is never propagated into application configuration.
 
+## Skill directory tokens
+
+The same rule covers remote skill directories: configuration names an environment variable, never
+a value. A private directory — registered by a plugin or listed in the workspace team preset
+(`.aura/preset.json`) — carries `tokenEnv` matching `^[A-Z_][A-Z0-9_]*$`. Aura reads the variable
+at request time, sends it as a bearer header over TLS, and stores it nowhere: not in the manifest,
+not in the installed skill tree, not in a diagnostic — a rejected token is reported by the
+variable's name. A directory whose variable is unset simply lists as unavailable with the variable
+to set. The manifest records only provenance for an installed directory skill: its source id,
+version, and tree hash, written after the skill's full SKILL.md was reviewed on screen.
+
 ## Ownership ledger
 
 Desired state and ownership are separate. The desired sections describe what should exist;

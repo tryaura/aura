@@ -125,17 +125,23 @@ function childrenOf(directory: string, entries: MemoryEntries): readonly string[
 export interface TestEnvironmentOptions {
   readonly cwd?: string | undefined;
   readonly homeDir?: string | undefined;
+  /** Scripted network responses; the default fails every request without touching a socket. */
+  readonly httpGet?: Environment["httpGet"] | undefined;
+  /** Variables served by `readVariable`; empty by default. */
+  readonly variables?: Readonly<Record<string, string>> | undefined;
 }
 
-/** An {@link Environment} whose exec and clock are inert; the model builder uses neither. */
+/** An {@link Environment} whose exec, network, and clock are inert; the model builder uses none. */
 export function createTestEnvironment(options: TestEnvironmentOptions = {}): Environment {
   return {
     cwd: options.cwd ?? "/workspace",
     exec: () => Promise.resolve({ exitCode: 0, stderr: "", stdout: "" }),
     homeDir: options.homeDir ?? "/home/dev",
+    httpGet: options.httpGet ?? (() => Promise.resolve({ kind: "failure", reason: "network" })),
     now: () => new Date(0),
     pathEntries: [],
     platform: "linux",
+    readVariable: (name) => options.variables?.[name],
   };
 }
 

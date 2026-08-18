@@ -19,5 +19,13 @@ export const MAX_SNIPPET_BYTES = 256_000;
  */
 export const MAX_MCP_CATALOG_BYTES = 256_000;
 
+/**
+ * The largest team preset Aura will read, in bytes.
+ *
+ * Same reasoning as {@link MAX_SNIPPET_BYTES}, and the same number: a preset is a short
+ * configuration document read at the start of every setup run.
+ */
+export const MAX_TEAM_PRESET_BYTES = 256_000;
+
 /** The most directory entries Aura lists during one read. */
 export const MAX_DIRECTORY_ENTRIES = 10_000;

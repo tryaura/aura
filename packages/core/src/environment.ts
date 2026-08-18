@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import type { Environment, EnvironmentPlatform } from "@tryaura/aura-sdk";
 
 import { createExec } from "./exec.js";
+import { createHttpGet } from "./http.js";
 
 type EnvironmentVariables = Readonly<Record<string, string | undefined>>;
 
@@ -15,6 +16,11 @@ export interface EnvironmentBootOptions {
   readonly environmentVariables?: EnvironmentVariables | undefined;
   /** Home directory selected by `--home`. Defaults to the operating-system home. */
   readonly homeDir?: string | undefined;
+  /**
+   * Network access. Defaults to the bounded TLS-only client; injectable so embedders and test
+   * harnesses decide what a run may reach — the testkit pins it to loopback.
+   */
+  readonly httpGet?: Environment["httpGet"] | undefined;
   /** Clock used by the kernel and plugins. Defaults to the system clock. */
   readonly now?: (() => Date) | undefined;
   /** Delimiter-separated executable search path selected by `--path`. */
@@ -52,9 +58,16 @@ export function createEnvironment(options: EnvironmentBootOptions = {}): Environ
     cwd,
     exec: createExec({ cwd, environmentVariables: childEnvironment, platform }),
     homeDir,
+    httpGet: options.httpGet ?? createHttpGet(),
     now,
     pathEntries,
     platform,
+    // Reads the boot snapshot, not live process.env, so behavior matches what children inherit.
+    // Exact-name lookup: the callers are credential reads whose grammar is uppercase-only.
+    readVariable: (name: string) => {
+      const value = environmentVariables[name];
+      return value === undefined || value === "" ? undefined : value;
+    },
   });
 }
 

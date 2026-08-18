@@ -10,7 +10,11 @@
   },
   "overrides": [
     {
-      "files": ["packages/cli/src/run.ts", "packages/core/src/environment.ts"],
+      "files": [
+        "packages/cli/src/run.ts",
+        "packages/core/src/environment.ts",
+        "packages/core/src/http.ts"
+      ],
       "rules": {
         "no-restricted-imports": "off",
         "no-restricted-properties": "off",
@@ -95,6 +99,10 @@
       {
         "name": "Date",
         "message": "Use Environment.now instead of reading the system clock. Parse an explicit timestamp with new Date(value) only where the value comes from data."
+      },
+      {
+        "name": "fetch",
+        "message": "Use Environment.httpGet instead of fetching directly; it enforces TLS, timeouts, and response caps."
       }
     ]
   }

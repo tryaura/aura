@@ -15,6 +15,7 @@ import {
 
 import { BRANDING } from "../testing.js";
 import type { SetupRequest } from "./setup.js";
+import type { SkillCatalog } from "./skills-catalog.js";
 import { createSnippetCatalog, type SnippetCatalog } from "./snippets.js";
 import { createScriptedWizardIo } from "./wizard-scripted.js";
 import type { WizardAnswers } from "./wizard-types.js";
@@ -68,6 +69,15 @@ export function emptySnippetCatalog(): SnippetCatalog {
   });
 }
 
+/** A catalog with no sources and no policy, for a context whose test never reaches skills. */
+export function emptySkillCatalog(): SkillCatalog {
+  return {
+    load: () => Promise.resolve({ entries: [], notes: [], unavailableSources: [] }),
+    policy: { presetName: ".aura/preset.json" },
+    resolve: () => Promise.resolve({ problems: new Map(), resolved: new Map() }),
+  };
+}
+
 export async function createFixture(): Promise<Fixture> {
   const root = await mkdtemp(join(tmpdir(), "aura-instruction-setup-"));
   temporaryDirectories.push(root);
@@ -75,7 +85,13 @@ export async function createFixture(): Promise<Fixture> {
   const workspace = join(root, "workspace");
   await mkdir(homeDir);
   await mkdir(workspace);
-  const environment = createEnvironment({ cwd: workspace, environmentVariables: {}, homeDir });
+  const environment = createEnvironment({
+    cwd: workspace,
+    environmentVariables: {},
+    homeDir,
+    // Hermetic: no fixture-driven setup run may reach the network.
+    httpGet: () => Promise.resolve({ kind: "failure", reason: "network" }),
+  });
 
   let captured = "";
 

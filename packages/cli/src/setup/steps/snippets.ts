@@ -1,3 +1,4 @@
+import { sortForDisplay } from "../display-order.js";
 import type { SnippetCatalogEntry } from "../snippets.js";
 import { SETUP_ABORTED, SETUP_BACK, type SetupStep, type SetupStepContext } from "../types.js";
 import { selectedValues, type WizardOption } from "../wizard-types.js";
@@ -100,7 +101,7 @@ function snippetOptions(
   catalog: readonly SnippetCatalogEntry[],
   previous: ReadonlySet<string>,
 ): readonly WizardOption[] {
-  return sortForDisplay(catalog).map((entry) =>
+  return sortForDisplay(catalog, (entry) => [entry.category, entry.name, entry.id]).map((entry) =>
     entry.status === "available"
       ? {
           description: entry.description,
@@ -119,24 +120,4 @@ function snippetOptions(
           value: entry.id,
         },
   );
-}
-
-/**
- * Groups the picker by category, since the renderer only heads a run of adjacent rows — registry
- * order interleaves two plugins sharing a category and repeats its heading.
- */
-function sortForDisplay(catalog: readonly SnippetCatalogEntry[]): readonly SnippetCatalogEntry[] {
-  return [...catalog].sort(
-    (left, right) =>
-      compare(left.category, right.category) ||
-      compare(left.name, right.name) ||
-      compare(left.id, right.id),
-  );
-}
-
-function compare(left: string, right: string): number {
-  if (left === right) {
-    return 0;
-  }
-  return left < right ? -1 : 1;
 }

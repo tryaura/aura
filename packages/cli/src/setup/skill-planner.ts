@@ -1,7 +1,6 @@
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 
 import type {
-  AdapterFileStatus,
   AuraManifestSkill,
   FileOperation,
   ResolvedSkillPack,
@@ -9,7 +8,9 @@ import type {
 } from "@tryaura/aura-sdk";
 
 import type { SetupBlocker } from "./planner.js";
+import { planLinks, planLinkRemoval, sharedRoot } from "./skill-planner-links.js";
 import { isStrictDescendant, removeSkillEntries, skillIdentity } from "./skill-planner-paths.js";
+import { disallowedSkillBlockers } from "./skill-planner-policy.js";
 import type { SetupStepContext, SkillSelection } from "./types.js";
 
 export interface SkillPlan {
@@ -24,17 +25,18 @@ export function planSkills(context: SetupStepContext): SkillPlan {
   const selected = context.selections.skills?.selected ?? previous.map(toSelection);
   const duplicate = duplicateLocalId(selected);
   if (duplicate !== undefined) {
-    return {
-      blockers: [
-        {
-          path: sharedRoot(context),
-          reason: `Skill "${duplicate}" was selected from more than one source. Choose one source for each installed skill ID.`,
-        },
-      ],
-      manifestSkills: previous,
-      manualSteps: [],
-      operations: [],
-    };
+    return abandoned(previous, {
+      path: sharedRoot(context),
+      reason: `Skill "${duplicate}" was selected from more than one source. Choose one source for each installed skill ID.`,
+    });
+  }
+  const disallowed = disallowedSkillBlockers(
+    selected,
+    context.skillCatalog.policy,
+    sharedRoot(context),
+  );
+  if (disallowed.length > 0) {
+    return { blockers: disallowed, manifestSkills: previous, manualSteps: [], operations: [] };
   }
 
   const state: MutableSkillPlan = {
@@ -43,11 +45,12 @@ export function planSkills(context: SetupStepContext): SkillPlan {
     manualSteps: [],
     operations: [],
   };
+  // Remote packs the step fetched and reviewed extend the bundled catalog; the scan never
+  // fetches, so this is the only route a directory skill takes into the plan.
   const catalog = new Map(
-    (context.model.availableSkills ?? []).map((skill) => [
-      skillIdentity(skill.source.id, skill.id),
-      skill,
-    ]),
+    [...(context.model.availableSkills ?? []), ...(context.selections.skills?.resolved ?? [])].map(
+      (skill) => [skillIdentity(skill.source.id, skill.id), skill],
+    ),
   );
   const previousByIdentity = new Map(
     previous.map((skill) => [skillIdentity(skill.source, skill.id), skill]),
@@ -80,6 +83,10 @@ export function planSkills(context: SetupStepContext): SkillPlan {
     manualSteps: Object.freeze(state.manualSteps),
     operations: Object.freeze(state.operations),
   };
+}
+
+function abandoned(previous: readonly AuraManifestSkill[], blocker: SetupBlocker): SkillPlan {
+  return { blockers: [blocker], manifestSkills: previous, manualSteps: [], operations: [] };
 }
 
 interface MutableSkillPlan {
@@ -208,68 +215,6 @@ function planTreeReplacement(
   );
 }
 
-function planLinks(id: string, context: SetupStepContext, state: MutableSkillPlan): void {
-  const target = join(sharedRoot(context), id);
-  for (const { path, status } of skillDeployments(context, id)) {
-    if (status === undefined || !status.exists) {
-      state.operations.push({ path, target, type: "symlink" });
-      continue;
-    }
-    if (status.pathKind === "symlink" && status.symlinkTarget !== undefined) {
-      const actual = resolve(dirname(path), status.symlinkTarget);
-      if (actual === resolve(target)) {
-        continue;
-      }
-    }
-    state.manualSteps.push(
-      `Aura left ${path} unchanged because it is not an Aura-managed skill link. Move it aside to deploy skill "${id}" there.`,
-    );
-  }
-}
-
-function planLinkRemoval(id: string, context: SetupStepContext, operations: FileOperation[]): void {
-  const target = resolve(join(sharedRoot(context), id));
-  for (const { path, status } of skillDeployments(context, id)) {
-    if (
-      status?.pathKind === "symlink" &&
-      status.symlinkTarget !== undefined &&
-      resolve(dirname(path), status.symlinkTarget) === target
-    ) {
-      operations.push({ path, type: "remove" });
-    }
-  }
-}
-
-interface SkillDeployment {
-  readonly path: string;
-  readonly status: AdapterFileStatus | undefined;
-}
-
-function skillDeployments(context: SetupStepContext, id: string): SkillDeployment[] {
-  const deployments: SkillDeployment[] = [];
-  for (const app of managedApps(context)) {
-    for (const directory of app.skillDirectories ?? []) {
-      const path = join(directory.path, id);
-      const status = app.sourceFiles.find((file) => resolve(file.spec.path) === resolve(path));
-      deployments.push({ path, status });
-    }
-  }
-  return deployments;
-}
-
-function managedApps(context: SetupStepContext): SetupStepContext["model"]["apps"] {
-  const selected = context.selections.apps?.managed;
-  const managed = new Set(
-    selected ??
-      (context.manifest.status === "ready"
-        ? Object.entries(context.manifest.value.apps)
-            .filter(([, app]) => app.managed)
-            .map(([id]) => id)
-        : []),
-  );
-  return context.model.apps.filter((app) => app.synthetic !== true && managed.has(app.adapterId));
-}
-
 function duplicateLocalId(selected: readonly SkillSelection[]): string | undefined {
   const seen = new Set<string>();
   for (const skill of selected) {
@@ -293,8 +238,4 @@ function manifestSkill(skill: ResolvedSkillPack): AuraManifestSkill {
 
 function toSelection(skill: AuraManifestSkill): SkillSelection {
   return { id: skill.id, source: skill.source };
-}
-
-function sharedRoot(context: SetupStepContext): string {
-  return join(context.model.homeDir, "agents", "skills");
 }

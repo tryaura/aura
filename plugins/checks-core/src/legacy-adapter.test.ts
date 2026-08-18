@@ -118,8 +118,10 @@ function environment(): Environment {
     cwd: "/repo/packages/app",
     exec: async () => result,
     homeDir: "/home/dev",
+    httpGet: () => Promise.resolve({ kind: "failure", reason: "network" }),
     now: () => new Date(0),
     pathEntries: [],
     platform: "linux",
+    readVariable: () => undefined,
   };
 }

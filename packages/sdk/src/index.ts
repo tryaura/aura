@@ -53,6 +53,7 @@ export type {
   ContentContribution,
   BundledSkillSource,
   DirectoryContentSource,
+  DirectorySkillSource,
   DriverSkillSource,
   FileContentSource,
   McpServerDef,
@@ -99,6 +100,8 @@ export {
   TIMEOUT_EXIT_CODE,
 } from "./environment.js";
 export type { Environment, EnvironmentPlatform, ExecRequest, ExecResult } from "./environment.js";
+export { DEFAULT_HTTP_TIMEOUT_MS, MAX_HTTP_RESPONSE_BYTES, MAX_HTTP_TIMEOUT_MS } from "./http.js";
+export type { HttpFailureReason, HttpGetRequest, HttpGetResult } from "./http.js";
 export type {
   ArchiveFileOperation,
   ArchiveFileReplacement,
@@ -173,6 +176,7 @@ export {
 } from "./imports.js";
 export type { AtImportContext } from "./imports.js";
 export type { AuraPlugin } from "./plugin.js";
+export type { AuraTeamPreset } from "./team-preset.js";
 export { detectLineEnding, splitSourceLines } from "./text.js";
 export type { SourceLine } from "./text.js";
 export {

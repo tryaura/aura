@@ -75,6 +75,7 @@ export function environmentOptions(
     readonly cwd: string;
     readonly defaultHomeDir: string;
     readonly env: Record<string, string | undefined>;
+    readonly httpGet?: EnvironmentBootOptions["httpGet"] | undefined;
   },
   home: string | undefined,
   pathValue: string | undefined,
@@ -83,6 +84,7 @@ export function environmentOptions(
     cwd: context.cwd,
     environmentVariables: context.env,
     homeDir: home ?? context.defaultHomeDir,
+    ...(context.httpGet === undefined ? {} : { httpGet: context.httpGet }),
     ...(pathValue === undefined ? {} : { path: pathValue }),
   };
 }

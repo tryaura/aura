@@ -31,6 +31,7 @@ export type ContributionKind =
   | "mcp-server"
   | "plugin"
   | "preset"
+  | "skill-directory"
   | "skill-pack"
   | "skill-source"
   | "snippet";

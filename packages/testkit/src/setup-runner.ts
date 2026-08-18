@@ -3,6 +3,7 @@ import { Readable } from "node:stream";
 import { runCli, type CliDistro } from "@tryaura/aura-cli";
 
 import { captureFilesystem, diffFilesystem } from "./filesystem.js";
+import { loopbackOnlyHttpGet } from "./http.js";
 import { createNormalizer } from "./run-result.js";
 import { createTextCapture } from "./text-capture.js";
 import type { TestFileDiff, TestSeed } from "./types.js";
@@ -11,6 +12,8 @@ export interface RunSetupOptions {
   /** Setup-command flags other than `--yes`, which the runner always supplies. */
   readonly args?: readonly string[] | undefined;
   readonly distro: CliDistro;
+  /** Extra variables visible to the run, such as a skill-directory token. `PATH` stays seeded. */
+  readonly environmentVariables?: Readonly<Record<string, string>> | undefined;
   readonly seed: TestSeed;
 }
 
@@ -39,8 +42,9 @@ export async function runSetup(options: RunSetupOptions): Promise<SetupRunResult
     argv: ["setup", "--yes", ...(options.args ?? [])],
     colorDepth: 0,
     cwd: options.seed.workspaceDir,
-    environmentVariables: { PATH: options.seed.pathDir },
+    environmentVariables: { ...options.environmentVariables, PATH: options.seed.pathDir },
     homeDir: options.seed.homeDir,
+    httpGet: loopbackOnlyHttpGet,
     setExitCode: (code) => {
       exitCode = code;
     },

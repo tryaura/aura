@@ -12,6 +12,7 @@ import {
   createSeedBuilder,
   cursorShimResponses,
   expectConvergedTwice,
+  loopbackOnlyHttpGet,
   runSetup as runSeededSetup,
   type TestSeed,
 } from "@tryaura/aura-testkit";
@@ -247,6 +248,7 @@ async function run(
     cwd: seed.workspaceDir,
     environmentVariables: { PATH: seed.pathDir },
     homeDir: seed.homeDir,
+    httpGet: loopbackOnlyHttpGet,
     setExitCode: (value) => {
       exitCode = value;
     },

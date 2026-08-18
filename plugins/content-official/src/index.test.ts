@@ -29,6 +29,19 @@ describe("official snippets", () => {
     ).toEqual(EXPECTED_SNIPPETS);
   });
 
+  it("registers the official skill directory with an https URL and no token", () => {
+    const registry = createPluginRegistry([officialContent]);
+
+    expect(registry.skillDirectories).toEqual([
+      {
+        id: "directory:agenticskills",
+        kind: "directory",
+        name: "agenticskills.io",
+        url: "https://agenticskills.io",
+      },
+    ]);
+  });
+
   it("keeps every source portable, concise, and suitable for picker previews", async () => {
     for (const snippet of officialContent.snippets) {
       const content = await readSnippet(snippet);

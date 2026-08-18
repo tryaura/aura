@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- one navigation matrix shares the same stage fixtures. */
 import { describe, expect, it } from "vitest";
 
 import { SETUP_ABORTED, SETUP_BACK } from "./types.js";
@@ -260,5 +261,43 @@ describe("runFormChain", () => {
     await runFormChain([nameStage, third], {}, io);
 
     expect(seen[2]).toBe("codex");
+  });
+
+  it("awaits async stage questions and applies their answers", async () => {
+    const asyncExtra: ChainStage<State> = {
+      apply: (state, answers) => ({ ...state, extra: selectedValues(answers["extra"])[0] }),
+      isApplicable: (state) => state.kind === "fancy",
+      label: "Extra",
+      questions: (state) =>
+        Promise.resolve(
+          state.kind === "fancy" ? [question("extra", ["gold", "silver"])] : undefined,
+        ),
+    };
+    const io = createScriptedWizardIo({
+      forms: [
+        { kind: { kind: "options", values: ["fancy"] } },
+        { extra: { kind: "options", values: ["gold"] } },
+      ],
+    });
+
+    const result = await runFormChain([kindStage, asyncExtra], {}, io);
+
+    expect(result).toEqual({ extra: "gold", kind: "fancy" });
+  });
+
+  it("skips an async stage whose resolved questions are empty", async () => {
+    const asyncExtra: ChainStage<State> = {
+      apply: (state) => state,
+      isApplicable: (state) => state.kind === "fancy",
+      label: "Extra",
+      questions: () => Promise.resolve(undefined),
+    };
+    const io = createScriptedWizardIo({
+      forms: [{ kind: { kind: "options", values: ["plain"] } }],
+    });
+
+    const result = await runFormChain([kindStage, asyncExtra], {}, io);
+
+    expect(result).toEqual({ kind: "plain" });
   });
 });
