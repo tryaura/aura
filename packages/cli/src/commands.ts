@@ -7,6 +7,7 @@ import type { Environment } from "@tryaura/aura-sdk";
 import {
   buildWorkspaceModel,
   createEnvironment,
+  createMcpUrlRequester,
   runChecks,
   type EnvironmentBootOptions,
   type PluginRegistry,
@@ -21,7 +22,7 @@ import {
   reportUnexpectedFailure,
   writeOptionRejection,
 } from "./command-support.js";
-import { fixOptionRejection } from "./check-options.js";
+import { explainOptionRejection, fixOptionRejection } from "./check-options.js";
 import { selectChecks, type CheckSelection } from "./check-selection.js";
 import { runFixes } from "./fix.js";
 import { createCheckReport, type DiagnosticSource, type ReportFix } from "./report.js";
@@ -86,6 +87,9 @@ export class CheckCommand extends Command<AuraCliContext> {
   only = Option.Array("--only", [], {
     description: "Run only a check ID, category, or application. Repeatable.",
   });
+  online = Option.Boolean("--online", false, {
+    description: "Probe remote MCP URLs with bounded network requests.",
+  });
   interactive = Option.Boolean("--interactive", false, {
     description: "With --fix, walk through guided remediation choices.",
   });
@@ -94,7 +98,7 @@ export class CheckCommand extends Command<AuraCliContext> {
     description: "Apply fixes without asking. Required when stdin is not a terminal.",
   });
 
-  // fallow-ignore-next-line unused-class-member -- Clipanion invokes registered command handlers.
+  // fallow-ignore-next-line complexity, unused-class-member -- coordinates the complete check and fix lifecycle.
   async execute(): Promise<CliExitCode> {
     const rejection = this.rejectInvalidOptions();
     if (rejection !== undefined) {
@@ -110,12 +114,16 @@ export class CheckCommand extends Command<AuraCliContext> {
       return 2;
     }
 
+    // Held open across both scans of a `--fix` run, and closed once so pooled sockets do not keep
+    // the process alive after the report is written.
+    const requester = this.online ? createMcpUrlRequester(this.context.env) : undefined;
     try {
       const environment = createEnvironment(this.environmentOptions());
       const scanOptions = {
         adapters: selected.adapters,
         environment,
         mcpCatalog: this.context.registry.mcpServers,
+        mcpProbes: requester === undefined ? {} : { urlRequest: requester.request },
         skills: this.context.registry.skills,
         snippets: this.context.registry.snippets,
       };
@@ -192,6 +200,8 @@ export class CheckCommand extends Command<AuraCliContext> {
         this.detail,
         this.context.stderr,
       );
+    } finally {
+      await requester?.close();
     }
   }
 
@@ -205,24 +215,14 @@ export class CheckCommand extends Command<AuraCliContext> {
   }
 
   private rejectInvalidExplainOptions(): string | undefined {
-    // `--detail` widens what a *scan* reports about a misbehaving plugin and `--fix` rewrites what
-    // one found, and `--explain` never scans, so neither has anything to act on. `--json` is
-    // supported: an explanation is exactly the kind of thing another tool wants to read.
-    if (
-      this.explain !== undefined &&
-      (this.detail || this.fix || this.interactive || this.only.length > 0)
-    ) {
-      const incompatible = this.detail
-        ? "--detail"
-        : this.fix
-          ? "--fix"
-          : this.interactive
-            ? "--interactive"
-            : "--only";
-      return `--explain cannot be combined with ${incompatible}`;
-    }
-
-    return undefined;
+    return explainOptionRejection({
+      detail: this.detail,
+      explaining: this.explain !== undefined,
+      fix: this.fix,
+      interactive: this.interactive,
+      online: this.online,
+      only: this.only.length > 0,
+    });
   }
 
   private rejectInvalidFixOptions(): string | undefined {
@@ -262,9 +262,7 @@ export class CheckCommand extends Command<AuraCliContext> {
   /**
    * Resolves a check id the way a developer typed it.
    *
-   * Ids are upper-case by convention, so matching them case-sensitively turns `env-001` into an
-   * error for what is unambiguously one check. An exact match still wins, which keeps two ids that
-   * differ only in case resolvable.
+   * Matching is case-insensitive after an exact match, so `env-001` resolves conventionally.
    */
   private explainCheck(id: string): CliExitCode {
     const checks = this.context.registry.checks;

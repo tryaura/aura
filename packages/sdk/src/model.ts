@@ -7,6 +7,7 @@ import type {
 import type { AdapterCapabilities } from "./capabilities.js";
 import type { AdapterSharedLinkKind } from "./shared-link.js";
 import type { JsonObject, Scope } from "./common.js";
+import type { McpProbeResult } from "./mcp-probe.js";
 import type { InstalledSkill, ResolvedSkillDirectory } from "./skill-model.js";
 
 /** A plugin snippet whose bundled source was resolved during the workspace scan. */
@@ -142,6 +143,8 @@ export interface McpServer {
   readonly appId: string;
   /** Server name as configured by the user. */
   readonly name: string;
+  /** Core-owned probe observations captured while building the workspace model. */
+  readonly probes?: readonly McpProbeResult[] | undefined;
   /** Whether this is user-level or workspace-level configuration. */
   readonly scope: Scope;
   /** The {@link AdapterFileSpec.id} this entry came from. */
