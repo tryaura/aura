@@ -132,7 +132,10 @@ export interface StandardDirectorySkillSource {
   readonly url: string;
 }
 
-/** A standard directory authenticated with a token read from the named environment variable. */
+/**
+ * A standard directory authenticated with a token read from the named environment variable.
+ * Clients must obtain explicit user approval before connecting or reading that variable.
+ */
 export interface PrivateDirectorySkillSource {
   readonly id: Extract<SkillSourceId, `directory:${string}`>;
   readonly kind: "private-directory";
@@ -148,6 +151,9 @@ export interface DriverSkillSource {
   readonly kind: "driver";
   readonly name: string;
 }
+
+/** A remote skill directory Aura's built-in client can talk to. Pure config, never code. */
+export type DirectorySkillSource = PrivateDirectorySkillSource | StandardDirectorySkillSource;
 
 /** Stable source metadata paired with a source-local skill id. */
 export type SkillSource =

@@ -2,11 +2,13 @@ import type {
   AuraManifestSkill,
   AuraManifestState,
   Finding,
+  ResolvedSkillPack,
   Scope,
   WorkspaceModel,
 } from "@tryaura/aura-sdk";
 
 import type { AppCatalogEntry } from "./catalog.js";
+import type { SkillCatalog } from "./skills-catalog.js";
 import type { SnippetCatalog } from "./snippets.js";
 import type { WizardFlowContext, WizardIo } from "./wizard-types.js";
 
@@ -57,6 +59,16 @@ export interface SkillSelection {
 }
 
 interface SkillSelections {
+  /** Private directories explicitly approved for credential-bearing requests during this run. */
+  readonly approvedPrivateSourceIds?: readonly string[] | undefined;
+  /**
+   * Directory packs fetched and reviewed during the step, keyed into the plan by identity.
+   *
+   * The scan stays offline, so remote packs never appear in `model.availableSkills`; this is how
+   * they reach the planner. A selected directory skill without a pack here keeps its previous
+   * manifest entry untouched — which is exactly what "reviewed Skip" and "offline" should do.
+   */
+  readonly resolved?: readonly ResolvedSkillPack[] | undefined;
   readonly selected: readonly SkillSelection[];
 }
 
@@ -91,6 +103,13 @@ export interface SetupStepContext {
   readonly manifest: AuraManifestState;
   readonly model: WorkspaceModel;
   readonly selections: SetupSelections;
+  /**
+   * The skills the run can install, fetched on first use.
+   *
+   * Only the skills step lists or resolves; the planner reads back the packs that step fetched and
+   * the policy the catalog carries, and never awaits anything.
+   */
+  readonly skillCatalog: SkillCatalog;
   /**
    * The registry's snippets, read on first use.
    *

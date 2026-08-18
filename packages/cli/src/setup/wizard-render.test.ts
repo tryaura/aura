@@ -248,13 +248,19 @@ describe("renderWizardFrame", () => {
         completed: [{ label: "Applications" }],
         step: { compactLabel: "Instr", label: "Instructions" },
         sub: { completed: [{ label: "Global" }], upcoming: [{ label: "Archive" }] },
-        upcoming: [{ label: "Snippets" }, { compactLabel: "Base", label: "Baseline" }],
+        upcoming: [
+          { label: "Snippets" },
+          { label: "Skills" },
+          { compactLabel: "Base", label: "Baseline" },
+        ],
       },
       questions: [view(sources)],
     };
 
     const rows = renderWizardFrame(frame, 0).split("\n");
-    expect(rows[0]).toBe(" ✔ Applications │ ▶ Instructions ☐ │ Snippets ☐ │ Baseline ☐ │ Submit");
+    expect(rows[0]).toBe(
+      " ✔ Applications │ ▶ Instructions ☐ │ Snippets ☐ │ Skills ☐ │ Baseline ☐ │ Submit",
+    );
     expect(rows[1]).toBe(" └ ✔ Global │ ▶ Sources ☐ │ Archive ☐");
     expect(rows[2]).toBe("");
   });

@@ -3,6 +3,7 @@ import type { Writable } from "node:stream";
 // Deep import on purpose: see the note in run.ts.
 import { Command, Option, type BaseContext } from "clipanion/lib/advanced/index.js";
 
+import type { Environment } from "@tryaura/aura-sdk";
 import {
   buildWorkspaceModel,
   createEnvironment,
@@ -40,6 +41,8 @@ export interface AuraCliContext extends BaseContext {
   readonly cwd: string;
   /** Home directory captured at the process boundary, before any `--home` override. */
   readonly defaultHomeDir: string;
+  /** Injected network access; absent means the kernel's own bounded client. */
+  readonly httpGet?: Environment["httpGet"] | undefined;
   readonly registry: PluginRegistry;
   /** Machine-readable output, kept apart from plugin-written `stdout`. */
   readonly report: Writable;

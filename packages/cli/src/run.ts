@@ -39,6 +39,7 @@ export async function runCli(distro: CliDistro, runtime?: CliRuntime): Promise<C
       cwd: resolved.cwd,
       defaultHomeDir: resolved.homeDir,
       env: resolved.environmentVariables,
+      httpGet: resolved.httpGet,
       registry,
       report: resolved.stdout,
       stderr: resolved.stderr,
@@ -94,6 +95,8 @@ interface ResolvedRuntime {
   readonly cwd: string;
   readonly environmentVariables: Record<string, string | undefined>;
   readonly homeDir: string;
+  /** Absent means the kernel's own bounded client. */
+  readonly httpGet: CliRuntime["httpGet"];
   readonly stderr: NonNullable<CliRuntime["stderr"]>;
   readonly stdin: NonNullable<CliRuntime["stdin"]>;
   readonly stdout: NonNullable<CliRuntime["stdout"]>;
@@ -114,17 +117,25 @@ function resolveRuntime(runtime: CliRuntime | undefined): ResolvedRuntime {
 
   return {
     argv: [...resolveValue(runtime?.argv, () => process.argv.slice(2))],
-    colorDepth: resolveValue(runtime?.colorDepth, () =>
-      // An injected stream is not a terminal Aura can ask about color, so it never gets any.
-      runtime?.stdout === undefined ? detectColorDepth(environmentVariables) : 0,
-    ),
+    colorDepth: resolveColorDepth(runtime, environmentVariables),
     cwd: resolveValue(runtime?.cwd, () => process.cwd()),
     environmentVariables,
     homeDir: resolveValue(runtime?.homeDir, () => homedir()),
+    httpGet: runtime?.httpGet,
     stderr: resolveValue(runtime?.stderr, () => process.stderr),
     stdin: resolveValue(runtime?.stdin, () => process.stdin),
     stdout,
   };
+}
+
+function resolveColorDepth(
+  runtime: CliRuntime | undefined,
+  environmentVariables: Record<string, string | undefined>,
+): number {
+  return resolveValue(runtime?.colorDepth, () =>
+    // An injected stream is not a terminal Aura can ask about color, so it never gets any.
+    runtime?.stdout === undefined ? detectColorDepth(environmentVariables) : 0,
+  );
 }
 
 function resolveValue<T>(value: T | undefined, fallback: () => T): T {

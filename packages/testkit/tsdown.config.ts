@@ -4,7 +4,7 @@ export default defineConfig({
   attw: { level: "error", profile: "esm-only" },
   deps: {
     neverBundle: true,
-    onlyImport: ["@tryaura/aura-cli", "@tryaura/aura-sdk", "diff"],
+    onlyImport: ["@tryaura/aura-cli", "@tryaura/aura-sdk", "@tryaura/core", "diff"],
   },
   dts: true,
   entry: { index: "src/index.ts" },

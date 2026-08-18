@@ -104,5 +104,12 @@ export {
 } from "./workspace/mcp-plan.js";
 export type { ScanDiagnostic, ScanPhase } from "./workspace/diagnostics.js";
 export { createFileReader, MAX_FILE_BYTES } from "./workspace/reader.js";
+export { createHttpGet } from "./http.js";
+export { listDirectorySkills, resolveDirectorySkills } from "./skills/directory-client.js";
+export type { DirectorySkillListingResult } from "./skills/directory-client.js";
+export { collectSkillDirectorySources, isSkillSourceAllowed } from "./skills/sources.js";
+export { readTeamPreset } from "./preset/read.js";
+export type { TeamPresetState } from "./preset/read.js";
+export { AURA_TEAM_PRESET_PATH } from "./preset/protocol.js";
 /** @public */
 export type { FileReader, FileReadOptions, PathContents } from "./workspace/reader.js";

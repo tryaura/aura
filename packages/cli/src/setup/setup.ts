@@ -4,9 +4,12 @@ import type { Environment, Finding } from "@tryaura/aura-sdk";
 import {
   applyFixPlan,
   buildWorkspaceModel,
+  createFileReader,
   prepareFixPlan,
+  readTeamPreset,
   runChecks,
   type PluginRegistry,
+  type TeamPresetState,
   type WorkspaceScan,
 } from "@tryaura/core";
 import { pluralize } from "@tryaura/core/pluralize";
@@ -17,6 +20,7 @@ import { safe } from "../safe-text.js";
 import type { CliBranding, CliExitCode } from "../types.js";
 import { buildAppCatalog } from "./catalog.js";
 import { planSetup } from "./planner.js";
+import { createSkillCatalog } from "./skills-catalog.js";
 import { createSnippetCatalog } from "./snippets.js";
 import { SETUP_STEPS } from "./steps/index.js";
 import { renderConvergedSetup, renderSetupSummary } from "./summary.js";
@@ -83,12 +87,27 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
 
   const appCatalog = buildAppCatalog(request.registry.adapters, model, scan.skipped);
   const snippetCatalog = createSnippetCatalog(request.registry.snippets, model.manifest);
+  const presetState: TeamPresetState = await readTeamPreset(environment.cwd, createFileReader());
+  if (presetState.status === "invalid" && steps.some((step) => step.id === "skills")) {
+    for (const diagnostic of presetState.diagnostics) {
+      request.stderr.write(`${branding.displayName}: ${safe(diagnostic.message)}\n`);
+    }
+    return 2;
+  }
+  const skillCatalog = createSkillCatalog({
+    environment,
+    model,
+    preset: presetState.preset,
+    presetNotes: presetState.diagnostics.map((diagnostic) => diagnostic.message),
+    registryDirectories: request.registry.skillDirectories,
+  });
 
   const stepContext = {
     appCatalog,
     ...(initialFindings === undefined ? {} : { findings: initialFindings }),
     manifest: model.manifest,
     model,
+    skillCatalog,
     snippetCatalog,
   };
 
