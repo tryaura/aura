@@ -103,6 +103,9 @@ importers:
       typanion:
         specifier: 3.14.0
         version: 3.14.0
+      undici:
+        specifier: 7.29.0
+        version: 7.29.0
     devDependencies:
       '@tryaura/adapter-claude-code':
         specifier: workspace:*
@@ -143,6 +146,9 @@ importers:
       semver:
         specifier: ^7.8.5
         version: 7.8.5
+      undici:
+        specifier: ^7.29.0
+        version: 7.29.0
     devDependencies:
       '@types/node':
         specifier: 24.13.3

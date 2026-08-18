@@ -15,6 +15,7 @@ import { legacyInstructionsAdapter } from "./legacy-adapter.js";
 import { managedBlockHashCheck } from "./mgd-001.js";
 import { mcp001 } from "./mcp-001.js";
 import { mcp002 } from "./mcp-002.js";
+import { mcp003 } from "./mcp-003.js";
 
 export default definePlugin({
   adapters: [legacyInstructionsAdapter],
@@ -35,6 +36,7 @@ export default definePlugin({
     managedBlockHashCheck,
     mcp001,
     mcp002,
+    mcp003,
   ],
   id: "checks-core",
   name: "Aura Core Checks",

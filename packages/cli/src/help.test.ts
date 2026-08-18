@@ -55,6 +55,7 @@ describe("help screens", () => {
           --only <filter>               Run one check ID, category, or application; repeatable
           --explain <id>                Explain one check without scanning
           --detail                      Include the failing plugin's own error text
+          --online                      Probe remote MCP URLs with bounded network requests
 
         Fixing behavior
           --interactive                 With --fix, walk through guided remediation choices

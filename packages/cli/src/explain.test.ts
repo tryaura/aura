@@ -33,9 +33,10 @@ describe("check --explain", () => {
     expect(capture.stderr.text).toBe("");
   });
 
-  it("rejects unknown explanation IDs and --detail", async () => {
+  it("rejects unknown explanation IDs and scan-only flags", async () => {
     const unknown = createCapture(["check", "--explain", "NOPE"]);
     const detail = createCapture(["check", "--explain", "fixture-info/INFO", "--detail"]);
+    const online = createCapture(["check", "--explain", "fixture-info/INFO", "--online"]);
     const plugins = [findingPlugin("info", [])];
 
     expect(await runCli(distro(plugins), unknown.runtime)).toBe(2);
@@ -43,6 +44,8 @@ describe("check --explain", () => {
     expect(unknown.stderr.text).toContain("fixture-info/INFO");
     expect(await runCli(distro(plugins), detail.runtime)).toBe(2);
     expect(detail.stderr.text).toContain("--explain cannot be combined with --detail");
+    expect(await runCli(distro(plugins), online.runtime)).toBe(2);
+    expect(online.stderr.text).toContain("--explain cannot be combined with --online");
   });
 
   it("resolves a check ID the way it was typed", async () => {

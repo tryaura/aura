@@ -153,6 +153,7 @@ export type {
   UnusableMcpReason,
   UnusableMcpServer,
 } from "./model.js";
+export type { McpProbeKind, McpProbeResult, McpProbeStatus } from "./mcp-probe.js";
 export type { WorkspaceModel } from "./workspace-model.js";
 export type {
   InstalledSkill,

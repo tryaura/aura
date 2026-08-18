@@ -15,6 +15,7 @@ import { type ScanContext, scanAdapter, type SkippedApp } from "./adapter-scan.j
 import type { ScanDiagnostic } from "./diagnostics.js";
 import { createDocumentResolver } from "./documents.js";
 import { resolveMcpCatalog } from "./mcp-catalog.js";
+import { createMcpProber, type McpUrlRequest } from "./mcp-probes.js";
 import { findProjectRoot } from "./project-root.js";
 import { createCachingReader, createFileReader, type FileReader } from "./reader.js";
 import { scanRepository } from "./repository.js";
@@ -41,8 +42,12 @@ export interface WorkspaceScanOptions {
    * out of the model rather than surfaced as a partial one.
    */
   readonly mcpCatalog?: readonly McpServerDef[] | undefined;
+  /** Enables bounded network reachability probes for remote MCP servers. */
+  readonly online?: boolean | undefined;
   /** Filesystem access. Defaults to the real one. */
   readonly reader?: FileReader | undefined;
+  /** Injectable HTTP transport for online MCP probes. */
+  readonly urlRequest?: McpUrlRequest | undefined;
   /**
    * Registry snippets to resolve during the same read pass, each bounded by `MAX_SNIPPET_BYTES`.
    * A snippet that cannot be resolved is reported as a diagnostic and left out of the model rather
@@ -88,6 +93,12 @@ export async function buildWorkspaceModel(options: WorkspaceScanOptions): Promis
     environment,
     projectBoundary: resolveProjectBoundary(projectRoot, environment.cwd, reader),
     projectRoot,
+    probeMcpServers: createMcpProber({
+      environment,
+      online: options.online ?? false,
+      reader,
+      urlRequest: options.urlRequest,
+    }),
     reader,
   };
   const sharedPath = sharedInstructionsPath(environment);
