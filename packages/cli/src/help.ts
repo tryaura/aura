@@ -77,6 +77,7 @@ export function renderCheckHelp(branding: CliBranding): string {
           },
           { term: "--explain <id>", text: "Explain one check without scanning" },
           { term: "--detail", text: "Include the failing plugin's own error text" },
+          { term: "--online", text: "Probe remote MCP URLs with bounded network requests" },
         ],
         title: "Narrow it down",
       },

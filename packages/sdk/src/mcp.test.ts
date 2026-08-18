@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { redactMcpArguments, sanitizeMcpUrl } from "./mcp.js";
+import { hasMcpRedaction, redactMcpArguments, sanitizeMcpUrl } from "./mcp.js";
 
 describe("MCP argument redaction", () => {
   it("redacts joined, separate, and recognizable bare credential values", () => {
@@ -68,5 +68,14 @@ describe("MCP URL sanitization", () => {
 
   it("refuses invalid URLs", () => {
     expect(sanitizeMcpUrl("not a url")).toBeUndefined();
+  });
+
+  it("reports whether the sanitized URL still addresses the configured endpoint", () => {
+    expect(hasMcpRedaction(sanitizeMcpUrl("https://example.com/mcp") ?? "")).toBe(false);
+    expect(hasMcpRedaction(sanitizeMcpUrl("https://user:secret@example.com/mcp") ?? "")).toBe(
+      false,
+    );
+    expect(hasMcpRedaction(sanitizeMcpUrl("https://example.com/mcp?team=acme") ?? "")).toBe(true);
+    expect(hasMcpRedaction(sanitizeMcpUrl("https://example.com/sk-live-abc/mcp") ?? "")).toBe(true);
   });
 });

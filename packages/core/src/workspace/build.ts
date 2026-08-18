@@ -15,6 +15,7 @@ import { type ScanContext, scanAdapter, type SkippedApp } from "./adapter-scan.j
 import type { ScanDiagnostic } from "./diagnostics.js";
 import { createDocumentResolver } from "./documents.js";
 import { resolveMcpCatalog } from "./mcp-catalog.js";
+import { createMcpProber, type McpProber, type McpProbeSettings } from "./mcp-probes.js";
 import { findProjectRoot } from "./project-root.js";
 import { createCachingReader, createFileReader, type FileReader } from "./reader.js";
 import { scanRepository } from "./repository.js";
@@ -41,6 +42,14 @@ export interface WorkspaceScanOptions {
    * out of the model rather than surfaced as a partial one.
    */
   readonly mcpCatalog?: readonly McpServerDef[] | undefined;
+  /**
+   * Reachability probing for the MCP servers this scan finds.
+   *
+   * Omitted means the model carries no probe results at all, which is what a scan that does not
+   * read them should ask for: resolving every configured command walks the executable search path.
+   * An empty object probes the filesystem only.
+   */
+  readonly mcpProbes?: McpProbeSettings | undefined;
   /** Filesystem access. Defaults to the real one. */
   readonly reader?: FileReader | undefined;
   /**
@@ -69,6 +78,9 @@ export interface WorkspaceScan {
   readonly skipped: readonly SkippedApp[];
 }
 
+/** Leaves every server exactly as its adapter parsed it, for a scan that asked for no probes. */
+const skipMcpProbes: McpProber = (servers) => Promise.resolve(servers);
+
 /**
  * Runs every adapter's lifecycle and assembles the normalized workspace model.
  *
@@ -88,6 +100,10 @@ export async function buildWorkspaceModel(options: WorkspaceScanOptions): Promis
     environment,
     projectBoundary: resolveProjectBoundary(projectRoot, environment.cwd, reader),
     projectRoot,
+    probeMcpServers:
+      options.mcpProbes === undefined
+        ? skipMcpProbes
+        : createMcpProber({ environment, reader, ...options.mcpProbes }),
     reader,
   };
   const sharedPath = sharedInstructionsPath(environment);

@@ -26,7 +26,7 @@
     },
     "packages/cli": {
       "entry": ["type-tests/*.ts"],
-      "ignoreDependencies": ["diff", "ignore", "semver", "smol-toml"]
+      "ignoreDependencies": ["diff", "ignore", "semver", "smol-toml", "undici"]
     },
     "plugins/*": {
       "includeEntryExports": true

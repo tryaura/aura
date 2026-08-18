@@ -19,6 +19,7 @@ import {
 import { type AdapterFileDiscovery, discoverAdapterFiles } from "./discovery.js";
 import type { DocumentResolver } from "./documents.js";
 import type { FileReader } from "./reader.js";
+import type { McpProber } from "./mcp-probes.js";
 import { resolveAdapterProjectSharedLink, resolveAdapterSharedLink } from "./shared-links.js";
 import { evaluateSupport, isComparableRange } from "./support.js";
 import { createAppMcpConvergence } from "./mcp-convergence.js";
@@ -31,6 +32,7 @@ export interface ScanContext {
   /** Canonical directory project-scoped paths must stay inside. Awaited once per adapter. */
   readonly projectBoundary: Promise<string | undefined>;
   readonly projectRoot: Promise<string | undefined>;
+  readonly probeMcpServers: McpProber;
   readonly reader: FileReader;
 }
 
@@ -105,6 +107,7 @@ export async function scanAdapter(adapter: Adapter, context: ScanContext): Promi
   const parse = await parseAdapter(adapter, detection, discovery, context);
   const snapshot = parse.snapshot;
   diagnostics.push(...parse.diagnostics);
+  const mcpServers = await context.probeMcpServers(snapshot.mcpServers);
 
   if (!isComparableRange(adapter.supportedRange)) {
     diagnostics.push({
@@ -121,7 +124,7 @@ export async function scanAdapter(adapter: Adapter, context: ScanContext): Promi
     displayName: adapter.displayName,
     ...(adapter.installHint === undefined ? {} : { installHint: adapter.installHint }),
     instructionFiles: snapshot.instructionFiles,
-    mcpServers: snapshot.mcpServers,
+    mcpServers,
     metadata: snapshot.metadata,
     skills: snapshot.skills,
     skillDirectories: (adapter.capabilities?.skills?.directories ?? []).map((directory) =>
@@ -143,7 +146,7 @@ export async function scanAdapter(adapter: Adapter, context: ScanContext): Promi
 
   // Registered rather than attached: the planner holds the bytes this model promises not to keep.
   const convergence = createAppMcpConvergence(adapter, discovery.files, {
-    servers: snapshot.mcpServers,
+    servers: mcpServers,
     unusable: snapshot.unusableMcpServers ?? [],
   });
   if (convergence !== undefined) {
