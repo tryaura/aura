@@ -8,6 +8,8 @@ import { MAX_TEAM_PRESET_ALLOWED_SOURCES, MAX_TEAM_PRESET_DIRECTORIES } from "..
 const SKILL_SOURCE_ID_PATTERN = /^(?:directory|driver|plugin):[^\s:]+$/u;
 
 const DIRECTORY_PREFIX = "directory:";
+const MAX_REQUIRED_MCP_SERVERS = 256;
+const MCP_CATALOG_ID_PATTERN = /^[a-z0-9][a-z0-9._-]*\/[a-zA-Z0-9][a-zA-Z0-9._-]*$/u;
 
 /**
  * Why a parsed preset document cannot be used, or the preset when it can.
@@ -38,14 +40,47 @@ export function validateTeamPreset(value: unknown): TeamPresetParseResult {
     return { kind: "invalid", problem: directories };
   }
 
+  const requiredMcpServers = collectRequiredMcpServers(value["requiredMcpServers"]);
+  if (typeof requiredMcpServers === "string") {
+    return { kind: "invalid", problem: requiredMcpServers };
+  }
+
   return {
     kind: "preset",
     preset: Object.freeze({
       ...(allowed === undefined ? {} : { allowedSkillSources: allowed }),
+      ...(requiredMcpServers === undefined ? {} : { requiredMcpServers }),
       schemaVersion: 1,
       ...(directories === undefined ? {} : { skillDirectories: directories }),
     }),
   };
+}
+
+function collectRequiredMcpServers(value: unknown): readonly string[] | string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!Array.isArray(value)) {
+    return "$.requiredMcpServers: must be an array of namespaced MCP catalog ids";
+  }
+  if (value.length > MAX_REQUIRED_MCP_SERVERS) {
+    return `$.requiredMcpServers: must contain at most ${String(MAX_REQUIRED_MCP_SERVERS)} catalog ids`;
+  }
+
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  for (const [index, entry] of value.entries()) {
+    const path = `$.requiredMcpServers[${String(index)}]`;
+    if (typeof entry !== "string" || !MCP_CATALOG_ID_PATTERN.test(entry)) {
+      return `${path}: must be a namespaced catalog id such as "official/github"`;
+    }
+    if (seen.has(entry)) {
+      return `${path}: must not duplicate another catalog id`;
+    }
+    seen.add(entry);
+    ids.push(entry);
+  }
+  return Object.freeze(ids);
 }
 
 /** The parsed list, `undefined` when absent, or the problem string when malformed. */

@@ -4,7 +4,6 @@ import type {
   AppModel,
   AuraManifest,
   FileOperation,
-  FixPlan,
   McpConvergenceBlocker,
   McpServer,
   OwnedServerEntry,
@@ -13,18 +12,17 @@ import type {
 
 import { createAuraManifestWriteOperation } from "../manifest/write.js";
 import type { AppMcpConvergence, AppMcpConvergenceResult } from "./mcp-convergence.js";
+import type {
+  DesiredMcpConvergence,
+  ManifestMcpConvergence,
+  McpServerRemovalPlan,
+} from "./mcp-plan-types.js";
 
-/** Result of building one application's complete manifest-driven MCP remediation. */
-export interface ManifestMcpConvergence {
-  readonly blockers: readonly McpConvergenceBlocker[];
-  readonly plan?: FixPlan | undefined;
-}
-
-/** Ledger-checked result of asking Aura to stop managing one configured MCP server. */
-export interface McpServerRemovalPlan extends ManifestMcpConvergence {
-  /** True only when the ownership ledger authorizes Aura to remove this name. */
-  readonly owned: boolean;
-}
+export type {
+  DesiredMcpConvergence,
+  ManifestMcpConvergence,
+  McpServerRemovalPlan,
+} from "./mcp-plan-types.js";
 
 /**
  * Planners for the applications in one scan, held outside the model they belong to.
@@ -72,6 +70,48 @@ export function planManifestMcpConvergence(
   const computed = computeConvergence(model, appId);
   memo.set(appId, computed);
   return computed;
+}
+
+/**
+ * Plans one application's MCP configuration without writing the Aura manifest.
+ *
+ * Setup uses this primitive to converge several targets and then fold all returned ownership into
+ * exactly one manifest write.
+ */
+export function planDesiredMcpConvergence(
+  model: WorkspaceModel,
+  desiredManifest: AuraManifest,
+  appId: string,
+): DesiredMcpConvergence {
+  const manifestState = model.manifest;
+  if (manifestState.status === "read-only") {
+    return {
+      blockers: [{ message: manifestState.problem.message, path: manifestState.path }],
+      operations: [],
+      ownedNames: desiredManifest.ownership[appId]?.mcpServerNames ?? [],
+    };
+  }
+
+  const target = resolvePlanner(model, appId);
+  if ("blockers" in target) {
+    return {
+      blockers: target.blockers,
+      operations: [],
+      ownedNames: desiredManifest.ownership[appId]?.mcpServerNames ?? [],
+    };
+  }
+  if (desiredManifest.apps[appId]?.managed !== true) {
+    return {
+      blockers: [],
+      operations: [],
+      ownedNames: desiredManifest.ownership[appId]?.mcpServerNames ?? [],
+    };
+  }
+
+  return target.convergence(
+    desiredEntries(desiredManifest, appId),
+    desiredManifest.ownership[appId]?.mcpServerNames ?? [],
+  );
 }
 
 /**
@@ -156,28 +196,19 @@ function computeConvergence(
     return { blockers: [] };
   }
 
-  const target = resolvePlanner(model, appId);
-  if ("blockers" in target) {
-    return target;
-  }
-  // Unmanaged means Aura leaves the application alone, not that it undoes itself: the ownership
-  // ledger is kept so that re-enabling management picks up where it left off.
   const manifest = desiredManifest ?? manifestState.value;
   if (manifest.apps[appId]?.managed !== true) {
     return { blockers: [] };
   }
-
-  const planned = target.convergence(
-    desiredEntries(manifest, appId),
-    manifest.ownership[appId]?.mcpServerNames ?? [],
-  );
+  const planned = planDesiredMcpConvergence(model, manifest, appId);
+  const displayName = model.apps.find((app) => app.adapterId === appId)?.displayName ?? appId;
   return planned.blockers.length > 0
     ? { blockers: planned.blockers }
     : {
         blockers: [],
         plan: {
           operations: ledgeredOperations(manifestState, manifest, appId, planned),
-          summary: `Converge ${target.app.displayName}'s MCP configuration from the Aura manifest.`,
+          summary: `Converge ${displayName}'s MCP configuration from the Aura manifest.`,
         },
       };
 }

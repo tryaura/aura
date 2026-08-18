@@ -37,10 +37,16 @@ export default defineConfig({
     "@tryaura/core": source("../../packages/core/src/index.ts"),
   },
   clean: ["dist", "content"],
-  copy: {
-    from: "../../plugins/content-official/content/snippets/**/*",
-    to: "content/snippets",
-  },
+  copy: [
+    {
+      from: "../../plugins/content-official/content/snippets/**/*",
+      to: "content/snippets",
+    },
+    {
+      from: "../../plugins/content-official/content/mcp/**/*",
+      to: "content/mcp",
+    },
+  ],
   deps: {
     alwaysBundle: INTERNAL_PACKAGES,
     dts: { neverBundle: true },

@@ -11,7 +11,7 @@ import {
 import { describe, expect, it } from "vitest";
 
 import { buildWorkspaceModel } from "./build.js";
-import { planManifestMcpConvergence } from "./mcp-plan.js";
+import { planDesiredMcpConvergence, planManifestMcpConvergence } from "./mcp-plan.js";
 import { canPlanMcpSecretRemediation, planMcpSecretRemediation } from "./mcp-secret-plan.js";
 import { createMemoryReader, createTestAdapter, createTestEnvironment } from "./testing.js";
 
@@ -34,6 +34,19 @@ describe("manifest MCP convergence", () => {
         operation.type === "write" ? operation.path : "",
       ),
     ).toEqual([configPath, manifestPath]);
+  });
+
+  it("plans configuration-only convergence against an explicit desired manifest", async () => {
+    const { configPath, model } = await scan({ config: SECRET_CONFIG });
+    if (model.manifest.status !== "ready") {
+      throw new Error("Expected a ready manifest fixture.");
+    }
+
+    const convergence = planDesiredMcpConvergence(model, model.manifest.value, "fake");
+
+    expect(convergence.blockers).toEqual([]);
+    expect(convergence.operations.map((operation) => operation.path)).toEqual([configPath]);
+    expect(convergence.ownedNames).toEqual(["managed"]);
   });
 
   it("declares the bytes it read so a later edit becomes a conflict rather than a revert", async () => {

@@ -10,7 +10,7 @@ import type { WorkspaceModel } from "@tryaura/aura-sdk";
 
 import type { AppCatalogEntry } from "./catalog.js";
 import { planSetup } from "./planner.js";
-import { emptySkillCatalog, emptySnippetCatalog } from "./testing.js";
+import { emptyMcpCatalog, emptySkillCatalog, emptySnippetCatalog } from "./testing.js";
 import type { SetupStepContext } from "./types.js";
 
 const temporaryDirectories: string[] = [];
@@ -112,7 +112,10 @@ describe("planSetup", () => {
 
     const outcome = planSetup({
       appCatalog: catalog("added", "kept", "stopped"),
+      interactive: false,
+      isEnvironmentVariableSet: () => false,
       manifest: model.manifest,
+      mcpCatalog: emptyMcpCatalog(),
       model,
       selections: { apps: { managed: ["kept", "added"] } },
       skillCatalog: emptySkillCatalog(),
@@ -132,7 +135,10 @@ describe("planSetup", () => {
 
     const outcome = planSetup({
       appCatalog: catalog("app"),
+      interactive: false,
+      isEnvironmentVariableSet: () => false,
       manifest: model.manifest,
+      mcpCatalog: emptyMcpCatalog(),
       model,
       selections: { apps: { managed: ["app"] } },
       skillCatalog: emptySkillCatalog(),
@@ -190,22 +196,28 @@ describe("planSetup", () => {
           displayName: "Hinted",
           installHint: "brew install hinted",
           kind: "undetected",
+          supportsMcp: false,
           supportsSkills: false,
         },
         {
           adapterId: "hintless",
           displayName: "Hintless",
           kind: "undetected",
+          supportsMcp: false,
           supportsSkills: false,
         },
         {
           adapterId: "stopped",
           displayName: "Stopped",
           kind: "undetected",
+          supportsMcp: false,
           supportsSkills: false,
         },
       ],
+      interactive: false,
+      isEnvironmentVariableSet: () => false,
       manifest: model.manifest,
+      mcpCatalog: emptyMcpCatalog(),
       model,
       selections: { apps: { managed: ["hinted", "hintless"] } },
       skillCatalog: emptySkillCatalog(),
@@ -253,6 +265,7 @@ function catalog(...ids: readonly string[]): readonly AppCatalogEntry[] {
     adapterId: id,
     displayName: id,
     kind: "undetected",
+    supportsMcp: false,
     supportsSkills: false,
   }));
 }
@@ -260,7 +273,10 @@ function catalog(...ids: readonly string[]): readonly AppCatalogEntry[] {
 function context(model: WorkspaceModel, createManifest: boolean): SetupStepContext {
   return {
     appCatalog: [],
+    interactive: false,
+    isEnvironmentVariableSet: () => false,
     manifest: model.manifest,
+    mcpCatalog: emptyMcpCatalog(),
     model,
     selections: { baseline: { createManifest, selected: createManifest ? ["manifest"] : [] } },
     skillCatalog: emptySkillCatalog(),

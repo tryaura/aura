@@ -73,6 +73,7 @@ export type {
 export { pluginContentUrl } from "./plugin-content.js";
 export {
   mcpEnvironmentNameProblem,
+  mcpEnvironmentVariableNames,
   mcpServerNameProblem,
   parseMcpServerDefinition,
 } from "./mcp-definition.js";
@@ -83,6 +84,7 @@ export type {
   McpCredentialEnvironmentVariable,
   McpDefinitionError,
   McpDefinitionResult,
+  McpEnvironmentVariableState,
   McpServerDefinition,
   McpServerManifest,
   ResolvedMcpServerDef,

@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "id": "acme/source-control",
   "name": "Acme source control",
+  "serverName": "acme-source-control",
   "description": "Search Acme repositories, pull requests, and code owners.",
   "docsUrl": "https://engineering.acme.example/mcp/source-control",
   "supportedApps": ["acme-agent", "claude-code", "codex", "cursor"],

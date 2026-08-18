@@ -175,6 +175,7 @@ export function model(
     /** Documents the apps do not carry, for checks that read the workspace-wide list directly. */
     readonly instructionFiles?: readonly InstructionDocument[];
     readonly manifest?: WorkspaceModel["manifest"];
+    readonly mcpEnvironmentVariables?: WorkspaceModel["mcpEnvironmentVariables"];
     readonly sharedSkills?: WorkspaceModel["sharedSkills"];
     readonly sharedInstructions?: {
       readonly content?: string | undefined;
@@ -197,6 +198,7 @@ export function model(
         path: "/home/dev/agents/aura.json",
         status: "missing",
       } satisfies WorkspaceModel["manifest"]),
+    mcpEnvironmentVariables: options.mcpEnvironmentVariables ?? [],
     mcpServers: apps.flatMap((candidate) => candidate.mcpServers),
     unusableMcpServers: apps.flatMap((candidate) => candidate.unusableMcpServers ?? []),
     // Absent by default: the environment checks never read it, and a fixture that claimed a shared

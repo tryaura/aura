@@ -15,6 +15,7 @@ export {
   AURA_MANIFEST_SCHEMA_VERSION,
   resolveAuraManifestPath,
 } from "./manifest/protocol.js";
+export { AuraManifestError } from "./manifest/error.js";
 export { assertAuraManifestWritable, createAuraManifestWriteOperation } from "./manifest/write.js";
 export {
   applyFixPlan,
@@ -105,8 +106,15 @@ export { projectSharedInstructionsPath } from "./workspace/shared-links.js";
 export { describeFailure } from "./workspace/diagnostics.js";
 export {
   mcpConvergenceBlockers,
+  planDesiredMcpConvergence,
   planManifestMcpConvergence,
   planMcpServerRemoval,
+} from "./workspace/mcp-plan.js";
+/** @public */
+export type {
+  DesiredMcpConvergence,
+  ManifestMcpConvergence,
+  McpServerRemovalPlan,
 } from "./workspace/mcp-plan.js";
 export {
   canPlanMcpSecretRemediation,

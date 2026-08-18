@@ -20,6 +20,7 @@ describe("readTeamPreset", () => {
     const reader = createMemoryReader({
       [PATH]: preset({
         allowedSkillSources: ["directory:acme", "plugin:official"],
+        requiredMcpServers: ["official/github", "official/sentry"],
         schemaVersion: 1,
         skillDirectories: [
           {
@@ -37,6 +38,7 @@ describe("readTeamPreset", () => {
     expect(state.diagnostics).toEqual([]);
     expect(state.preset).toEqual({
       allowedSkillSources: ["directory:acme", "plugin:official"],
+      requiredMcpServers: ["official/github", "official/sentry"],
       schemaVersion: 1,
       skillDirectories: [
         {
@@ -81,6 +83,11 @@ describe("readTeamPreset", () => {
   it.each([
     [{ schemaVersion: 2 }, "$.schemaVersion: must be 1"],
     [{ allowedSkillSources: [":"], schemaVersion: 1 }, "$.allowedSkillSources[0]"],
+    [{ requiredMcpServers: ["github"], schemaVersion: 1 }, "$.requiredMcpServers[0]"],
+    [
+      { requiredMcpServers: ["official/github", "official/github"], schemaVersion: 1 },
+      "must not duplicate",
+    ],
     [{ schemaVersion: 1, skillDirectories: [{}] }, "$.skillDirectories[0].id"],
     [
       {
@@ -161,9 +168,22 @@ describe("readTeamPreset", () => {
         }),
       }),
     );
+    const mcpServers = await readTeamPreset(
+      "/workspace",
+      createMemoryReader({
+        [PATH]: preset({
+          requiredMcpServers: Array.from(
+            { length: 257 },
+            (_, index) => `official/server-${String(index)}`,
+          ),
+          schemaVersion: 1,
+        }),
+      }),
+    );
 
     expect(allowed.diagnostics[0]?.message).toContain("at most 256");
     expect(directories.diagnostics[0]?.message).toContain("at most 32");
+    expect(mcpServers.diagnostics[0]?.message).toContain("at most 256");
   });
 
   it("does not echo rejected URL credentials or query values", async () => {

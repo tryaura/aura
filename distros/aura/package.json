@@ -9,7 +9,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc --project tsconfig.build.json",
-    "build:binary": "bun build src/main.ts ../../plugins/content-official/content/snippets/*.md --compile --minify --loader .md:file --asset-naming='content/snippets/[name].[ext]' --no-compile-autoload-dotenv --no-compile-autoload-bunfig --outfile dist/aura",
+    "build:binary": "node build-binary.mjs",
     "test:binary": "vitest run --config vitest.binary.config.ts",
     "typecheck": "tsc --noEmit",
     "verify:binary": "pnpm build:binary && pnpm test:binary"

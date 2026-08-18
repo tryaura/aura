@@ -45,11 +45,21 @@ export interface McpServerManifest {
   readonly id: string;
   /** Human-readable catalog name. */
   readonly name: string;
+  /** Default configuration key, kept separate from the human-readable catalog name. */
+  readonly serverName: string;
   readonly schemaVersion: 1;
   /** Adapter ids this template can target. Omitted means no catalog-level restriction. */
   readonly supportedApps?: readonly string[] | undefined;
   /** Transport instantiated into the desired-state manifest when selected. */
   readonly transportTemplate: McpServerDefinition;
+}
+
+/** Availability of one MCP credential reference, without retaining its value. */
+export interface McpEnvironmentVariableState {
+  /** Environment-variable name referenced by a desired MCP transport. */
+  readonly name: string;
+  /** Whether the variable was present when Aura scanned the workspace. */
+  readonly isSet: boolean;
 }
 
 /** A catalog contribution paired with the validated payload its source file holds. */

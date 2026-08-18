@@ -16,6 +16,8 @@ export interface AuraTeamPreset {
    * setup until it is cleared.
    */
   readonly allowedSkillSources?: readonly SkillSourceId[] | undefined;
+  /** Plugin-namespaced MCP catalog ids the team recommends selecting during setup. */
+  readonly requiredMcpServers?: readonly string[] | undefined;
   /** The only team-preset schema this release reads. */
   readonly schemaVersion: 1;
   /**

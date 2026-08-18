@@ -84,6 +84,7 @@ export class SetupCommand extends Command<AuraCliContext> {
         colorDepth: this.context.colorDepth,
         dryRun: this.dryRun,
         environment,
+        interactive,
         io,
         registry: this.context.registry,
         stateHomeDir: this.context.defaultHomeDir,

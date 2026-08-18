@@ -5,11 +5,12 @@ import type {
   FileOperation,
   FixPlan,
 } from "@tryaura/aura-sdk";
-import { createAuraManifestWriteOperation, createEmptyAuraManifest } from "@tryaura/core";
+import { createEmptyAuraManifest } from "@tryaura/core";
 
 import { catalogEntryId, catalogEntryName, type AppCatalogEntry } from "./catalog.js";
 import { planInstructions } from "./instruction-planner.js";
-import { shouldWriteManifest } from "./manifest-write.js";
+import { planManifestWrite } from "./manifest-write.js";
+import { planSetupMcp } from "./mcp-planner.js";
 import { planSnippets } from "./snippet-planner.js";
 import { planSkills } from "./skill-planner.js";
 import type { SetupSelections, SetupStepContext } from "./types.js";
@@ -59,7 +60,7 @@ export function planSetup(context: SetupStepContext): SetupPlanOutcome {
   blockers.push(...snippetPlan.blockers);
   const skillPlan = planSkills(context);
   blockers.push(...skillPlan.blockers);
-  const manifest = desiredManifest(
+  const baseManifest = desiredManifest(
     context.manifest,
     apps,
     context.appCatalog,
@@ -67,12 +68,13 @@ export function planSetup(context: SetupStepContext): SetupPlanOutcome {
     context.selections.snippets === undefined ? undefined : snippetPlan.manifestSnippets,
     skillPlan.manifestSkills,
   );
+  const mcpPlan = planSetupMcp(context, baseManifest);
+  blockers.push(...mcpPlan.blockers);
+  const manifest = mcpPlan.manifest;
   const baseline = context.selections.baseline;
 
   if (context.manifest.status === "read-only") {
     blockers.push({ path: context.manifest.path, reason: context.manifest.problem.message });
-  } else if (shouldWriteManifest(context, manifest, baseline?.createManifest === true, apps)) {
-    operations.push(createAuraManifestWriteOperation(context.manifest, manifest));
   }
 
   const shared = context.model.sharedInstructions;
@@ -90,7 +92,17 @@ export function planSetup(context: SetupStepContext): SetupPlanOutcome {
       context.model.sharedInstructions.path,
       snippetPlan,
     ),
+    ...mcpPlan.operations,
   );
+
+  const manifestWrite = planManifestWrite(
+    context,
+    manifest,
+    baseline?.createManifest === true,
+    apps,
+  );
+  blockers.push(...manifestWrite.blockers);
+  operations.push(...manifestWrite.operations);
 
   return Object.freeze({
     blockers: Object.freeze(blockers),
@@ -101,6 +113,7 @@ export function planSetup(context: SetupStepContext): SetupPlanOutcome {
         ...appManualSteps(context),
         ...instructionPlan.manualSteps,
         ...skillPlan.manualSteps,
+        ...mcpPlan.manualSteps,
       ]),
       operations: Object.freeze(operations),
       summary: "Set up Aura on this machine from your selections.",

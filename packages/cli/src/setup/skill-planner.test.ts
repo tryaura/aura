@@ -11,7 +11,7 @@ import type {
 import { createWorkspaceModel } from "@tryaura/aura-sdk/testing";
 import { describe, expect, it } from "vitest";
 
-import { emptySkillCatalog, emptySnippetCatalog } from "./testing.js";
+import { emptyMcpCatalog, emptySkillCatalog, emptySnippetCatalog } from "./testing.js";
 import { planSkills } from "./skill-planner.js";
 import type { SetupStepContext, SkillSelection } from "./types.js";
 
@@ -282,7 +282,10 @@ function context(options: ContextOptions): SetupStepContext {
   const base = emptySkillCatalog();
   return {
     appCatalog: [],
+    interactive: false,
+    isEnvironmentVariableSet: () => false,
     manifest,
+    mcpCatalog: emptyMcpCatalog(),
     model,
     selections:
       options.selections === undefined
