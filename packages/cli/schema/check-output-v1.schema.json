@@ -15,6 +15,15 @@
         "warnings": { "type": "integer", "minimum": 0 }
       }
     },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["label", "layer"],
+      "properties": {
+        "label": { "type": "string" },
+        "layer": { "enum": ["cli", "default", "distro", "manifest", "preset"] }
+      }
+    },
     "summary": {
       "type": "object",
       "additionalProperties": false,
@@ -202,25 +211,49 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
+        "enabled",
         "explain",
         "fixability",
         "fixesApplicable",
         "id",
         "kind",
+        "provenance",
         "schemaVersion",
         "scope",
         "severity",
+        "thresholds",
         "title"
       ],
       "properties": {
+        "enabled": { "type": "boolean" },
         "explain": { "type": "string" },
         "fixability": { "enum": ["auto", "guided", "manual"] },
         "fixesApplicable": { "type": "boolean" },
         "id": { "type": "string" },
         "kind": { "const": "check-explanation" },
+        "preset": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "reference"],
+          "properties": {
+            "name": { "type": "string" },
+            "reference": { "type": "string" }
+          }
+        },
+        "provenance": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "severity", "thresholds"],
+          "properties": {
+            "enabled": { "$ref": "#/$defs/provenance" },
+            "severity": { "$ref": "#/$defs/provenance" },
+            "thresholds": { "$ref": "#/$defs/provenance" }
+          }
+        },
         "schemaVersion": { "const": 1 },
         "scope": { "enum": ["global", "project"] },
         "severity": { "enum": ["error", "info", "warn"] },
+        "thresholds": { "type": "object" },
         "title": { "type": "string" }
       }
     }

@@ -1,4 +1,12 @@
-import type { Check, DetectedFinding, Finding, WorkspaceModel } from "@tryaura/aura-sdk";
+import type {
+  AuraEffectiveConfig,
+  Check,
+  DetectedFinding,
+  Finding,
+  JsonObject,
+  Severity,
+  WorkspaceModel,
+} from "@tryaura/aura-sdk";
 
 import { describeFailure } from "./workspace/diagnostics.js";
 
@@ -37,16 +45,20 @@ export interface CheckRun {
  * full privileges of the process and is trusted to that extent, but one that throws must not cost
  * the user the findings every other check produced.
  */
-export function runChecks(checks: readonly Check[], model: WorkspaceModel): CheckRun {
+export function runChecks(
+  checks: readonly Check[],
+  model: WorkspaceModel,
+  config?: AuraEffectiveConfig,
+): CheckRun {
   const diagnostics: CheckDiagnostic[] = [];
   const findings: Finding[] = [];
 
   for (const check of checks) {
     const detectedFindings: Finding[] = [];
     try {
-      const detected = check.detect(model);
+      const detected = check.detect(model, { thresholds: thresholdsFor(check, config) });
       for (const finding of detected) {
-        detectedFindings.push(toFinding(check, finding));
+        detectedFindings.push(toFinding(check, finding, config));
       }
     } catch (error) {
       diagnostics.push(failure(check, error));
@@ -71,19 +83,46 @@ export function runChecks(checks: readonly Check[], model: WorkspaceModel): Chec
  * into machine-readable output: `readonly` is erased at runtime, so the declared shape is a
  * request rather than a guarantee.
  */
-function toFinding(check: Check, detected: DetectedFinding): Finding {
+function toFinding(
+  check: Check,
+  detected: DetectedFinding,
+  config: AuraEffectiveConfig | undefined,
+): Finding {
   return Object.freeze({
     checkId: check.id,
     id: detected.id,
     message: detected.message,
     scope: check.scope,
-    severity: detected.severity ?? check.defaultSeverity,
+    severity: severityFor(check, detected, config),
     ...(detected.details === undefined ? {} : { details: detected.details }),
     ...(detected.fixability === undefined ? {} : { fixability: detected.fixability }),
     ...(detected.locations === undefined ? {} : { locations: detected.locations }),
     ...(detected.metadata === undefined ? {} : { metadata: detected.metadata }),
     ...(detected.presentation === undefined ? {} : { presentation: detected.presentation }),
   });
+}
+
+/**
+ * Resolves one finding's severity: configured override, then occurrence, then check default.
+ *
+ * The effective configuration always carries a severity, so the `default` layer has to be stepped
+ * over explicitly. Without that, a check's own default would outrank the severity it deliberately
+ * chose for a single occurrence — a transient probe failure would report as loudly as a real one.
+ */
+function severityFor(
+  check: Check,
+  detected: DetectedFinding,
+  config: AuraEffectiveConfig | undefined,
+): Severity {
+  const configured = config?.checks[check.id]?.severity;
+  if (configured !== undefined && configured.provenance.layer !== "default") {
+    return configured.value;
+  }
+  return detected.severity ?? check.defaultSeverity;
+}
+
+function thresholdsFor(check: Check, config: AuraEffectiveConfig | undefined): JsonObject {
+  return config?.checks[check.id]?.thresholds.value ?? Object.freeze({});
 }
 
 /** Records a failed check without repeating what the check said. */

@@ -2,6 +2,11 @@ import type { JsonObject, Scope, Severity } from "./common.js";
 import type { FixPlan } from "./fix.js";
 import type { WorkspaceModel } from "./workspace-model.js";
 
+/** Data-only runtime settings handed to one check. */
+export interface CheckRuntimeSettings {
+  readonly thresholds: JsonObject;
+}
+
 /** One named remediation a guided check can offer for a specific finding. */
 export interface GuidedFixChoice {
   /**
@@ -82,8 +87,8 @@ export type FindingPresentation = FindingMetadataTablePresentation;
 /**
  * What a {@link Check} emits for one problem it found.
  *
- * The check's own `id`, `scope`, and `defaultSeverity` are stamped on by Aura core, so a finding
- * cannot contradict the check that produced it.
+ * The check's own `id` and `scope` are stamped on by Aura core, and severity is resolved against
+ * configuration there too, so a finding cannot contradict the check that produced it.
  */
 export interface DetectedFinding {
   /** Extra explanation for this occurrence, beyond the check's static {@link Check.explain}. */
@@ -116,7 +121,12 @@ export interface DetectedFinding {
   readonly metadata?: JsonObject | undefined;
   /** Generic guidance for presenting the structured metadata in human output. */
   readonly presentation?: FindingPresentation | undefined;
-  /** Overrides {@link Check.defaultSeverity} for this occurrence only. */
+  /**
+   * Severity for this occurrence, outranking {@link Check.defaultSeverity}.
+   *
+   * A configured override — from a preset, a manifest, or `--severity` — outranks both: someone
+   * who set a severity for the check meant it for every finding the check produces.
+   */
   readonly severity?: Severity | undefined;
 }
 
@@ -126,7 +136,7 @@ export interface Finding extends DetectedFinding {
   readonly checkId: string;
   /** The producing check's {@link Check.scope}. */
   readonly scope: Scope;
-  /** The resolved severity: the finding's own, or the check's {@link Check.defaultSeverity}. */
+  /** A configured override, then this occurrence's own severity, then the check default. */
   readonly severity: Severity;
 }
 
@@ -139,10 +149,13 @@ export interface Finding extends DetectedFinding {
  * every check from a single scan.
  */
 interface CheckDefinition {
-  /** Severity for findings that do not override it. */
+  /** Severity for findings that neither configuration nor the occurrence itself supplies. */
   readonly defaultSeverity: Severity;
   /** Returns one finding per problem, or an empty array when the rule is satisfied. */
-  readonly detect: (model: WorkspaceModel) => readonly DetectedFinding[];
+  readonly detect: (
+    model: WorkspaceModel,
+    settings: CheckRuntimeSettings,
+  ) => readonly DetectedFinding[];
   /** Why the rule exists, in one or two sentences. Shown when a user asks about a finding. */
   readonly explain: string;
   /** Stable check identifier, namespaced by the owning {@link AuraPlugin.id}. */
@@ -151,6 +164,15 @@ interface CheckDefinition {
   readonly scope: Scope;
   /** Short imperative statement of the desired state, such as `"Shared instructions exist"`. */
   readonly title: string;
+  /**
+   * Rejects thresholds this check cannot honour, returning why in one sentence.
+   *
+   * Thresholds arrive from presets and command lines, so a misspelled key or an out-of-range
+   * number is the common case, not the exotic one. Without this, an unusable value silently leaves
+   * the built-in behavior in place while `--explain` reports it as applied. Return `undefined` to
+   * accept. Declaring it is optional; a check with no tunables needs nothing.
+   */
+  readonly validateThresholds?: ((thresholds: JsonObject) => string | undefined) | undefined;
 }
 
 interface AutomaticCheck extends CheckDefinition {

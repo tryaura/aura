@@ -57,6 +57,8 @@ async function runResolved(
       branding: distro.branding,
       colorDepth: resolved.colorDepth,
       cwd: resolved.cwd,
+      defaultPreset: distro.defaultPreset,
+      defaults: distro.defaults,
       defaultHomeDir: resolved.homeDir,
       env: resolved.environmentVariables,
       httpGet: resolved.httpGet,

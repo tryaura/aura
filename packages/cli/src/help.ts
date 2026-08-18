@@ -82,6 +82,10 @@ export function renderCheckHelp(branding: CliBranding): string {
         title: "Narrow it down",
       },
       {
+        rows: configurationRows(),
+        title: "Configuration",
+      },
+      {
         rows: [
           { term: "--interactive", text: "With --fix, walk through guided remediation choices" },
           { term: "--yes", text: "Apply without asking; required when stdin is not a terminal" },
@@ -132,6 +136,10 @@ export function renderSetupHelp(branding: CliBranding, addKinds: readonly string
           },
         ],
         title: "Options",
+      },
+      {
+        rows: configurationRows(),
+        title: "Configuration",
       },
       { rows: advancedRows(), title: "Advanced" },
     ],
@@ -197,6 +205,17 @@ function advancedRows(): readonly HelpRow[] {
   return [
     { term: "--home <dir>", text: "Override the home directory" },
     { term: "--path <dir>", text: "Override the executable search path" },
+  ];
+}
+
+function configurationRows(): readonly HelpRow[] {
+  return [
+    { term: "--preset <ref>", text: "Use a plugin:, npm:, HTTPS, or local preset" },
+    { term: "--enable <check>", text: "Enable a check; repeatable" },
+    { term: "--disable <check>", text: "Disable a check; repeatable" },
+    { term: "--severity <check>=<level>", text: "Override info, warn, or error; repeatable" },
+    { term: "--threshold <check>=<JSON>", text: "Override a check's threshold object; repeatable" },
+    { term: "--no-cache", text: "Bypass remote preset cache reads and writes" },
   ];
 }
 

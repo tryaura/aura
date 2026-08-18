@@ -13,6 +13,7 @@ import { defineOwnProperty, jsonPropertyPath } from "@tryaura/aura-sdk";
 
 import { isRecord } from "../values.js";
 import { AURA_MANIFEST_SCHEMA_VERSION } from "./protocol.js";
+import { optionalChecks, optionalPreset } from "./schema-checks.js";
 import { mcpServers } from "./schema-mcp.js";
 import {
   invalid,
@@ -52,8 +53,10 @@ export function validateAuraManifest(value: unknown): AuraManifest {
   return Object.freeze({
     ...source,
     apps: apps(source["apps"]),
+    ...optionalChecks(source["checks"]),
     mcpServers: mcpServers(source["mcpServers"]),
     ownership: ownership(source["ownership"]),
+    ...optionalPreset(source["preset"]),
     schemaVersion: AURA_MANIFEST_SCHEMA_VERSION,
     skills: skills(source["skills"]),
     snippets: snippets(source["snippets"]),

@@ -1,53 +1,50 @@
-import type { Writable } from "node:stream";
-
 // Deep import on purpose: see the note in run.ts.
-import { Command, Option, type BaseContext } from "clipanion/lib/advanced/index.js";
+import { Command, Option } from "clipanion/lib/advanced/index.js";
 
-import type { Environment } from "@tryaura/aura-sdk";
+import type { AuraConfigurationLayer, AuraManifestState, Environment } from "@tryaura/aura-sdk";
+
+import type { AuraCliContext } from "./cli-context.js";
 import {
   buildWorkspaceModel,
+  applyRequiredMcpServers,
   createEnvironment,
+  createFileReader,
   createMcpUrlRequester,
+  enabledChecks,
+  readAuraManifest,
+  resolveAuraManifestPath,
   runChecks,
-  type EnvironmentBootOptions,
-  type PluginRegistry,
 } from "@tryaura/core";
 
 import {
   environmentOptions,
   homeOption,
-  isTerminal,
   pathOption,
-  rejectInvalidPathOptions,
   reportUnexpectedFailure,
   writeOptionRejection,
 } from "./command-support.js";
 import { explainCheck } from "./check-explain.js";
-import { explainOptionRejection, fixOptionRejection } from "./check-options.js";
-import { selectChecks, type CheckSelection } from "./check-selection.js";
+import { rejectInvalidCheckOptions } from "./check-option-rejection.js";
+import {
+  disableOption,
+  enableOption,
+  noCacheOption,
+  parseConfigurationFlagArrays,
+  presetOption,
+  severityOption,
+  thresholdOption,
+} from "./config-options.js";
+import { disabledOnlySelector, resolveCheckSelection } from "./check-selection-resolve.js";
+import { fixPassDiagnostics } from "./check-fix-pass.js";
 import { runFixes } from "./fix.js";
 import { createCheckReport, type DiagnosticSource, type ReportFix } from "./report.js";
 import { renderHuman, renderJson, renderOperationalFailureJson } from "./render.js";
 import { safe } from "./safe-text.js";
+import { resolveRuntimeConfig } from "./runtime-config.js";
 import { checkRunEvent, elapsedMs, fixRunEvent } from "./telemetry-events.js";
-import type { TelemetryRecorder } from "./telemetry.js";
-import type { CliBranding, CliExitCode } from "./types.js";
+import type { CliExitCode } from "./types.js";
 
-export interface AuraCliContext extends BaseContext {
-  readonly branding: CliBranding;
-  readonly cwd: string;
-  /** Home directory captured at the process boundary, before any `--home` override. */
-  readonly defaultHomeDir: string;
-  /** Injected network access; absent means the kernel's own bounded client. */
-  readonly httpGet?: Environment["httpGet"] | undefined;
-  /** The run's clock, injected at the process boundary so commands and telemetry agree on time. */
-  readonly now: () => Date;
-  readonly registry: PluginRegistry;
-  /** Machine-readable output, kept apart from plugin-written `stdout`. */
-  readonly report: Writable;
-  /** The run's telemetry recorder. A no-op unless the distribution composed a sink. */
-  readonly telemetry: TelemetryRecorder;
-}
+export type { AuraCliContext } from "./cli-context.js";
 
 export class CheckCommand extends Command<AuraCliContext> {
   static override paths = [["check"]];
@@ -73,10 +70,12 @@ export class CheckCommand extends Command<AuraCliContext> {
   detail = Option.Boolean("--detail", false, {
     description: "Include the failing plugin's own error text. May contain file contents.",
   });
+  disable = disableOption();
   dryRun = Option.Boolean("--dry-run", false, {
     description: "With --fix, show what would change and write nothing.",
   });
   explain = Option.String("--explain", { description: "Explain a check without scanning." });
+  enable = enableOption();
   fix = Option.Boolean("--fix", false, {
     description: "Preview fixes and apply them after confirmation.",
   });
@@ -91,40 +90,93 @@ export class CheckCommand extends Command<AuraCliContext> {
   online = Option.Boolean("--online", false, {
     description: "Probe remote MCP URLs with bounded network requests.",
   });
+  noCache = noCacheOption();
   interactive = Option.Boolean("--interactive", false, {
     description: "With --fix, walk through guided remediation choices.",
   });
   pathValue = pathOption();
+  preset = presetOption();
+  severity = severityOption();
+  threshold = thresholdOption();
   yes = Option.Boolean("--yes", false, {
     description: "Apply fixes without asking. Required when stdin is not a terminal.",
   });
 
   // fallow-ignore-next-line complexity, unused-class-member -- coordinates the complete check and fix lifecycle.
   async execute(): Promise<CliExitCode> {
-    const rejection = this.rejectInvalidOptions();
+    const rejection = rejectInvalidCheckOptions({
+      detail: this.detail,
+      dryRun: this.dryRun,
+      explaining: this.explain !== undefined,
+      fix: this.fix,
+      home: this.home,
+      interactive: this.interactive,
+      json: this.json,
+      jsonVersion: this.jsonVersion,
+      online: this.online,
+      only: this.only,
+      pathValue: this.pathValue,
+      stdin: this.context.stdin,
+      stdout: this.context.stdout,
+      yes: this.yes,
+    });
     if (rejection !== undefined) {
       return writeOptionRejection(this.context, rejection);
     }
 
+    const flags = parseConfigurationFlagArrays(
+      this.disable,
+      this.enable,
+      this.severity,
+      this.threshold,
+    );
+    if (flags.status === "invalid") {
+      return writeOptionRejection(this.context, flags.message);
+    }
+
+    const environment = createEnvironment(
+      environmentOptions(this.context, this.home, this.pathValue),
+    );
+    const manifestPath = resolveAuraManifestPath(environment.homeDir);
+    const manifest = readAuraManifest(manifestPath, await createFileReader().read(manifestPath));
+    const configured = await this.resolveConfiguration(environment, manifest, flags.layer);
+    if (configured.status === "invalid") {
+      this.context.stderr.write(
+        `${this.context.branding.displayName}: ${safe(configured.message)}\n`,
+      );
+      return 2;
+    }
+
     if (this.explain !== undefined) {
-      // Explaining scans nothing and reports nothing: no environment exists, so no telemetry.
       return explainCheck(this.explain, {
         ...this.context,
         checks: this.context.registry.checks,
+        config: configured.config,
         json: this.json,
       });
     }
 
-    const selected = this.resolveSelection();
+    const selected = resolveCheckSelection(this.context, this.only);
     if (selected === undefined) {
       return 2;
     }
+    const disabledSelector = disabledOnlySelector(
+      this.context.registry.checks,
+      this.only,
+      configured.config,
+    );
+    if (disabledSelector !== undefined) {
+      this.context.stderr.write(
+        `${this.context.branding.displayName}: check ${safe(disabledSelector)} is disabled by configuration; add --enable ${safe(disabledSelector)} to run it.\n`,
+      );
+      return 2;
+    }
+    const activeChecks = enabledChecks(selected.checks, configured.config);
 
     // Held open across both scans of a `--fix` run, and closed once so pooled sockets do not keep
     // the process alive after the report is written.
     const requester = this.online ? createMcpUrlRequester(this.context.env) : undefined;
     try {
-      const environment = createEnvironment(this.environmentOptions());
       const startedAt = environment.now();
       const scanOptions = {
         adapters: selected.adapters,
@@ -135,7 +187,9 @@ export class CheckCommand extends Command<AuraCliContext> {
         snippets: this.context.registry.snippets,
       };
       let scan = await buildWorkspaceModel(scanOptions);
-      let run = runChecks(selected.checks, scan.model);
+      let projected = applyRequiredMcpServers(scan.model, configured.config);
+      let model = projected.model;
+      let run = runChecks(activeChecks, model, configured.config);
       let fixRunDiagnostics: readonly DiagnosticSource[] = [];
       let fixes: readonly ReportFix[] | undefined;
       let forcedExitCode: CliExitCode | undefined;
@@ -143,13 +197,13 @@ export class CheckCommand extends Command<AuraCliContext> {
       if (this.fix) {
         const outcome = await runFixes({
           branding: this.context.branding,
-          checks: selected.checks,
+          checks: activeChecks,
           colorDepth: this.context.colorDepth,
           dryRun: this.dryRun,
           environment,
           findings: run.findings,
           interactive: this.interactive,
-          model: scan.model,
+          model,
           stderr: this.context.stderr,
           stdin: this.context.stdin,
           stateHomeDir: this.context.defaultHomeDir,
@@ -158,19 +212,13 @@ export class CheckCommand extends Command<AuraCliContext> {
           yes: this.yes,
         });
         forcedExitCode = outcome.exitCode;
-        fixRunDiagnostics = [
-          ...outcome.diagnostics.map((diagnostic): DiagnosticSource => ({
-            detail: diagnostic.detail,
-            id: diagnostic.checkId,
-            message: diagnostic.message,
-            phase: "fix",
-          })),
-          ...outcome.fixDiagnostics,
-        ];
+        fixRunDiagnostics = fixPassDiagnostics(outcome);
         fixes = outcome.fixes;
         if (outcome.applied) {
           scan = await buildWorkspaceModel(scanOptions);
-          run = runChecks(selected.checks, scan.model);
+          projected = applyRequiredMcpServers(scan.model, configured.config);
+          model = projected.model;
+          run = runChecks(activeChecks, model, configured.config);
         }
       }
 
@@ -178,12 +226,12 @@ export class CheckCommand extends Command<AuraCliContext> {
         adapters: selected.adapters,
         apps: scan.model.apps,
         checkDiagnostics: run.diagnostics,
-        checks: selected.checks,
+        checks: activeChecks,
         findings: run.findings,
         fixDiagnostics: fixRunDiagnostics,
         fixes,
         forcedExitCode,
-        scanDiagnostics: scan.diagnostics,
+        scanDiagnostics: [...scan.diagnostics, ...projected.diagnostics],
         skipped: scan.skipped,
         withDetail: this.detail,
       });
@@ -221,72 +269,27 @@ export class CheckCommand extends Command<AuraCliContext> {
     }
   }
 
-  private rejectInvalidOptions(): string | undefined {
-    return (
-      this.rejectInvalidJsonOptions() ??
-      this.rejectInvalidFixOptions() ??
-      this.rejectInvalidExplainOptions() ??
-      rejectInvalidPathOptions(this.home, this.pathValue)
-    );
-  }
-
-  private rejectInvalidExplainOptions(): string | undefined {
-    return explainOptionRejection({
-      detail: this.detail,
-      explaining: this.explain !== undefined,
-      fix: this.fix,
-      interactive: this.interactive,
+  private resolveConfiguration(
+    environment: Environment,
+    manifest: AuraManifestState,
+    cliLayer: AuraConfigurationLayer,
+  ) {
+    return resolveRuntimeConfig({
+      cliLayer,
+      cliReference: this.preset,
+      defaultPreset: this.context.defaultPreset,
+      defaults: this.context.defaults,
+      environment,
+      manifest,
+      noCache: this.noCache,
       online: this.online,
-      only: this.only.length > 0,
+      registry: this.context.registry,
     });
-  }
-
-  private rejectInvalidFixOptions(): string | undefined {
-    return fixOptionRejection({
-      dryRun: this.dryRun,
-      fix: this.fix,
-      interactive: this.interactive,
-      stdinTerminal: isTerminal(this.context.stdin),
-      stdoutTerminal: isTerminal(this.context.stdout),
-      yes: this.yes,
-    });
-  }
-
-  private rejectInvalidJsonOptions(): string | undefined {
-    if (this.jsonVersion !== undefined && !this.json) {
-      return "--json-version only means something with --json. Add --json, or drop it.";
-    }
-    if (this.jsonVersion !== undefined && this.jsonVersion !== "1") {
-      return `unsupported --json-version: ${safe(this.jsonVersion)}. Supported versions: 1`;
-    }
-    return undefined;
-  }
-
-  private resolveSelection(): CheckSelection | undefined {
-    const result = selectChecks(
-      this.context.registry.checks,
-      this.context.registry.adapters,
-      this.only,
-    );
-    if (result.status === "selected") {
-      return result.selection;
-    }
-    this.context.stderr.write(`${this.context.branding.displayName}: ${result.message}\n`);
-    return undefined;
   }
 
   /** The check options a telemetry event carries, so a sink can segment scripted use. */
   private runFlags() {
-    return {
-      dryRun: this.dryRun,
-      fix: this.fix,
-      interactive: this.interactive,
-      json: this.json,
-      online: this.online,
-    };
-  }
-
-  private environmentOptions(): EnvironmentBootOptions {
-    return environmentOptions(this.context, this.home, this.pathValue);
+    const { dryRun, fix, interactive, json, online } = this;
+    return { dryRun, fix, interactive, json, online };
   }
 }

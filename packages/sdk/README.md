@@ -205,7 +205,8 @@ Checks are synchronous and pure. They receive a `WorkspaceModel` containing app 
 documents, MCP servers, installed skills, source-file metadata, the `~/agents/aura.json` manifest
 state, and an optional repository snapshot. `model.manifest` distinguishes a missing manifest from
 a parsed v1 manifest and a read-only problem. Checks never read from disk or inspect process
-environment directly.
+environment directly. `detect` may accept a second `CheckRuntimeSettings` argument containing only
+that check's inert threshold object; existing one-argument implementations remain valid.
 
 `RepositoryModel` carries the root `.gitignore` and the repository-local `info/exclude`, so a rule
 a developer applied only to their own checkout is not mistaken for a missing one.
@@ -224,11 +225,11 @@ A literal keeps compiling after a rename and silently stops matching, which turn
 quietly reports nothing.
 
 A check emits `DetectedFinding` values carrying only what is specific to the occurrence — `id`,
-`message`, and optionally `details`, `locations`, `metadata`, `presentation`, and a `severity`
-override. `presentation` can ask a human renderer to display a metadata array as a generic table;
-the structured metadata remains the source of truth in JSON output. Aura core stamps on `checkId`,
-`scope`, and the resolved `severity` from the owning check, so a finding cannot contradict the
-check that produced it.
+`message`, and optionally `details`, `locations`, `metadata`, `presentation`, and a legacy
+occurrence-level `severity` fallback. `presentation` can ask a human renderer to display a metadata
+array as a generic table; the structured metadata remains the source of truth in JSON output. Aura
+core stamps on `checkId`, `scope`, and the effective runtime `severity` from the owning check, so a
+finding cannot contradict resolved configuration.
 
 `AppModel.sourceFiles` reports only whether each declared path existed. Contents are consumed by
 `parse` and are not retained alongside the documents parsed out of them, so a large instruction

@@ -1,6 +1,7 @@
 import type { FileProblem } from "./adapter.js";
 import type { Scope } from "./common.js";
 import type { SkillSourceId } from "./content.js";
+import type { AuraCheckConfiguration } from "./configuration.js";
 import type { McpServerDefinition } from "./mcp-definition-types.js";
 
 /**
@@ -79,10 +80,14 @@ export interface AuraManifestOwnership {
 export interface AuraManifestV1 {
   /** Application selections keyed by stable adapter id. */
   readonly apps: Readonly<Record<string, AuraManifestApp>>;
+  /** Per-user check overrides applied above the selected team preset. */
+  readonly checks?: AuraCheckConfiguration | undefined;
   /** MCP servers Aura should converge into their selected applications. */
   readonly mcpServers: readonly AuraManifestMcpServer[];
   /** What Aura owns in each application's configuration, keyed by adapter id. */
   readonly ownership: Readonly<Record<string, AuraManifestOwnership>>;
+  /** Sticky runtime preset reference. CLI `--preset` overrides it for one run. */
+  readonly preset?: string | undefined;
   readonly schemaVersion: 1;
   /** Managed skill selections and their source provenance. */
   readonly skills: readonly AuraManifestSkill[];

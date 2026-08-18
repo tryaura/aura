@@ -137,14 +137,21 @@ describe("check-output-v1.schema.json", () => {
 
   it("validates the explanation envelope", () => {
     const explanation: CheckExplanation = {
+      enabled: true,
       explain: "Why this matters.\n\nHow to inspect it.",
       fixability: "manual",
       fixesApplicable: false,
       id: "fixture/CHECK",
       kind: "check-explanation",
+      provenance: {
+        enabled: { label: "built-in defaults", layer: "distro" },
+        severity: { label: "built-in defaults", layer: "distro" },
+        thresholds: { label: "built-in defaults", layer: "distro" },
+      },
       schemaVersion: 1,
       scope: "global",
       severity: "warn",
+      thresholds: {},
       title: "Fixture check",
     };
 

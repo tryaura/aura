@@ -104,7 +104,12 @@ function parityFinding(
     : {
         id: `missing:${target.appId}:${target.name}`,
         message: `MCP server ${target.name} is missing from ${target.appId}.`,
-        metadata: { appId: target.appId, kind: "missing", serverName: target.name },
+        metadata: {
+          appId: target.appId,
+          kind: "missing",
+          ...(target.requiredBy === undefined ? {} : { requiredBy: target.requiredBy }),
+          serverName: target.name,
+        },
       };
 }
 

@@ -40,7 +40,7 @@ export function createHttpGet(): (request: HttpGetRequest) => Promise<HttpGetRes
         redirect: "error",
         signal: AbortSignal.timeout(clampHttpTimeout(request.timeoutMs)),
       });
-      return await readBody(response, maxBytes);
+      return await readBody(response, maxBytes, request.responseType === "bytes");
     } catch (error) {
       return { kind: "failure", reason: failureReason(error) };
     }
@@ -86,10 +86,16 @@ export function isAllowedHttpUrl(url: URL): boolean {
 }
 
 /** Streams the body against the byte cap; decoding happens only once the cap is known to hold. */
-async function readBody(response: Response, maxBytes: number): Promise<HttpGetResult> {
+async function readBody(
+  response: Response,
+  maxBytes: number,
+  binary: boolean,
+): Promise<HttpGetResult> {
   const reader = response.body?.getReader();
   if (reader === undefined) {
-    return { body: "", kind: "response", status: response.status };
+    return binary
+      ? { body: new Uint8Array(), kind: "binary-response", status: response.status }
+      : { body: "", kind: "response", status: response.status };
   }
 
   const chunks: Uint8Array[] = [];
@@ -107,8 +113,10 @@ async function readBody(response: Response, maxBytes: number): Promise<HttpGetRe
     chunks.push(value);
   }
 
-  const body = new TextDecoder().decode(concatenate(chunks, received));
-  return { body, kind: "response", status: response.status };
+  const body = concatenate(chunks, received);
+  return binary
+    ? { body, kind: "binary-response", status: response.status }
+    : { body: new TextDecoder().decode(body), kind: "response", status: response.status };
 }
 
 function concatenate(chunks: readonly Uint8Array[], length: number): Uint8Array {

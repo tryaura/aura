@@ -57,6 +57,14 @@ describe("help screens", () => {
           --detail                      Include the failing plugin's own error text
           --online                      Probe remote MCP URLs with bounded network requests
 
+        Configuration
+          --preset <ref>                Use a plugin:, npm:, HTTPS, or local preset
+          --enable <check>              Enable a check; repeatable
+          --disable <check>             Disable a check; repeatable
+          --severity <check>=<level>    Override info, warn, or error; repeatable
+          --threshold <check>=<JSON>    Override a check's threshold object; repeatable
+          --no-cache                    Bypass remote preset cache reads and writes
+
         Fixing behavior
           --interactive                 With --fix, walk through guided remediation choices
           --yes                         Apply without asking; required when stdin is not a terminal
@@ -79,17 +87,25 @@ describe("help screens", () => {
       "acme setup — Set up this machine interactively and converge it
 
         Everyday use
-          acme setup              Run the setup wizard
-          acme setup --dry-run    Stop after the plan summary, write nothing
+          acme setup                    Run the setup wizard
+          acme setup --dry-run          Stop after the plan summary, write nothing
 
         Options
-          --yes                   Accept every proposed default; required when stdin is not a terminal
-          --detail                Include the full diff of every planned change
-          --add <kind>            Run one setup addition (supported: snippet, skill)
+          --yes                         Accept every proposed default; required when stdin is not a terminal
+          --detail                      Include the full diff of every planned change
+          --add <kind>                  Run one setup addition (supported: snippet, skill)
+
+        Configuration
+          --preset <ref>                Use a plugin:, npm:, HTTPS, or local preset
+          --enable <check>              Enable a check; repeatable
+          --disable <check>             Disable a check; repeatable
+          --severity <check>=<level>    Override info, warn, or error; repeatable
+          --threshold <check>=<JSON>    Override a check's threshold object; repeatable
+          --no-cache                    Bypass remote preset cache reads and writes
 
         Advanced
-          --home <dir>            Override the home directory
-          --path <dir>            Override the executable search path
+          --home <dir>                  Override the home directory
+          --path <dir>                  Override the executable search path
 
         After setup, run 'acme check' to verify the machine converged
       "

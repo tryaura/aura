@@ -74,6 +74,23 @@ describe("createHttpGet", () => {
     }
   });
 
+  it("returns bounded raw bytes when a caller requests an archive body", async () => {
+    const server = await listen((_request, response) => {
+      response.end(Buffer.from([0, 255, 1]));
+    });
+    try {
+      await expect(
+        httpGet({ responseType: "bytes", url: `${server.url}/archive` }),
+      ).resolves.toEqual({
+        body: new Uint8Array([0, 255, 1]),
+        kind: "binary-response",
+        status: 200,
+      });
+    } finally {
+      await server.close();
+    }
+  });
+
   it("sends the request headers verbatim", async () => {
     let seen: string | undefined;
     const server = await listen((request, response) => {

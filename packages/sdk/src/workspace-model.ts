@@ -1,5 +1,5 @@
 import type { ResolvedSkillPack } from "./content.js";
-import type { AuraManifestState } from "./manifest.js";
+import type { AuraManifestMcpServer, AuraManifestState } from "./manifest.js";
 import type { ResolvedMcpServerDef } from "./mcp-definition-types.js";
 import type {
   AppModel,
@@ -42,6 +42,8 @@ export interface WorkspaceModel {
   readonly mcpSecretSightings: readonly McpSecretSighting[];
   /** Repository root, when `cwd` is inside one. */
   readonly projectRoot?: string | undefined;
+  /** Preset-required MCP selections projected into desired state without persisting them. */
+  readonly requiredMcpServers?: readonly RequiredMcpServer[] | undefined;
   /** Repository state captured once by core, when the workspace is inside a repository. */
   readonly repository?: RepositoryModel | undefined;
   /** Canonical `~/agents/AGENTS.md` source read independently of any application adapter. */
@@ -57,4 +59,10 @@ export interface WorkspaceModel {
    * absent, and then propose adding a name the file already declares.
    */
   readonly unusableMcpServers: readonly UnusableMcpServer[];
+}
+
+/** One virtual desired MCP entry and the preset/configuration layer that requires it. */
+export interface RequiredMcpServer extends AuraManifestMcpServer {
+  readonly catalogId: string;
+  readonly requiredBy: string;
 }

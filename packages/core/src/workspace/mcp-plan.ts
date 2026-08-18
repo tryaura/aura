@@ -168,7 +168,7 @@ function computeConvergence(
   }
 
   const planned = target.convergence(
-    desiredEntries(manifest, appId),
+    desiredEntries(model, manifest, appId),
     manifest.ownership[appId]?.mcpServerNames ?? [],
   );
   return planned.blockers.length > 0
@@ -247,10 +247,29 @@ function resolvePlanner(
     : { app, convergence };
 }
 
-function desiredEntries(manifest: AuraManifest, appId: string): readonly OwnedServerEntry[] {
-  return manifest.mcpServers
-    .filter((server) => server.apps.includes(appId))
-    .map((server) => ({ name: server.name, scope: server.scope, transport: server.transport }));
+/**
+ * Merges preset-required servers under the manifest's own, keyed by scope and name.
+ *
+ * The manifest is written last and wins, matching the layer precedence everywhere else. A preset
+ * that requires a server the user already configured must not silently repoint its transport:
+ * a required entry fills a gap, it does not overrule a decision the user recorded.
+ */
+function desiredEntries(
+  model: WorkspaceModel,
+  manifest: AuraManifest,
+  appId: string,
+): readonly OwnedServerEntry[] {
+  const result = new Map<string, OwnedServerEntry>();
+  for (const server of [...(model.requiredMcpServers ?? []), ...manifest.mcpServers]) {
+    if (server.apps.includes(appId)) {
+      result.set(`${server.scope}\0${server.name}`, {
+        name: server.name,
+        scope: server.scope,
+        transport: server.transport,
+      });
+    }
+  }
+  return Object.freeze([...result.values()]);
 }
 
 function withOwnership(

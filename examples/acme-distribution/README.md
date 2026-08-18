@@ -5,7 +5,9 @@ This is a complete private Aura distribution. It adds:
 - an adapter for an internal `acme-agent` CLI;
 - an Acme engineering instruction snippet;
 - an `acme-release` Agent Skill; and
-- a credential-safe Acme source-control MCP catalog entry.
+- a credential-safe Acme source-control MCP catalog entry; and
+- a bundled `plugin:acme/platform` runtime preset demonstrating checks, required MCP, content, and
+  skill-source policy.
 
 It is a workspace member, so `pnpm typecheck` at the repository root covers it on every pull
 request. Its dependencies are `workspace:*` for that reason; a real internal distribution pins

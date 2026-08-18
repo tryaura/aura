@@ -1,18 +1,14 @@
 import type { Writable } from "node:stream";
 
-import type { Check, Finding, FindingLocation } from "@tryaura/aura-sdk";
+import type { Finding, FindingLocation } from "@tryaura/aura-sdk";
 import { describeFailure } from "@tryaura/core";
 import { pluralize } from "@tryaura/core/pluralize";
 
 import { renderFindingPresentation } from "./metadata-table.js";
 import { notFoundLine } from "./not-found-line.js";
-import {
-  createCheckExplanation,
-  createOperationalFailureReport,
-  type CheckReport,
-} from "./report.js";
+import { createOperationalFailureReport, type CheckReport } from "./report.js";
 import type { ReportApp } from "./report-shapes.js";
-import { safe, safeFindingText, safeMultiline } from "./safe-text.js";
+import { safe, safeFindingText } from "./safe-text.js";
 import { createStyle, type Style } from "./style.js";
 import type { CliBranding } from "./types.js";
 
@@ -38,26 +34,6 @@ export function renderOperationalFailureJson(
     ),
     output,
   );
-}
-
-/** Describes the remediation mode and the command that can act on it. */
-const FIXABILITY_DESCRIPTIONS: Readonly<Record<string, string>> = Object.freeze({
-  auto: "auto — apply with check --fix",
-  guided: "guided — walk through choices with check --fix --interactive",
-  manual: "manual — follow the guidance below",
-});
-
-export function renderExplanation(check: Check, branding: CliBranding, output: Writable): void {
-  const fixability = FIXABILITY_DESCRIPTIONS[check.fixability] ?? check.fixability;
-  output.write(`${branding.displayName} check ${safe(check.id)}\n\n`);
-  output.write(`${safe(check.title)}\n`);
-  output.write(`Fixability: ${safe(fixability)}\n`);
-  output.write(`\n${safeMultiline(check.explain)}\n`);
-}
-
-/** Emits one explanation as a document another tool can read. */
-export function renderExplanationJson(check: Check, output: Writable): void {
-  output.write(`${JSON.stringify(createCheckExplanation(check))}\n`);
 }
 
 export function renderHuman(

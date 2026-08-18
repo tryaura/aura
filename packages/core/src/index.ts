@@ -15,6 +15,7 @@ export {
   AURA_MANIFEST_SCHEMA_VERSION,
   resolveAuraManifestPath,
 } from "./manifest/protocol.js";
+export { readAuraManifest } from "./manifest/read.js";
 export { assertAuraManifestWritable, createAuraManifestWriteOperation } from "./manifest/write.js";
 export {
   applyFixPlan,
@@ -119,8 +120,14 @@ export { createHttpPost } from "./http-post.js";
 export { listDirectorySkills, resolveDirectorySkills } from "./skills/directory-client.js";
 export type { DirectorySkillListingResult } from "./skills/directory-client.js";
 export { collectSkillDirectorySources, isSkillSourceAllowed } from "./skills/sources.js";
-export { readTeamPreset } from "./preset/read.js";
-export type { TeamPresetState } from "./preset/read.js";
 export { AURA_TEAM_PRESET_PATH } from "./preset/protocol.js";
+export {
+  effectiveCheckConfiguration,
+  enabledChecks,
+  resolveEffectiveConfig,
+} from "./preset/configuration.js";
+export { loadTeamPreset } from "./preset/load.js";
+export { applyRequiredMcpServers } from "./preset/required-mcp.js";
+export type { RequiredMcpProjection } from "./preset/required-mcp.js";
 /** @public */
 export type { FileReader, FileReadOptions, PathContents } from "./workspace/reader.js";

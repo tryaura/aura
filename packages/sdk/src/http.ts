@@ -45,6 +45,8 @@ export interface HttpGetRequest {
    * negative, or not finite is replaced by the default.
    */
   readonly maxResponseBytes?: number | undefined;
+  /** Return raw bytes instead of decoding the response as UTF-8. */
+  readonly responseType?: "bytes" | undefined;
   /**
    * Milliseconds before the request is aborted.
    *
@@ -120,6 +122,12 @@ export type HttpFailureReason =
  */
 export type HttpGetResult =
   | { readonly kind: "failure"; readonly reason: HttpFailureReason }
+  | {
+      /** Complete raw response body, within the byte cap. */
+      readonly body: Uint8Array;
+      readonly kind: "binary-response";
+      readonly status: number;
+    }
   | {
       /** Response body decoded as UTF-8, complete and within the byte cap. */
       readonly body: string;

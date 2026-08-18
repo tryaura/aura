@@ -229,8 +229,10 @@ A picker over every allowed skill source, then one Review form per selected dire
   already records — a non-interactive run never first-installs remote prompt content.
 - Installs from a source the team preset's `allowedSkillSources` does not permit are refused at
   planning time with a blocker naming the preset
-  (`Skill "<id>" comes from <source>, which the team preset ".aura/preset.json" does not allow.`),
-  which also covers `--add skill` and manifest entries whose source lost its permission.
+  (`Skill "<id>" comes from <source>, which the team preset "<origin>" does not allow.`), which
+  also covers `--add skill` and manifest entries whose source lost its permission. `<origin>` is
+  the preset as resolved — `npm:@acme/preset@1.2.0`, an HTTPS URL, or `.aura/preset.json` — never
+  the conventional path standing in for a policy that came from somewhere else.
 
 ### Implementation status
 

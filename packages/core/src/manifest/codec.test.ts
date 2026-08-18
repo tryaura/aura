@@ -34,6 +34,12 @@ describe("Aura manifest protocol", () => {
   it("round-trips unknown fields at every known nesting level", () => {
     const source = {
       apps: { codex: { channel: "nightly", managed: true } },
+      checks: {
+        disabled: ["MCP-002"],
+        futureMode: "strict",
+        severity: { "INS-007": "error" },
+        thresholds: { "INS-007": { approxTokens: 12_000 } },
+      },
       future: { enabled: true },
       mcpServers: [
         {
@@ -57,6 +63,7 @@ describe("Aura manifest protocol", () => {
           mcpServerNames: ["github"],
         },
       },
+      preset: "plugin:official/platform",
       schemaVersion: 1,
       skills: [
         {

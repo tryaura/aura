@@ -7,7 +7,7 @@ import type {
 import { createWorkspaceModel } from "@tryaura/aura-sdk/testing";
 import { describe, expect, it } from "vitest";
 
-import { runChecks } from "./index.js";
+import { resolveEffectiveConfig, runChecks } from "./index.js";
 
 const MODEL: WorkspaceModel = createWorkspaceModel({
   manifest: { exists: false, path: "/home/dev/agents/aura.json", status: "missing" },
@@ -145,6 +145,33 @@ describe("runChecks", () => {
       "two",
       "three",
     ]);
+  });
+
+  it("keeps an occurrence severity when only built-in defaults are configured", () => {
+    const check = createCheck("alpha/SEC-001", [
+      { id: "transient", message: "Probe timed out", severity: "info" },
+    ]);
+    const resolved = resolveEffectiveConfig({ checks: [check] });
+    if (resolved.status !== "ready") {
+      throw new Error("expected a resolvable configuration");
+    }
+
+    expect(runChecks([check], MODEL, resolved.config).findings[0]?.severity).toBe("info");
+  });
+
+  it("lets a configured severity outrank the occurrence that set its own", () => {
+    const check = createCheck("alpha/SEC-001", [
+      { id: "transient", message: "Probe timed out", severity: "info" },
+    ]);
+    const resolved = resolveEffectiveConfig({
+      checks: [check],
+      cli: { checks: { severity: { "alpha/SEC-001": "error" } } },
+    });
+    if (resolved.status !== "ready") {
+      throw new Error("expected a resolvable configuration");
+    }
+
+    expect(runChecks([check], MODEL, resolved.config).findings[0]?.severity).toBe("error");
   });
 
   it("returns frozen empty collections when no checks are registered", () => {

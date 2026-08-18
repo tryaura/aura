@@ -1,4 +1,12 @@
-import type { Adapter, AppModel, Check, Finding, Severity } from "@tryaura/aura-sdk";
+import type {
+  Adapter,
+  AppModel,
+  AuraEffectiveConfig,
+  Check,
+  Finding,
+  Severity,
+} from "@tryaura/aura-sdk";
+import { effectiveCheckConfiguration } from "@tryaura/core";
 import type { CheckDiagnostic, ScanDiagnostic, SkippedApp } from "@tryaura/core";
 
 import { checkCategory } from "./check-selection.js";
@@ -20,16 +28,28 @@ export type { CheckExplanation, CheckReport, ReportFix } from "./report-types.js
 
 const CHECK_JSON_SCHEMA_VERSION = 1;
 
-export function createCheckExplanation(check: Check): CheckExplanation {
+export function createCheckExplanation(
+  check: Check,
+  config: AuraEffectiveConfig,
+): CheckExplanation {
+  const effective = effectiveCheckConfiguration(check, config);
   return Object.freeze({
+    enabled: effective.enabled.value,
     explain: check.explain,
     fixability: check.fixability,
-    fixesApplicable: check.fixability !== "manual",
+    fixesApplicable: effective.enabled.value && check.fixability !== "manual",
     id: check.id,
     kind: "check-explanation",
+    provenance: Object.freeze({
+      enabled: effective.enabled.provenance,
+      severity: effective.severity.provenance,
+      thresholds: effective.thresholds.provenance,
+    }),
+    ...(config.preset === undefined ? {} : { preset: config.preset }),
     schemaVersion: CHECK_JSON_SCHEMA_VERSION,
     scope: check.scope,
-    severity: check.defaultSeverity,
+    severity: effective.severity.value,
+    thresholds: effective.thresholds.value,
     title: check.title,
   });
 }

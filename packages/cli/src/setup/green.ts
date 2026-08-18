@@ -1,6 +1,6 @@
 import type { Writable } from "node:stream";
 
-import type { Check, Finding } from "@tryaura/aura-sdk";
+import type { AuraEffectiveConfig, Check, Finding } from "@tryaura/aura-sdk";
 import { runChecks, type PluginRegistry, type WorkspaceScan } from "@tryaura/core";
 
 import { createCheckReport } from "../report.js";
@@ -18,13 +18,18 @@ export interface GreenContext {
 }
 
 /** End on green: run the checks against a scan and render the closing checklist. */
-export function endOnGreen(request: GreenContext, scan: WorkspaceScan): CliExitCode {
-  const run = runChecks(request.registry.checks, scan.model);
+export function endOnGreen(
+  request: GreenContext,
+  scan: WorkspaceScan,
+  checks: readonly Check[],
+  config: AuraEffectiveConfig,
+): CliExitCode {
+  const run = runChecks(checks, scan.model, config);
   const report = createCheckReport({
     adapters: request.registry.adapters,
     apps: scan.model.apps,
     checkDiagnostics: run.diagnostics,
-    checks: request.registry.checks,
+    checks,
     findings: run.findings,
     scanDiagnostics: scan.diagnostics,
     skipped: scan.skipped,
@@ -39,8 +44,9 @@ export function gatherFindings(
   checks: readonly Check[],
   model: WorkspaceScan["model"],
   io: WizardIo,
+  config?: AuraEffectiveConfig,
 ): readonly Finding[] {
-  const run = runChecks(checks, model);
+  const run = runChecks(checks, model, config);
   for (const diagnostic of run.diagnostics) {
     // Message only, never `detail`: it is verbatim text from a check that read the user's files.
     io.note(

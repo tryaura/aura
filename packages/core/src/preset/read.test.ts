@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- the preset-v1 parser matrix keeps all recognized fields and safety limits together. */
 import { describe, expect, it } from "vitest";
 
 import { createMemoryReader } from "../workspace/testing.js";
@@ -50,6 +51,78 @@ describe("readTeamPreset", () => {
     });
   });
 
+  it("parses and freezes the complete runtime v1 contract while tolerating extensions", async () => {
+    const state = await readTeamPreset(
+      "/workspace",
+      createMemoryReader({
+        [PATH]: preset({
+          checks: {
+            disabled: ["MCP-002"],
+            enabled: ["INS-007"],
+            severity: { "INS-007": "error" },
+            thresholds: { "INS-007": { approxTokens: 12_000 } },
+          },
+          future: { mode: "strict" },
+          name: "Acme platform",
+          requiredMcpServers: ["official/github"],
+          schemaVersion: 1,
+          skills: [{ id: "review", source: "plugin:official" }],
+          snippets: ["official/engineering"],
+        }),
+      }),
+    );
+
+    expect(state.preset).toMatchObject({
+      checks: {
+        disabled: ["MCP-002"],
+        enabled: ["INS-007"],
+        severity: { "INS-007": "error" },
+        thresholds: { "INS-007": { approxTokens: 12_000 } },
+      },
+      name: "Acme platform",
+      requiredMcpServers: ["official/github"],
+      skills: [{ id: "review", source: "plugin:official" }],
+      snippets: ["official/engineering"],
+    });
+    expect(Object.isFrozen(state.preset)).toBe(true);
+    expect(Object.isFrozen(state.preset?.checks?.thresholds?.["INS-007"])).toBe(true);
+    expect(state.preset).not.toHaveProperty("future");
+  });
+
+  it.each([
+    [
+      { checks: { disabled: ["INS-007"], enabled: ["INS-007"] }, schemaVersion: 1 },
+      "must not both enable and disable",
+    ],
+    [
+      { requiredMcpServers: ["official/github", "official/github"], schemaVersion: 1 },
+      "must not duplicate",
+    ],
+    [
+      {
+        schemaVersion: 1,
+        skills: [
+          { id: "review", source: "plugin:official" },
+          { id: "review", source: "plugin:official" },
+        ],
+      },
+      "must not duplicate",
+    ],
+    [
+      { checks: { severity: { "INS-007": "critical" } }, schemaVersion: 1 },
+      "must be error, info, or warn",
+    ],
+    [{ checks: { thresholds: { "INS-007": 12_000 } }, schemaVersion: 1 }, "must be an object"],
+  ])("rejects conflicting or malformed runtime fields", async (document, message) => {
+    const state = await readTeamPreset(
+      "/workspace",
+      createMemoryReader({ [PATH]: preset(document) }),
+    );
+
+    expect(state.status).toBe("invalid");
+    expect(state.diagnostics[0]?.message).toContain(message);
+  });
+
   it("reads a directory without tokenEnv as a public directory", async () => {
     const reader = createMemoryReader({
       [PATH]: preset({
@@ -63,6 +136,40 @@ describe("readTeamPreset", () => {
     const state = await readTeamPreset("/workspace", reader);
 
     expect(state.preset?.skillDirectories?.[0]?.kind).toBe("directory");
+  });
+
+  it("keeps script-looking and path-shaped threshold strings as inert data", async () => {
+    const state = await readTeamPreset(
+      "/workspace",
+      createMemoryReader({
+        [PATH]:
+          '{"schemaVersion":1,"checks":{"thresholds":{"INS-007":{"path":"$HOME","script":"postinstall"}}},"vendor":{"__proto__":{"polluted":true}}}',
+      }),
+    );
+
+    expect(state.preset?.checks?.thresholds?.["INS-007"]).toEqual({
+      path: "$HOME",
+      script: "postinstall",
+    });
+    expect(Object.prototype).not.toHaveProperty("polluted");
+  });
+
+  it("accepts a name that resembles a JSON path and bounds unknown-field depth", async () => {
+    const named = await readTeamPreset(
+      "/workspace",
+      createMemoryReader({ [PATH]: preset({ name: "$.name: platform", schemaVersion: 1 }) }),
+    );
+    let nested: unknown = true;
+    for (let index = 0; index < 101; index += 1) {
+      nested = { nested };
+    }
+    const deep = await readTeamPreset(
+      "/workspace",
+      createMemoryReader({ [PATH]: preset({ schemaVersion: 1, vendor: nested }) }),
+    );
+
+    expect(named.preset?.name).toBe("$.name: platform");
+    expect(deep.diagnostics[0]?.message).toContain("nested deeper than the 100 level limit");
   });
 
   it("rejects broken JSON without echoing the bytes", async () => {
