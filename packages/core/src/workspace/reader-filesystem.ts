@@ -2,10 +2,11 @@ import { Buffer, isUtf8 } from "node:buffer";
 import type { Stats } from "node:fs";
 import { lstat, open, opendir, readFile, readlink, realpath, stat } from "node:fs/promises";
 
-import type { AdapterPathKind, FileProblem } from "@tryaura/aura-sdk";
+import type { AdapterPathKind } from "@tryaura/aura-sdk";
 
-import { errorCode } from "../values.js";
-import { isEmbeddedAssetPath } from "./embedded-assets.js";
+import { embeddedDirectoryEntries, isEmbeddedAssetPath } from "./embedded-assets.js";
+import { readEmbeddedDirectory } from "./reader-embedded-directory.js";
+import { isAbsence, toProblem } from "./reader-errors.js";
 import { MAX_DIRECTORY_ENTRIES, MAX_FILE_BYTES } from "./reader-limits.js";
 import type { FileReadOptions, PathContents } from "./reader.js";
 
@@ -16,7 +17,7 @@ export async function pathExists(path: string): Promise<boolean> {
     await compatibleLstat(path);
     return true;
   } catch {
-    return false;
+    return embeddedDirectoryEntries(path) !== undefined;
   }
 }
 
@@ -25,6 +26,9 @@ export async function inspectPath(path: string): Promise<PathContents> {
   try {
     stats = await compatibleLstat(path);
   } catch (error) {
+    if (embeddedDirectoryEntries(path) !== undefined) {
+      return { exists: true, isDirectory: true, pathKind: "directory" };
+    }
     return isAbsence(error) ? MISSING : { ...MISSING, problem: toProblem(error) };
   }
 
@@ -83,6 +87,10 @@ export async function readPath(path: string, options?: FileReadOptions): Promise
   try {
     stats = await compatibleLstat(path);
   } catch (error) {
+    const embedded = readEmbeddedDirectory(path);
+    if (embedded !== undefined) {
+      return embedded;
+    }
     return isAbsence(error) ? MISSING : { ...MISSING, problem: toProblem(error) };
   }
 
@@ -265,35 +273,6 @@ export async function resolveRealPath(path: string): Promise<string | undefined>
   try {
     return await realpath(path);
   } catch {
-    return undefined;
-  }
-}
-
-function isAbsence(error: unknown): boolean {
-  const code = errorCode(error);
-  return code === "ENOENT" || code === "ENOTDIR";
-}
-
-function toProblem(error: unknown): FileProblem {
-  switch (errorCode(error)) {
-    case "EACCES":
-    case "EPERM": {
-      return "denied";
-    }
-    case "ELOOP": {
-      return "loop";
-    }
-    case "EMFILE":
-    case "ENFILE":
-    case "ENOMEM": {
-      return "resources";
-    }
-    case "EISDIR":
-    case "ENXIO": {
-      return "unsupported";
-    }
-    default: {
-      return "unreadable";
-    }
+    return embeddedDirectoryEntries(path) === undefined ? undefined : path;
   }
 }

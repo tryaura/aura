@@ -1,0 +1,26 @@
+{
+  "name": "acme-distribution-example",
+  "version": "0.0.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "build:binary": "node build.mjs",
+    "smoke": "node smoke.mjs",
+    "typecheck": "tsc --project tsconfig.json",
+    "verify": "pnpm typecheck && pnpm build:binary && pnpm smoke"
+  },
+  "dependencies": {
+    "@tryaura/aura-cli": "workspace:*",
+    "@tryaura/aura-sdk": "workspace:*",
+    "@tryaura/aura-testkit": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "typescript": "7.0.2"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "pnpm@11.21.0"
+}
