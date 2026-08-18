@@ -3,6 +3,7 @@ import { dirname, join, resolve } from "node:path";
 import type { AdapterFileStatus, FileOperation } from "@tryaura/aura-sdk";
 import { planSkillDeployment } from "@tryaura/core";
 
+import { managedAppIdList } from "./managed-apps.js";
 import type { SetupStepContext } from "./types.js";
 
 /** The mutable slices of a skill plan the link planner appends to. */
@@ -65,14 +66,6 @@ function skillDeployments(context: SetupStepContext, id: string): SkillDeploymen
 }
 
 function managedApps(context: SetupStepContext): SetupStepContext["model"]["apps"] {
-  const selected = context.selections.apps?.managed;
-  const managed = new Set(
-    selected ??
-      (context.manifest.status === "ready"
-        ? Object.entries(context.manifest.value.apps)
-            .filter(([, app]) => app.managed)
-            .map(([id]) => id)
-        : []),
-  );
+  const managed = new Set(managedAppIdList(context));
   return context.model.apps.filter((app) => app.synthetic !== true && managed.has(app.adapterId));
 }

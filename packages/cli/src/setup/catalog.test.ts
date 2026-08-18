@@ -31,6 +31,19 @@ describe("buildAppCatalog", () => {
     expect(catalog.map((entry) => entry.kind)).toEqual(["detected", "undetected"]);
   });
 
+  it("carries Agent Skills support for detected and undetected applications", async () => {
+    const adapters = [
+      adapter("here", "Here", true, true),
+      adapter("gone", "Gone", false, true),
+      adapter("plain", "Plain", false),
+    ];
+    const scanned = await scan(adapters);
+
+    const catalog = buildAppCatalog(adapters, scanned.model, scanned.skipped);
+
+    expect(catalog.map((entry) => entry.supportsSkills)).toEqual([true, true, false]);
+  });
+
   it("carries the detection scope of an application that was looked for and not found", async () => {
     const adapters = [
       { ...adapter("gone", "Gone", false), detectionScope: "the gone CLI on PATH" },
@@ -75,8 +88,20 @@ describe("buildAppCatalog", () => {
   });
 });
 
-function adapter(id: string, displayName: string, installed: boolean): Adapter {
+function adapter(
+  id: string,
+  displayName: string,
+  installed: boolean,
+  supportsSkills = false,
+): Adapter {
   return defineAdapter({
+    ...(supportsSkills
+      ? {
+          capabilities: {
+            skills: { directories: [{ entryPath: `~/.${id}/skills`, id: "skills" }] },
+          },
+        }
+      : {}),
     detect: () => Promise.resolve(installed ? { installed, version: "1.0.0" } : { installed }),
     displayName,
     files: () => [],

@@ -8,6 +8,7 @@ import { PassThrough } from "node:stream";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createEnvironment, createPluginRegistry } from "@tryaura/core";
+import { defineAdapter, definePlugin } from "@tryaura/aura-sdk";
 
 import { BRANDING, findingPlugin } from "../testing.js";
 import { runSetup, type SetupRequest } from "./setup.js";
@@ -102,7 +103,14 @@ async function createFixture(directoryUrl: string): Promise<Fixture> {
   await writeFile(
     join(homeDir, "agents", "aura.json"),
     `${JSON.stringify(
-      { apps: {}, mcpServers: [], ownership: {}, schemaVersion: 1, skills: [], snippets: [] },
+      {
+        apps: { fixture: { managed: true } },
+        mcpServers: [],
+        ownership: {},
+        schemaVersion: 1,
+        skills: [],
+        snippets: [],
+      },
       undefined,
       2,
     )}\n`,
@@ -130,7 +138,31 @@ async function createFixture(directoryUrl: string): Promise<Fixture> {
     homeDir,
   });
   // One always-passing check, so "end on green" has a checklist to be green about.
-  const registry = createPluginRegistry([findingPlugin("info", [])], {});
+  const registry = createPluginRegistry(
+    [
+      findingPlugin("info", []),
+      definePlugin({
+        adapters: [
+          defineAdapter({
+            capabilities: {
+              skills: { directories: [{ entryPath: "~/.fixture/skills", id: "skills" }] },
+            },
+            detect: () => Promise.resolve({ installed: false }),
+            displayName: "Fixture App",
+            files: () => [],
+            id: "fixture",
+            parse: () => ({ instructionFiles: [], mcpServers: [], skills: [] }),
+            supportedRange: ">=1",
+          }),
+        ],
+        apiVersion: 1,
+        id: "fixture-app",
+        name: "Fixture App",
+        version: "1.0.0",
+      }),
+    ],
+    {},
+  );
   const output = new PassThrough();
   output.setEncoding("utf8");
   let captured = "";

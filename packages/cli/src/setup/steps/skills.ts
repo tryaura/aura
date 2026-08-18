@@ -1,19 +1,12 @@
-import type { AuraManifestSkill, ResolvedSkillPack } from "@tryaura/aura-sdk";
+import type { AuraManifestSkill } from "@tryaura/aura-sdk";
 
+import { hasSkillsHome, initialSkillSelection, managedSkillApps } from "../skill-app-support.js";
 import { skillIdentity } from "../skill-planner-paths.js";
-import type { SkillResolution } from "../skills-catalog.js";
-import {
-  SETUP_ABORTED,
-  SETUP_BACK,
-  type SetupStep,
-  type SetupStepContext,
-  type SkillSelection,
-} from "../types.js";
+import { SETUP_ABORTED, SETUP_BACK, type SetupStep, type SetupStepContext } from "../types.js";
 import { runFormChain } from "../wizard-chain.js";
 import { selectedValues } from "../wizard-types.js";
+import { finalizeSkills, type FinalizedSkills } from "./skill-finalize.js";
 import {
-  isRemoteIdentity,
-  manifestByIdentity,
   selectionsByIdentity,
   skillStages,
   type SkillsChainState,
@@ -40,6 +33,19 @@ export const skillsStep: SetupStep = {
       id: "apps",
       isSatisfied: (context) => context.manifest.status === "ready",
       title: "an Aura manifest",
+    },
+    {
+      // Both entries name the apps step because running it is what establishes either one; gather
+      // tests every candidate, so the pair stays split only to name what is actually missing.
+      //
+      // Full setup has just completed Apps, so this only gates the standalone shortcut. The full
+      // flow is still allowed to show a disabled picker after the user deliberately selected none.
+      // Recorded skills satisfy it on their own: losing support must not strand the uninstall path.
+      id: "apps",
+      isSatisfied: (context) =>
+        context.manifest.status === "ready" &&
+        (hasSkillsHome(managedSkillApps(context)) || context.manifest.value.skills.length > 0),
+      title: "a managed application that supports Agent Skills",
     },
   ],
   title: "Skills",
@@ -71,23 +77,43 @@ async function gatherApprovedSkills(
     approvedPrivateSourceIds,
     catalog: context.skillCatalog,
     listing,
+    managedApps: managedSkillApps(context),
     manifestSkills,
   };
-  const result = await runFormChain(
-    skillStages(inputs),
-    initialState(context, manifestSkills),
-    io,
-    {
-      entry: chainEntry(context),
-      flow: context.flow,
-    },
-  );
+  const opening = openingSelection(context, inputs, manifestSkills);
+  noteHeldBack(inputs, io, opening.heldBack);
+  const result = await runFormChain(skillStages(inputs), opening.state, io, {
+    entry: chainEntry(context),
+    flow: context.flow,
+  });
   if (result === SETUP_ABORTED || result === SETUP_BACK) {
     return result;
   }
 
-  const skills = await finalize(result, inputs, manifestSkills);
+  const skills = await finalizeSkills(result, inputs, manifestSkills);
   return completedSelections(context, approval, skills, manifestSkills);
+}
+
+/**
+ * Says out loud that a changed Apps answer cleared picks the user had already made.
+ *
+ * Dropping them silently is the part that reads as a bug: the picker simply reopens with fewer
+ * boxes ticked and nothing on screen connects that to the application the user just deselected.
+ */
+function noteHeldBack(
+  inputs: SkillStageInputs,
+  io: Parameters<SetupStep["gather"]>[1],
+  heldBack: readonly string[],
+): void {
+  if (heldBack.length === 0) {
+    return;
+  }
+  const offered = selectionsByIdentity(inputs);
+  const names = heldBack.map((identity) => offered.get(identity)?.id ?? identity);
+  io.note(
+    `Cleared ${names.join(", ")}: no application selected in the Apps step supports Agent ` +
+      "Skills. Select one that does to choose them again.",
+  );
 }
 
 function recordedSkills(context: SetupStepContext): readonly AuraManifestSkill[] {
@@ -105,13 +131,18 @@ function chainEntry(context: SetupStepContext): "end" | "start" {
 function completedSelections(
   context: SetupStepContext,
   approval: readonly string[],
-  skills: Awaited<ReturnType<typeof finalize>>,
+  skills: FinalizedSkills,
   manifestSkills: readonly AuraManifestSkill[],
 ) {
   if (skills.selected.length === 0 && manifestSkills.length === 0) {
-    // Nothing chosen and nothing recorded: leave the slice absent so an otherwise-empty run
-    // does not force manifest creation.
-    return { ...context.selections };
+    // Nothing chosen and nothing recorded: drop the stale slice so an unsupported new install
+    // cannot carry forward after the Apps answer changes. This run's private-source approvals are
+    // the one thing worth keeping — re-asking for them is friction, not safety — and an empty
+    // `selected` keeps the slice from forcing manifest creation. See `shouldWriteManifest`.
+    const { skills: _staleSkills, ...selections } = context.selections;
+    return approval.length === 0
+      ? selections
+      : { ...selections, skills: { approvedPrivateSourceIds: approval, selected: [] } };
   }
   return {
     ...context.selections,
@@ -188,90 +219,16 @@ function isEmptyCatalog(
   );
 }
 
-function initialState(
+/** The chain's opening state, plus whatever the current Apps answer forces it to leave out. */
+function openingSelection(
   context: SetupStepContext,
-  manifestSkills: readonly AuraManifestSkill[],
-): SkillsChainState {
-  const selected =
-    context.selections.skills?.selected.map((skill) => skillIdentity(skill.source, skill.id)) ??
-    manifestSkills.map((skill) => skillIdentity(skill.source, skill.id));
-  return { decisions: {}, selected };
-}
-
-/**
- * Folds the chain's answers into the planner's inputs.
- *
- * A new remote skill survives only with an explicit "install" and a fetched pack. A
- * manifest-recorded one always stays selected; its pack rides along only when it matches the
- * manifest — repair — or its update was reviewed and accepted, so a Skip or a failed fetch leaves
- * the previous manifest entry exactly as it was.
- */
-async function finalize(
-  state: SkillsChainState,
   inputs: SkillStageInputs,
   manifestSkills: readonly AuraManifestSkill[],
-): Promise<{
-  readonly resolved: readonly ResolvedSkillPack[];
-  readonly selected: readonly SkillSelection[];
-}> {
-  const offered = selectionsByIdentity(inputs);
-  const recorded = manifestByIdentity(manifestSkills);
-  const remote = state.selected.filter(isRemoteIdentity);
-  const resolution: SkillResolution =
-    remote.length === 0
-      ? { problems: new Map(), resolved: new Map() }
-      : await inputs.catalog.resolve(
-          remote.flatMap((identity) => {
-            const selection = offered.get(identity);
-            return selection === undefined ? [] : [selection];
-          }),
-          inputs.approvedPrivateSourceIds,
-        );
-
-  const selected: SkillSelection[] = [];
-  const resolved: ResolvedSkillPack[] = [];
-  for (const identity of state.selected) {
-    const selection = offered.get(identity);
-    if (selection === undefined) {
-      continue;
-    }
-    if (!isRemoteIdentity(identity)) {
-      selected.push(selection);
-      continue;
-    }
-    finalizeRemote(
-      identity,
-      selection,
-      state,
-      resolution.resolved.get(identity),
-      recorded.get(identity),
-      { resolved, selected },
-    );
-  }
-  return { resolved, selected };
-}
-
-/** One remote identity's fate, appended to the buffers. See {@link finalize} for the rules. */
-function finalizeRemote(
-  identity: string,
-  selection: SkillSelection,
-  state: SkillsChainState,
-  pack: ResolvedSkillPack | undefined,
-  previous: AuraManifestSkill | undefined,
-  buffers: { readonly resolved: ResolvedSkillPack[]; readonly selected: SkillSelection[] },
-): void {
-  if (previous === undefined) {
-    if (state.decisions[identity] === "install" && pack !== undefined) {
-      buffers.selected.push(selection);
-      buffers.resolved.push(pack);
-    }
-    return;
-  }
-  buffers.selected.push(selection);
-  if (pack === undefined) {
-    return;
-  }
-  if (pack.treeHash === previous.treeHash || state.decisions[identity] === "install") {
-    buffers.resolved.push(pack);
-  }
+): { readonly heldBack: readonly string[]; readonly state: SkillsChainState } {
+  const recorded = new Set(manifestSkills.map((skill) => skillIdentity(skill.source, skill.id)));
+  const previous = context.selections.skills?.selected.map((skill) =>
+    skillIdentity(skill.source, skill.id),
+  ) ?? [...recorded];
+  const opening = initialSkillSelection(previous, recorded, inputs.managedApps);
+  return { heldBack: opening.heldBack, state: { decisions: {}, selected: opening.selected } };
 }

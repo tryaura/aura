@@ -13,6 +13,8 @@ export interface WizardOption {
   readonly description?: string | undefined;
   /** Visible but not selectable. */
   readonly disabled?: boolean | undefined;
+  /** Why a disabled row is disabled; replaces the default `unavailable` suffix on its label. */
+  readonly disabledNote?: string | undefined;
   /** Optional heading rendered before the first adjacent option in this group. */
   readonly group?: string | undefined;
   readonly label: string;
