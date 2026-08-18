@@ -123,6 +123,9 @@ export function defaultAnswer(question: WizardQuestion): WizardAnswer {
   if (question.initial !== undefined) {
     return { kind: "options", values: question.initial };
   }
+  if (question.freeText === true && question.options.length === 0) {
+    return { kind: "text", text: question.initialText ?? "" };
+  }
   if (question.kind === "select") {
     const first = question.options[0];
     return { kind: "options", values: first === undefined ? [] : [first.value] };

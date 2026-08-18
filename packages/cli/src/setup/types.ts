@@ -1,5 +1,6 @@
 import type {
   AuraManifestSkill,
+  AuraManifestMcpServer,
   AuraManifestState,
   Finding,
   ResolvedSkillPack,
@@ -8,6 +9,7 @@ import type {
 } from "@tryaura/aura-sdk";
 
 import type { AppCatalogEntry } from "./catalog.js";
+import type { McpSetupCatalog } from "./mcp-catalog.js";
 import type { SkillCatalog } from "./skills-catalog.js";
 import type { SnippetCatalog } from "./snippets.js";
 import type { WizardFlowContext, WizardIo } from "./wizard-types.js";
@@ -72,6 +74,12 @@ interface SkillSelections {
   readonly selected: readonly SkillSelection[];
 }
 
+interface McpSelections {
+  /** Preset-required ids the user explicitly chose to omit for this run. */
+  readonly overriddenRequiredIds?: readonly string[] | undefined;
+  readonly servers: readonly AuraManifestMcpServer[];
+}
+
 /**
  * Everything the wizard has decided so far, one optional slice per step id.
  *
@@ -83,6 +91,7 @@ export interface SetupSelections {
   readonly apps?: AppSelections | undefined;
   readonly baseline?: BaselineSelections | undefined;
   readonly instructions?: InstructionSelections | undefined;
+  readonly mcp?: McpSelections | undefined;
   readonly snippets?: SnippetSelections | undefined;
   readonly skills?: SkillSelections | undefined;
 }
@@ -100,7 +109,18 @@ export interface SetupStepContext {
   /** True when this step already ran earlier in this run; informational banners stay quiet. */
   readonly revisited?: boolean | undefined;
   readonly findings?: readonly Finding[] | undefined;
+  /**
+   * False when the run answers its own questions (`--yes`, `--dry-run` off a pipe).
+   *
+   * A step may propose a default a non-interactive run then accepts, but it may not propose one
+   * that first configures a credential-bearing remote endpoint nobody looked at; see the MCP step
+   * in `docs/cli-ux.md`.
+   */
+  readonly interactive: boolean;
+  /** Checks credential availability without exposing or retaining the credential value. */
+  readonly isEnvironmentVariableSet: (name: string) => boolean;
   readonly manifest: AuraManifestState;
+  readonly mcpCatalog: McpSetupCatalog;
   readonly model: WorkspaceModel;
   readonly selections: SetupSelections;
   /**

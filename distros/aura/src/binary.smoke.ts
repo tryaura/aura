@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -119,6 +120,21 @@ describe("compiled Aura distribution", () => {
           id: "MGD-001",
           title: "Aura-managed instruction blocks have not changed by hand",
         },
+        {
+          id: "MCP-001",
+          title: "Managed applications have the manifest's MCP servers",
+        },
+        {
+          id: "MCP-002",
+          title: "Managed MCP servers match the manifest definition",
+        },
+        { id: "MCP-003", title: "Configured MCP servers can be reached" },
+        { id: "MCP-004", title: "MCP credentials use environment references" },
+        { id: "MCP-005", title: "Managed MCP servers use their manifest scope" },
+        { id: "SKL-001", title: "Shared skills have valid definitions and references" },
+        { id: "SKL-002", title: "Managed applications deploy manifest skills" },
+        { id: "SKL-003", title: "Application skill symlinks resolve" },
+        { id: "SKL-004", title: "Skill invocation names are unique per application scope" },
       ],
       schemaVersion: 1,
       status: "error",
@@ -126,13 +142,15 @@ describe("compiled Aura distribution", () => {
         categories: {
           ENV: { errors: 0, informational: 0, passed: 4, warnings: 0 },
           INS: { errors: 1, informational: 0, passed: 7, warnings: 0 },
+          MCP: { errors: 0, informational: 0, passed: 5, warnings: 0 },
           MGD: { errors: 0, informational: 0, passed: 1, warnings: 0 },
+          SKL: { errors: 0, informational: 0, passed: 4, warnings: 0 },
         },
         diagnostics: 0,
         errors: 1,
         exitCode: 2,
         informational: 0,
-        passed: 12,
+        passed: 21,
         warnings: 0,
       },
     });
@@ -174,6 +192,39 @@ describe("compiled Aura distribution", () => {
   });
 
   /**
+   * Two things at once, because in a compiled binary they are the same thing.
+   *
+   * The embedded catalog JSON is loaded, parsed, and matched against the plugin's declared
+   * metadata only if the required id resolves — an asset that failed to embed drops out of the
+   * catalog and reports `definition is unavailable` instead of the blocker asserted here. That the
+   * blocker exists at all is the other half: `--yes` does not first-configure a credential-bearing
+   * remote endpoint a repository's preset asked for, it stops and names the run that can.
+   */
+  it("embeds the official MCP catalog JSON and defers its first configuration to a person", async () => {
+    await using seed = await createSeedBuilder()
+      .workspaceFile(
+        ".aura/preset.json",
+        '{"schemaVersion":1,"requiredMcpServers":["official/github"]}\n',
+      )
+      .shim("codex", [
+        { args: ["--version"], stdout: "codex-cli 0.147.0\n" },
+        { args: ["login", "status"], stdout: "Logged in using ChatGPT\n" },
+      ])
+      .build();
+
+    const result = await runSetupYes(seed);
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stdout).not.toContain("definition is unavailable");
+    expect(result.stdout).toContain(
+      "Required MCP catalog entry official/github is not configured yet.",
+    );
+    await expect(
+      readFile(join(seed.homeDir, ".codex", "config.toml"), "utf8"),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  /**
    * Records a property of the artifact rather than endorsing it.
    *
    * Compilation closes the route through a workspace `.env`, but the Bun runtime reads this variable
@@ -195,3 +246,44 @@ describe("compiled Aura distribution", () => {
     expect(stdout.trim()).toBe(bunVersion);
   });
 });
+
+/** Just enough of a built seed to run the binary inside it. */
+interface SeedPaths {
+  readonly homeDir: string;
+  readonly pathDir: string;
+  readonly workspaceDir: string;
+}
+
+interface BinaryRun {
+  readonly exitCode: number;
+  readonly stderr: string;
+  readonly stdout: string;
+}
+
+/** Runs `setup --yes`, keeping the output of a run that ends on a blocked plan rather than throwing. */
+async function runSetupYes(seed: SeedPaths): Promise<BinaryRun> {
+  try {
+    const result = await execFileAsync(BINARY_PATH, ["setup", "--yes"], {
+      cwd: seed.workspaceDir,
+      encoding: "utf8",
+      env: { HOME: seed.homeDir, NO_COLOR: "1", PATH: seed.pathDir },
+    });
+    return { exitCode: 0, stderr: result.stderr, stdout: result.stdout };
+  } catch (error) {
+    return failedRun(error);
+  }
+}
+
+/** `execFile` rejects a non-zero exit with the completed run's output attached to the error. */
+function failedRun(error: unknown): BinaryRun {
+  const run: Readonly<Record<string, unknown>> = error instanceof Error ? { ...error } : {};
+  return {
+    exitCode: typeof run["code"] === "number" ? run["code"] : 1,
+    stderr: outputText(run["stderr"]),
+    stdout: outputText(run["stdout"]),
+  };
+}
+
+function outputText(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}

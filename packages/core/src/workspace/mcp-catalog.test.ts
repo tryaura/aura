@@ -12,6 +12,7 @@ const DEFINITION = {
   id: "fixture/github",
   name: "GitHub",
   schemaVersion: 1,
+  serverName: "github",
   transportTemplate: {
     args: ["-y", "@modelcontextprotocol/server-github"],
     command: "npx",
@@ -125,6 +126,36 @@ describe("workspace MCP catalog", () => {
     });
 
     expect(model.availableMcpServers.map((server) => server.id)).toEqual(["fixture/github"]);
+  });
+
+  it("retains only environment-variable availability from desired MCP transports", async () => {
+    const manifestPath = "/home/dev/agents/aura.json";
+    const manifest = {
+      apps: {},
+      mcpServers: [
+        {
+          apps: ["fake"],
+          name: "docs",
+          scope: "global",
+          transport: { command: "docs", env: ["DOCS_TOKEN", "OTHER_TOKEN"], type: "stdio" },
+        },
+      ],
+      ownership: {},
+      schemaVersion: 1,
+      skills: [],
+      snippets: [],
+    };
+    const { model } = await buildWorkspaceModel({
+      adapters: [],
+      environment: createTestEnvironment({ variables: { DOCS_TOKEN: "secret-value" } }),
+      reader: createMemoryReader({ [manifestPath]: JSON.stringify(manifest) }),
+    });
+
+    expect(model.mcpEnvironmentVariables).toEqual([
+      { isSet: true, name: "DOCS_TOKEN" },
+      { isSet: false, name: "OTHER_TOKEN" },
+    ]);
+    expect(JSON.stringify(model)).not.toContain("secret-value");
   });
 });
 

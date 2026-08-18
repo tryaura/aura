@@ -20,6 +20,7 @@ const VALID_MANIFEST = {
   id: "official/github",
   name: "GitHub",
   schemaVersion: 1,
+  serverName: "github",
   supportedApps: ["claude-code", "cursor"],
   transportTemplate: {
     headers: { Authorization: "Bearer ${GITHUB_TOKEN}" },
@@ -56,6 +57,22 @@ describe("MCP server definition validation", () => {
     );
 
     expect(parsed).toMatchObject({ value: { transportTemplate: { type: "stdio" } } });
+  });
+
+  it("accepts safe hyphenated authorization framing", () => {
+    expect(
+      parseMcpServerDefinition({
+        headers: { Authorization: "Sentry-Bearer ${SENTRY_ACCESS_TOKEN}" },
+        type: "http",
+        url: "https://mcp.sentry.dev/mcp",
+      }),
+    ).toMatchObject({ value: { type: "http" } });
+  });
+
+  it("validates the catalog serverName independently from its display name", () => {
+    expect(
+      parseMcpServerManifest(JSON.stringify({ ...VALID_MANIFEST, serverName: "bad name" })),
+    ).toMatchObject({ error: { path: "$.serverName" } });
   });
 
   it.each([

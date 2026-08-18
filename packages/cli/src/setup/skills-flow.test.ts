@@ -177,6 +177,7 @@ async function createFixture(directoryUrl: string): Promise<Fixture> {
       colorDepth: 0,
       dryRun: false,
       environment,
+      interactive: false,
       io: createScriptedWizardIo({ ...script, output }),
       registry,
       stateHomeDir: homeDir,

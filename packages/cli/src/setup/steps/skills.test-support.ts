@@ -9,7 +9,7 @@ import { createWorkspaceModel } from "@tryaura/aura-sdk/testing";
 import { skillIdentity } from "../skill-planner-paths.js";
 import type { AppCatalogEntry } from "../catalog.js";
 import type { SkillCatalog, SkillCatalogEntry, UnavailableSkillSource } from "../skills-catalog.js";
-import { emptySkillCatalog } from "../testing.js";
+import { emptyMcpCatalog, emptySkillCatalog } from "../testing.js";
 import type { SetupStepContext } from "../types.js";
 import { createScriptedWizardIo, type ScriptedWizardIo } from "../wizard-scripted.js";
 import type { WizardAnswers, WizardQuestion } from "../wizard-types.js";
@@ -105,7 +105,10 @@ export function skillStepContext(
   };
   return {
     appCatalog: options.appCatalog ?? [supportedApp("codex", "Codex")],
+    interactive: false,
+    isEnvironmentVariableSet: () => false,
     manifest,
+    mcpCatalog: emptyMcpCatalog(),
     model: createWorkspaceModel({
       manifest,
       sharedInstructions: { exists: false, path: "/home/dev/agents/AGENTS.md" },
@@ -127,11 +130,11 @@ interface SkillStepContextOptions {
 }
 
 export function supportedApp(adapterId: string, displayName: string): AppCatalogEntry {
-  return { adapterId, displayName, kind: "undetected", supportsSkills: true };
+  return { adapterId, displayName, kind: "undetected", supportsMcp: false, supportsSkills: true };
 }
 
 export function unsupportedApp(adapterId: string, displayName: string): AppCatalogEntry {
-  return { adapterId, displayName, kind: "undetected", supportsSkills: false };
+  return { adapterId, displayName, kind: "undetected", supportsMcp: false, supportsSkills: false };
 }
 
 export interface RecordingIo extends ScriptedWizardIo {

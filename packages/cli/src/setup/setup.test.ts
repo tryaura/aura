@@ -74,6 +74,7 @@ async function createFixture(seed?: (homeDir: string) => Promise<void>): Promise
       colorDepth: 0,
       dryRun: false,
       environment,
+      interactive: false,
       io: createScriptedWizardIo({ ...script, output: stdout.stream }),
       registry,
       stateHomeDir: homeDir,

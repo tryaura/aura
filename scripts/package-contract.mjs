@@ -21,6 +21,7 @@ export const PACKAGES = [
     allowed: [
       /^package\/(?:LICENSE|README\.md|package\.json)$/,
       /^package\/content\/snippets\/[^/]+\.md$/,
+      /^package\/content\/mcp\/[^/]+\.json$/,
       /^package\/dist\//,
       /^package\/schema\/check-output-v1\.schema\.json$/,
     ],
@@ -30,6 +31,9 @@ export const PACKAGES = [
       "package/LICENSE",
       "package/README.md",
       "package/content/snippets/commit-conventions.md",
+      "package/content/mcp/atlassian-rovo.json",
+      "package/content/mcp/github.json",
+      "package/content/mcp/sentry.json",
       "package/dist/bin/aura.js",
       "package/dist/index.d.ts",
       "package/dist/index.js",

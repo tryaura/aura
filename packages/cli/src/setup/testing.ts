@@ -14,6 +14,7 @@ import {
 } from "@tryaura/aura-sdk";
 
 import { BRANDING } from "../testing.js";
+import type { McpSetupCatalog } from "./mcp-catalog.js";
 import type { SetupRequest } from "./setup.js";
 import type { SkillCatalog } from "./skills-catalog.js";
 import { createSnippetCatalog, type SnippetCatalog } from "./snippets.js";
@@ -69,6 +70,11 @@ export function emptySnippetCatalog(): SnippetCatalog {
   });
 }
 
+/** An empty picker input, for a context whose test never reaches the MCP step. */
+export function emptyMcpCatalog(): McpSetupCatalog {
+  return { entries: [], missingRequiredIds: [], requiredIds: new Set() };
+}
+
 /** A catalog with no sources and no policy, for a context whose test never reaches skills. */
 export function emptySkillCatalog(): SkillCatalog {
   return {
@@ -112,6 +118,7 @@ export async function createFixture(): Promise<Fixture> {
         colorDepth: 0,
         dryRun: false,
         environment,
+        interactive: false,
         io: createScriptedWizardIo({ ...(forms === undefined ? {} : { forms }), output: stdout }),
         registry,
         stateHomeDir: homeDir,

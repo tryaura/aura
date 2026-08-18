@@ -22,7 +22,6 @@ import { createInteractiveWizardIo } from "./wizard-prompt.js";
 import { createDefaultsWizardIo } from "./wizard-scripted.js";
 
 export class SetupCommand extends Command<AuraCliContext> {
-  // fallow-ignore-next-line unused-class-member -- Clipanion reads command metadata at registration.
   static override paths = [["setup"]];
   // fallow-ignore-next-line unused-class-member -- Clipanion reads command metadata at registration.
   static override usage = Command.Usage({
@@ -85,6 +84,7 @@ export class SetupCommand extends Command<AuraCliContext> {
         colorDepth: this.context.colorDepth,
         dryRun: this.dryRun,
         environment,
+        interactive,
         io,
         registry: this.context.registry,
         stateHomeDir: this.context.defaultHomeDir,
