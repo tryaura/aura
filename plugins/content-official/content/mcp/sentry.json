@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "official/sentry",
+  "name": "Sentry",
+  "serverName": "sentry",
+  "description": "Connect Sentry projects, issues, and telemetry with an auth token.",
+  "docsUrl": "https://github.com/getsentry/sentry-mcp/blob/main/README.md",
+  "credentialEnv": [
+    {
+      "name": "SENTRY_ACCESS_TOKEN",
+      "description": "A Sentry auth token with access to the organizations and projects Aura should expose.",
+      "setupUrl": "https://sentry.io/settings/account/api/auth-tokens/"
+    }
+  ],
+  "supportedApps": ["claude-code", "cursor"],
+  "transportTemplate": {
+    "type": "http",
+    "url": "https://mcp.sentry.dev/mcp",
+    "headers": {
+      "Authorization": "Sentry-Bearer ${SENTRY_ACCESS_TOKEN}"
+    }
+  }
+}

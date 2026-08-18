@@ -29,11 +29,13 @@ const HEADER_NAME_PATTERN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/u;
  *
  * Requiring a reference is not on its own a guarantee: `"abcd1234secretvalue ${UNUSED}"` satisfies
  * it while carrying the secret in plain text, and no credential pattern recognizes an arbitrary
- * token. Bounding the rest of the value to a short run of letters and spaces — `"Bearer "`,
- * `"Basic "`, `"Token "` — leaves room for the framing real headers need and nowhere to hide a
- * credential, which the recognized-literal check alone cannot promise.
+ * token. Bounding the rest of the value to a short run of letters, spaces, and hyphens —
+ * `"Bearer "`, `"Basic "`, `"Token "`, `"Sentry-Bearer "` — leaves room for the framing real
+ * headers need and nowhere to hide a credential, which the recognized-literal check alone cannot
+ * promise. The hyphen is here for vendor-scoped schemes: Sentry's remote MCP reserves plain
+ * `Bearer` for its own OAuth tokens and takes a user's API token under `Sentry-Bearer`.
  */
-const HEADER_FRAMING_PATTERN = /^[A-Za-z ]{0,16}$/u;
+const HEADER_FRAMING_PATTERN = /^[A-Za-z -]{0,16}$/u;
 
 /** Returns why `name` is unsafe as an MCP server key, or `undefined` when it is valid. */
 export function mcpServerNameProblem(name: string): string | undefined {
@@ -54,6 +56,15 @@ export function mcpEnvironmentNameProblem(name: string): string | undefined {
   return ENVIRONMENT_NAME_PATTERN.test(name)
     ? undefined
     : "must match /^[A-Z_][A-Z0-9_]*$/ and contain a name, never NAME=value";
+}
+
+/** Returns the unique environment-variable references required by a transport. */
+export function mcpEnvironmentVariableNames(transport: McpServerDefinition): readonly string[] {
+  const names =
+    transport.type === "stdio"
+      ? (transport.env ?? [])
+      : Object.values(transport.headers ?? {}).flatMap(variableReferences);
+  return Object.freeze([...new Set(names)].sort());
 }
 
 /**

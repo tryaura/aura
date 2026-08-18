@@ -7,7 +7,7 @@ import type { AppCatalogEntry } from "../catalog.js";
 import { SETUP_ABORTED, type SetupStepContext } from "../types.js";
 import { createScriptedWizardIo, type ScriptedWizardScript } from "../wizard-scripted.js";
 import type { WizardIo, WizardQuestion } from "../wizard-types.js";
-import { emptySkillCatalog, emptySnippetCatalog } from "../testing.js";
+import { emptyMcpCatalog, emptySkillCatalog, emptySnippetCatalog } from "../testing.js";
 import { appsStep } from "./apps.js";
 
 describe("appsStep", () => {
@@ -231,6 +231,7 @@ function detected(options: {
       },
     },
     kind: "detected",
+    supportsMcp: false,
     supportsSkills: false,
   };
 }
@@ -247,6 +248,7 @@ function undetected(
     displayName,
     installHint,
     kind: "undetected",
+    supportsMcp: false,
     supportsSkills: false,
   };
 }
@@ -277,7 +279,10 @@ function context(
 ): SetupStepContext {
   return {
     appCatalog: catalog,
+    interactive: false,
+    isEnvironmentVariableSet: () => false,
     manifest,
+    mcpCatalog: emptyMcpCatalog(),
     model: createWorkspaceModel({
       manifest,
       sharedInstructions: { exists: false, path: "/home/dev/agents/AGENTS.md" },

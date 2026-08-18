@@ -1,4 +1,8 @@
-import { mcpEnvironmentNameProblem, parseMcpServerDefinition } from "./mcp-definition.js";
+import {
+  mcpEnvironmentNameProblem,
+  mcpServerNameProblem,
+  parseMcpServerDefinition,
+} from "./mcp-definition.js";
 import {
   failure,
   hasError,
@@ -18,6 +22,7 @@ import type {
 const APP_ID_PATTERN = /^[a-z0-9][a-z0-9._-]*$/u;
 
 /** Parses and validates one plugin MCP catalog JSON payload. */
+// fallow-ignore-next-line complexity -- every branch reports one precise untrusted JSON field.
 export function parseMcpServerManifest(text: string): McpDefinitionResult<McpServerManifest> {
   let value: unknown;
   try {
@@ -40,6 +45,14 @@ export function parseMcpServerManifest(text: string): McpDefinitionResult<McpSer
   const name = requiredNonemptyString(value, "name", "$");
   if (hasError(name)) {
     return name;
+  }
+  const serverName = requiredNonemptyString(value, "serverName", "$");
+  if (hasError(serverName)) {
+    return serverName;
+  }
+  const serverNameProblem = mcpServerNameProblem(serverName.value);
+  if (serverNameProblem !== undefined) {
+    return failure("$.serverName", serverNameProblem);
   }
   const description = requiredNonemptyString(value, "description", "$");
   if (hasError(description)) {
@@ -80,6 +93,7 @@ export function parseMcpServerManifest(text: string): McpDefinitionResult<McpSer
       id: id.value,
       name: name.value,
       schemaVersion: 1,
+      serverName: serverName.value,
       ...(supportedApps.value === undefined ? {} : { supportedApps: supportedApps.value }),
       transportTemplate: transport.value,
     }),

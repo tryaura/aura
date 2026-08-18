@@ -1,6 +1,11 @@
 import { readFile } from "node:fs/promises";
 
-import { createPluginRegistry, hashManagedSnippet } from "@tryaura/core";
+import {
+  buildWorkspaceModel,
+  createEnvironment,
+  createPluginRegistry,
+  hashManagedSnippet,
+} from "@tryaura/core";
 import type { Snippet } from "@tryaura/aura-sdk";
 import { describe, expect, it } from "vitest";
 
@@ -111,6 +116,46 @@ describe("official snippets", () => {
         },
       ]
     `);
+  });
+});
+
+describe("official MCP catalog", () => {
+  it("loads every bundled definition through the registry and workspace loader", async () => {
+    const registry = createPluginRegistry([officialContent]);
+    const scan = await buildWorkspaceModel({
+      adapters: [],
+      environment: createEnvironment({
+        cwd: "/tmp/aura-official-content-test",
+        environmentVariables: {},
+        homeDir: "/tmp/aura-official-content-test/home",
+      }),
+      mcpCatalog: registry.mcpServers,
+    });
+
+    expect(scan.diagnostics).toEqual([]);
+    expect(
+      scan.model.availableMcpServers.map((entry) => ({
+        id: entry.id,
+        serverName: entry.manifest.serverName,
+        supportedApps: entry.manifest.supportedApps,
+      })),
+    ).toEqual([
+      {
+        id: "official/atlassian-rovo",
+        serverName: "atlassian-rovo",
+        supportedApps: ["claude-code", "codex", "cursor"],
+      },
+      {
+        id: "official/github",
+        serverName: "github",
+        supportedApps: ["claude-code", "codex", "cursor"],
+      },
+      {
+        id: "official/sentry",
+        serverName: "sentry",
+        supportedApps: ["claude-code", "cursor"],
+      },
+    ]);
   });
 });
 

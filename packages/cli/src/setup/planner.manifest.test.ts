@@ -6,7 +6,7 @@ import { createWorkspaceModel } from "@tryaura/aura-sdk/testing";
 
 import type { AppCatalogEntry } from "./catalog.js";
 import { planSetup } from "./planner.js";
-import { emptySkillCatalog, emptySnippetCatalog } from "./testing.js";
+import { emptyMcpCatalog, emptySkillCatalog, emptySnippetCatalog } from "./testing.js";
 import type { SetupStepContext } from "./types.js";
 
 const PATH = "/home/dev/agents/aura.json";
@@ -55,6 +55,30 @@ describe("planSetup manifest app safety", () => {
     expect(outcome.plan.operations).toEqual([]);
     expect(Object.hasOwn(outcome.manifest.apps, "__proto__")).toBe(true);
   });
+
+  // The steps refuse this at the form. If one ever stops, the run has to end at a blocked plan
+  // the user can act on rather than at a thrown serialization that discards every answer.
+  it("blocks rather than throws on desired state the manifest schema refuses", () => {
+    const server = {
+      apps: ["app"],
+      name: "duplicate",
+      scope: "global",
+      transport: { command: "docs-mcp", type: "stdio" },
+    } as const;
+    const base = context(manifest({ app: { managed: true } }), catalog("app"), ["app"]);
+    const outcome = planSetup({
+      ...base,
+      selections: { ...base.selections, mcp: { servers: [server, server] } },
+    });
+
+    expect(outcome.plan.operations).toEqual([]);
+    expect(outcome.blockers).toEqual([
+      {
+        path: PATH,
+        reason: expect.stringContaining('duplicates the global server "duplicate"'),
+      },
+    ]);
+  });
 });
 
 function context(
@@ -72,7 +96,10 @@ function context(
   });
   return {
     appCatalog,
+    interactive: false,
+    isEnvironmentVariableSet: () => false,
     manifest: state,
+    mcpCatalog: emptyMcpCatalog(),
     model,
     selections: { apps: { managed } },
     skillCatalog: emptySkillCatalog(),
@@ -96,6 +123,7 @@ function catalog(...ids: readonly string[]): readonly AppCatalogEntry[] {
     adapterId: id,
     displayName: id,
     kind: "undetected",
+    supportsMcp: false,
     supportsSkills: false,
   }));
 }

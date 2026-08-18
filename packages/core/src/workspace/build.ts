@@ -1,10 +1,12 @@
-import type {
-  Adapter,
-  AppModel,
-  Environment,
-  McpServerDef,
-  Snippet,
-  WorkspaceModel,
+import {
+  mcpEnvironmentVariableNames,
+  type AuraManifestState,
+  type Adapter,
+  type AppModel,
+  type Environment,
+  type McpServerDef,
+  type Snippet,
+  type WorkspaceModel,
 } from "@tryaura/aura-sdk";
 
 import { auraManifestDiagnostics } from "../manifest/diagnostic.js";
@@ -162,6 +164,7 @@ export async function buildWorkspaceModel(options: WorkspaceScanOptions): Promis
       homeDir: environment.homeDir,
       instructionFiles: apps.flatMap((app) => app.instructionFiles),
       manifest,
+      mcpEnvironmentVariables: environmentVariableStates(manifest, environment),
       mcpSecretSightings: apps.flatMap((app) => app.mcpSecretSightings ?? []),
       mcpServers: apps.flatMap((app) => app.mcpServers),
       projectRoot: root,
@@ -173,6 +176,21 @@ export async function buildWorkspaceModel(options: WorkspaceScanOptions): Promis
     },
     skipped,
   };
+}
+
+function environmentVariableStates(
+  manifest: AuraManifestState,
+  environment: Environment,
+): WorkspaceModel["mcpEnvironmentVariables"] {
+  if (manifest.status !== "ready") {
+    return [];
+  }
+  const names = new Set(
+    manifest.value.mcpServers.flatMap((server) => mcpEnvironmentVariableNames(server.transport)),
+  );
+  return [...names]
+    .sort()
+    .map((name) => Object.freeze({ isSet: environment.readVariable(name) !== undefined, name }));
 }
 
 /** Uses one filesystem spelling for every root adapters use to construct paths. */

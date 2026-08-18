@@ -4,6 +4,8 @@ export const CHECK_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/u;
 export const CONTENT_ID_PATTERN = /^[a-z0-9][a-z0-9._/-]*$/u;
 export const DIRECTORY_PREFIX = "directory:";
 export const MAX_JSON_DEPTH = 100;
+/** Namespaced MCP catalog id, such as `official/github`. */
+export const MCP_CATALOG_ID_PATTERN = /^[a-z0-9][a-z0-9._-]*\/[a-zA-Z0-9][a-zA-Z0-9._-]*$/u;
 export const MAX_SELECTIONS = 256;
 export const SKILL_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 export const SKILL_SOURCE_ID_PATTERN = /^(?:directory|driver|plugin):[^\s:]+$/u;

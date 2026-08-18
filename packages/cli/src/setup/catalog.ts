@@ -6,6 +6,7 @@ export type AppCatalogEntry =
   | {
       readonly app: AppModel;
       readonly kind: "detected";
+      readonly supportsMcp: boolean;
       readonly supportsSkills: boolean;
     }
   | {
@@ -20,6 +21,7 @@ export type AppCatalogEntry =
       readonly displayName: string;
       readonly installHint?: string | undefined;
       readonly kind: "undetected";
+      readonly supportsMcp: boolean;
       readonly supportsSkills: boolean;
     };
 
@@ -56,9 +58,10 @@ export function buildAppCatalog(
       .filter((adapter) => adapter.synthetic !== true)
       .map((adapter): AppCatalogEntry => {
         const supportsSkills = adapter.capabilities?.skills !== undefined;
+        const supportsMcp = adapter.mcpWrite !== undefined;
         const app = model.apps.find((candidate) => candidate.adapterId === adapter.id);
         if (app !== undefined) {
-          return { app, kind: "detected", supportsSkills };
+          return { app, kind: "detected", supportsMcp, supportsSkills };
         }
         return {
           adapterId: adapter.id,
@@ -66,6 +69,7 @@ export function buildAppCatalog(
           displayName: adapter.displayName,
           installHint: adapter.installHint,
           kind: "undetected",
+          supportsMcp,
           supportsSkills,
         };
       }),

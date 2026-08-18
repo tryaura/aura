@@ -25,6 +25,7 @@ const catalog: WorkspaceModel["availableMcpServers"][number] = {
     id: "official/docs",
     name: "Docs",
     schemaVersion: 1,
+    serverName: "docs",
     supportedApps: ["claude-code"],
     transportTemplate: { command: "docs-mcp", type: "stdio" },
   },

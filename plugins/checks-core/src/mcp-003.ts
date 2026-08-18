@@ -1,6 +1,7 @@
 import { planMcpServerRemoval } from "@tryaura/core";
 import {
   defineCheck,
+  mcpEnvironmentVariableNames,
   type DetectedFinding,
   type Finding,
   type FixPlan,
@@ -11,11 +12,17 @@ import {
   type WorkspaceModel,
 } from "@tryaura/aura-sdk";
 
+import {
+  cursorMcpStateChoice,
+  cursorMcpStateFindings,
+  mcpServerNameKey,
+} from "./mcp-003-cursor.js";
+
 const CHECK_ID = "MCP-003";
 
-const EXPLAIN = `Aura checks stdio commands with filesystem-only PATH resolution. It never starts an MCP server during a check. Package launchers such as npx, uvx, and bunx are checked, but Aura does not guess whether the requested package is installed or cached.
+const EXPLAIN = `Aura checks stdio commands with filesystem-only PATH resolution, and starts no MCP server of its own. Package launchers such as npx, uvx, and bunx are checked, but Aura does not guess whether the requested package is installed or cached.
 
-Remote URLs are silent and generate no network traffic unless \`check --online\` is supplied. Online probes use short, bounded requests without configured authentication headers, and they skip an endpoint whose credentials Aura stripped, because the remaining URL no longer addresses the configured server. A redirect to a private address is reported rather than followed. A timeout or a server-side fault is a warning, not an error: it may not repeat. Re-run with \`--fix --interactive\` to choose whether to repair or remove a server that definitely failed its probe.`;
+Remote URLs are silent and generate no network traffic unless \`check --online\` is supplied. Online probes use short, bounded requests without configured authentication headers, and they skip an endpoint whose credentials Aura stripped, because the remaining URL no longer addresses the configured server. A redirect to a private address is reported rather than followed. A timeout or a server-side fault is a warning, not an error: it may not repeat. Re-run with \`--fix --interactive\` to choose whether to repair or remove a server that definitely failed its probe. Cursor separately requires its MCP servers to be approved and enabled in its own settings, which no file records; Aura reads those states by running \`cursor-agent mcp list\` when that CLI is installed and identifies itself. The command is Cursor's, and it connects to servers to answer, so Aura runs it from your home directory: only your own global configuration takes part, never a \`.cursor/mcp.json\` committed to the repository you are in. Aura never approves, enables, or retries a server itself, and every state it reports this way is a warning. Aura also reports an informational reminder when a desired MCP transport references an unset environment variable. It retains only the variable name and whether it is set; credential values never enter the workspace model or report.`;
 
 export const mcp003 = defineCheck({
   defaultSeverity: "error",
@@ -30,11 +37,78 @@ export const mcp003 = defineCheck({
 });
 
 function detectDeadServers(model: WorkspaceModel): readonly DetectedFinding[] {
-  return model.mcpServers.flatMap((server) =>
-    (server.probes ?? [])
-      .filter((probe) => probe.status === "error")
-      .map((probe): DetectedFinding => findingFor(server, probe, model)),
+  const probeFindings: DetectedFinding[] = [];
+  // Names a probe already proved dead, so Cursor's own "cannot connect" does not say it twice.
+  const concretelyFailed = new Set<string>();
+  for (const server of model.mcpServers) {
+    const failed = (server.probes ?? []).filter((probe) => probe.status === "error");
+    if (failed.length === 0) {
+      continue;
+    }
+    concretelyFailed.add(mcpServerNameKey(server.appId, server.name));
+    probeFindings.push(...failed.map((probe) => findingFor(server, probe, model)));
+  }
+
+  return [
+    ...probeFindings,
+    ...model.apps.flatMap((app) => cursorMcpStateFindings(app, concretelyFailed)),
+    ...unsetEnvironmentFindings(model),
+  ];
+}
+
+function unsetEnvironmentFindings(model: WorkspaceModel): readonly DetectedFinding[] {
+  if (model.manifest.status !== "ready") {
+    return [];
+  }
+  const availability = new Map(
+    model.mcpEnvironmentVariables.map((variable) => [variable.name, variable.isSet]),
   );
+  return model.manifest.value.mcpServers.flatMap((server, serverIndex) =>
+    mcpEnvironmentVariableNames(server.transport).flatMap((variableName) => {
+      if (availability.get(variableName) !== false) {
+        return [];
+      }
+      const catalog = model.availableMcpServers.find(
+        (candidate) => candidate.id === server.catalogId,
+      );
+      const credential = catalog?.manifest.credentialEnv.find(
+        (candidate) => candidate.name === variableName,
+      );
+      const details = credentialDetails(
+        server.name,
+        variableName,
+        credential,
+        catalog?.manifest.docsUrl,
+      );
+      const finding: DetectedFinding = {
+        details,
+        id: `environment:${String(serverIndex)}:${variableName}`,
+        locations: [{ path: model.manifest.path }],
+        message: `MCP server ${server.name} needs environment variable ${variableName}.`,
+        metadata: {
+          kind: "environment",
+          serverName: server.name,
+          serverScope: server.scope,
+          variableName,
+        },
+        severity: "info",
+      };
+      return [finding];
+    }),
+  );
+}
+
+function credentialDetails(
+  serverName: string,
+  variableName: string,
+  credential: { readonly description: string; readonly setupUrl?: string | undefined } | undefined,
+  docsUrl: string | undefined,
+): string {
+  const guidance =
+    credential?.description ??
+    `Set ${variableName} to the credential required by custom MCP server ${serverName}.`;
+  const url = credential?.setupUrl ?? docsUrl;
+  return url === undefined ? guidance : `${guidance} Setup: ${url}`;
 }
 
 function findingFor(
@@ -70,6 +144,10 @@ function findingFor(
 }
 
 function guidedFixes(finding: Finding, model: WorkspaceModel): readonly GuidedFixChoice[] {
+  const cursorChoice = cursorMcpStateChoice(finding);
+  if (cursorChoice !== undefined) {
+    return [cursorChoice];
+  }
   const server = findingServer(finding, model);
   const kind = finding.metadata?.["kind"];
   if (server === undefined || (kind !== "command" && kind !== "url")) {

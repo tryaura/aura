@@ -75,6 +75,7 @@ async function createFixture(): Promise<Fixture> {
         colorDepth: 0,
         dryRun: false,
         environment,
+        interactive: false,
         io: createScriptedWizardIo({ output: stdout.stream }),
         registry,
         stateHomeDir: homeDir,

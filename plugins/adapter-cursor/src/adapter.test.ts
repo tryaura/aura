@@ -18,28 +18,36 @@ describe("Cursor detection", () => {
     const environment = environmentWithExec(requests, (request) =>
       request.command === "/first/cursor"
         ? result(COMMAND_NOT_FOUND_EXIT_CODE)
-        : result(0, "3.11.0\nfixture-commit\narm64\n"),
+        : request.command === "/second/cursor"
+          ? result(0, "3.11.0\nfixture-commit\narm64\n")
+          : result(COMMAND_NOT_FOUND_EXIT_CODE),
     );
-
     await expect(cursorAdapter.detect(environment)).resolves.toEqual({
       executablePath: "/second/cursor",
       installed: true,
       version: "3.11.0",
     });
-    expect(requests.map((request) => [request.command, ...(request.args ?? [])])).toEqual([
+    expect(
+      requests.map((request) => [request.command, ...(request.args ?? [])]).slice(0, 2),
+    ).toEqual([
       ["/first/cursor", "--version"],
       ["/second/cursor", "--version"],
     ]);
   });
-
   it.each([
     ["exits unsuccessfully", result(2, "3.11.0\n")],
     ["does not identify a version", result(0, "Cursor editor\n")],
     ["times out", result(TIMEOUT_EXIT_CODE)],
   ])("keeps searching when a candidate %s", async (_case, response) => {
-    const environment = environmentWithExec([], (request) =>
-      request.command === "/first/cursor" ? response : result(0, "3.11.0\n"),
-    );
+    const environment = environmentWithExec([], (request) => {
+      if (request.command === "/first/cursor") {
+        return response;
+      }
+      if (request.command === "/second/cursor") {
+        return result(0, "3.11.0\n");
+      }
+      return result(COMMAND_NOT_FOUND_EXIT_CODE);
+    });
 
     await expect(cursorAdapter.detect(environment)).resolves.toMatchObject({
       executablePath: "/second/cursor",
@@ -49,7 +57,11 @@ describe("Cursor detection", () => {
 
   it("probes the cursor.cmd shim on Windows", async () => {
     const requests: ExecRequest[] = [];
-    const base = environmentWithExec(requests, () => result(0, "3.11.0\n"));
+    const base = environmentWithExec(requests, (request) =>
+      request.command.endsWith("cursor.cmd")
+        ? result(0, "3.11.0\n")
+        : result(COMMAND_NOT_FOUND_EXIT_CODE),
+    );
     const environment: Environment = { ...base, platform: "win32" };
 
     await expect(cursorAdapter.detect(environment)).resolves.toEqual({

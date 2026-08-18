@@ -3,10 +3,21 @@ import { jsonPropertyPath } from "@tryaura/aura-sdk";
 
 import { isRecord } from "../values.js";
 import { collectChecks, isChecks } from "./schema-checks.js";
-import { collectIds, CONTENT_ID_PATTERN, firstProblem, MAX_JSON_DEPTH } from "./schema-common.js";
+import {
+  collectIds,
+  CONTENT_ID_PATTERN,
+  firstProblem,
+  MAX_JSON_DEPTH,
+  MCP_CATALOG_ID_PATTERN,
+} from "./schema-common.js";
 import { collectAllowedSources, collectDirectories, collectSkills } from "./schema-sources.js";
 
-/** Why a parsed preset document cannot be used, or the preset when it can. */
+/**
+ * Why a parsed preset document cannot be used, or the preset when it can.
+ *
+ * Problems name the JSON path and the rule, never the offending value: a preset sits beside files
+ * that hold credentials, and a validator that echoes input turns a paste mistake into a leak.
+ */
 export type TeamPresetParseResult =
   | { readonly kind: "invalid"; readonly problem: string }
   | { readonly kind: "preset"; readonly preset: AuraTeamPreset };
@@ -37,7 +48,7 @@ export function validateTeamPreset(value: unknown): TeamPresetParseResult {
   const requiredMcpServers = collectIds(
     value["requiredMcpServers"],
     "$.requiredMcpServers",
-    CONTENT_ID_PATTERN,
+    MCP_CATALOG_ID_PATTERN,
   );
   const snippets = collectIds(value["snippets"], "$.snippets", CONTENT_ID_PATTERN);
   const skills = collectSkills(value["skills"]);

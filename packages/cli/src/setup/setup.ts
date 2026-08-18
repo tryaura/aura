@@ -16,8 +16,8 @@ import { elapsedMs, setupRunEvent } from "../telemetry-events.js";
 import type { TelemetryRecorder } from "../telemetry.js";
 import type { CliBranding, CliExitCode } from "../types.js";
 import { buildAppCatalog } from "./catalog.js";
+import { createSetupCatalogs } from "./catalogs.js";
 import { endOnGreen, gatherFindings } from "./green.js";
-import { createSkillCatalog } from "./skills-catalog.js";
 import { createSnippetCatalog } from "./snippets.js";
 import { SETUP_STEPS } from "./steps/index.js";
 import { type GatherStart } from "./gather.js";
@@ -35,6 +35,8 @@ export interface SetupRequest {
   readonly defaults?: AuraConfigurationLayer | undefined;
   readonly dryRun: boolean;
   readonly environment: Environment;
+  /** False when `io` answers for the user, which the MCP step reads before proposing a default. */
+  readonly interactive: boolean;
   readonly io: WizardIo;
   readonly noCache?: boolean | undefined;
   readonly registry: PluginRegistry;
@@ -103,9 +105,8 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
     ? gatherFindings(activeChecks, effectiveModel, io, configured.config)
     : undefined;
 
-  const appCatalog = buildAppCatalog(request.registry.adapters, model, scan.skipped);
-  const snippetCatalog = createSnippetCatalog(request.registry.snippets, model.manifest);
-  const skillCatalog = createSkillCatalog({
+  const catalogs = createSetupCatalogs({
+    config: configured.config,
     environment,
     model: effectiveModel,
     preset: configured.preset,
@@ -114,16 +115,19 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
       ...projected.diagnostics.map((diagnostic) => diagnostic.message),
     ],
     presetOrigin: configured.presetOrigin,
-    registryDirectories: request.registry.skillDirectories,
+    registry: request.registry,
   });
 
   const stepContext = {
-    appCatalog,
+    appCatalog: buildAppCatalog(request.registry.adapters, model, scan.skipped),
     ...(initialFindings === undefined ? {} : { findings: initialFindings }),
+    interactive: request.interactive,
+    isEnvironmentVariableSet: (name: string) => environment.readVariable(name) !== undefined,
     manifest: model.manifest,
+    mcpCatalog: catalogs.mcpCatalog,
     model: effectiveModel,
-    skillCatalog,
-    snippetCatalog,
+    skillCatalog: catalogs.skillCatalog,
+    snippetCatalog: createSnippetCatalog(request.registry.snippets, model.manifest),
   };
 
   // The confirmation can send the user ← back into the last step, so gather → plan → confirm

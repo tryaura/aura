@@ -2,6 +2,7 @@ import type { SetupStep } from "../types.js";
 import { appsStep } from "./apps.js";
 import { baselineStep } from "./baseline.js";
 import { instructionsStep } from "./instructions.js";
+import { mcpStep } from "./mcp.js";
 import { skillsStep } from "./skills.js";
 import { snippetsStep } from "./snippets.js";
 
@@ -16,6 +17,7 @@ export const SETUP_STEPS: readonly SetupStep[] = Object.freeze([
   instructionsStep,
   snippetsStep,
   skillsStep,
+  mcpStep,
   baselineStep,
 ]);
 

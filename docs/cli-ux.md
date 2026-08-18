@@ -84,7 +84,7 @@ One or two lines. The **top row** is a static map of the flow's real steps, sepa
 always in flow order, ending in **Submit**:
 
 ```
- ✔ Applications │ ▶ Instructions ☐ │ Snippets ☐ │ Skills ☐ │ Baseline ☐ │ Submit
+ ✔ Applications │ ▶ Instructions ☐ │ Snippets ☐ │ Skills ☐ │ MCP ☐ │ Baseline ☐ │ Submit
 ```
 
 The top row never mutates as a step's internal forms advance: the active step keeps its own name
@@ -154,8 +154,8 @@ Tab states, in either row:
 Full labels are the default. If the bar would exceed the terminal width, degrade in this order —
 never reintroduce scrolling and never truncate with `…`:
 
-1. Compact labels (`WizardQuestion.compactLabel`: `Apps`, `Base`, `Dup 1`, …).
-2. Glyph-only for non-active tabs (`✔ │ ✔ │ ▶ Snippets ☐ │ ☐ │ Submit`) — the active tab always
+1. Compact labels (`WizardQuestion.compactLabel`: `Apps`, `Base`, `MCP`, `Dup 1`, …).
+2. Glyph-only for non-active tabs (`✔ │ ✔ │ ▶ Snippets ☐ │ ☐ │ ☐ │ Submit`) — the active tab always
    keeps its label, and Submit keeps its label.
 
 Each row degrades independently; the sub-row's active question keeps its label just as the top
@@ -233,6 +233,55 @@ A picker over every allowed skill source, then one Review form per selected dire
   also covers `--add skill` and manifest entries whose source lost its permission. `<origin>` is
   the preset as resolved — `npm:@acme/preset@1.2.0`, an HTTPS URL, or `.aura/preset.json` — never
   the conventional path standing in for a policy that came from somewhere else.
+
+### MCP step
+
+A picker over every catalog and configured MCP server, then one form per selected server
+capturing its name, scope, and applications. Runs after Skills, before Baseline.
+
+- Rows merge three sources: catalog definitions contributed by installed plugins, entries the
+  manifest already records, and custom servers added during the step. A row's description names
+  its provenance (`Plugin: Aura Official Content`, or `Custom server`), and its label carries what
+  the run knows about it — `(preset required)`, `(configured)`, `(custom)`. Required rows sort
+  first, then configured ones, then the rest by name.
+- The last row is always `Add a custom server…`. Choosing it opens the transport forms — a select
+  between `Command (stdio)` and `Remote URL (HTTP)`, then the fields for that transport — and
+  returns to the same picker with the new row checked. A catalog row never asks for a transport:
+  its definition supplies one.
+- Transport fields take JSON as typed (`["--serve"]`, `{"Authorization":"Bearer ${TOKEN}"}`) and
+  are re-seeded with the draft on rejection. A rejected value is reported as the field it belongs
+  to plus Aura's reason (`Custom MCP transport $.headers must contain a ${VARIABLE} reference.`);
+  the value itself is never echoed, and the header name the path would carry is collapsed into
+  `$.headers` before it reaches the terminal. **A header value carries `${VARIABLE}` references and short
+  framing text only** — a credential typed into the form is refused, not stored.
+- The per-server form disables an application row with its reason in place (`— not detected`,
+  `— not managed by Aura`, `— adapter cannot write MCP configuration`,
+  `— not supported by this catalog server`, `— installed version is unsupported`). An application
+  the manifest targets that this build does not ship stays checked but disabled
+  (`— adapter is not available in this build`).
+- A name is refused when it is unusable as a configuration key, and when another server selected in
+  this run already claims it at the same scope for one of the same applications — that pair is one
+  key in one file, and the manifest declines to record two of them. Added custom servers are named
+  `custom`, `custom-2`, … so accepting the defaults is never that collision.
+- **A preset-required server the manifest does not already record is pre-checked only for an
+  interactive run.** `--yes` and exhausted scripts re-apply what the manifest records and nothing
+  more; the unmet requirement becomes a blocker naming the interactive run
+  (`Required MCP catalog entry official/github is not configured yet. Run setup interactively…`).
+  This is the skills-step rule applied to a credential-bearing remote endpoint: a non-interactive
+  run never first-configures one on a repository's say-so.
+- Interactively, clearing a required row asks for one explicit confirmation
+  (`Override the team preset for this run and omit official/github?`), and re-checking the row
+  clears the override. A required id the installed plugins do not provide is a blocker naming the
+  preset, never a silent omission.
+- ← from any per-server form returns to the picker with every answer of that pass intact,
+  including a custom transport, which becomes editable again on the return trip.
+- Credentials are never read by the step. A variable a selected transport references and the
+  environment does not set becomes a manual step after the plan
+  (`A GitHub personal access token… Set it in GITHUB_PERSONAL_ACCESS_TOKEN. Configure it at …`),
+  and MCP-003 reports the same gap on later runs. Only the name and whether it is set are ever
+  held.
+- `setup --add mcp` requires an established manifest and either a managed application that
+  supports MCP configuration or a server already recorded to remove.
 
 ### Implementation status
 

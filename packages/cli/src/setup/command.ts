@@ -112,6 +112,7 @@ export class SetupCommand extends Command<AuraCliContext> {
         defaults: this.context.defaults,
         dryRun: this.dryRun,
         environment,
+        interactive,
         io,
         noCache: this.noCache,
         registry: this.context.registry,

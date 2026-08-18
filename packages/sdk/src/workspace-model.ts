@@ -1,6 +1,6 @@
 import type { ResolvedSkillPack } from "./content.js";
 import type { AuraManifestMcpServer, AuraManifestState } from "./manifest.js";
-import type { ResolvedMcpServerDef } from "./mcp-definition-types.js";
+import type { McpEnvironmentVariableState, ResolvedMcpServerDef } from "./mcp-definition-types.js";
 import type {
   AppModel,
   InstructionDocument,
@@ -38,6 +38,8 @@ export interface WorkspaceModel {
   readonly manifest: AuraManifestState;
   /** MCP servers across every application. */
   readonly mcpServers: readonly McpServer[];
+  /** Availability of environment variables referenced by desired MCP transports, never values. */
+  readonly mcpEnvironmentVariables: readonly McpEnvironmentVariableState[];
   /** Inline MCP credential locations across every application, without credential bytes. */
   readonly mcpSecretSightings: readonly McpSecretSighting[];
   /** Repository root, when `cwd` is inside one. */
