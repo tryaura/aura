@@ -4,11 +4,13 @@ import { Readable, Writable } from "node:stream";
 
 import { runCli } from "@tryaura/aura-cli";
 import { OFFICIAL_PLUGINS, OFFICIAL_REGISTRY_OPTIONS } from "@tryaura/aura-cli/plugins";
+import { executeFixPlan, planManifestMcpConvergence, runChecks, undoFixPlan } from "@tryaura/core";
 import { describe, expect, it } from "vitest";
 
 import { claudeCodeShimResponses } from "./fixtures/claude-code.js";
 import { codexShimResponses } from "./fixtures/codex.js";
 import { cursorShimResponses } from "./fixtures/cursor.js";
+import { guidedCheck, officialScan, type ScannableSeed } from "./official-scan.js";
 import { runCheck } from "./runner.js";
 import { createSeedBuilder } from "./seed.js";
 
@@ -100,7 +102,85 @@ describe("manifest-driven MCP convergence", () => {
       },
     });
   });
+
+  it("moves an owned server across scopes idempotently and undoes both files and ledger", async () => {
+    const globalBefore =
+      JSON.stringify({ mcpServers: { personal: { command: "keep-cursor" } } }, undefined, 2) + "\n";
+    const projectBefore =
+      JSON.stringify({ mcpServers: { managed: { command: "managed-server" } } }, undefined, 2) +
+      "\n";
+    const manifestBefore = misplacedManifest();
+    await using seed = await createSeedBuilder()
+      .homeFile("agents/aura.json", manifestBefore)
+      .homeFile(".cursor/mcp.json", globalBefore)
+      .workspaceFile(".cursor/mcp.json", projectBefore)
+      .shim("cursor", cursorShimResponses({ version: "3.11.0" }))
+      .build();
+    const firstScan = await cursorScan(seed);
+    const check = guidedCheck("MCP-005");
+    const finding = runChecks([check], firstScan).findings[0];
+    if (finding === undefined) {
+      throw new Error("Expected a guided MCP-005 finding.");
+    }
+    const plan = check.fix(finding, firstScan);
+    if (plan === undefined) {
+      throw new Error("Expected MCP-005 to build a move plan.");
+    }
+
+    const applied = await executeFixPlan({
+      model: firstScan,
+      now: () => new Date("2026-08-18T01:02:03.004Z"),
+      plan,
+    });
+    expect(applied.appliedOperationCount).toBe(3);
+    expect(await readFile(join(seed.homeDir, ".cursor", "mcp.json"), "utf8")).toContain(
+      '"managed"',
+    );
+    expect(await readFile(join(seed.workspaceDir, ".cursor", "mcp.json"), "utf8")).not.toContain(
+      '"managed"',
+    );
+    expect(
+      JSON.parse(await readFile(join(seed.homeDir, "agents", "aura.json"), "utf8")),
+    ).toMatchObject({ ownership: { cursor: { mcpServerNames: ["managed"] } } });
+
+    const converged = await cursorScan(seed);
+    expect(runChecks([check], converged).findings).toEqual([]);
+    const secondPlan = planManifestMcpConvergence(converged, "cursor").plan;
+    if (secondPlan === undefined) {
+      throw new Error("Expected a converged Cursor plan.");
+    }
+    const second = await executeFixPlan({
+      model: converged,
+      now: () => new Date("2026-08-18T01:02:04.004Z"),
+      plan: secondPlan,
+    });
+    expect(second.appliedOperationCount).toBe(0);
+
+    if (applied.backupId === undefined) {
+      throw new Error("Expected the scope move to create an undo backup.");
+    }
+    await expect(
+      undoFixPlan({
+        backupId: applied.backupId,
+        model: converged,
+        now: () => new Date("2026-08-18T01:02:05.004Z"),
+      }),
+    ).resolves.toMatchObject({ restoredOperationCount: 3, status: "undone" });
+    await expect(readFile(join(seed.homeDir, ".cursor", "mcp.json"), "utf8")).resolves.toBe(
+      globalBefore,
+    );
+    await expect(readFile(join(seed.workspaceDir, ".cursor", "mcp.json"), "utf8")).resolves.toBe(
+      projectBefore,
+    );
+    await expect(readFile(join(seed.homeDir, "agents", "aura.json"), "utf8")).resolves.toBe(
+      manifestBefore,
+    );
+  });
 });
+
+async function cursorScan(seed: ScannableSeed) {
+  return officialScan(seed, ["cursor"]);
+}
 
 function manifest(): string {
   return (
@@ -129,6 +209,30 @@ function manifest(): string {
           codex: { files: [], mcpServerNames: [] },
           cursor: { files: [], mcpServerNames: [] },
         },
+        schemaVersion: 1,
+        skills: [],
+        snippets: [],
+      },
+      undefined,
+      2,
+    ) + "\n"
+  );
+}
+
+function misplacedManifest(): string {
+  return (
+    JSON.stringify(
+      {
+        apps: { cursor: { managed: true } },
+        mcpServers: [
+          {
+            apps: ["cursor"],
+            name: "managed",
+            scope: "global",
+            transport: { command: "managed-server", type: "stdio" },
+          },
+        ],
+        ownership: { cursor: { files: [], mcpServerNames: ["managed", "stale"] } },
         schemaVersion: 1,
         skills: [],
         snippets: [],
