@@ -91,7 +91,10 @@ function assertNoInstallHooks(manifest) {
 /** The surface each package promises consumers, keyed by name so adding one stays a local edit. */
 const ENTRY_POINT_CONTRACTS = {
   "@tryaura/aura-sdk": (manifest) => {
-    assert.deepEqual(manifest.dependencies ?? {}, {});
+    // `yaml` is the SDK's only runtime dependency — skill frontmatter is parsed with a real YAML
+    // parser, imported rather than bundled so consumers dedupe one copy. Names only: a version
+    // bump is a dependency update, not a change to what the package promises.
+    assert.deepEqual(Object.keys(manifest.dependencies ?? {}), ["yaml"]);
     assert.deepEqual(Object.keys(manifest.exports).sort(), [".", "./testing"]);
   },
   "@tryaura/aura-cli": (manifest, expectedVersion) => {
