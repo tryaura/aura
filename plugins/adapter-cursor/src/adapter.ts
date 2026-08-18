@@ -2,7 +2,6 @@ import { join } from "node:path";
 
 import {
   defineAdapter,
-  detectExecutable,
   SHARED_INSTRUCTIONS_TEMPLATE_TOKEN,
   type AdapterFileMap,
   type AdapterFileSpec,
@@ -12,6 +11,7 @@ import {
 } from "@tryaura/aura-sdk";
 
 import { CURSOR_ADAPTER_ID, CURSOR_SOURCE_IDS as SOURCE_IDS } from "./contract.js";
+import { detectCursor } from "./detect.js";
 import { parseMcpServers, transformMcpSecrets, writeMcpServers } from "./mcp.js";
 import { parseRuleFile } from "./rules.js";
 
@@ -21,15 +21,7 @@ export const cursorAdapter = defineAdapter({
     // at all is per-document knowledge, published as `isConditionalCursorRule` in the contract.
     instructions: { importStyle: "at-import", loading: "import-graph" },
   },
-  /**
-   * Cursor exposes no command that reports credential state, so detection stops at `--version`.
-   *
-   * On Windows the installer puts a `cursor.cmd` shim into `resources\app\bin` and adds that
-   * directory to the search path; there is no `cursor.exe` beside it, so the shim is what gets
-   * probed.
-   */
-  detect: (environment) =>
-    detectExecutable(environment, { binaryName: "cursor", windowsBinaryName: "cursor.cmd" }),
+  detect: detectCursor,
   detectionScope: "the cursor shell command on PATH (the editor itself is not checked)",
   displayName: "Cursor",
   files: cursorFiles,
