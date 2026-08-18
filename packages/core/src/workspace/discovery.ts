@@ -67,16 +67,26 @@ export async function discoverAdapterFiles(
     if (round === MAX_ADAPTER_FILE_ROUNDS - 1) {
       throw new Error(`file discovery did not stabilize within ${MAX_ADAPTER_FILE_ROUNDS} rounds`);
     }
-    if (specs.size + newSpecs.length > MAX_ADAPTER_FILES) {
-      throw new Error(`declared more than ${MAX_ADAPTER_FILES} file specs`);
+
+    const budget = Math.max(0, MAX_ADAPTER_FILES - specs.size);
+    const dropped = newSpecs.slice(budget);
+    const accepted = newSpecs.slice(0, budget);
+    if (dropped.length > 0) {
+      diagnostics.push(overBudget(adapter, dropped));
     }
 
+    // Every declared spec is recorded, read or not, so the next round sees it as known rather than
+    // new. Dropping one silently would leave the adapter redeclaring it until the round cap trips,
+    // turning a budget overrun into a total scan failure for this application.
     for (const spec of newSpecs) {
       specs.set(spec.id, spec);
     }
+    for (const spec of dropped) {
+      files.set(spec.id, { exists: false, spec });
+    }
 
     const reads = await Promise.all(
-      newSpecs.map((spec) =>
+      accepted.map((spec) =>
         readSpec(spec, {
           adapter,
           projectBoundary,
@@ -90,6 +100,23 @@ export async function discoverAdapterFiles(
       diagnostics.push(...read.diagnostics);
     }
   }
+}
+
+/**
+ * Reports the paths that did not fit the budget, without discarding the ones that did.
+ *
+ * An adapter that overruns is describing a workspace larger than Aura reads, not misbehaving. The
+ * application keeps every check that its read paths support; only the checks needing an unread path
+ * go quiet, and this names the first one so the user can see where the ceiling landed.
+ */
+function overBudget(adapter: Adapter, dropped: readonly AdapterFileSpec[]): ScanDiagnostic {
+  const first = dropped[0];
+  return {
+    adapterId: adapter.id,
+    message: `${adapter.displayName} declared more than the ${MAX_ADAPTER_FILES} paths Aura reads for one application. ${String(dropped.length)} were left unread, starting at ${first === undefined ? "an unnamed path" : first.path}. Checks that rely on them were skipped.`,
+    ...(first === undefined ? {} : { path: first.path }),
+    phase: "files",
+  };
 }
 
 /** Picks the specs this round introduced, rejecting a declaration set that contradicts itself. */

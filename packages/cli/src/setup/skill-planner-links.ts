@@ -1,6 +1,7 @@
 import { dirname, join, resolve } from "node:path";
 
 import type { AdapterFileStatus, FileOperation } from "@tryaura/aura-sdk";
+import { planSkillDeployment } from "@tryaura/core";
 
 import type { SetupStepContext } from "./types.js";
 
@@ -15,21 +16,17 @@ export function sharedRoot(context: SetupStepContext): string {
 }
 
 export function planLinks(id: string, context: SetupStepContext, state: SkillPlanBuffers): void {
-  const target = join(sharedRoot(context), id);
-  for (const { path, status } of skillDeployments(context, id)) {
-    if (status === undefined || !status.exists) {
-      state.operations.push({ path, target, type: "symlink" });
-      continue;
-    }
-    if (status.pathKind === "symlink" && status.symlinkTarget !== undefined) {
-      const actual = resolve(dirname(path), status.symlinkTarget);
-      if (actual === resolve(target)) {
-        continue;
+  for (const app of managedApps(context)) {
+    for (const directory of app.skillDirectories ?? []) {
+      const outcome = planSkillDeployment(app, context.model, id, directory.id, {
+        assumeShared: true,
+      });
+      if (outcome.kind === "blocked") {
+        state.manualSteps.push(outcome.reason);
+      } else {
+        state.operations.push(...outcome.plan.operations);
       }
     }
-    state.manualSteps.push(
-      `Aura left ${path} unchanged because it is not an Aura-managed skill link. Move it aside to deploy skill "${id}" there.`,
-    );
   }
 }
 

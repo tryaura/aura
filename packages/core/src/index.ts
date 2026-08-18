@@ -90,6 +90,12 @@ export { buildWorkspaceModel } from "./workspace/build.js";
 export type { SkippedApp, WorkspaceScan, WorkspaceScanOptions } from "./workspace/build.js";
 export { createMcpUrlRequester } from "./workspace/mcp-url-request.js";
 export { planSharedInstructionLink } from "./workspace/shared-link-plan.js";
+export {
+  isAuraOwnedSkillTarget,
+  planSkillDeployment,
+  sharedSkillsRoot,
+  skillDeploymentStatus,
+} from "./workspace/skill-deployment-plan.js";
 /** @public */
 export type {
   SharedInstructionLinkPlan,

@@ -2,7 +2,12 @@ import type { AdapterFileMap, AdapterSourceFile } from "./adapter.js";
 import type { AdapterSkillDirectory } from "./capabilities.js";
 import { describe, expect, it } from "vitest";
 
-import { parseInstalledSkills, parseSkillFrontmatter, resolveSkillDirectory } from "./skill.js";
+import {
+  parseInstalledSkills,
+  parseSkillFrontmatter,
+  parseSkillReferences,
+  resolveSkillDirectory,
+} from "./skill.js";
 
 const DIRECTORY: AdapterSkillDirectory = {
   entryPath: "~/.codex/skills",
@@ -34,11 +39,44 @@ describe("skill adapter helpers", () => {
       parseSkillFrontmatter(
         "---\nname: review\nversion: 1.0.0\nmetadata:\n  version: 2.3.4\n---\n# Review\n",
       ),
-    ).toEqual({ name: "review", version: "2.3.4" });
+    ).toEqual({ invalidFields: [], name: "review", parsed: true, version: "2.3.4" });
     expect(parseSkillFrontmatter("---\nname: review\nversion: 1.0.0\n---\n")).toEqual({
+      invalidFields: [],
       name: "review",
+      parsed: true,
       version: "1.0.0",
     });
+  });
+
+  it("marks malformed YAML and non-string fields without throwing", () => {
+    expect(parseSkillFrontmatter("---\nname: [broken\n---\n")).toEqual({
+      invalidFields: [],
+      parsed: false,
+    });
+    expect(parseSkillFrontmatter("---\nname: 42\ndescription: valid\n---\n")).toEqual({
+      description: "valid",
+      invalidFields: ["name"],
+      parsed: true,
+    });
+  });
+
+  it("collects only local references inside the skill root and masks code", () => {
+    const references = parseSkillReferences(
+      [
+        "See [guide](references/guide.md) and @./scripts/check.ts.",
+        "Ignore [outside](../outside.md), [web](https://example.com), and `@./literal.md`.",
+      ].join("\n"),
+      {
+        homeDir: "/home/dev",
+        skillRoot: "/home/dev/agents/skills/review",
+        sourcePath: "/home/dev/agents/skills/review/SKILL.md",
+      },
+    );
+
+    expect(references).toEqual([
+      { path: "/home/dev/agents/skills/review/scripts/check.ts", valid: false },
+      { path: "/home/dev/agents/skills/review/references/guide.md", valid: false },
+    ]);
   });
 
   it("models healthy skill directories and ignores foreign entries or missing names", () => {
@@ -96,10 +134,23 @@ describe("skill adapter helpers", () => {
     ).toEqual([
       {
         appId: "codex",
+        definitionStatus: "ready",
+        description: "Missing name",
+        id: "invalid",
+        name: "invalid",
+        path: "/home/dev/.codex/skills/invalid",
+        scope: "global",
+        skillFilePath: "/home/dev/.codex/skills/invalid/SKILL.md",
+        sourceId: "codex.skills.global",
+      },
+      {
+        appId: "codex",
+        definitionStatus: "ready",
         id: "review",
         name: "review",
         path: "/home/dev/.codex/skills/review",
         scope: "global",
+        skillFilePath: "/home/dev/.codex/skills/review/SKILL.md",
         sourceId: "codex.skills.global",
         version: "2.3.4",
       },

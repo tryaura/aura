@@ -4,7 +4,8 @@ import { runChecks } from "@tryaura/core";
 import { describe, expect, it } from "vitest";
 
 import checksCore from "../index.js";
-import { document, gitignore, model, projectModel } from "../testing.js";
+import { document, model } from "../testing.js";
+import { gitignore, projectModel } from "../testing-repository.js";
 import { instructionPrecedenceCheck } from "./index.js";
 
 const DUPLICATED_GUIDANCE =

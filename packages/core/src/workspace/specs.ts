@@ -56,7 +56,9 @@ export async function readSpec(spec: AdapterFileSpec, options: SpecReadOptions):
   }
 
   const contents = await readDeclaredPath(spec, options.reader);
-  const file = toSourceFile(spec, contents);
+  const resolvedPath =
+    contents.pathKind === "symlink" ? await options.reader.realPath(spec.path) : undefined;
+  const file = toSourceFile(spec, contents, resolvedPath);
 
   return { diagnostics: describe(spec, options.adapter, contents.problem, file.exists), file };
 }
@@ -125,7 +127,11 @@ async function readDeclaredPath(spec: AdapterFileSpec, reader: FileReader): Prom
   );
 }
 
-function toSourceFile(spec: AdapterFileSpec, contents: PathContents): AdapterSourceFile {
+function toSourceFile(
+  spec: AdapterFileSpec,
+  contents: PathContents,
+  resolvedPath?: string,
+): AdapterSourceFile {
   const captured = spec.kind === "probe";
   return {
     ...(captured || contents.content === undefined ? {} : { content: contents.content }),
@@ -133,6 +139,7 @@ function toSourceFile(spec: AdapterFileSpec, contents: PathContents): AdapterSou
     exists: contents.exists,
     ...(contents.pathKind === undefined ? {} : { pathKind: contents.pathKind }),
     problem: contents.problem,
+    ...(resolvedPath === undefined ? {} : { resolvedPath }),
     ...(contents.size === undefined ? {} : { size: contents.size }),
     spec,
     ...(contents.symlinkTarget === undefined ? {} : { symlinkTarget: contents.symlinkTarget }),
