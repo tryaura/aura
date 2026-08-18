@@ -183,8 +183,11 @@ jobs:
             pack --pack-destination dist-npm
       # Dependency order: a consumer that installs the CLI the moment it appears should already be
       # able to resolve the SDK version its manifest pins.
+      #
+      # The `./` is load-bearing: npm reads a bare `dir/file.tgz` as the `user/repo` git shorthand
+      # and tries to clone it, so the publish fails before it ever reaches the registry.
       - name: Publish to npm
         run: |
           for package in tryaura-aura-sdk tryaura-aura-cli tryaura-aura-testkit; do
-            npm publish "dist-npm/${package}-"*.tgz --access public
+            npm publish ./dist-npm/"${package}"-*.tgz --access public
           done
