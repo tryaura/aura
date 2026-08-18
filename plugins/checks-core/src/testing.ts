@@ -10,10 +10,8 @@ import type {
   DetectedFinding,
   FileProblem,
   Finding,
-  GitignoreModel,
   InstructionDocument,
   JsonObject,
-  RepositoryPackageManifest,
   ResolvedSharedLink,
   Scope,
   WorkspaceModel,
@@ -63,10 +61,13 @@ export interface TestAppOptions {
         readonly exists: boolean;
         readonly pathKind?: "directory" | "file" | "symlink";
         readonly problem?: FileProblem;
+        readonly resolvedPath?: string;
         readonly symlinkTarget?: string;
       }
     | undefined;
   readonly sources?: AppModel["sourceFiles"];
+  readonly skillDirectories?: AppModel["skillDirectories"];
+  readonly skills?: AppModel["skills"];
   readonly status?: AppModel["support"]["status"];
   readonly synthetic?: boolean;
   readonly version?: string;
@@ -83,6 +84,7 @@ export function app(options: TestAppOptions = {}): AppModel {
             exists: source.exists,
             pathKind: source.pathKind,
             problem: source.problem,
+            resolvedPath: source.resolvedPath,
             spec: {
               id: `${adapterId}.instructions`,
               kind: "instructions",
@@ -109,7 +111,10 @@ export function app(options: TestAppOptions = {}): AppModel {
       ? {}
       : { unusableMcpServers: options.unusableMcpServers }),
     metadata: options.metadata,
-    skills: [],
+    ...(options.skillDirectories === undefined
+      ? {}
+      : { skillDirectories: options.skillDirectories }),
+    skills: options.skills ?? [],
     ...(options.link === undefined ? {} : { sharedLink: options.link }),
     sourceFiles,
     support: {
@@ -170,6 +175,7 @@ export function model(
     /** Documents the apps do not carry, for checks that read the workspace-wide list directly. */
     readonly instructionFiles?: readonly InstructionDocument[];
     readonly manifest?: WorkspaceModel["manifest"];
+    readonly sharedSkills?: WorkspaceModel["sharedSkills"];
     readonly sharedInstructions?: {
       readonly content?: string | undefined;
       readonly exists: boolean;
@@ -205,6 +211,7 @@ export function model(
         ? {}
         : { problem: options.sharedInstructions.problem }),
     },
+    ...(options.sharedSkills === undefined ? {} : { sharedSkills: options.sharedSkills }),
     skills: apps.flatMap((candidate) => candidate.skills),
   });
 }
@@ -231,53 +238,6 @@ export function onlyFinding(check: Check, workspaceModel: WorkspaceModel): Findi
     throw new Error(`Expected ${check.id} to report one finding.`);
   }
   return finding;
-}
-
-/** Where the repository state a project-scoped check reads comes from. */
-export interface TestRepositoryOptions {
-  readonly apps?: readonly AppModel[];
-  readonly infoExclude?: GitignoreModel;
-  readonly instructionFiles?: readonly InstructionDocument[];
-  readonly packageManifests?: readonly RepositoryPackageManifest[];
-  readonly trackedAgentPaths?: readonly string[];
-}
-
-/** A workspace whose cwd sits below the repository root, as it usually does in practice. */
-export function projectModel(
-  rootGitignore: GitignoreModel,
-  options: TestRepositoryOptions = {},
-): WorkspaceModel {
-  return {
-    ...model({
-      apps: options.apps ?? [],
-      instructionFiles: options.instructionFiles ?? [],
-    }),
-    cwd: "/repo/packages/app",
-    projectRoot: "/repo",
-    repository: {
-      gitignore: rootGitignore,
-      packageManifests: options.packageManifests ?? [],
-      trackedAgentPaths: options.trackedAgentPaths ?? [],
-      ...(options.infoExclude === undefined ? {} : { infoExclude: options.infoExclude }),
-    },
-  };
-}
-
-export function gitignore(
-  content: string,
-  exists = true,
-  path = "/repo/.gitignore",
-): GitignoreModel {
-  return {
-    content,
-    exists,
-    path,
-    patterns: content
-      .split(/\r?\n/u)
-      .flatMap((value, index) =>
-        value.trim() === "" || value.startsWith("#") ? [] : [{ line: index + 1, value }],
-      ),
-  };
 }
 
 /** Stamps a detected finding the way core does, so `fix` can be called with a real `Finding`. */

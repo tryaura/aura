@@ -3,10 +3,14 @@ import { detectLineEnding, splitSourceLines } from "@tryaura/aura-sdk";
 const BEGIN = "# aura:begin ENV-003";
 const END = "# aura:end ENV-003";
 
+// A project skill deployment is a symlink into the user's own home directory, so its target names
+// this machine and this user. It has to stay out of version control for the same reason an absolute
+// shared-instruction link does: committed, it resolves to nothing on every other checkout.
 const MANAGED_LINES: readonly string[] = [
   BEGIN,
   "# Managed by Aura. Personal agent state stays local; team configuration stays shareable.",
   "/.claude/settings.local.json",
+  "/.claude/skills/",
   "!/AGENTS.md",
   "!/CLAUDE.md",
   "!/.mcp.json",

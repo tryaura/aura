@@ -89,6 +89,12 @@ export type { ContributionKind, PluginCandidate } from "./plugin-validation.js";
 export { buildWorkspaceModel } from "./workspace/build.js";
 export type { SkippedApp, WorkspaceScan, WorkspaceScanOptions } from "./workspace/build.js";
 export { planSharedInstructionLink } from "./workspace/shared-link-plan.js";
+export {
+  isAuraOwnedSkillTarget,
+  planSkillDeployment,
+  sharedSkillsRoot,
+  skillDeploymentStatus,
+} from "./workspace/skill-deployment-plan.js";
 /** @public */
 export type {
   SharedInstructionLinkPlan,

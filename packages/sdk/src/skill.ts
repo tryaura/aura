@@ -1,13 +1,34 @@
-import { join } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 
-import type { AdapterFileSpec, AdapterFilesInput, AdapterParseInput } from "./adapter.js";
+import { parseDocument } from "yaml";
+
+import type {
+  AdapterFileSpec,
+  AdapterFilesInput,
+  AdapterParseInput,
+  AdapterSourceFile,
+} from "./adapter.js";
 import type { AdapterSkillDirectory } from "./capabilities.js";
 import type { Scope } from "./common.js";
-import type { InstalledSkill, ResolvedSkillDirectory } from "./skill-model.js";
+import type {
+  InstalledSkill,
+  InvalidSkillFrontmatterField,
+  ResolvedSkillDirectory,
+  SkillDefinitionStatus,
+} from "./skill-model.js";
 
 const FRONTMATTER_PATTERN = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/u;
-const FIELD_PATTERN = /^([A-Za-z0-9_-]+):\s*(.*?)\s*$/u;
-const SKILL_NAME_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
+
+/**
+ * The largest `SKILL.md` Aura parses, in bytes.
+ *
+ * A skill definition is a Markdown document a human wrote, so it is bounded by what a person would
+ * tolerate reading. The bound matters because every declaration is handed to a YAML parser on every
+ * scan: without it, one oversized file makes every command that builds the model pay for it.
+ */
+const MAX_SKILL_DEFINITION_BYTES = 256_000;
+
+export { parseSkillReferences } from "./skill-references.js";
 
 /** Resolves a portable adapter skill-directory declaration. */
 export function resolveSkillDirectory(
@@ -16,10 +37,12 @@ export function resolveSkillDirectory(
   cwd: string,
 ): ResolvedSkillDirectory {
   const global = directory.entryPath.startsWith("~/");
-  const relative = directory.entryPath.slice(2).split("/");
+  // Both declaration prefixes — `~/` for global and `./` for project — are two characters, so the
+  // remainder is the same slice either way; only the base directory it joins onto differs.
+  const path = directory.entryPath.slice(2);
   return {
     id: directory.id,
-    path: join(global ? homeDir : cwd, ...relative),
+    path: join(global ? homeDir : cwd, ...path.split("/")),
     scope: global ? "global" : "project",
   };
 }
@@ -39,19 +62,14 @@ export function skillDirectorySpecs(
     const entries = input.files.get(directory.id)?.entries ?? [];
     return [
       root,
-      ...entries.flatMap((entry) => {
-        const childId = childSourceId(directory.id, entry);
-        const childPath = join(resolved.path, entry);
-        const child = skillSpec(childId, childPath, resolved.scope);
-        return input.files.get(childId)?.entries === undefined
-          ? [child]
-          : [child, skillSpec(`${childId}/SKILL.md`, join(childPath, "SKILL.md"), resolved.scope)];
-      }),
+      ...entries.flatMap((entry) =>
+        skillEntrySpecs(directory.id, entry, resolved.path, resolved.scope, input),
+      ),
     ];
   });
 }
 
-/** Parses installed Agent Skills from specs produced by {@link skillDirectorySpecs}. */
+/** Parses every directory or symlink entry, including incomplete and dangling skills. */
 export function parseInstalledSkills(
   appId: string,
   input: AdapterParseInput,
@@ -61,107 +79,184 @@ export function parseInstalledSkills(
     const resolved = resolveSkillDirectory(directory, input.homeDir, input.cwd);
     const entries = input.files.get(directory.id)?.entries ?? [];
     return entries.flatMap((id): readonly InstalledSkill[] => {
-      const childId = childSourceId(directory.id, id);
-      const child = input.files.get(childId);
-      const skillFile = input.files.get(`${childId}/SKILL.md`);
-      if (child?.entries === undefined || skillFile?.content === undefined) {
-        return [];
-      }
-      const metadata = parseSkillFrontmatter(skillFile.content);
-      if (metadata.name === undefined) {
-        return [];
-      }
-      return [
-        {
-          appId,
-          id,
-          ...(metadata.name === id ? {} : { invocationName: metadata.name }),
-          name: metadata.name,
-          path: join(resolved.path, id),
-          scope: resolved.scope,
-          sourceId: directory.id,
-          ...(metadata.version === undefined ? {} : { version: metadata.version }),
-        },
-      ];
+      const skill = installedSkill(appId, input, directory, resolved, id);
+      return skill === undefined ? [] : [skill];
     });
   });
 }
 
-/** The fields Aura needs from Agent Skills frontmatter. */
-export interface SkillFrontmatter {
-  readonly name?: string | undefined;
-  readonly version?: string | undefined;
-}
-
-/** Reads the standard name and metadata.version, plus legacy top-level version. */
-// fallow-ignore-next-line complexity -- each branch handles one frontmatter shape or scope transition.
-export function parseSkillFrontmatter(content: string): SkillFrontmatter {
-  const block = FRONTMATTER_PATTERN.exec(content)?.[1];
-  if (block === undefined) {
-    return {};
+function installedSkill(
+  appId: string,
+  input: AdapterParseInput,
+  directory: AdapterSkillDirectory,
+  resolved: ResolvedSkillDirectory,
+  id: string,
+): InstalledSkill | undefined {
+  const childId = childSourceId(directory.id, id);
+  const child = input.files.get(childId);
+  if (child === undefined || (child.pathKind !== "directory" && child.pathKind !== "symlink")) {
+    return undefined;
   }
-  let metadataIndent: number | undefined;
-  let metadataVersion: string | undefined;
-  let name: string | undefined;
-  let version: string | undefined;
-  for (const line of block.split(/\r?\n/u)) {
-    const trimmed = line.trim();
-    const indent = line.length - line.trimStart().length;
-    if (metadataIndent !== undefined && indent > metadataIndent) {
-      const field = FIELD_PATTERN.exec(trimmed);
-      if (field?.[1] === "version") {
-        metadataVersion = scalar(field[2]);
-      }
-      continue;
-    }
-    metadataIndent = undefined;
-    const field = FIELD_PATTERN.exec(trimmed);
-    if (field?.[1] === "metadata" && (field[2] ?? "").length === 0) {
-      metadataIndent = indent;
-    } else if (field?.[1] === "name") {
-      name = validSkillName(scalar(field[2]));
-    } else if (field?.[1] === "version") {
-      version = scalar(field[2]);
-    }
-  }
+  const path = join(resolved.path, id);
+  const skillFilePath = join(path, "SKILL.md");
+  const skillFile = input.files.get(`${childId}/SKILL.md`);
+  const frontmatter = parseSkillFrontmatter(skillFile?.content ?? "");
+  const name = frontmatter.name?.trim() || id;
   return {
-    ...(name === undefined ? {} : { name }),
-    ...((metadataVersion ?? version) === undefined ? {} : { version: metadataVersion ?? version }),
+    appId,
+    ...frontmatterFields(frontmatter, id, name),
+    definitionStatus: definitionStatus(skillFile, frontmatter.parsed),
+    id,
+    name,
+    path,
+    scope: resolved.scope,
+    skillFilePath,
+    sourceId: directory.id,
+    ...symlinkFields(child),
   };
 }
 
-function validSkillName(value: string | undefined): string | undefined {
-  return value !== undefined && value.length <= 64 && SKILL_NAME_PATTERN.test(value)
-    ? value
+function frontmatterFields(frontmatter: SkillFrontmatter, id: string, name: string) {
+  return {
+    ...(frontmatter.description === undefined ? {} : { description: frontmatter.description }),
+    ...(frontmatter.invalidFields.length === 0
+      ? {}
+      : { invalidFrontmatterFields: frontmatter.invalidFields }),
+    ...(name === id ? {} : { invocationName: name }),
+    ...(frontmatter.version === undefined ? {} : { version: frontmatter.version }),
+  };
+}
+
+function symlinkFields(child: AdapterSourceFile) {
+  const symlinkTargetPath = absoluteSymlinkTarget(child.spec.path, child.symlinkTarget);
+  return {
+    ...(symlinkTargetPath === undefined ? {} : { symlinkTargetPath }),
+    ...(child.resolvedPath === undefined ? {} : { symlinkResolvedPath: child.resolvedPath }),
+  };
+}
+
+/** The fields Aura reads out of an Agent Skills frontmatter block. */
+export interface SkillFrontmatter {
+  /** The `description` field, when it is present and a string. */
+  readonly description?: string | undefined;
+  /** Present fields whose values were not strings, so their value was discarded. */
+  readonly invalidFields: readonly InvalidSkillFrontmatterField[];
+  /** The `name` field, when it is present and a string. Not validated against the name grammar. */
+  readonly name?: string | undefined;
+  /**
+   * Whether a frontmatter block was present and parsed into a YAML mapping.
+   *
+   * This is a parse outcome, not a verdict on the skill: `parsed` is true for a block whose fields
+   * all had the wrong type, and those fields are named in {@link SkillFrontmatter.invalidFields}.
+   */
+  readonly parsed: boolean;
+  /** `metadata.version`, falling back to the legacy top-level `version`. */
+  readonly version?: string | undefined;
+}
+
+/** Reads the standard name and description, `metadata.version`, and legacy top-level version. */
+export function parseSkillFrontmatter(content: string): SkillFrontmatter {
+  const block = FRONTMATTER_PATTERN.exec(content)?.[1];
+  if (block === undefined) {
+    return { invalidFields: [], parsed: false };
+  }
+  const document = parseDocument(block, { prettyErrors: false, strict: true, uniqueKeys: true });
+  if (document.errors.length > 0) {
+    return { invalidFields: [], parsed: false };
+  }
+  let mapping: unknown;
+  try {
+    mapping = document.toJS({ maxAliasCount: 0 });
+  } catch {
+    return { invalidFields: [], parsed: false };
+  }
+  if (!isRecord(mapping)) {
+    return { invalidFields: [], parsed: false };
+  }
+
+  const invalidFields: InvalidSkillFrontmatterField[] = [];
+  const description = stringField(mapping, "description", invalidFields);
+  const name = stringField(mapping, "name", invalidFields);
+  const topLevelVersion = stringField(mapping, "version", invalidFields);
+  const metadata = mapping["metadata"];
+  const metadataVersion = isRecord(metadata)
+    ? stringField(metadata, "version", invalidFields)
     : undefined;
+  return {
+    ...(description === undefined ? {} : { description }),
+    invalidFields: Object.freeze([...new Set(invalidFields)]),
+    ...(name === undefined ? {} : { name }),
+    parsed: true,
+    ...((metadataVersion ?? topLevelVersion) === undefined
+      ? {}
+      : { version: metadataVersion ?? topLevelVersion }),
+  };
+}
+
+function skillEntrySpecs(
+  rootId: string,
+  entry: string,
+  rootPath: string,
+  scope: Scope,
+  input: AdapterFilesInput,
+): readonly AdapterFileSpec[] {
+  const childId = childSourceId(rootId, entry);
+  const childPath = join(rootPath, entry);
+  const child = skillSpec(childId, childPath, scope);
+  if (input.files.get(childId)?.entries === undefined) {
+    return [child];
+  }
+  return [child, definitionSpec(`${childId}/SKILL.md`, join(childPath, "SKILL.md"), scope)];
+}
+
+function definitionStatus(
+  file: AdapterSourceFile | undefined,
+  parsedFrontmatter: boolean,
+): SkillDefinitionStatus {
+  if (file === undefined || !file.exists) {
+    return "missing-file";
+  }
+  if (file.problem !== undefined || file.content === undefined) {
+    return "unreadable";
+  }
+  return parsedFrontmatter ? "ready" : "invalid-frontmatter";
+}
+
+function absoluteSymlinkTarget(path: string, target: string | undefined): string | undefined {
+  if (target === undefined) {
+    return undefined;
+  }
+  return isAbsolute(target) ? resolve(target) : resolve(dirname(path), target);
 }
 
 function skillSpec(id: string, path: string, scope: Scope): AdapterFileSpec {
   return { id, kind: "skills", optional: true, path, scope };
 }
 
+function definitionSpec(id: string, path: string, scope: Scope): AdapterFileSpec {
+  return { ...skillSpec(id, path, scope), maxBytes: MAX_SKILL_DEFINITION_BYTES };
+}
+
 function childSourceId(rootId: string, entry: string): string {
   return `${rootId}/${encodeURIComponent(entry)}`;
 }
 
-function scalar(value: string | undefined): string | undefined {
-  if (value === undefined) {
+function stringField(
+  value: Readonly<Record<string, unknown>>,
+  field: InvalidSkillFrontmatterField,
+  invalid: InvalidSkillFrontmatterField[],
+): string | undefined {
+  const candidate = value[field];
+  if (candidate === undefined) {
     return undefined;
   }
-  const trimmed = value.trim();
-  if (trimmed.length === 0) {
-    return undefined;
+  if (typeof candidate === "string") {
+    return candidate;
   }
-  if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
-    try {
-      const parsed: unknown = JSON.parse(trimmed);
-      return typeof parsed === "string" ? parsed : undefined;
-    } catch {
-      return undefined;
-    }
-  }
-  if (trimmed.startsWith("'") && trimmed.endsWith("'")) {
-    return trimmed.slice(1, -1).replaceAll("''", "'");
-  }
-  return trimmed.replace(/\s+#.*$/u, "");
+  invalid.push(field);
+  return undefined;
+}
+
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

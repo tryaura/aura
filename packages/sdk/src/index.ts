@@ -158,10 +158,13 @@ export type {
 } from "./model.js";
 export type { WorkspaceModel } from "./workspace-model.js";
 export type {
+  InvalidSkillFrontmatterField,
   InstalledSkill,
   ResolvedSkillDirectory,
   SharedSkillEntry,
   SharedSkillState,
+  SkillDefinitionStatus,
+  SkillReference,
 } from "./skill-model.js";
 export type {
   GitignoreModel,
@@ -203,6 +206,7 @@ export type { SourceLine } from "./text.js";
 export {
   parseInstalledSkills,
   parseSkillFrontmatter,
+  parseSkillReferences,
   resolveSkillDirectory,
   skillDirectorySpecs,
 } from "./skill.js";

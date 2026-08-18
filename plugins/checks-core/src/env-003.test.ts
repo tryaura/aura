@@ -4,7 +4,8 @@ import type { GitignoreModel } from "@tryaura/aura-sdk";
 
 import { env003 } from "./env-003.js";
 import { reconcileGitignoreBlock } from "./gitignore-block.js";
-import { gitignore, projectModel, requireFinding } from "./testing.js";
+import { requireFinding } from "./testing.js";
+import { gitignore, projectModel } from "./testing-repository.js";
 
 describe("ENV-003", () => {
   it("passes a semantic policy with broad rules and final shareable negations", () => {
@@ -153,6 +154,7 @@ describe("ENV-003", () => {
             "# aura:begin ENV-003\n" +
             "# Managed by Aura. Personal agent state stays local; team configuration stays shareable.\n" +
             "/.claude/settings.local.json\n" +
+            "/.claude/skills/\n" +
             "!/AGENTS.md\n" +
             "!/CLAUDE.md\n" +
             "!/.mcp.json\n" +

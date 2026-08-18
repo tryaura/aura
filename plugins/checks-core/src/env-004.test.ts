@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { env004 } from "./env-004.js";
-import { app, gitignore, model, projectModel, requireFinding } from "./testing.js";
+import { app, model, requireFinding } from "./testing.js";
+import { gitignore, projectModel } from "./testing-repository.js";
 
 describe("ENV-004", () => {
   it("uses project Claude settings ahead of global settings", () => {

@@ -78,6 +78,8 @@ export interface AdapterFileStatus {
   readonly problem?: FileProblem | undefined;
   /** The kind of entry found at the declared path. Absent when the path was missing. */
   readonly pathKind?: AdapterPathKind | undefined;
+  /** Canonical target path when the final entry is a symbolic link that resolves. */
+  readonly resolvedPath?: string | undefined;
   /** File size in bytes, when core could inspect a regular file or a symlink to one. */
   readonly size?: number | undefined;
   /** The spec that requested this path. */
