@@ -2,18 +2,21 @@ import {
   collectMcpServers,
   configStringArray,
   configStringRecord,
+  EMPTY_COLLECTION,
   isConfigRecord,
   parseConfigObject,
   redactMcpArguments,
   sanitizeMcpUrl,
+  stdioTransport,
   type AdapterSourceFile,
-  type McpServer,
+  type McpEntryCollection,
+  type McpEntryParse,
   type McpTransport,
 } from "@tryaura/aura-sdk";
 import { parse } from "smol-toml";
 
 /** What `config.toml` contributed to the MCP model. */
-export interface CodexMcpConfig {
+export interface CodexMcpConfig extends McpEntryCollection {
   /**
    * Whether the file held something other than parseable TOML.
    *
@@ -21,60 +24,78 @@ export interface CodexMcpConfig {
    * servers, the other has servers that are silently not loading.
    */
   readonly malformed: boolean;
-  readonly servers: readonly McpServer[];
 }
 
 export function parseMcpServers(file: AdapterSourceFile): CodexMcpConfig {
   const root = parseConfigObject(file.content, parse);
   if (root === undefined) {
-    return { malformed: file.content !== undefined, servers: [] };
+    return { ...EMPTY_COLLECTION, malformed: file.content !== undefined };
   }
 
   return {
+    ...collectMcpServers(file, "codex", root["mcp_servers"], parseEntry),
     malformed: false,
-    servers: collectMcpServers(file, "codex", root["mcp_servers"], parseTransport),
   };
 }
 
-function parseTransport(candidate: unknown): McpTransport | undefined {
-  if (!isConfigRecord(candidate) || !validEnabled(candidate["enabled"])) {
-    return undefined;
+const DISABLED: McpEntryParse = Object.freeze({ reason: "disabled" });
+const UNRECOGNIZED: McpEntryParse = Object.freeze({ reason: "unrecognized" });
+
+function parseEntry(candidate: unknown): McpEntryParse {
+  if (!isConfigRecord(candidate)) {
+    return UNRECOGNIZED;
   }
-  if (candidate["enabled"] === false) {
-    return undefined;
+  if (!validEnabled(candidate["enabled"]) || candidate["enabled"] === false) {
+    return DISABLED;
   }
 
   const hasCommand = candidate["command"] !== undefined;
   const hasUrl = candidate["url"] !== undefined;
   if (hasCommand === hasUrl) {
-    return undefined;
+    return UNRECOGNIZED;
   }
-  return hasCommand ? parseStdio(candidate) : parseHttp(candidate);
+  const transport = hasCommand ? parseStdio(candidate) : parseHttp(candidate);
+  return transport === undefined ? UNRECOGNIZED : { transport };
 }
 
-function parseStdio(candidate: Readonly<Record<string, unknown>>): McpTransport | undefined {
+interface StdioFields {
+  readonly args: readonly string[];
+  readonly command: string;
+  readonly env: Readonly<Record<string, string>>;
+  readonly envVars: readonly string[];
+}
+
+function stdioFields(candidate: Readonly<Record<string, unknown>>): StdioFields | undefined {
   const command = candidate["command"];
   const args = configStringArray(candidate["args"]);
   const env = configStringRecord(candidate["env"]);
   const envVars = environmentVariableList(candidate["env_vars"]);
-  if (
-    typeof command !== "string" ||
-    command.length === 0 ||
-    args === undefined ||
-    env === undefined ||
-    envVars === undefined
-  ) {
+  return typeof command === "string" &&
+    command.length > 0 &&
+    args !== undefined &&
+    env !== undefined &&
+    envVars !== undefined
+    ? { args, command, env, envVars }
+    : undefined;
+}
+
+function parseStdio(candidate: Readonly<Record<string, unknown>>): McpTransport | undefined {
+  const fields = stdioFields(candidate);
+  if (fields === undefined) {
     return undefined;
   }
 
+  const { args, command, env, envVars } = fields;
   const redacted = redactMcpArguments(args);
-  const environmentVariables = [...new Set([...Object.keys(env), ...envVars])].sort();
-  return {
+  return stdioTransport({
+    args: redacted,
     command,
-    type: "stdio",
-    ...(redacted.length === 0 ? {} : { args: redacted }),
-    ...(environmentVariables.length === 0 ? {} : { environmentVariables }),
-  };
+    environmentVariables: [...new Set([...Object.keys(env), ...envVars])].sort(),
+    // `env` assigns values and `env_vars` names variables to forward. Anything in the first is a
+    // literal Codex passes through verbatim, which is the shape desired state exists to replace.
+    inlineCredentialValues:
+      Object.keys(env).length > 0 || redacted.some((argument, index) => argument !== args[index]),
+  });
 }
 
 function parseHttp(candidate: Readonly<Record<string, unknown>>): McpTransport | undefined {
@@ -103,6 +124,7 @@ function parseHttp(candidate: Readonly<Record<string, unknown>>): McpTransport |
     type: "http",
     url,
     ...(headerEnvironmentVariables.length === 0 ? {} : { headerEnvironmentVariables }),
+    ...(Object.keys(headers).length === 0 ? {} : { inlineCredentialValues: true }),
   };
 }
 

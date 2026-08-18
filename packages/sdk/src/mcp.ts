@@ -1,7 +1,7 @@
 import { URL } from "node:url";
 
 import type { AdapterSourceFile } from "./adapter.js";
-import type { McpServer, McpTransport } from "./model.js";
+import type { McpServer, McpTransport, UnusableMcpReason, UnusableMcpServer } from "./model.js";
 
 /** Stands in for a value that could be a credential. */
 const REDACTED = "[redacted]";
@@ -82,36 +82,83 @@ export function sanitizeMcpUrl(raw: string): string | undefined {
 }
 
 /**
+ * What an adapter made of one named configuration entry.
+ *
+ * There is no "nothing": an entry the adapter cannot turn into a transport is still an entry the
+ * user wrote, and the name is what a later write has to reckon with. Returning a reason instead of
+ * `undefined` is what keeps it from disappearing.
+ */
+export type McpEntryParse =
+  | { readonly reason: UnusableMcpReason }
+  | { readonly transport: McpTransport };
+
+/** Every named entry one configuration file contributed, split by whether Aura can model it. */
+export interface McpEntryCollection {
+  readonly servers: readonly McpServer[];
+  readonly unusable: readonly UnusableMcpServer[];
+}
+
+/**
  * Builds the servers an adapter recognizes from the named entries of its configuration.
  *
  * Every adapter reads a differently shaped entry but files the result the same way, so the
- * transport parser stays with the adapter and the bookkeeping lives here. Entries that are not a
- * record, and entries whose transport the adapter refuses, contribute nothing.
+ * transport parser stays with the adapter and the bookkeeping lives here.
  */
 export function collectMcpServers(
   file: AdapterSourceFile,
   appId: string,
   entries: unknown,
-  parseTransport: (candidate: unknown) => McpTransport | undefined,
-): readonly McpServer[] {
+  parseEntry: (candidate: unknown) => McpEntryParse,
+): McpEntryCollection {
   if (!isConfigRecord(entries)) {
-    return [];
+    return EMPTY_COLLECTION;
   }
 
-  const parsed: McpServer[] = [];
+  const servers: McpServer[] = [];
+  const unusable: UnusableMcpServer[] = [];
   for (const [name, candidate] of Object.entries(entries)) {
-    const transport = parseTransport(candidate);
-    if (transport !== undefined) {
-      parsed.push({
-        appId,
-        name,
-        scope: file.spec.scope,
-        sourceId: file.spec.id,
-        transport,
-      });
+    const identity = { appId, name, scope: file.spec.scope, sourceId: file.spec.id };
+    const parsed = parseEntry(candidate);
+    if ("transport" in parsed) {
+      servers.push({ ...identity, transport: parsed.transport });
+    } else {
+      unusable.push({ ...identity, reason: parsed.reason });
     }
   }
-  return parsed;
+  return { servers, unusable };
+}
+
+/** What a file with no `mcpServers` record contributes, shared so the shape is allocated once. */
+export const EMPTY_COLLECTION: McpEntryCollection = Object.freeze({
+  servers: Object.freeze([]),
+  unusable: Object.freeze([]),
+});
+
+/** Everything an adapter reads out of one child-process MCP entry, before the model shape. */
+export interface StdioTransportFields {
+  /** Arguments as configured, already passed through {@link redactMcpArguments}. */
+  readonly args: readonly string[];
+  readonly command: string;
+  readonly environmentVariables: readonly string[];
+  readonly inlineCredentialValues: boolean;
+}
+
+/**
+ * Assembles a stdio transport, omitting every part the entry did not supply.
+ *
+ * Shared because the omission rules are the model's, not any one application's: two adapters that
+ * each spelled them out drifted on which empty value counts as absent.
+ */
+export function stdioTransport(fields: StdioTransportFields): McpTransport {
+  return {
+    command: fields.command,
+    type: "stdio",
+    ...(fields.args.length === 0 ? {} : { args: fields.args }),
+    ...(fields.environmentVariables.length === 0
+      ? {}
+      : { environmentVariables: fields.environmentVariables }),
+    ...(fields.inlineCredentialValues ? { inlineCredentialValues: true } : {}),
+  };
 }
 
 /** Parses configuration text into an object, treating absent and unreadable content alike. */

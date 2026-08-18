@@ -42,6 +42,7 @@ const adapter = defineAdapter({
     ];
   },
   id: "acme-agent",
+  mcpWrite: ({ existingContent }) => ({ content: existingContent ?? "{}\n" }),
   parse({ files }) {
     const instructions = files.get("acme.instructions.global");
 

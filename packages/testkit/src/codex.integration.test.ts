@@ -71,15 +71,18 @@ describe("Codex versioned fixtures", () => {
           args: ["-y", "@example/docs-mcp"],
           command: "npx",
           environmentVariables: ["DOCS_TOKEN", "LOCAL_TOKEN", "REMOTE_TOKEN"],
+          inlineCredentialValues: true,
           type: "stdio",
         },
         {
           args: ["@example/legacy-mcp", "--api-key", "[redacted]"],
           command: "npx",
+          inlineCredentialValues: true,
           type: "stdio",
         },
         {
           headerEnvironmentVariables: ["AUTH_TOKEN", "SENTRY_TOKEN"],
+          inlineCredentialValues: true,
           type: "http",
           url: "https://mcp.sentry.dev/mcp?token=[redacted]",
         },

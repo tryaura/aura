@@ -2,6 +2,7 @@ import type { AdapterCapabilities } from "./capabilities.js";
 import type { JsonObject, Scope } from "./common.js";
 import type { Environment } from "./environment.js";
 import type { AdapterSnapshot } from "./model.js";
+import type { McpWrite } from "./mcp-write.js";
 import type { AdapterSharedLink } from "./shared-link.js";
 
 /** What an adapter expects a declared filesystem path to contain. */
@@ -234,6 +235,8 @@ export interface Adapter {
   readonly id: string;
   /** Short, non-interactive guidance for installing or updating this application. */
   readonly installHint?: string | undefined;
+  /** Pure serializer for this application's declared MCP configuration targets. */
+  readonly mcpWrite?: McpWrite | undefined;
   /**
    * Normalizes the supplied file contents.
    *

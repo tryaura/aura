@@ -235,6 +235,21 @@ check that produced it.
 file is held once rather than twice. `Adapter.installHint` becomes `AppModel.installHint`, allowing
 checks to give application-specific update guidance without guessing how an adapter was installed.
 
+An adapter that supports manifest-driven MCP fixes may provide the pure `mcpWrite` serializer. Core
+calls it once per declared `kind: "mcp"` target with an `McpWriteInput`: that file's existing
+contents, the desired `OwnedServerEntry` values for the target scope, and the names from Aura's
+ownership ledger. It returns `{ content }` or `{ refusal }` — refusal is in the signature so the
+compiler asks what happens to configuration the serializer cannot represent, and `mcpWriteResult`
+wraps a body that raises `McpWriteError` across its own call stack. Core keeps the captured bytes
+inside its own planner rather than on `AppModel`, wraps successful output in the same preview, lock,
+journal, rollback, and undo path as every other `FixPlan`, and attaches a
+`WriteFileOperation.precondition` naming the digest it read, so a file the application rewrote
+before the fix ran is reported as a conflict rather than reverted.
+
+`McpTransport.inlineCredentialValues` marks a configured server that supplies a credential directly
+where desired state names an environment variable. The value never enters the model, so without the
+flag the two are indistinguishable and a plaintext token reads as converged.
+
 `Adapter.detectionScope` names what `detect` looks at, so a listing can say `Acme Agent — looked
 for the acme-agent CLI on PATH` instead of a bare "not found" that claims more than was checked.
 Write the scope, not the outcome: Aura adds the outcome itself, and only for an adapter whose

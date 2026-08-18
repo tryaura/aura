@@ -161,6 +161,7 @@ function expectClaudeMcp(scan: WorkspaceScan): void {
     {
       args: ["@example/legacy-mcp", "--api-key", "[redacted]"],
       command: "npx",
+      inlineCredentialValues: true,
       type: "stdio",
     },
     {
