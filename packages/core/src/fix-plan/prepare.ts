@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import type { MovePathOperation, SymlinkOperation, WriteFileOperation } from "@tryaura/aura-sdk";
 
 import { captureBefore, findUnwritablePath, spendBudget, type RetentionBudget } from "./capture.js";
-import { renderMoveDiff, renderSymlinkDiff, renderWriteDiff } from "./diff.js";
+import { renderMoveDiff, renderSymlinkDiff } from "./diff.js";
 import { MAX_RETAINED_PLAN_BYTES } from "./limits.js";
 import { comparablePath } from "./claims.js";
 import { createPathPolicy, validatePlanPaths, type ValidatedOperation } from "./path-policy.js";
@@ -22,6 +22,7 @@ import {
 import { inspectPath, isCapturedFile } from "./state.js";
 import type { FixPlanPreview, FixPlanPreviewOptions } from "./types.js";
 import { unmetPrecondition, writeRejection } from "./write-validation.js";
+import { renderRedactedWriteDiff } from "./write-redaction.js";
 
 // fallow-ignore-next-line complexity -- coordinates preparation across the closed operation union.
 export async function prepareOperations(
@@ -188,7 +189,14 @@ async function prepareWrite(
     preview: createPreview(
       validated,
       before.kind === "missing" ? "create" : "update",
-      renderWriteDiff(operation.path, before, operation.content, operation.mode, mode),
+      renderRedactedWriteDiff(
+        [operation],
+        operation.path,
+        before,
+        operation.content,
+        operation.mode,
+        mode,
+      ),
     ),
     type: "write",
   };

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 describe("shipped check explanations", () => {
   it("gives every shipped check exactly two non-empty Markdown paragraphs", () => {
-    expect(checksCorePlugin.checks).toHaveLength(20);
+    expect(checksCorePlugin.checks).toHaveLength(21);
 
     for (const check of checksCorePlugin.checks ?? []) {
       const paragraphs = check.explain

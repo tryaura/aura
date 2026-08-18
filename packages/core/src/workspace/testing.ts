@@ -152,6 +152,7 @@ export interface TestAdapterOptions {
   readonly id?: string | undefined;
   readonly installHint?: string | undefined;
   readonly mcpWrite?: Adapter["mcpWrite"] | undefined;
+  readonly mcpSecrets?: Adapter["mcpSecrets"] | undefined;
   readonly parse?: ((input: AdapterParseInput) => AdapterSnapshot) | undefined;
   readonly supportedRange?: string | undefined;
 }
@@ -167,6 +168,7 @@ export function createTestAdapter(options: TestAdapterOptions = {}): Adapter {
     id,
     ...(options.installHint === undefined ? {} : { installHint: options.installHint }),
     ...(options.mcpWrite === undefined ? {} : { mcpWrite: options.mcpWrite }),
+    ...(options.mcpSecrets === undefined ? {} : { mcpSecrets: options.mcpSecrets }),
     parse: options.parse ?? (() => createSnapshot()),
     supportedRange: options.supportedRange ?? ">=1 <2",
   };
@@ -176,6 +178,7 @@ export function createTestAdapter(options: TestAdapterOptions = {}): Adapter {
 export function createSnapshot(snapshot: Partial<AdapterSnapshot> = {}): AdapterSnapshot {
   return {
     instructionFiles: snapshot.instructionFiles ?? [],
+    mcpSecretSightings: snapshot.mcpSecretSightings ?? [],
     mcpServers: snapshot.mcpServers ?? [],
     metadata: snapshot.metadata,
     skills: snapshot.skills ?? [],

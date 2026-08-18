@@ -20,7 +20,12 @@ import {
   CLAUDE_PERMISSIONS_KEY,
 } from "./contract.js";
 import { parseInstructionFile } from "./instructions.js";
-import { parseGlobalMcpServers, parseMcpServers, writeMcpServers } from "./mcp.js";
+import {
+  parseGlobalMcpServers,
+  parseMcpServers,
+  transformMcpSecrets,
+  writeMcpServers,
+} from "./mcp.js";
 import { parsePermissionSettings } from "./settings.js";
 
 /** Path segments {@link claudeFiles} appends to the home directory for the global instructions. */
@@ -43,6 +48,7 @@ export const claudeCodeAdapter = defineAdapter({
   id: CLAUDE_CODE_ADAPTER_ID,
   installHint: "Run `claude update`, or reinstall Claude Code from https://claude.ai/install.",
   mcpWrite: writeMcpServers,
+  mcpSecrets: transformMcpSecrets,
   parse: (input) => {
     const { cwd, files, homeDir } = input;
     const globalFile = files.get(SOURCE_IDS.mcp);
@@ -60,6 +66,7 @@ export const claudeCodeAdapter = defineAdapter({
       // one directory was given. Nothing is collapsed — two scopes configuring the same name is
       // itself a finding, and a model that deduplicated could not report it.
       mcpServers: [...global.globalServers, ...project.servers, ...global.localServers],
+      mcpSecretSightings: [...(global.secretSightings ?? []), ...(project.secretSightings ?? [])],
       unusableMcpServers: [...global.unusable, ...project.unusable],
       metadata: permissionMetadata({
         global: files.get(SOURCE_IDS.settingsGlobal),
@@ -87,11 +94,17 @@ export const claudeCodeAdapter = defineAdapter({
 });
 
 /** What an absent file contributes, so `parse` reads the same whether or not one was found. */
-const EMPTY_MCP = Object.freeze({ malformed: false, servers: [], unusable: [] });
+const EMPTY_MCP = Object.freeze({
+  malformed: false,
+  secretSightings: undefined,
+  servers: [],
+  unusable: [],
+});
 const EMPTY_GLOBAL_MCP = Object.freeze({
   globalServers: [],
   localServers: [],
   malformed: false,
+  secretSightings: undefined,
   unusable: [],
 });
 

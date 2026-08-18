@@ -22,7 +22,14 @@
     },
     "packages/cli": {
       "entry": ["type-tests/*.ts"],
-      "ignoreDependencies": ["diff", "ignore", "semver", "smol-toml", "undici"]
+      "ignoreDependencies": [
+        "diff",
+        "ignore",
+        "semver",
+        "smol-toml",
+        "toml-eslint-parser",
+        "undici"
+      ]
     },
     "plugins/*": {
       "includeEntryExports": true

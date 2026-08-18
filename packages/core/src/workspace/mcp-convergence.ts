@@ -7,6 +7,7 @@ import {
   type AdapterSourceFile,
   type McpConvergenceBlocker,
   type McpServer,
+  type McpSecretSighting,
   type McpWrite,
   type OwnedServerEntry,
   type Scope,
@@ -15,6 +16,7 @@ import {
 } from "@tryaura/aura-sdk";
 
 import { MAX_MUTABLE_FILE_BYTES } from "../fix-plan/limits.js";
+import { mcpSecretRedactor, rememberWriteRedactor } from "../fix-plan/write-redaction.js";
 import { classifyDesired } from "./mcp-classify.js";
 
 /** What the planner made of one application's declared MCP targets. */
@@ -39,6 +41,7 @@ export type AppMcpConvergence = (
 
 /** What one application's parsed MCP state contributes to planning a write. */
 export interface AppMcpState {
+  readonly secretSightings: readonly McpSecretSighting[];
   readonly servers: readonly McpServer[];
   readonly unusable: readonly UnusableMcpServer[];
 }
@@ -62,7 +65,15 @@ export function createAppMcpConvergence(
     }
 
     const scopes = (["global", "project"] satisfies readonly Scope[]).map((scope) =>
-      planScope(adapter, writer, targets, classified.owned, ledgerNames, scope),
+      planScope(
+        adapter,
+        writer,
+        targets,
+        classified.owned,
+        ledgerNames,
+        scope,
+        state.secretSightings,
+      ),
     );
     const blockers = scopes.flatMap((result) => result.blockers);
     const operations = scopes.flatMap((result) => result.operations);
@@ -89,6 +100,7 @@ function planScope(
   desired: readonly OwnedServerEntry[],
   ledgerNames: readonly string[],
   scope: Scope,
+  sightings: readonly McpSecretSighting[],
 ): ScopePlan {
   const scopedDesired = desired.filter((entry) => entry.scope === scope);
   const scopedTargets = targets.filter((target) => target.spec.scope === scope);
@@ -107,7 +119,7 @@ function planScope(
   const target = scopedTargets[0];
   return target === undefined
     ? { blockers: [], operations: [] }
-    : writeScopeTarget(adapter, writer, target, scopedDesired, ledgerNames, scope);
+    : writeScopeTarget(adapter, writer, target, scopedDesired, ledgerNames, scope, sightings);
 }
 
 function writeScopeTarget(
@@ -117,6 +129,7 @@ function writeScopeTarget(
   desired: readonly OwnedServerEntry[],
   ledgerNames: readonly string[],
   scope: Scope,
+  sightings: readonly McpSecretSighting[],
 ): ScopePlan {
   if (!needsTargetWrite(target, desired, ledgerNames)) {
     return { blockers: [], operations: [] };
@@ -149,18 +162,39 @@ function writeScopeTarget(
     };
   }
 
+  const operation: WriteFileOperation = {
+    content: written.content,
+    mode: scope === "global" ? 0o600 : 0o644,
+    path: target.spec.path,
+    precondition: targetPrecondition(target),
+    type: "write",
+  };
+  rememberMcpRedactor(adapter, operation, target, sightings);
   return {
     blockers: [],
-    operations: [
-      {
-        content: written.content,
-        mode: scope === "global" ? 0o600 : 0o644,
-        path: target.spec.path,
-        precondition: targetPrecondition(target),
-        type: "write",
-      },
-    ],
+    operations: [operation],
   };
+}
+
+/**
+ * Registers preview masking only for a target that actually holds an inline credential.
+ *
+ * Registering unconditionally would cost every convergence preview its diff, because masking has
+ * no previous side to project when the fix is creating the file — which is what most MCP-001 fixes
+ * do, on a file that by definition has no credentials in it yet.
+ */
+function rememberMcpRedactor(
+  adapter: Adapter,
+  operation: WriteFileOperation,
+  target: AdapterSourceFile,
+  sightings: readonly McpSecretSighting[],
+): void {
+  const transform = adapter.mcpSecrets;
+  const scoped = sightings.filter((sighting) => sighting.sourceId === target.spec.id);
+  if (transform === undefined || scoped.length === 0) {
+    return;
+  }
+  rememberWriteRedactor(operation, mcpSecretRedactor(transform, scoped));
 }
 
 /** Runs a plugin serializer, treating a thrown error as the refusal it forgot to return. */
@@ -190,7 +224,7 @@ function runWriter(
  * against a file the application has since rewritten would silently revert that work. Declaring
  * what was read turns the race into a reported conflict.
  */
-function targetPrecondition(target: AdapterSourceFile): WriteFileOperation["precondition"] {
+export function targetPrecondition(target: AdapterSourceFile): WriteFileOperation["precondition"] {
   return target.content === undefined
     ? { kind: "absent" }
     : { digest: createHash("sha256").update(target.content, "utf8").digest("hex"), kind: "sha256" };
@@ -206,7 +240,7 @@ function needsTargetWrite(
 }
 
 /** Why this target cannot be rewritten safely, before a serializer is asked to try. */
-function targetRefusal(
+export function targetRefusal(
   target: AdapterSourceFile,
 ): Pick<McpConvergenceBlocker, "message" | "path"> | undefined {
   const path = target.spec.path;

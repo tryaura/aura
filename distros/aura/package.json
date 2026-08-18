@@ -18,7 +18,9 @@
     "@tryaura/aura-cli": "workspace:*"
   },
   "devDependencies": {
+    "@tryaura/aura-sdk": "workspace:*",
     "@tryaura/aura-testkit": "workspace:*",
+    "@tryaura/core": "workspace:*",
     "@types/node": "24.13.3",
     "vitest": "4.1.10"
   },

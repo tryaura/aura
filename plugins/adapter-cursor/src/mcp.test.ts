@@ -1,7 +1,7 @@
 import type { AdapterSourceFile } from "@tryaura/aura-sdk";
 import { describe, expect, it } from "vitest";
 
-import { parseMcpServers, writeMcpServers } from "./mcp.js";
+import { parseMcpServers, transformMcpSecrets, writeMcpServers } from "./mcp.js";
 
 describe("Cursor MCP configuration", () => {
   it("normalizes stdio and remote servers without retaining secret values", () => {
@@ -130,6 +130,30 @@ describe("Cursor MCP configuration", () => {
       true,
       undefined,
     ]);
+  });
+
+  it("rewrites all representable literals using Cursor references", () => {
+    const sentinel = "sk-aura-cursor-guided-sentinel";
+    const content = `${JSON.stringify({
+      mcpServers: {
+        docs: {
+          args: [`--api-key=${sentinel}`],
+          command: "npx",
+          env: { API_TOKEN: sentinel },
+          headers: { Authorization: `Bearer ${sentinel}` },
+        },
+      },
+    })}\n`;
+    const sightings = parseMcpServers(mcpFile(content)).secretSightings ?? [];
+    const rewritten = transformMcpSecrets.rewrite({ content, sightings });
+
+    if ("refusal" in rewritten) {
+      throw new Error(rewritten.refusal);
+    }
+    expect(rewritten.rewrittenFields).toHaveLength(3);
+    expect(rewritten.content).not.toContain(sentinel);
+    expect(rewritten.content).toContain("${env:API_TOKEN}");
+    expect(parseMcpServers(mcpFile(rewritten.content)).secretSightings ?? []).toEqual([]);
   });
 
   it("writes Cursor environment references", () => {

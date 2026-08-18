@@ -12,11 +12,14 @@ import {
   type McpEntryCollection,
   type McpEntryParse,
 } from "./mcp.js";
+import { inspectJsonMcpSecrets } from "./mcp-secret-inspect.js";
 import type { McpTransport } from "./model.js";
 
 /** Application-specific details for the common JSON `mcpServers` configuration shape. */
 export interface JsonMcpConfigOptions {
   readonly appId: string;
+  /** Object path from the document root to the record containing the named servers. */
+  readonly recordPath?: readonly string[] | undefined;
   /**
    * Expression whose first capture is an environment variable name, as the application writes
    * variable references into header values.
@@ -83,8 +86,20 @@ export function collectJsonMcpServers(
     );
   }
 
-  return collectMcpServers(file, options.appId, entries, (candidate) =>
-    parseEntry(candidate, options.variablePattern),
+  return collectMcpServers(
+    file,
+    options.appId,
+    entries,
+    (candidate) => parseEntry(candidate, options.variablePattern),
+    (candidate, serverName) =>
+      inspectJsonMcpSecrets(candidate, {
+        appId: options.appId,
+        recordPath: options.recordPath ?? ["mcpServers"],
+        scope: file.spec.scope,
+        serverName,
+        sourceId: file.spec.id,
+        variablePattern: options.variablePattern,
+      }),
   );
 }
 

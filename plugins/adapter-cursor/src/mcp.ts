@@ -1,5 +1,6 @@
 import {
   jsonMcpEntry,
+  jsonMcpSecretTransform,
   parseJsonMcpConfig,
   writeJsonMcpServers,
   type AdapterSourceFile,
@@ -25,6 +26,12 @@ export function parseMcpServers(file: AdapterSourceFile): CursorMcpConfig {
 
 /** Serializes one canonical Cursor MCP target using Cursor's environment-reference spelling. */
 export const writeMcpServers: McpWrite = (input) => writeJsonMcpServers(input, writeEntry);
+
+/** Cursor expands `${env:VAR}` references throughout MCP entries. */
+export const transformMcpSecrets = jsonMcpSecretTransform(
+  (name) => `\${env:${name}}`,
+  OPTIONS.variablePattern,
+);
 
 function writeEntry(entry: OwnedServerEntry): Readonly<Record<string, unknown>> {
   return jsonMcpEntry(entry, (name) => `\${env:${name}}`);

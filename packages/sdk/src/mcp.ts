@@ -1,18 +1,12 @@
 import { URL } from "node:url";
 
 import type { AdapterSourceFile } from "./adapter.js";
+import { hasMcpSecretPrefix, isMcpSecretName, isMcpSecretValue } from "./mcp-secret-heuristics.js";
+import type { McpSecretSighting } from "./mcp-secret.js";
 import type { McpServer, McpTransport, UnusableMcpReason, UnusableMcpServer } from "./model.js";
 
 /** Stands in for a value that could be a credential. */
 const REDACTED = "[redacted]";
-
-/** Names whose value is treated as a credential. */
-const SECRET_NAME_PATTERN =
-  /(?:^|[-_])(?:api[-_]?keys?|keys?|secrets?|tokens?|passwords?|passwd|pwd|auth(?:orization)?|credentials?|bearer)$/iu;
-
-/** Values that announce themselves as credentials whatever flag they follow. */
-const SECRET_VALUE_PATTERN =
-  /^(?:sk|pk|rk)[-_]|^(?:gh[opsur]|github_pat)_|^xox[abpsr]-|^AKIA[0-9A-Z]{16}$/u;
 
 /**
  * Whether a value Aura sanitized still carries the placeholder it left behind.
@@ -26,11 +20,18 @@ export function hasMcpRedaction(value: string): boolean {
   return value.includes(REDACTED);
 }
 
-/** Whether a string contains a token recognizable by Aura's MCP redaction boundary. */
+/**
+ * Whether a string carries a token no legitimate configuration value could be.
+ *
+ * This gates manifest validation, where the cost of a false positive is a rejected manifest the
+ * user wrote correctly — so it stays on the narrow prefix test rather than the entropy heuristic
+ * that {@link isMcpSecretValue} uses to find credentials worth reporting. A 32-character tenant id
+ * in a URL path is high-entropy and perfectly valid; `sk-…` is neither.
+ */
 export function isMcpCredentialLiteral(value: string): boolean {
   return value
     .split(/[\s:=/?&#,]+/u)
-    .some((candidate) => candidate.length > 0 && SECRET_VALUE_PATTERN.test(candidate));
+    .some((candidate) => candidate.length > 0 && hasMcpSecretPrefix(candidate));
 }
 
 /** A bearer scheme with its token attached, however the argument reached the command line. */
@@ -86,7 +87,7 @@ export function sanitizeMcpUrl(raw: string): string | undefined {
   url.hash = "";
   url.pathname = url.pathname
     .split("/")
-    .map((segment) => (SECRET_VALUE_PATTERN.test(segment) ? REDACTED : segment))
+    .map((segment) => (isMcpSecretValue(segment) ? REDACTED : segment))
     .join("/");
   const names = [...new Set(url.searchParams.keys())];
   url.search = names.map((name) => `${name}=${REDACTED}`).join("&");
@@ -106,6 +107,7 @@ export type McpEntryParse =
 
 /** Every named entry one configuration file contributed, split by whether Aura can model it. */
 export interface McpEntryCollection {
+  readonly secretSightings?: readonly McpSecretSighting[] | undefined;
   readonly servers: readonly McpServer[];
   readonly unusable: readonly UnusableMcpServer[];
 }
@@ -121,12 +123,16 @@ export function collectMcpServers(
   appId: string,
   entries: unknown,
   parseEntry: (candidate: unknown) => McpEntryParse,
+  inspectEntry?:
+    | ((candidate: unknown, serverName: string) => readonly McpSecretSighting[])
+    | undefined,
 ): McpEntryCollection {
   if (!isConfigRecord(entries)) {
     return EMPTY_COLLECTION;
   }
 
   const servers: McpServer[] = [];
+  const secretSightings: McpSecretSighting[] = [];
   const unusable: UnusableMcpServer[] = [];
   for (const [name, candidate] of Object.entries(entries)) {
     const identity = { appId, name, scope: file.spec.scope, sourceId: file.spec.id };
@@ -136,8 +142,13 @@ export function collectMcpServers(
     } else {
       unusable.push({ ...identity, reason: parsed.reason });
     }
+    secretSightings.push(...(inspectEntry?.(candidate, name) ?? []));
   }
-  return { servers, unusable };
+  return {
+    ...(secretSightings.length === 0 ? {} : { secretSightings }),
+    servers,
+    unusable,
+  };
 }
 
 /** What a file with no `mcpServers` record contributes, shared so the shape is allocated once. */
@@ -239,32 +250,26 @@ function redactArgument(argument: string, afterSecretFlag: boolean): string {
     return named;
   }
 
-  return SECRET_VALUE_PATTERN.test(argument) || BEARER_VALUE_PATTERN.test(argument)
-    ? REDACTED
-    : argument;
+  return isMcpSecretValue(argument) || BEARER_VALUE_PATTERN.test(argument) ? REDACTED : argument;
 }
 
 /** Redacts a value joined to its own name, keeping the name so the argument stays readable. */
 function redactNamedValue(argument: string): string | undefined {
   const inlineName = INLINE_VALUE_PATTERN.exec(argument)?.[1];
-  if (inlineName !== undefined && isSecretName(inlineName)) {
+  if (inlineName !== undefined && isMcpSecretName(inlineName)) {
     return `${inlineName}=${REDACTED}`;
   }
 
   const headerName = HEADER_VALUE_PATTERN.exec(argument)?.[1];
-  return headerName !== undefined && isSecretName(headerName)
+  return headerName !== undefined && isMcpSecretName(headerName)
     ? `${headerName}: ${REDACTED}`
     : undefined;
 }
 
 function expectsSecretValue(argument: string): boolean {
-  return isFlag(argument) && !INLINE_VALUE_PATTERN.test(argument) && isSecretName(argument);
+  return isFlag(argument) && !INLINE_VALUE_PATTERN.test(argument) && isMcpSecretName(argument);
 }
 
 function isFlag(argument: string): boolean {
   return argument.startsWith("-");
-}
-
-function isSecretName(name: string): boolean {
-  return SECRET_NAME_PATTERN.test(name.replace(/^-+/u, ""));
 }

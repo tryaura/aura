@@ -158,6 +158,18 @@ export type {
   UnusableMcpServer,
 } from "./model.js";
 export type { McpProbeKind, McpProbeResult, McpProbeStatus } from "./mcp-probe.js";
+export { isMcpSecretName, isMcpSecretValue } from "./mcp-secret-heuristics.js";
+export { inspectJsonMcpSecrets } from "./mcp-secret-inspect.js";
+export { resolveMcpSecretNameCollisions } from "./mcp-secret-name.js";
+export type {
+  McpSecretInspectionContext,
+  McpSecretLocator,
+  McpSecretRedaction,
+  McpSecretRewriteResult,
+  McpSecretSighting,
+  McpSecretTransform,
+  McpSecretTransformInput,
+} from "./mcp-secret.js";
 export type { WorkspaceModel } from "./workspace-model.js";
 export type {
   InvalidSkillFrontmatterField,
@@ -191,6 +203,7 @@ export type { McpEntryCollection, McpEntryParse, StdioTransportFields } from "./
 export { collectJsonMcpServers, parseJsonMcpConfig, parseJsonMcpServers } from "./mcp-config.js";
 export type { JsonMcpConfigOptions, ParsedJsonMcpConfig } from "./mcp-config.js";
 export { jsonMcpEntry, writeJsonMcpServers } from "./json-mcp-write.js";
+export { jsonMcpSecretTransform } from "./json-mcp-secrets.js";
 export type { JsonMcpEntryWriter } from "./json-mcp-write.js";
 export { maskMarkdownCode } from "./markdown.js";
 export { advanceMarkdownFence } from "./markdown-fence.js";

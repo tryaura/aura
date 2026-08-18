@@ -19,6 +19,7 @@
     "publint",
     "semver",
     "smol-toml",
+    "toml-eslint-parser",
     "undici"
   ],
   "ignoreUnresolvedImports": ["./content/**"],

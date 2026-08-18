@@ -8,6 +8,7 @@ import type { AdapterCapabilities } from "./capabilities.js";
 import type { AdapterSharedLinkKind } from "./shared-link.js";
 import type { JsonObject, Scope } from "./common.js";
 import type { McpProbeResult } from "./mcp-probe.js";
+import type { McpSecretSighting } from "./mcp-secret.js";
 import type { InstalledSkill, ResolvedSkillDirectory } from "./skill-model.js";
 
 /** A plugin snippet whose bundled source was resolved during the workspace scan. */
@@ -201,6 +202,8 @@ export interface AdapterSnapshot {
   readonly instructionFiles: readonly InstructionDocument[];
   /** MCP servers configured for this application. */
   readonly mcpServers: readonly McpServer[];
+  /** Value-free locations of inline credentials found in MCP configuration. */
+  readonly mcpSecretSightings?: readonly McpSecretSighting[] | undefined;
   /**
    * Adapter-defined detail surfaced in diagnostics.
    *

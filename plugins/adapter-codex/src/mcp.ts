@@ -4,6 +4,7 @@ import {
   configStringRecord,
   EMPTY_COLLECTION,
   isConfigRecord,
+  inspectJsonMcpSecrets,
   parseConfigObject,
   redactMcpArguments,
   sanitizeMcpUrl,
@@ -12,6 +13,7 @@ import {
   type McpEntryCollection,
   type McpEntryParse,
   type McpTransport,
+  type McpSecretSighting,
 } from "@tryaura/aura-sdk";
 import { parse } from "smol-toml";
 
@@ -33,9 +35,37 @@ export function parseMcpServers(file: AdapterSourceFile): CodexMcpConfig {
   }
 
   return {
-    ...collectMcpServers(file, "codex", root["mcp_servers"], parseEntry),
+    ...collectMcpServers(file, "codex", root["mcp_servers"], parseEntry, (candidate, serverName) =>
+      inspectCodexSecrets(file, candidate, serverName),
+    ),
     malformed: false,
   };
+}
+
+function inspectCodexSecrets(
+  file: AdapterSourceFile,
+  candidate: unknown,
+  serverName: string,
+): readonly McpSecretSighting[] {
+  if (!isConfigRecord(candidate)) {
+    return [];
+  }
+  return inspectJsonMcpSecrets(
+    {
+      args: candidate["args"],
+      env: candidate["env"],
+      headers: candidate["http_headers"],
+      url: candidate["url"],
+    },
+    {
+      appId: "codex",
+      recordPath: ["mcp_servers"],
+      scope: file.spec.scope,
+      serverName,
+      sourceId: file.spec.id,
+      variablePattern: /\$\{env:([A-Za-z_][A-Za-z0-9_]*)\}/gu,
+    },
+  );
 }
 
 const DISABLED: McpEntryParse = Object.freeze({ reason: "disabled" });

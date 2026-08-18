@@ -144,7 +144,11 @@ describe("aura setup", () => {
   });
 
   it("pre-selects a detected application and stores it in the manifest", async () => {
-    await using seed = await createClaudeCodeSeed({ authenticated: true, version: "2.1.233" });
+    await using seed = await createClaudeCodeSeed({
+      authenticated: true,
+      inlineSecrets: false,
+      version: "2.1.233",
+    });
 
     const { first: result } = await expectConvergedTwice(seed, () =>
       runSeededSetup({ distro: AURA_DISTRO, seed }),
@@ -185,7 +189,11 @@ describe("aura setup", () => {
   });
 
   it("flags an unsupported version but keeps the application manageable", async () => {
-    await using seed = await createClaudeCodeSeed({ authenticated: true, version: "3.0.0" });
+    await using seed = await createClaudeCodeSeed({
+      authenticated: true,
+      inlineSecrets: false,
+      version: "3.0.0",
+    });
 
     const result = await run(seed, ["setup", "--yes"]);
 

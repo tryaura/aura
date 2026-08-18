@@ -108,6 +108,10 @@ export {
   planManifestMcpConvergence,
   planMcpServerRemoval,
 } from "./workspace/mcp-plan.js";
+export {
+  canPlanMcpSecretRemediation,
+  planMcpSecretRemediation,
+} from "./workspace/mcp-secret-plan.js";
 export type { ScanDiagnostic, ScanPhase } from "./workspace/diagnostics.js";
 export { createFileReader, MAX_FILE_BYTES } from "./workspace/reader.js";
 export { createHttpGet } from "./http.js";
