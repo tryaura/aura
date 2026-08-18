@@ -4,9 +4,12 @@ import type { Readable, Writable } from "node:stream";
 // Deep import on purpose: see the note in run.ts.
 import { Option } from "clipanion/lib/advanced/index.js";
 
+import type { TelemetryCommand } from "@tryaura/aura-sdk";
 import { describeFailure, type EnvironmentBootOptions } from "@tryaura/core";
 
 import { safe } from "./safe-text.js";
+import { commandFailedEvent } from "./telemetry-events.js";
+import type { TelemetryRecorder } from "./telemetry.js";
 import type { CliBranding, CliExitCode } from "./types.js";
 
 /** The `--home` override every scanning command shares. */
@@ -76,6 +79,7 @@ export function environmentOptions(
     readonly defaultHomeDir: string;
     readonly env: Record<string, string | undefined>;
     readonly httpGet?: EnvironmentBootOptions["httpGet"] | undefined;
+    readonly now?: EnvironmentBootOptions["now"] | undefined;
   },
   home: string | undefined,
   pathValue: string | undefined,
@@ -85,6 +89,7 @@ export function environmentOptions(
     environmentVariables: context.env,
     homeDir: home ?? context.defaultHomeDir,
     ...(context.httpGet === undefined ? {} : { httpGet: context.httpGet }),
+    ...(context.now === undefined ? {} : { now: context.now }),
     ...(pathValue === undefined ? {} : { path: pathValue }),
   };
 }
@@ -97,10 +102,11 @@ export function environmentOptions(
  */
 export function reportUnexpectedFailure(
   error: unknown,
-  subject: string,
+  subject: TelemetryCommand,
   branding: CliBranding,
   withDetail: boolean,
   stderr: Writable,
+  telemetry: TelemetryRecorder,
 ): CliExitCode {
   stderr.write(
     `${branding.displayName}: ${subject} failed unexpectedly. This is a bug in a plugin or the CLI.\n`,
@@ -110,5 +116,6 @@ export function reportUnexpectedFailure(
       ? `  ${safe(describeFailure(error))}\n`
       : `  Re-run with --detail to see what failed.\n`,
   );
+  telemetry.record(commandFailedEvent(subject, 3));
   return 3;
 }

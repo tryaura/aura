@@ -13,7 +13,9 @@
       "files": [
         "packages/cli/src/run.ts",
         "packages/core/src/environment.ts",
-        "packages/core/src/http.ts"
+        "packages/core/src/http.ts",
+        "packages/core/src/http-post.ts",
+        "examples/acme-distribution/src/main.ts"
       ],
       "rules": {
         "no-restricted-imports": "off",

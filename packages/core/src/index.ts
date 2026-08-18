@@ -114,7 +114,8 @@ export {
 } from "./workspace/mcp-secret-plan.js";
 export type { ScanDiagnostic, ScanPhase } from "./workspace/diagnostics.js";
 export { createFileReader, MAX_FILE_BYTES } from "./workspace/reader.js";
-export { createHttpGet } from "./http.js";
+export { createHttpGet, vetHttpUrl } from "./http.js";
+export { createHttpPost } from "./http-post.js";
 export { listDirectorySkills, resolveDirectorySkills } from "./skills/directory-client.js";
 export type { DirectorySkillListingResult } from "./skills/directory-client.js";
 export { collectSkillDirectorySources, isSkillSourceAllowed } from "./skills/sources.js";

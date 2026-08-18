@@ -22,14 +22,34 @@ import {
 } from "./help.js";
 import { SetupCommand } from "./setup/command.js";
 import { setupAddKinds } from "./setup/steps/index.js";
+import { createTelemetryRecorder, telemetryEnabled, type TelemetryRecorder } from "./telemetry.js";
 import { UndoCommand } from "./undo/command.js";
 import type { CliBranding, CliDistro, CliExitCode, CliRuntime } from "./types.js";
 
 /** Runs one build-time-composed Aura distribution. */
 export async function runCli(distro: CliDistro, runtime?: CliRuntime): Promise<CliExitCode> {
   const resolved = resolveRuntime(runtime);
-  let exitCode: CliExitCode;
+  // The user's environment always wins over the distribution: an opted-out run gets a recorder
+  // whose sink is absent, which is indistinguishable from a distribution that sends nothing.
+  const telemetry = createTelemetryRecorder({
+    distroVersion: distro.branding.version,
+    now: resolved.now,
+    sink: telemetryEnabled(resolved.environmentVariables) ? distro.telemetry : undefined,
+  });
 
+  const exitCode = await runResolved(distro, resolved, telemetry);
+  // Recorded events flush — bounded, never throwing — before the exit code is applied.
+  await telemetry.flush();
+  applyExitCode(exitCode, runtime);
+  return exitCode;
+}
+
+/** The run between the resolved boundary and the exit code, with every failure path mapped. */
+async function runResolved(
+  distro: CliDistro,
+  resolved: ResolvedRuntime,
+  telemetry: TelemetryRecorder,
+): Promise<CliExitCode> {
   try {
     const registry = createPluginRegistry(distro.plugins, distro.registry ?? {});
     const cli = createCli(distro, resolved.colorDepth > 0);
@@ -40,11 +60,13 @@ export async function runCli(distro: CliDistro, runtime?: CliRuntime): Promise<C
       defaultHomeDir: resolved.homeDir,
       env: resolved.environmentVariables,
       httpGet: resolved.httpGet,
+      now: resolved.now,
       registry,
       report: resolved.stdout,
       stderr: resolved.stderr,
       stdin: resolved.stdin,
       stdout: resolved.stdout,
+      telemetry,
     };
 
     let command: Command<AuraCliContext>;
@@ -58,35 +80,35 @@ export async function runCli(distro: CliDistro, runtime?: CliRuntime): Promise<C
       } else {
         resolved.stderr.write(renderUnknownCommand(distro.branding, unknownCommand));
       }
-      exitCode = 2;
-      applyExitCode(exitCode, runtime);
-      return exitCode;
+      return 2;
     }
 
     // `-h`/`--help` resolves to clipanion's internal help command; render the action-first screen
     // for whatever command the user was asking about instead of the framework's flag inventory.
     if (command instanceof ClipanionHelpCommand) {
       resolved.stdout.write(helpScreen(resolved.argv, distro.branding));
-      exitCode = 0;
-      applyExitCode(exitCode, runtime);
-      return exitCode;
+      return 0;
     }
 
     try {
-      exitCode = normalizeExitCode(await cli.run(command, executionContext(command, context)));
+      return normalizeExitCode(await cli.run(command, executionContext(command, context)));
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      resolved.stderr.write(`${distro.branding.displayName}: ${message}\n`);
-      exitCode = 3;
+      return reportRunFailure(error, distro.branding, resolved.stderr);
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    resolved.stderr.write(`${distro.branding.displayName}: ${message}\n`);
-    exitCode = 3;
+    return reportRunFailure(error, distro.branding, resolved.stderr);
   }
+}
 
-  applyExitCode(exitCode, runtime);
-  return exitCode;
+/** Writes the one-line operational failure every uncaught throw becomes. */
+function reportRunFailure(
+  error: unknown,
+  branding: CliBranding,
+  stderr: ResolvedRuntime["stderr"],
+): CliExitCode {
+  const message = error instanceof Error ? error.message : String(error);
+  stderr.write(`${branding.displayName}: ${message}\n`);
+  return 3;
 }
 
 interface ResolvedRuntime {
@@ -97,6 +119,7 @@ interface ResolvedRuntime {
   readonly homeDir: string;
   /** Absent means the kernel's own bounded client. */
   readonly httpGet: CliRuntime["httpGet"];
+  readonly now: () => Date;
   readonly stderr: NonNullable<CliRuntime["stderr"]>;
   readonly stdin: NonNullable<CliRuntime["stdin"]>;
   readonly stdout: NonNullable<CliRuntime["stdout"]>;
@@ -113,7 +136,6 @@ function resolveRuntime(runtime: CliRuntime | undefined): ResolvedRuntime {
   const environmentVariables = {
     ...resolveValue(runtime?.environmentVariables, () => process.env),
   };
-  const stdout = resolveValue(runtime?.stdout, () => process.stdout);
 
   return {
     argv: [...resolveValue(runtime?.argv, () => process.argv.slice(2))],
@@ -122,9 +144,19 @@ function resolveRuntime(runtime: CliRuntime | undefined): ResolvedRuntime {
     environmentVariables,
     homeDir: resolveValue(runtime?.homeDir, () => homedir()),
     httpGet: runtime?.httpGet,
+    now: resolveValue(runtime?.now, () => () => new Date()),
+    ...resolveStreams(runtime),
+  };
+}
+
+/** The three process streams, resolved together so each injected one replaces its default. */
+function resolveStreams(
+  runtime: CliRuntime | undefined,
+): Pick<ResolvedRuntime, "stderr" | "stdin" | "stdout"> {
+  return {
     stderr: resolveValue(runtime?.stderr, () => process.stderr),
     stdin: resolveValue(runtime?.stdin, () => process.stdin),
-    stdout,
+    stdout: resolveValue(runtime?.stdout, () => process.stdout),
   };
 }
 

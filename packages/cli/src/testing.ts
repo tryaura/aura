@@ -9,8 +9,10 @@ import {
   type DetectedFinding,
   type Environment,
   type Severity,
+  type TelemetryEvent,
 } from "@tryaura/aura-sdk";
 
+import { createTelemetryRecorder, type TelemetryRecorder } from "./telemetry.js";
 import type { CliBranding, CliDistro, CliExitCode, CliRuntime } from "./types.js";
 
 /** Branding for a fictional distribution, so tests assert on names no real product uses. */
@@ -131,6 +133,36 @@ class TextOutput extends Writable {
     this.text += Buffer.isBuffer(chunk) ? chunk.toString("utf8") : String(chunk);
     callback();
   }
+}
+
+/** The recorder a fixture request carries when the test is not about telemetry. */
+export function noopTelemetry(): TelemetryRecorder {
+  return createTelemetryRecorder({
+    distroVersion: undefined,
+    now: () => new Date(0),
+    sink: undefined,
+  });
+}
+
+/** A recorder whose stamped events a test can read back. */
+export function capturingTelemetry(): {
+  readonly events: TelemetryEvent[];
+  readonly telemetry: TelemetryRecorder;
+} {
+  const events: TelemetryEvent[] = [];
+  return {
+    events,
+    telemetry: createTelemetryRecorder({
+      distroVersion: undefined,
+      now: () => new Date("2026-08-18T12:00:00.000Z"),
+      sink: {
+        flush: () => Promise.resolve(),
+        record: (event) => {
+          events.push(event);
+        },
+      },
+    }),
+  };
 }
 
 /**

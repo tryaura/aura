@@ -1,4 +1,10 @@
 export { runCli } from "./run.js";
+export { createHttpTelemetrySink } from "./http-telemetry-sink.js";
+export type {
+  HttpTelemetryDeliveryFailure,
+  HttpTelemetrySinkOptions,
+} from "./http-telemetry-sink.js";
+export type { TelemetryEvent, TelemetrySink } from "@tryaura/aura-sdk";
 export type {
   CheckReport,
   CheckReportV1,
