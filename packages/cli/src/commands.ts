@@ -22,7 +22,7 @@ import {
   reportUnexpectedFailure,
   writeOptionRejection,
 } from "./command-support.js";
-import { fixOptionRejection } from "./check-options.js";
+import { explainOptionRejection, fixOptionRejection } from "./check-options.js";
 import { selectChecks, type CheckSelection } from "./check-selection.js";
 import { runFixes } from "./fix.js";
 import { createCheckReport, type DiagnosticSource, type ReportFix } from "./report.js";
@@ -210,28 +210,15 @@ export class CheckCommand extends Command<AuraCliContext> {
     );
   }
 
-  // fallow-ignore-next-line complexity -- returns the first conflicting CLI flag by presentation priority.
   private rejectInvalidExplainOptions(): string | undefined {
-    // `--detail` widens what a *scan* reports about a misbehaving plugin and `--fix` rewrites what
-    // one found, and `--explain` never scans, so neither has anything to act on. `--json` is
-    // supported: an explanation is exactly the kind of thing another tool wants to read.
-    if (
-      this.explain !== undefined &&
-      (this.detail || this.fix || this.interactive || this.online || this.only.length > 0)
-    ) {
-      const incompatible = this.detail
-        ? "--detail"
-        : this.fix
-          ? "--fix"
-          : this.interactive
-            ? "--interactive"
-            : this.online
-              ? "--online"
-              : "--only";
-      return `--explain cannot be combined with ${incompatible}`;
-    }
-
-    return undefined;
+    return explainOptionRejection({
+      detail: this.detail,
+      explaining: this.explain !== undefined,
+      fix: this.fix,
+      interactive: this.interactive,
+      online: this.online,
+      only: this.only.length > 0,
+    });
   }
 
   private rejectInvalidFixOptions(): string | undefined {
