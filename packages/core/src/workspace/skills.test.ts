@@ -114,13 +114,34 @@ describe("bundled skill resolution", () => {
     const home = await temporaryDirectory();
     const root = join(home, "agents", "skills", "review");
     await mkdir(root, { recursive: true });
-    await writeFile(join(root, "SKILL.md"), "---\nname: review\n---\n", "utf8");
+    await writeFile(
+      join(root, "SKILL.md"),
+      "---\nname: review\ndescription: Review code.\n---\nSee [guide](references/guide.md).\nSee [missing](references/missing.md).\n",
+      "utf8",
+    );
+    await mkdir(join(root, "references"));
+    await writeFile(join(root, "references", "guide.md"), "Guide\n", "utf8");
 
     const skills = await scanSharedSkills({ homeDir: home }, createFileReader());
 
     expect(skills).toHaveLength(1);
-    expect(skills[0]).toMatchObject({ id: "review", path: root });
-    expect(skills[0]?.entries.map((entry) => entry.kind)).toEqual(["directory", "file"]);
+    expect(skills[0]).toMatchObject({
+      definitionStatus: "ready",
+      description: "Review code.",
+      id: "review",
+      name: "review",
+      path: root,
+      references: [
+        { path: join(root, "references", "guide.md"), valid: true },
+        { path: join(root, "references", "missing.md"), valid: false },
+      ],
+    });
+    expect(skills[0]?.entries.map((entry) => entry.kind)).toEqual([
+      "directory",
+      "file",
+      "directory",
+      "file",
+    ]);
     expect(skills[0]?.treeHash).toMatch(/^[0-9a-f]{64}$/u);
   });
 
@@ -137,7 +158,11 @@ describe("bundled skill resolution", () => {
 
     const skills = await scanSharedSkills({ homeDir: "/home/dev" }, reader);
 
-    expect(skills[0]).toMatchObject({ id: "review", problem: "denied" });
+    expect(skills[0]).toMatchObject({
+      definitionStatus: "unreadable",
+      id: "review",
+      problem: "denied",
+    });
     expect(skills[0]?.treeHash).toBeUndefined();
   });
 });

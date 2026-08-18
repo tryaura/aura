@@ -4,7 +4,8 @@ import { runChecks } from "@tryaura/core";
 import { describe, expect, it } from "vitest";
 
 import checksCore from "../index.js";
-import { app, gitignore, model, projectModel } from "../testing.js";
+import { app, model } from "../testing.js";
+import { gitignore, projectModel } from "../testing-repository.js";
 import { instructionLinkIntegrityCheck } from "./index.js";
 
 describe("INS-006", () => {

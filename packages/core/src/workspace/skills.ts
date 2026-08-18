@@ -2,13 +2,15 @@ import { createHash } from "node:crypto";
 import { join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import type {
-  Environment,
-  FileProblem,
-  ResolvedSkillFile,
-  ResolvedSkillPack,
-  SharedSkillEntry,
-  SharedSkillState,
+import {
+  parseSkillFrontmatter,
+  parseSkillReferences,
+  type Environment,
+  type FileProblem,
+  type ResolvedSkillFile,
+  type ResolvedSkillPack,
+  type SharedSkillEntry,
+  type SharedSkillState,
 } from "@tryaura/aura-sdk";
 
 import type { RegisteredSkillPack } from "../plugin-registry.js";
@@ -111,17 +113,69 @@ export async function scanSharedSkills(
       contents.entries.map(async (id): Promise<SharedSkillState> => {
         const path = join(root, id);
         const tree = await walkTree(path, reader);
+        const definition = sharedSkillDefinition(path, tree, environment.homeDir);
         return {
+          ...definition,
           entries: tree.entries,
           id,
           path,
           ...(tree.problem === undefined
             ? { treeHash: treeHash(tree.files) }
-            : { problem: tree.problem.kind }),
+            : { problem: tree.problem.kind, problemDetail: tree.problem.message }),
         };
       }),
     ),
   );
+}
+
+/**
+ * Describes the skill definition, distinguishing an absent one from an unread one.
+ *
+ * {@link walkPath} stops at the first entry it cannot resolve, and it walks in sorted order, so a
+ * single unsupported sibling that sorts before `SKILL.md` leaves the definition unvisited. Calling
+ * that "missing" would send the user to repair a file that is already correct, so an aborted walk
+ * reports `unreadable` and leaves the real cause to travel in `problemDetail`.
+ */
+function sharedSkillDefinition(
+  path: string,
+  tree: WalkedTree,
+  homeDir: string,
+): Pick<
+  SharedSkillState,
+  | "definitionStatus"
+  | "description"
+  | "invalidFrontmatterFields"
+  | "name"
+  | "references"
+  | "skillFilePath"
+  | "version"
+> {
+  const skillFilePath = join(path, SKILL_FILE);
+  const file = tree.files.find((entry) => entry.path === SKILL_FILE);
+  if (file === undefined) {
+    return {
+      definitionStatus: tree.problem === undefined ? "missing-file" : "unreadable",
+      skillFilePath,
+    };
+  }
+  const frontmatter = parseSkillFrontmatter(file.content);
+  const existing = new Set(tree.entries.map((entry) => resolve(entry.path)));
+  const references = parseSkillReferences(file.content, {
+    homeDir,
+    skillRoot: path,
+    sourcePath: skillFilePath,
+  }).map((reference) => ({ ...reference, valid: existing.has(resolve(reference.path)) }));
+  return {
+    ...(frontmatter.description === undefined ? {} : { description: frontmatter.description }),
+    definitionStatus: frontmatter.parsed ? "ready" : "invalid-frontmatter",
+    ...(frontmatter.invalidFields.length === 0
+      ? {}
+      : { invalidFrontmatterFields: frontmatter.invalidFields }),
+    ...(frontmatter.name === undefined ? {} : { name: frontmatter.name }),
+    references,
+    skillFilePath,
+    ...(frontmatter.version === undefined ? {} : { version: frontmatter.version }),
+  };
 }
 
 /** Deterministic, platform-independent signature of a normalized skill tree. */
@@ -158,10 +212,16 @@ async function walkPath(
   const contents = await reader.read(path);
   const relativePath = portablePath(relative(root, path));
   if (!contents.exists) {
-    return { kind: "unreadable", message: `${relativePath || "."} does not exist` };
+    return {
+      kind: "unreadable",
+      message: `${relativePath || "."} does not exist`,
+    };
   }
   if (contents.pathKind === "symlink") {
-    return { kind: "unsupported", message: `${relativePath || "."} is a symbolic link` };
+    return {
+      kind: "unsupported",
+      message: `${relativePath || "."} is a symbolic link`,
+    };
   }
   if (contents.problem !== undefined) {
     return {
@@ -190,10 +250,16 @@ function addFile(
   entries: SharedSkillEntry[],
 ): WalkProblem | undefined {
   if (contents.content === undefined) {
-    return { kind: "unsupported", message: `${relativePath} is not a readable regular file` };
+    return {
+      kind: "unsupported",
+      message: `${relativePath} is not a readable regular file`,
+    };
   }
   if (contents.utf8Valid === false) {
-    return { kind: "unsupported", message: `${relativePath} is not valid UTF-8` };
+    return {
+      kind: "unsupported",
+      message: `${relativePath} is not valid UTF-8`,
+    };
   }
   entries.push({ kind: "file", path });
   files.push({ content: contents.content, path: relativePath });

@@ -51,6 +51,9 @@
     "prepack": "pnpm build",
     "typecheck": "tsc --noEmit && tsc --project tsconfig.type-tests.json"
   },
+  "dependencies": {
+    "yaml": "2.9.0"
+  },
   "devDependencies": {
     "@types/node": "24.13.3"
   },

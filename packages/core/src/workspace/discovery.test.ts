@@ -171,25 +171,28 @@ describe("adapter file discovery", () => {
     expect(diagnostics[0]?.detail).toContain("did not stabilize within 16 rounds");
   });
 
-  it("rejects more than ten thousand file specs before reading them", async () => {
-    const specs = Array.from({ length: 10_001 }, (_, index): AdapterFileSpec => ({
+  it("leaves file specs past ten thousand unread without dropping the application", async () => {
+    const specs = Array.from({ length: 10_002 }, (_, index): AdapterFileSpec => ({
       ...REQUIRED,
       id: `config.${index}`,
       optional: true,
       path: `${REQUIRED.path}.${index}`,
     }));
     const reader = createMemoryReader();
-    const broken = createTestAdapter({ files: () => specs, id: "broken" });
+    const noisy = createTestAdapter({ files: () => specs, id: "noisy" });
 
     const { diagnostics, model } = await buildWorkspaceModel({
-      adapters: [broken],
+      adapters: [noisy],
       environment: createTestEnvironment(),
       reader,
     });
 
-    expect(model.apps).toEqual([]);
-    expect(reader.reads.filter((path) => path.startsWith(REQUIRED.path))).toEqual([]);
-    expect(diagnostics[0]).toMatchObject({ adapterId: "broken", phase: "files" });
-    expect(diagnostics[0]?.detail).toContain("more than 10000 file specs");
+    // The application survives: an adapter describing a workspace larger than Aura reads keeps
+    // every check its read paths support, rather than losing all of them to one overrun.
+    expect(model.apps.map((app) => app.adapterId)).toEqual(["noisy"]);
+    expect(reader.reads.filter((path) => path.startsWith(REQUIRED.path))).toHaveLength(10_000);
+    expect(diagnostics[0]).toMatchObject({ adapterId: "noisy", phase: "files" });
+    expect(diagnostics[0]?.message).toContain("more than the 10000 paths Aura reads");
+    expect(diagnostics[0]?.message).toContain("2 were left unread");
   });
 });

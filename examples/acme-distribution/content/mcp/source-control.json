@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "acme/source-control",
+  "name": "Acme source control",
+  "description": "Search Acme repositories, pull requests, and code owners.",
+  "docsUrl": "https://engineering.acme.example/mcp/source-control",
+  "supportedApps": ["acme-agent", "claude-code", "codex", "cursor"],
+  "credentialEnv": [
+    {
+      "name": "ACME_SOURCE_TOKEN",
+      "description": "Authenticates to Acme source control.",
+      "setupUrl": "https://engineering.acme.example/tokens"
+    }
+  ],
+  "transportTemplate": {
+    "type": "http",
+    "url": "https://mcp.acme.example/source-control",
+    "headers": {
+      "Authorization": "Bearer ${ACME_SOURCE_TOKEN}"
+    }
+  }
+}

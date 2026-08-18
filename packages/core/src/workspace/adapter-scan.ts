@@ -219,6 +219,7 @@ function toStatus(file: AdapterSourceFile): AdapterFileStatus {
     exists: file.exists,
     ...(file.pathKind === undefined ? {} : { pathKind: file.pathKind }),
     problem: file.problem,
+    ...(file.resolvedPath === undefined ? {} : { resolvedPath: file.resolvedPath }),
     ...(file.size === undefined ? {} : { size: file.size }),
     spec: file.spec,
     ...(file.symlinkTarget === undefined ? {} : { symlinkTarget: file.symlinkTarget }),

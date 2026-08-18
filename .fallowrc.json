@@ -8,7 +8,9 @@
     "packages/cli/src/bin.ts",
     "packages/cli/src/index.release.ts",
     "packages/*/tsdown*.config.ts",
-    "scripts/fixtures/distro-consumer/*.mjs"
+    "examples/acme-distribution/build.mjs",
+    "examples/acme-distribution/smoke.mjs",
+    "examples/acme-distribution/src/main.ts"
   ],
   "ignoreDependencies": [
     "@arethetypeswrong/core",

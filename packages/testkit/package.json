@@ -43,15 +43,15 @@
   },
   "dependencies": {
     "@tryaura/aura-cli": "workspace:*",
-    "@tryaura/aura-sdk": "workspace:*",
-    "@tryaura/core": "workspace:*",
-    "diff": "9.0.0"
+    "@tryaura/aura-sdk": "workspace:*"
   },
   "devDependencies": {
     "@tryaura/adapter-claude-code": "workspace:*",
     "@tryaura/adapter-codex": "workspace:*",
     "@tryaura/adapter-cursor": "workspace:*",
+    "@tryaura/core": "workspace:*",
     "@types/node": "24.13.3",
+    "diff": "9.0.0",
     "vitest": "4.1.10"
   },
   "engines": {

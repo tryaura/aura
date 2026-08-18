@@ -30,7 +30,13 @@ export default defineConfig({
         },
         {
           label: "Guides",
-          items: [{ label: "Author a distribution", slug: "docs/guides/distributions" }],
+          items: [
+            { label: "Author a distribution", slug: "docs/guides/distributions" },
+            {
+              label: "Build an internal distribution",
+              slug: "docs/guides/internal-distribution",
+            },
+          ],
         },
         {
           label: "Reference",

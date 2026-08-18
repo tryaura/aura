@@ -4,7 +4,7 @@ export default defineConfig({
   attw: { level: "error", profile: "esm-only" },
   deps: {
     neverBundle: true,
-    onlyImport: [],
+    onlyImport: ["yaml"],
   },
   dts: true,
   entry: {
