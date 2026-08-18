@@ -2,6 +2,7 @@ import type {
   AuraTeamPreset,
   DirectorySkillSource,
   Environment,
+  PrivateDirectorySkillSource,
   ResolvedSkillPack,
   SkillSourceId,
   WorkspaceModel,
@@ -73,9 +74,14 @@ export interface SkillResolution {
  * re-planning never refetch.
  */
 export interface SkillCatalog {
-  readonly load: () => Promise<SkillCatalogListing>;
+  readonly load: (approvedPrivateSourceIds?: ReadonlySet<string>) => Promise<SkillCatalogListing>;
   readonly policy: SkillSourcePolicy;
-  readonly resolve: (selections: readonly SkillSelection[]) => Promise<SkillResolution>;
+  /** Private sources that require an explicit connection decision before any credential is read. */
+  readonly privateSources: readonly PrivateDirectorySkillSource[];
+  readonly resolve: (
+    selections: readonly SkillSelection[],
+    approvedPrivateSourceIds?: ReadonlySet<string>,
+  ) => Promise<SkillResolution>;
 }
 
 export interface SkillCatalogInputs {
@@ -91,15 +97,30 @@ export function createSkillCatalog(inputs: SkillCatalogInputs): SkillCatalog {
   const collected = collectSkillDirectorySources(inputs.registryDirectories, inputs.preset);
   const packs = new Map<string, ResolvedSkillPack>();
   const failures = new Map<string, string>();
-  let pending: Promise<SkillCatalogListing> | undefined;
+  const pending = new Map<string, Promise<SkillCatalogListing>>();
 
   return {
-    load: () => {
-      pending ??= loadListing(inputs, collected.sources, [
-        ...inputs.presetNotes,
-        ...collected.diagnostics.map((diagnostic) => diagnostic.message),
-      ]);
-      return pending;
+    load: (approvedPrivateSourceIds = new Set()) => {
+      const key = [...approvedPrivateSourceIds].sort().join("\0");
+      const existing = pending.get(key);
+      if (existing !== undefined) {
+        return existing;
+      }
+      const approved = collected.sources.filter(
+        (source) => source.kind !== "private-directory" || approvedPrivateSourceIds.has(source.id),
+      );
+      const unapproved = collected.sources.filter(
+        (source): source is PrivateDirectorySkillSource =>
+          source.kind === "private-directory" && !approvedPrivateSourceIds.has(source.id),
+      );
+      const listing = loadListing(
+        inputs,
+        approved,
+        [...inputs.presetNotes, ...collected.diagnostics.map((diagnostic) => diagnostic.message)],
+        unapproved,
+      );
+      pending.set(key, listing);
+      return listing;
     },
     policy: {
       ...(inputs.preset?.allowedSkillSources === undefined
@@ -107,8 +128,22 @@ export function createSkillCatalog(inputs: SkillCatalogInputs): SkillCatalog {
         : { allowedSourceIds: new Set<string>(inputs.preset.allowedSkillSources) }),
       presetName: AURA_TEAM_PRESET_PATH,
     },
-    resolve: (selections) =>
-      resolveSelections(inputs.environment, collected.sources, selections, packs, failures),
+    privateSources: Object.freeze(
+      collected.sources.filter(
+        (source): source is PrivateDirectorySkillSource => source.kind === "private-directory",
+      ),
+    ),
+    resolve: (selections, approvedPrivateSourceIds = new Set()) =>
+      resolveSelections(
+        inputs.environment,
+        collected.sources.filter(
+          (source) =>
+            source.kind !== "private-directory" || approvedPrivateSourceIds.has(source.id),
+        ),
+        selections,
+        packs,
+        failures,
+      ),
   };
 }
 
@@ -116,10 +151,15 @@ async function loadListing(
   inputs: SkillCatalogInputs,
   sources: readonly DirectorySkillSource[],
   baseNotes: readonly string[],
+  unapproved: readonly PrivateDirectorySkillSource[],
 ): Promise<SkillCatalogListing> {
   const entries: SkillCatalogEntry[] = [];
   const notes = [...baseNotes];
-  const unavailableSources: UnavailableSkillSource[] = [];
+  const unavailableSources: UnavailableSkillSource[] = unapproved.map((source) => ({
+    hint: `connection not approved; token ${source.tokenEnv}`,
+    id: source.id,
+    name: source.name,
+  }));
 
   for (const skill of inputs.model.availableSkills ?? []) {
     if (!isSkillSourceAllowed(inputs.preset, skill.source.id)) {
@@ -141,12 +181,10 @@ async function loadListing(
   const listings: readonly {
     readonly result: DirectorySkillListingResult;
     readonly source: DirectorySkillSource;
-  }[] = await Promise.all(
-    sources.map(async (source) => ({
-      result: await listDirectorySkills(inputs.environment, source),
-      source,
-    })),
-  );
+  }[] = await mapWithConcurrency(sources, 4, async (source) => ({
+    result: await listDirectorySkills(inputs.environment, source),
+    source,
+  }));
   for (const { result, source } of listings) {
     notes.push(...result.diagnostics.map((diagnostic) => diagnostic.message));
     if (result.status.kind === "unavailable") {
@@ -184,6 +222,7 @@ async function resolveSelections(
   failures: Map<string, string>,
 ): Promise<SkillResolution> {
   const bySource = new Map<string, string[]>();
+  const unavailable = new Map<string, string>();
   for (const selection of selections) {
     const identity = skillIdentity(selection.source, selection.id);
     if (packs.has(identity) || failures.has(identity)) {
@@ -194,29 +233,53 @@ async function resolveSelections(
     bySource.set(selection.source, ids);
   }
 
-  await Promise.all(
-    [...bySource.entries()].map(async ([sourceId, ids]) => {
-      const source = sources.find((candidate) => candidate.id === sourceId);
-      if (source === undefined) {
-        for (const id of ids) {
-          failures.set(skillIdentity(sourceId, id), "its source is not available in this run");
-        }
-        return;
-      }
-      const result = await resolveDirectorySkills(environment, source, ids);
-      for (const skill of result.skills) {
-        packs.set(skillIdentity(sourceId, skill.id), skill);
-      }
+  await mapWithConcurrency([...bySource.entries()], 4, async ([sourceId, ids]) => {
+    const source = sources.find((candidate) => candidate.id === sourceId);
+    if (source === undefined) {
       for (const id of ids) {
-        const identity = skillIdentity(sourceId, id);
-        if (!packs.has(identity)) {
-          failures.set(identity, resolutionFailure(result.diagnostics, id));
-        }
+        unavailable.set(skillIdentity(sourceId, id), "its source is not available in this run");
       }
-    }),
-  );
+      return;
+    }
+    const result = await resolveDirectorySkills(environment, source, ids);
+    for (const skill of result.skills) {
+      packs.set(skillIdentity(sourceId, skill.id), skill);
+    }
+    for (const id of ids) {
+      const identity = skillIdentity(sourceId, id);
+      if (!packs.has(identity)) {
+        failures.set(identity, resolutionFailure(result.diagnostics, id));
+      }
+    }
+  });
 
-  return { problems: new Map(failures), resolved: new Map(packs) };
+  return { problems: new Map([...failures, ...unavailable]), resolved: new Map(packs) };
+}
+
+/** Maps in input order while keeping only a small, fixed number of tasks in flight. */
+async function mapWithConcurrency<T, U>(
+  values: readonly T[],
+  concurrency: number,
+  map: (value: T) => Promise<U>,
+): Promise<U[]> {
+  const entries = values.entries();
+  const workers = Array.from(
+    { length: Math.min(concurrency, values.length) },
+    async (): Promise<{ readonly index: number; readonly value: U }[]> => {
+      const completed: { readonly index: number; readonly value: U }[] = [];
+      for (;;) {
+        const next = entries.next();
+        if (next.done) {
+          return completed;
+        }
+        completed.push({ index: next.value[0], value: await map(next.value[1]) });
+      }
+    },
+  );
+  return (await Promise.all(workers))
+    .flat()
+    .sort((left, right) => left.index - right.index)
+    .map((entry) => entry.value);
 }
 
 function resolutionFailure(

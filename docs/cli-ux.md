@@ -110,6 +110,9 @@ When the active step runs a sequence of internal forms (a chain step like Instru
 - The Skills step is the second chain precedent: its Review stage exists only while a directory
   skill is selected, one review question per skill —
   `└ ✔ Skills │ ▶ Review claude-md ☐ │ Review commit-style ☐`.
+- Before the picker, private directories appear in an explicit connection form naming the URL and
+  token variable. Its initial selection is empty, including under `--yes`; no credential is read
+  until the user opts in for that run.
 - A step whose single form is named like the step shows no sub-row.
 
 Tab states, in either row:

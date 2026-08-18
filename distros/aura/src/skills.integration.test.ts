@@ -69,7 +69,7 @@ async function allFiles(root: string): Promise<Readonly<Record<string, string>>>
 }
 
 describe("aura setup with a skill directory", () => {
-  it("re-applies reviewed provenance under --yes and never persists the token", async () => {
+  it("does not reconnect to a private directory under --yes without approval", async () => {
     await using directory = await createMockDirectoryBuilder()
       .skill(LISTING, [{ content: SKILL_MD, path: "SKILL.md" }])
       .requireToken(TOKEN)
@@ -95,12 +95,8 @@ describe("aura setup with a skill directory", () => {
     expect(result.exitCode).toBe(0);
     await expect(
       readFile(join(seed.homeDir, "agents", "skills", "review", "SKILL.md"), "utf8"),
-    ).resolves.toBe(SKILL_MD);
-    // The token went to the directory as a bearer header and nowhere else.
-    expect(directory.requests.length).toBeGreaterThanOrEqual(2);
-    for (const request of directory.requests) {
-      expect(request.authorization).toBe(`Bearer ${TOKEN}`);
-    }
+    ).rejects.toMatchObject({ code: "ENOENT" });
+    expect(directory.requests).toEqual([]);
     for (const [path, content] of Object.entries(await allFiles(seed.homeDir))) {
       expect(content, path).not.toContain(TOKEN);
     }
@@ -133,7 +129,7 @@ describe("aura setup with a skill directory", () => {
     expect(result.diffs).toEqual([]);
   });
 
-  it("surfaces a rejected token by variable name, never by value", async () => {
+  it("does not probe a new private source under --yes even when its token is set", async () => {
     await using directory = await createMockDirectoryBuilder()
       .skill(LISTING, [{ content: SKILL_MD, path: "SKILL.md" }])
       .requireToken(TOKEN)
@@ -149,9 +145,7 @@ describe("aura setup with a skill directory", () => {
     });
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain(
-      'Skill source "directory:acme" rejected the token from ACME_SKILLS_TOKEN, so it is unavailable.',
-    );
+    expect(directory.requests).toEqual([]);
     expect(result.stdout).not.toContain("sk-wrong-token");
   });
 

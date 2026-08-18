@@ -132,7 +132,10 @@ export interface StandardDirectorySkillSource {
   readonly url: string;
 }
 
-/** A standard directory authenticated with a token read from the named environment variable. */
+/**
+ * A standard directory authenticated with a token read from the named environment variable.
+ * Clients must obtain explicit user approval before connecting or reading that variable.
+ */
 export interface PrivateDirectorySkillSource {
   readonly id: Extract<SkillSourceId, `directory:${string}`>;
   readonly kind: "private-directory";

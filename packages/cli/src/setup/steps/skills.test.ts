@@ -1,124 +1,20 @@
-import type { AuraManifestSkill, AuraManifestState, ResolvedSkillPack } from "@tryaura/aura-sdk";
-import { createWorkspaceModel } from "@tryaura/aura-sdk/testing";
+import type { AuraManifestSkill } from "@tryaura/aura-sdk";
 import { describe, expect, it } from "vitest";
 
-import { skillIdentity } from "../skill-planner-paths.js";
-import type { SkillCatalog, SkillCatalogEntry, UnavailableSkillSource } from "../skills-catalog.js";
-import { emptySkillCatalog } from "../testing.js";
-import { SETUP_ABORTED, SETUP_BACK, type SetupStepContext } from "../types.js";
-import { createScriptedWizardIo, type ScriptedWizardIo } from "../wizard-scripted.js";
-import type { WizardAnswers, WizardQuestion } from "../wizard-types.js";
+import { SETUP_ABORTED, SETUP_BACK } from "../types.js";
+import { createScriptedWizardIo } from "../wizard-scripted.js";
+import {
+  fakeCatalog,
+  HASH_1,
+  HASH_2,
+  PRIVATE_SOURCE,
+  recordingIo as io,
+  REMOTE_ENTRY,
+  REMOTE_IDENTITY,
+  remotePack,
+  skillStepContext as context,
+} from "./skills.test-support.js";
 import { skillsStep } from "./skills.js";
-
-const HASH_1 = "1".repeat(64);
-const HASH_2 = "2".repeat(64);
-const REMOTE_IDENTITY = skillIdentity("directory:acme", "review");
-
-const REMOTE_ENTRY: SkillCatalogEntry = {
-  description: "Review changes before landing.",
-  id: "review",
-  identity: REMOTE_IDENTITY,
-  name: "Review",
-  remote: true,
-  sourceId: "directory:acme",
-  sourceName: "Acme Skills",
-  sourceUrl: "https://skills.acme.example",
-  version: "1.0.0",
-};
-
-function remotePack(treeHash: string): ResolvedSkillPack {
-  return {
-    description: "Review changes before landing.",
-    files: [{ content: "# Review skill\n", path: "SKILL.md" }],
-    id: "review",
-    name: "Review",
-    source: {
-      id: "directory:acme",
-      kind: "directory",
-      name: "Acme Skills",
-      url: "https://skills.acme.example",
-    },
-    treeHash,
-    version: "1.0.0",
-  };
-}
-
-interface CatalogOptions {
-  readonly entries?: readonly SkillCatalogEntry[];
-  readonly notes?: readonly string[];
-  readonly packs?: ReadonlyMap<string, ResolvedSkillPack>;
-  readonly policy?: SkillCatalog["policy"];
-  readonly problems?: ReadonlyMap<string, string>;
-  readonly unavailableSources?: readonly UnavailableSkillSource[];
-}
-
-function fakeCatalog(options: CatalogOptions = {}): SkillCatalog {
-  return {
-    load: () =>
-      Promise.resolve({
-        entries: options.entries ?? [],
-        notes: options.notes ?? [],
-        unavailableSources: options.unavailableSources ?? [],
-      }),
-    policy: options.policy ?? emptySkillCatalog().policy,
-    resolve: () =>
-      Promise.resolve({
-        problems: options.problems ?? new Map(),
-        resolved: options.packs ?? new Map(),
-      }),
-  };
-}
-
-function context(
-  catalog: SkillCatalog,
-  previous: readonly AuraManifestSkill[] = [],
-): SetupStepContext {
-  const manifest: AuraManifestState = {
-    exists: true,
-    mode: 0o600,
-    path: "/home/dev/agents/aura.json",
-    status: "ready",
-    value: {
-      apps: {},
-      mcpServers: [],
-      ownership: {},
-      schemaVersion: 1,
-      skills: previous,
-      snippets: [],
-    },
-  };
-  return {
-    appCatalog: [],
-    manifest,
-    model: createWorkspaceModel({
-      manifest,
-      sharedInstructions: { exists: false, path: "/home/dev/agents/AGENTS.md" },
-    }),
-    selections: {},
-    skillCatalog: catalog,
-    snippetCatalog: {
-      entries: () => [],
-      load: () => Promise.resolve([]),
-    },
-  };
-}
-
-interface RecordingIo extends ScriptedWizardIo {
-  readonly asked: readonly WizardQuestion[][];
-}
-
-function io(forms: readonly WizardAnswers[]): RecordingIo {
-  const base = createScriptedWizardIo({ forms });
-  const asked: WizardQuestion[][] = [];
-  return {
-    ...base,
-    ask: (questions, flow) => {
-      asked.push([...questions]);
-      return base.ask(questions, flow);
-    },
-    asked,
-  };
-}
 
 describe("skillsStep", () => {
   it("returns unchanged selections when nothing is offered or recorded", async () => {
@@ -154,6 +50,32 @@ describe("skillsStep", () => {
     expect(review?.initial).toEqual(["skip"]);
     expect(review?.options[1]?.preview).toBe("# Review skill\n");
     expect(review?.options[1]?.description).toBe("https://skills.acme.example");
+  });
+
+  it("requires an explicit connection choice before using a private directory", async () => {
+    const catalog = fakeCatalog({
+      entries: [REMOTE_ENTRY],
+      packs: new Map([[REMOTE_IDENTITY, remotePack(HASH_1)]]),
+      privateSources: [PRIVATE_SOURCE],
+    });
+    const scripted = io([
+      {
+        "approved-private-sources": {
+          kind: "options",
+          values: ["directory:acme"],
+        },
+      },
+      { skills: { kind: "options", values: [REMOTE_IDENTITY] } },
+      { [`review:${REMOTE_IDENTITY}`]: { kind: "options", values: ["install"] } },
+    ]);
+
+    const outcome = await skillsStep.gather(context(catalog), scripted);
+
+    expect(scripted.asked[0]?.[0]?.prompt).toContain("may Aura connect");
+    expect(scripted.asked[0]?.[0]?.initial).toEqual([]);
+    expect(outcome).toMatchObject({
+      skills: { approvedPrivateSourceIds: ["directory:acme"] },
+    });
   });
 
   it("drops a newly selected directory skill when its review defaults to skip", async () => {

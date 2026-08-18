@@ -74,6 +74,7 @@ export function emptySkillCatalog(): SkillCatalog {
   return {
     load: () => Promise.resolve({ entries: [], notes: [], unavailableSources: [] }),
     policy: { presetName: ".aura/preset.json" },
+    privateSources: [],
     resolve: () => Promise.resolve({ problems: new Map(), resolved: new Map() }),
   };
 }

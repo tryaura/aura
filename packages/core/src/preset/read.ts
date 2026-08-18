@@ -13,6 +13,8 @@ export interface TeamPresetState {
   readonly diagnostics: readonly ScanDiagnostic[];
   /** Absent when no preset file exists — which is not a problem, just the default. */
   readonly preset: AuraTeamPreset | undefined;
+  /** Invalid is distinct from missing because a broken allowlist must fail closed. */
+  readonly status: "invalid" | "missing" | "ready";
 }
 
 /**
@@ -28,7 +30,7 @@ export async function readTeamPreset(cwd: string, reader: FileReader): Promise<T
   const contents = await reader.read(path, { maxBytes: MAX_TEAM_PRESET_BYTES });
 
   if (!contents.exists) {
-    return { diagnostics: [], preset: undefined };
+    return { diagnostics: [], preset: undefined, status: "missing" };
   }
   if (contents.problem !== undefined || contents.isDirectory || contents.content === undefined) {
     return failure(path, "cannot be read");
@@ -52,7 +54,7 @@ export async function readTeamPreset(cwd: string, reader: FileReader): Promise<T
   if (result.kind === "invalid") {
     return failure(path, `is not a valid team preset (${result.problem})`);
   }
-  return { diagnostics: [], preset: result.preset };
+  return { diagnostics: [], preset: result.preset, status: "ready" };
 }
 
 function failure(path: string, reason: string): TeamPresetState {
@@ -66,5 +68,6 @@ function failure(path: string, reason: string): TeamPresetState {
       },
     ],
     preset: undefined,
+    status: "invalid",
   };
 }

@@ -29,10 +29,16 @@ export function directorySourceProblem(source: DirectorySkillSource): string | u
   try {
     url = new URL(source.url);
   } catch {
-    return `declares URL "${source.url}", which is not an absolute URL`;
+    return "declares a URL that is not absolute";
   }
   if (!isAllowedHttpUrl(url)) {
-    return `declares URL "${source.url}"; expected https (plain http is loopback-only)`;
+    return "declares a URL; expected https (plain http is loopback-only)";
+  }
+  if (url.username !== "" || url.password !== "") {
+    return "declares a URL with embedded username or password credentials, which are not allowed";
+  }
+  if (url.search !== "" || url.hash !== "") {
+    return "declares a URL with a query string or fragment, which is not allowed";
   }
 
   if (source.kind === "private-directory" && !TOKEN_ENV_PATTERN.test(source.tokenEnv)) {

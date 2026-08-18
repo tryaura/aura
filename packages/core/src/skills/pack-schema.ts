@@ -4,7 +4,7 @@ import type { ResolvedSkillFile, SkillListing } from "@tryaura/aura-sdk";
 
 import { isRecord } from "../values.js";
 import { MAX_SKILL_FILE_BYTES, MAX_SKILL_FILES, MAX_SKILL_RESPONSE_BYTES } from "./limits.js";
-import { skillFilePathProblem } from "./path-guards.js";
+import { portableSkillFilePathKey, skillFilePathProblem } from "./path-guards.js";
 
 const SKILL_FILE = "SKILL.md";
 
@@ -100,8 +100,9 @@ function collectFiles(entries: readonly unknown[]): readonly ResolvedSkillFile[]
     if (pathProblem !== undefined) {
       return `file ${String(index)} path ${pathProblem}`;
     }
-    if (seen.has(path)) {
-      return `file ${String(index)} repeats an earlier path`;
+    const portablePath = portableSkillFilePathKey(path);
+    if (seen.has(portablePath)) {
+      return `file ${String(index)} repeats or aliases an earlier path`;
     }
     const bytes = Buffer.byteLength(content, "utf8");
     if (bytes > MAX_SKILL_FILE_BYTES) {
@@ -114,7 +115,7 @@ function collectFiles(entries: readonly unknown[]): readonly ResolvedSkillFile[]
     if (files.length >= MAX_SKILL_FILES) {
       return `response carries more than ${String(MAX_SKILL_FILES)} files`;
     }
-    seen.add(path);
+    seen.add(portablePath);
     files.push(Object.freeze({ content, path }));
   }
 

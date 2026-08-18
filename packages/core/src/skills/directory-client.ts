@@ -7,10 +7,16 @@ import type {
 } from "@tryaura/aura-sdk";
 
 import type { ScanDiagnostic } from "../workspace/diagnostics.js";
+import { isAllowedHttpUrl } from "../http.js";
+import { createLimiter } from "../workspace/concurrency.js";
 import { failedResolution, partitionResolutions } from "../workspace/resolution.js";
 import { treeHash } from "../workspace/skills.js";
 import { parseDirectoryIndex } from "./index-schema.js";
-import { MAX_DIRECTORY_INDEX_BYTES, MAX_SKILL_RESPONSE_BYTES } from "./limits.js";
+import {
+  MAX_CONCURRENT_SKILL_REQUESTS,
+  MAX_DIRECTORY_INDEX_BYTES,
+  MAX_SKILL_RESPONSE_BYTES,
+} from "./limits.js";
 import { parseDirectorySkillPack } from "./pack-schema.js";
 import { skillIdProblem } from "./path-guards.js";
 
@@ -74,18 +80,21 @@ export async function resolveDirectorySkills(
   readonly diagnostics: readonly ScanDiagnostic[];
   readonly skills: readonly ResolvedSkillPack[];
 }> {
+  const limit = createLimiter(MAX_CONCURRENT_SKILL_REQUESTS);
   const outcomes = await Promise.all(
-    skillIds.map(async (skillId) => {
-      const reason = await resolveProblem(environment, source, skillId);
-      if (typeof reason === "string") {
-        return failedResolution<ResolvedSkillPack>(
-          DIRECTORY_DIAGNOSTIC_ID,
-          `Skill "${safeId(skillId)}" from "${source.id}" ${reason}, so it is unavailable.`,
-          "read",
-        );
-      }
-      return { kind: "resolved" as const, value: reason };
-    }),
+    skillIds.map((skillId) =>
+      limit(async () => {
+        const reason = await resolveProblem(environment, source, skillId);
+        if (typeof reason === "string") {
+          return failedResolution<ResolvedSkillPack>(
+            DIRECTORY_DIAGNOSTIC_ID,
+            `Skill "${safeId(skillId)}" from "${source.id}" ${reason}, so it is unavailable.`,
+            "read",
+          );
+        }
+        return { kind: "resolved" as const, value: reason };
+      }),
+    ),
   );
 
   const { diagnostics, values } = partitionResolutions(outcomes);
@@ -141,6 +150,11 @@ async function request(
   path: string,
   maxResponseBytes: number,
 ): Promise<RequestOutcome> {
+  const endpoint = directoryEndpoint(source.url, path);
+  if (endpoint.kind === "failure") {
+    return endpoint;
+  }
+
   const headers: Record<string, string> = {};
   const variable = tokenVariable(source);
   if (variable !== undefined) {
@@ -151,16 +165,35 @@ async function request(
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const base = source.url.endsWith("/") ? source.url : `${source.url}/`;
-  const url = `${base}${path}`;
-  const first = await environment.httpGet({ headers, maxResponseBytes, url });
+  const first = await environment.httpGet({ headers, maxResponseBytes, url: endpoint.url });
   const result = isTransient(first)
-    ? await environment.httpGet({ headers, maxResponseBytes, url })
+    ? await environment.httpGet({ headers, maxResponseBytes, url: endpoint.url })
     : first;
   if (result.kind === "failure") {
     return { kind: "failure", reason: result.reason };
   }
   return { body: result.body, kind: "response", status: result.status };
+}
+
+type DirectoryEndpoint =
+  | { readonly kind: "failure"; readonly reason: "insecure-url" | "invalid-url" }
+  | { readonly kind: "url"; readonly url: string };
+
+/** Resolves one protocol path below a normalized directory base URL. */
+function directoryEndpoint(baseUrl: string, path: string): DirectoryEndpoint {
+  try {
+    const base = new URL(baseUrl);
+    if (!isAllowedHttpUrl(base)) {
+      return { kind: "failure", reason: "insecure-url" };
+    }
+    if (base.username !== "" || base.password !== "" || base.search !== "" || base.hash !== "") {
+      return { kind: "failure", reason: "invalid-url" };
+    }
+    base.pathname = base.pathname.endsWith("/") ? base.pathname : `${base.pathname}/`;
+    return { kind: "url", url: new URL(path, base).href };
+  } catch {
+    return { kind: "failure", reason: "invalid-url" };
+  }
 }
 
 /** A failed request or a 5xx answer may be a blip; anything else would fail identically again. */

@@ -10,6 +10,8 @@
 const SKILL_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 
 const DRIVE_PREFIX_PATTERN = /^[A-Za-z]:/u;
+const WINDOWS_RESERVED_CHARACTER_PATTERN = /[<>:"|?*]/u;
+const WINDOWS_RESERVED_NAME_PATTERN = /^(?:aux|con|nul|prn|com[1-9¹²³]|lpt[1-9¹²³])(?:\..*)?$/iu;
 const MAX_PATH_LENGTH = 1024;
 
 /** Why an id is not a single safe path component, or `undefined` when it is. */
@@ -22,6 +24,21 @@ export function skillIdProblem(id: string): string | undefined {
 
 /** Why a fetched path cannot be written under the shared skills root, or `undefined` when it can. */
 export function skillFilePathProblem(path: string): string | undefined {
+  const pathProblem = generalPathProblem(path);
+  if (pathProblem !== undefined) {
+    return pathProblem;
+  }
+  for (const component of path.split("/")) {
+    const componentProblem = portableComponentProblem(component);
+    if (componentProblem !== undefined) {
+      return componentProblem;
+    }
+  }
+  return undefined;
+}
+
+/** Checks constraints that apply to the whole relative path rather than one component. */
+function generalPathProblem(path: string): string | undefined {
   if (path.length === 0) {
     return "is empty";
   }
@@ -30,6 +47,9 @@ export function skillFilePathProblem(path: string): string | undefined {
   }
   if (path.includes("\\")) {
     return "contains a backslash";
+  }
+  if (hasControlCharacter(path)) {
+    return "contains a control character";
   }
   if (path.startsWith("/")) {
     return "is absolute";
@@ -40,10 +60,34 @@ export function skillFilePathProblem(path: string): string | undefined {
   if (path.startsWith("~")) {
     return "starts with a home reference";
   }
-  for (const component of path.split("/")) {
-    if (component === "" || component === "." || component === "..") {
-      return "contains an empty, dot, or dot-dot component";
-    }
+  return undefined;
+}
+
+/** Checks one path component against portable filesystem spelling rules. */
+function portableComponentProblem(component: string): string | undefined {
+  if (component === "" || component === "." || component === "..") {
+    return "contains an empty, dot, or dot-dot component";
+  }
+  if (WINDOWS_RESERVED_CHARACTER_PATTERN.test(component)) {
+    return "contains a character reserved by Windows";
+  }
+  if (component.endsWith(".") || component.endsWith(" ")) {
+    return "contains a component ending in a dot or space";
+  }
+  if (WINDOWS_RESERVED_NAME_PATTERN.test(component)) {
+    return "contains a device name reserved by Windows";
   }
   return undefined;
+}
+
+function hasControlCharacter(value: string): boolean {
+  return Array.from(value).some((character) => {
+    const codePoint = character.codePointAt(0) ?? 0;
+    return codePoint <= 31 || codePoint === 127;
+  });
+}
+
+/** Portable comparison key used to refuse paths that alias on common filesystems. */
+export function portableSkillFilePathKey(path: string): string {
+  return path.normalize("NFC").toLowerCase();
 }

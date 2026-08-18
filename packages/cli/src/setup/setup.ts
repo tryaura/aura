@@ -88,6 +88,12 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
   const appCatalog = buildAppCatalog(request.registry.adapters, model, scan.skipped);
   const snippetCatalog = createSnippetCatalog(request.registry.snippets, model.manifest);
   const presetState: TeamPresetState = await readTeamPreset(environment.cwd, createFileReader());
+  if (presetState.status === "invalid" && steps.some((step) => step.id === "skills")) {
+    for (const diagnostic of presetState.diagnostics) {
+      request.stderr.write(`${branding.displayName}: ${safe(diagnostic.message)}\n`);
+    }
+    return 2;
+  }
   const skillCatalog = createSkillCatalog({
     environment,
     model,

@@ -2,6 +2,7 @@ import type { AuraTeamPreset, DirectorySkillSource, SkillSourceId } from "@tryau
 
 import { isRecord } from "../values.js";
 import { directorySourceProblem } from "../skills/directory-config.js";
+import { MAX_TEAM_PRESET_ALLOWED_SOURCES, MAX_TEAM_PRESET_DIRECTORIES } from "../skills/limits.js";
 
 /** Same grammar the manifest accepts for skill provenance ids. */
 const SKILL_SOURCE_ID_PATTERN = /^(?:directory|driver|plugin):[^\s:]+$/u;
@@ -55,6 +56,12 @@ function collectAllowedSources(value: unknown): readonly SkillSourceId[] | strin
   if (!Array.isArray(value)) {
     return "$.allowedSkillSources: must be an array of skill source ids";
   }
+  if (value.length > MAX_TEAM_PRESET_ALLOWED_SOURCES) {
+    return (
+      `$.allowedSkillSources: must contain at most ` +
+      `${String(MAX_TEAM_PRESET_ALLOWED_SOURCES)} source ids`
+    );
+  }
 
   const sources: SkillSourceId[] = [];
   for (const [index, entry] of value.entries()) {
@@ -74,6 +81,12 @@ function collectDirectories(value: unknown): readonly DirectorySkillSource[] | s
   }
   if (!Array.isArray(value)) {
     return "$.skillDirectories: must be an array of directory definitions";
+  }
+  if (value.length > MAX_TEAM_PRESET_DIRECTORIES) {
+    return (
+      `$.skillDirectories: must contain at most ` +
+      `${String(MAX_TEAM_PRESET_DIRECTORIES)} directory definitions`
+    );
   }
 
   const directories: DirectorySkillSource[] = [];

@@ -23,6 +23,7 @@ export interface SkillsChainState {
 
 /** Everything the stages read but never change during one gather. */
 export interface SkillStageInputs {
+  readonly approvedPrivateSourceIds: ReadonlySet<string>;
   readonly catalog: SkillCatalog;
   readonly listing: SkillCatalogListing;
   readonly manifestSkills: readonly AuraManifestSkill[];
@@ -125,6 +126,7 @@ function reviewStage(inputs: SkillStageInputs): ChainStage<SkillsChainState> {
           const selection = offered.get(identity);
           return selection === undefined ? [] : [selection];
         }),
+        inputs.approvedPrivateSourceIds,
       );
       const questions = remote.flatMap((identity) =>
         reviewQuestion(

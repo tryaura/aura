@@ -18,6 +18,11 @@ export interface AuraTeamPreset {
   readonly allowedSkillSources?: readonly SkillSourceId[] | undefined;
   /** The only team-preset schema this release reads. */
   readonly schemaVersion: 1;
-  /** Directories defined by the team rather than a plugin. Tokens stay in the named env vars. */
+  /**
+   * Directories defined by the team rather than a plugin.
+   *
+   * Tokens stay in the named environment variables. A client must obtain explicit user approval
+   * before connecting to a private directory or reading its token variable.
+   */
   readonly skillDirectories?: readonly DirectorySkillSource[] | undefined;
 }

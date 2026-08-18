@@ -10,6 +10,7 @@ import {
   type SkillSelection,
 } from "../types.js";
 import { runFormChain } from "../wizard-chain.js";
+import { selectedValues } from "../wizard-types.js";
 import {
   isRemoteIdentity,
   manifestByIdentity,
@@ -29,40 +30,7 @@ import {
  */
 export const skillsStep: SetupStep = {
   addKind: "skill",
-  gather: async (context, io) => {
-    const listing = await context.skillCatalog.load();
-    const manifestSkills = context.manifest.status === "ready" ? context.manifest.value.skills : [];
-    emitNotes(context, io, listing, manifestSkills);
-    if (isEmptyCatalog(listing, manifestSkills)) {
-      return context.enteredBackward === true ? SETUP_BACK : { ...context.selections };
-    }
-
-    const inputs: SkillStageInputs = {
-      catalog: context.skillCatalog,
-      listing,
-      manifestSkills,
-    };
-    const result = await runFormChain(
-      skillStages(inputs),
-      initialState(context, manifestSkills),
-      io,
-      {
-        entry: context.enteredBackward === true ? "end" : "start",
-        flow: context.flow,
-      },
-    );
-    if (result === SETUP_ABORTED || result === SETUP_BACK) {
-      return result;
-    }
-
-    const skills = await finalize(result, inputs, manifestSkills);
-    if (skills.selected.length === 0 && manifestSkills.length === 0) {
-      // Nothing chosen and nothing recorded: leave the slice absent so an otherwise-empty run
-      // does not force manifest creation.
-      return { ...context.selections };
-    }
-    return { ...context.selections, skills };
-  },
+  gather: gatherSkills,
   id: "skills",
   prerequisites: [
     {
@@ -76,6 +44,120 @@ export const skillsStep: SetupStep = {
   ],
   title: "Skills",
 };
+
+async function gatherSkills(context: SetupStepContext, io: Parameters<SetupStep["gather"]>[1]) {
+  const approval = await approvePrivateSources(context, io);
+  if (approval === SETUP_ABORTED || approval === SETUP_BACK) {
+    return approval;
+  }
+  return gatherApprovedSkills(context, io, approval);
+}
+
+/** Lists and reviews skills after this run's private connection boundary has been settled. */
+async function gatherApprovedSkills(
+  context: SetupStepContext,
+  io: Parameters<SetupStep["gather"]>[1],
+  approval: readonly string[],
+) {
+  const approvedPrivateSourceIds = new Set(approval);
+  const listing = await context.skillCatalog.load(approvedPrivateSourceIds);
+  const manifestSkills = recordedSkills(context);
+  emitNotes(context, io, listing, manifestSkills);
+  if (isEmptyCatalog(listing, manifestSkills)) {
+    return emptyCatalogOutcome(context);
+  }
+
+  const inputs: SkillStageInputs = {
+    approvedPrivateSourceIds,
+    catalog: context.skillCatalog,
+    listing,
+    manifestSkills,
+  };
+  const result = await runFormChain(
+    skillStages(inputs),
+    initialState(context, manifestSkills),
+    io,
+    {
+      entry: chainEntry(context),
+      flow: context.flow,
+    },
+  );
+  if (result === SETUP_ABORTED || result === SETUP_BACK) {
+    return result;
+  }
+
+  const skills = await finalize(result, inputs, manifestSkills);
+  return completedSelections(context, approval, skills, manifestSkills);
+}
+
+function recordedSkills(context: SetupStepContext): readonly AuraManifestSkill[] {
+  return context.manifest.status === "ready" ? context.manifest.value.skills : [];
+}
+
+function emptyCatalogOutcome(context: SetupStepContext) {
+  return context.enteredBackward === true ? SETUP_BACK : { ...context.selections };
+}
+
+function chainEntry(context: SetupStepContext): "end" | "start" {
+  return context.enteredBackward === true ? "end" : "start";
+}
+
+function completedSelections(
+  context: SetupStepContext,
+  approval: readonly string[],
+  skills: Awaited<ReturnType<typeof finalize>>,
+  manifestSkills: readonly AuraManifestSkill[],
+) {
+  if (skills.selected.length === 0 && manifestSkills.length === 0) {
+    // Nothing chosen and nothing recorded: leave the slice absent so an otherwise-empty run
+    // does not force manifest creation.
+    return { ...context.selections };
+  }
+  return {
+    ...context.selections,
+    skills: approval.length === 0 ? skills : { ...skills, approvedPrivateSourceIds: approval },
+  };
+}
+
+/** Explicitly authorizes credential-bearing requests; the safe non-interactive default is none. */
+async function approvePrivateSources(
+  context: SetupStepContext,
+  io: Parameters<SetupStep["gather"]>[1],
+): Promise<readonly string[] | typeof SETUP_ABORTED | typeof SETUP_BACK> {
+  const sources = context.skillCatalog.privateSources;
+  if (sources.length === 0) {
+    return [];
+  }
+  const offered = new Set<string>(sources.map((source) => source.id));
+  const initial = (context.selections.skills?.approvedPrivateSourceIds ?? []).filter((id) =>
+    offered.has(id),
+  );
+  if (context.enteredBackward === true) {
+    return initial;
+  }
+
+  const result = await io.ask([
+    {
+      id: "approved-private-sources",
+      initial,
+      kind: "multiselect",
+      label: "Private sources",
+      options: sources.map((source) => ({
+        description: `${source.url} · sends ${source.tokenEnv} as a bearer token`,
+        label: source.name,
+        value: source.id,
+      })),
+      prompt: "Which private skill directories may Aura connect to during this run?",
+    },
+  ]);
+  if (result === "aborted") {
+    return SETUP_ABORTED;
+  }
+  if (result === "back") {
+    return SETUP_BACK;
+  }
+  return selectedValues(result["approved-private-sources"]);
+}
 
 /** First-visit banners: catalog problems, then the empty-catalog note when there is nothing. */
 function emitNotes(
@@ -143,6 +225,7 @@ async function finalize(
             const selection = offered.get(identity);
             return selection === undefined ? [] : [selection];
           }),
+          inputs.approvedPrivateSourceIds,
         );
 
   const selected: SkillSelection[] = [];

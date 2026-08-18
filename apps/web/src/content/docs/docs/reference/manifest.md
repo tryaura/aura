@@ -109,11 +109,13 @@ writes, so an unsafe definition is never propagated into application configurati
 The same rule covers remote skill directories: configuration names an environment variable, never
 a value. A private directory — registered by a plugin or listed in the workspace team preset
 (`.aura/preset.json`) — carries `tokenEnv` matching `^[A-Z_][A-Z0-9_]*$`. Aura reads the variable
-at request time, sends it as a bearer header over TLS, and stores it nowhere: not in the manifest,
+only after an explicit per-run connection approval, sends it as a bearer header over TLS, and stores it nowhere: not in the manifest,
 not in the installed skill tree, not in a diagnostic — a rejected token is reported by the
 variable's name. A directory whose variable is unset simply lists as unavailable with the variable
 to set. The manifest records only provenance for an installed directory skill: its source id,
 version, and tree hash, written after the skill's full SKILL.md was reviewed on screen.
+
+See the [team preset reference](./team-preset/) for the complete schema and directory protocol.
 
 ## Ownership ledger
 

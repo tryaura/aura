@@ -175,6 +175,19 @@ async function allFiles(root: string): Promise<Readonly<Record<string, string>>>
 }
 
 describe("skills directory install flow", () => {
+  it("fails closed before networking when the team preset is invalid", async () => {
+    const mock = await startMockDirectory();
+    const fixture = await createFixture(mock.url);
+    const workspace = fixture.request({ forms: [] }).environment.cwd;
+    await writeFile(join(workspace, ".aura", "preset.json"), "{ broken", "utf8");
+
+    const exitCode = await runSetup(fixture.request({ forms: [] }));
+
+    expect(exitCode).toBe(2);
+    expect(mock.requests).toEqual([]);
+    expect(fixture.stdout()).toContain("is not valid JSON");
+  });
+
   it("installs a reviewed skill and never persists the token anywhere", async () => {
     const mock = await startMockDirectory();
     const fixture = await createFixture(mock.url);
@@ -182,6 +195,12 @@ describe("skills directory install flow", () => {
     const exitCode = await runSetup(
       fixture.request({
         forms: [
+          {
+            "approved-private-sources": {
+              kind: "options",
+              values: ["directory:acme"],
+            },
+          },
           { skills: { kind: "options", values: [IDENTITY] } },
           { [`review:${IDENTITY}`]: { kind: "options", values: ["install"] } },
         ],
@@ -215,7 +234,15 @@ describe("skills directory install flow", () => {
     const exitCode = await runSetup(
       fixture.request({
         // The picker checks the skill; the exhausted script leaves the review on Skip.
-        forms: [{ skills: { kind: "options", values: [IDENTITY] } }],
+        forms: [
+          {
+            "approved-private-sources": {
+              kind: "options",
+              values: ["directory:acme"],
+            },
+          },
+          { skills: { kind: "options", values: [IDENTITY] } },
+        ],
       }),
     );
 

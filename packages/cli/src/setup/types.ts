@@ -59,6 +59,8 @@ export interface SkillSelection {
 }
 
 interface SkillSelections {
+  /** Private directories explicitly approved for credential-bearing requests during this run. */
+  readonly approvedPrivateSourceIds?: readonly string[] | undefined;
   /**
    * Directory packs fetched and reviewed during the step, keyed into the plan by identity.
    *

@@ -13,7 +13,7 @@ describe("readTeamPreset", () => {
   it("treats a missing file as no preset and no problem", async () => {
     const state = await readTeamPreset("/workspace", createMemoryReader());
 
-    expect(state).toEqual({ diagnostics: [], preset: undefined });
+    expect(state).toEqual({ diagnostics: [], preset: undefined, status: "missing" });
   });
 
   it("parses the allowlist and directory definitions", async () => {
@@ -105,6 +105,24 @@ describe("readTeamPreset", () => {
       },
       "a name, never a value",
     ],
+    [
+      {
+        schemaVersion: 1,
+        skillDirectories: [
+          { id: "directory:acme", name: "Acme", url: "https://skills.acme.example?team=one" },
+        ],
+      },
+      "query string or fragment, which is not allowed",
+    ],
+    [
+      {
+        schemaVersion: 1,
+        skillDirectories: [
+          { id: "directory:acme", name: "Acme", url: "https://user@skills.acme.example" },
+        ],
+      },
+      "embedded username or password credentials, which are not allowed",
+    ],
   ])("rejects invalid preset %j", async (document, fragment) => {
     const state = await readTeamPreset(
       "/workspace",
@@ -114,6 +132,59 @@ describe("readTeamPreset", () => {
     expect(state.preset).toBeUndefined();
     expect(state.diagnostics[0]?.message).toContain("is not a valid team preset");
     expect(state.diagnostics[0]?.message).toContain(fragment);
+    expect(state.status).toBe("invalid");
+  });
+
+  it("caps source allowlists and directory definitions", async () => {
+    const allowed = await readTeamPreset(
+      "/workspace",
+      createMemoryReader({
+        [PATH]: preset({
+          allowedSkillSources: Array.from(
+            { length: 257 },
+            (_, index) => `plugin:p${String(index)}`,
+          ),
+          schemaVersion: 1,
+        }),
+      }),
+    );
+    const directories = await readTeamPreset(
+      "/workspace",
+      createMemoryReader({
+        [PATH]: preset({
+          schemaVersion: 1,
+          skillDirectories: Array.from({ length: 33 }, (_, index) => ({
+            id: `directory:d${String(index)}`,
+            name: `Directory ${String(index)}`,
+            url: `https://d${String(index)}.example`,
+          })),
+        }),
+      }),
+    );
+
+    expect(allowed.diagnostics[0]?.message).toContain("at most 256");
+    expect(directories.diagnostics[0]?.message).toContain("at most 32");
+  });
+
+  it("does not echo rejected URL credentials or query values", async () => {
+    const state = await readTeamPreset(
+      "/workspace",
+      createMemoryReader({
+        [PATH]: preset({
+          schemaVersion: 1,
+          skillDirectories: [
+            {
+              id: "directory:acme",
+              name: "Acme",
+              url: "https://secret-user@skills.acme.example?token=secret-query",
+            },
+          ],
+        }),
+      }),
+    );
+
+    expect(JSON.stringify(state.diagnostics)).not.toContain("secret-user");
+    expect(JSON.stringify(state.diagnostics)).not.toContain("secret-query");
   });
 
   it("accepts loopback http for local test directories", async () => {

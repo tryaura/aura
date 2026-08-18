@@ -1,62 +1,17 @@
-import type { DirectorySkillSource, HttpGetRequest, HttpGetResult } from "@tryaura/aura-sdk";
 import { describe, expect, it } from "vitest";
 
 import { createTestEnvironment } from "../workspace/testing.js";
 import { treeHash } from "../workspace/skills.js";
 import { listDirectorySkills, resolveDirectorySkills } from "./directory-client.js";
-
-const TOKEN = "sk-fixture-secret";
-
-const PUBLIC_SOURCE: DirectorySkillSource = {
-  id: "directory:agenticskills",
-  kind: "directory",
-  name: "agenticskills.io",
-  url: "https://agenticskills.io",
-};
-
-const PRIVATE_SOURCE: DirectorySkillSource = {
-  id: "directory:acme",
-  kind: "private-directory",
-  name: "Acme Skills",
-  tokenEnv: "ACME_SKILLS_TOKEN",
-  url: "https://skills.acme.example",
-};
-
-const LISTING = {
-  description: "Review changes before landing.",
-  id: "review",
-  name: "Review",
-  version: "1.0.0",
-};
-
-const PACK = {
-  ...LISTING,
-  files: [{ content: "# Review skill\n", path: "SKILL.md" }],
-};
-
-interface Scripted {
-  readonly requests: HttpGetRequest[];
-  readonly environment: ReturnType<typeof createTestEnvironment>;
-}
-
-function scripted(
-  respond: (request: HttpGetRequest, call: number) => HttpGetResult,
-  variables: Readonly<Record<string, string>> = {},
-): Scripted {
-  const requests: HttpGetRequest[] = [];
-  const environment = createTestEnvironment({
-    httpGet: (request) => {
-      requests.push(request);
-      return Promise.resolve(respond(request, requests.length));
-    },
-    variables,
-  });
-  return { environment, requests };
-}
-
-function ok(body: unknown): HttpGetResult {
-  return { body: JSON.stringify(body), kind: "response", status: 200 };
-}
+import {
+  LISTING,
+  okDirectoryResponse as ok,
+  PACK,
+  PRIVATE_SOURCE,
+  PUBLIC_SOURCE,
+  scriptedDirectoryEnvironment as scripted,
+  TOKEN,
+} from "./directory-client.test-support.js";
 
 describe("listDirectorySkills", () => {
   it("lists a public directory and attaches the source", async () => {
@@ -69,6 +24,17 @@ describe("listDirectorySkills", () => {
     expect(result.listings).toEqual([{ ...LISTING, source: PUBLIC_SOURCE }]);
     expect(requests[0]?.url).toBe("https://agenticskills.io/index.json");
     expect(requests[0]?.headers).toEqual({});
+  });
+
+  it("resolves protocol paths below a directory URL pathname", async () => {
+    const { environment, requests } = scripted(() => ok([LISTING]));
+
+    await listDirectorySkills(environment, {
+      ...PUBLIC_SOURCE,
+      url: "https://agenticskills.io/api/v1",
+    });
+
+    expect(requests[0]?.url).toBe("https://agenticskills.io/api/v1/index.json");
   });
 
   it("sends the private token as a bearer header read at request time", async () => {
@@ -187,6 +153,10 @@ describe("resolveDirectorySkills", () => {
     [[{ content: "x", path: "/etc/evil" }], "path is absolute"],
     [[{ content: "x", path: "C:\\evil" }], "path contains a backslash"],
     [[{ content: "x", path: "docs/../evil" }], "path contains an empty, dot, or dot-dot component"],
+    [[{ content: "x", path: "SKILL.md::$DATA" }], "reserved by Windows"],
+    [[{ content: "x", path: "docs/line\nbreak" }], "control character"],
+    [[{ content: "x", path: "NUL.txt" }], "device name reserved by Windows"],
+    [[{ content: "x", path: "docs/trailing." }], "ending in a dot or space"],
   ])("refuses a pack with a hostile path %j", async (files, fragment) => {
     const { environment } = scripted(() => ok({ ...PACK, files: [...PACK.files, ...files] }));
 
@@ -195,6 +165,50 @@ describe("resolveDirectorySkills", () => {
     expect(result.skills).toEqual([]);
     expect(result.diagnostics[0]?.message).toContain(fragment);
     expect(JSON.stringify(result.diagnostics)).not.toContain("evil");
+  });
+
+  it("refuses paths that differ only by portable case", async () => {
+    const { environment } = scripted(() =>
+      ok({ ...PACK, files: [...PACK.files, { content: "other", path: "skill.md" }] }),
+    );
+
+    const result = await resolveDirectorySkills(environment, PUBLIC_SOURCE, ["review"]);
+
+    expect(result.skills).toEqual([]);
+    expect(result.diagnostics[0]?.message).toContain("repeats or aliases an earlier path");
+  });
+
+  it("bounds concurrent skill-content requests", async () => {
+    let active = 0;
+    let maximum = 0;
+    const environment = createTestEnvironment({
+      httpGet: (request) => {
+        active += 1;
+        maximum = Math.max(maximum, active);
+        const id = request.url.slice(request.url.lastIndexOf("/") + 1);
+        return new Promise((resolve) => {
+          queueMicrotask(() => {
+            active -= 1;
+            resolve(
+              ok({
+                description: id,
+                files: [{ content: "# Skill\n", path: "SKILL.md" }],
+                id,
+                name: id,
+                version: "1.0.0",
+              }),
+            );
+          });
+        });
+      },
+    });
+    const ids = Array.from({ length: 20 }, (_, index) => `skill-${String(index)}`);
+
+    const result = await resolveDirectorySkills(environment, PUBLIC_SOURCE, ids);
+
+    expect(result.skills).toHaveLength(20);
+    expect(maximum).toBeGreaterThan(1);
+    expect(maximum).toBeLessThanOrEqual(8);
   });
 
   it("skips symlink entries without following them", async () => {
