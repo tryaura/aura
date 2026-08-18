@@ -95,9 +95,11 @@ try {
     assert.match(event.at, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
   }
   assert.equal(checkRun.exitCode, 2);
+  // The report above carries the detected `1.2.3`, but telemetry deliberately drops it: an
+  // application's version is a string an external tool returned, so it stops at this boundary.
   assert.deepEqual(
     checkRun.apps.find(({ appId }) => appId === "acme-agent"),
-    { appId: "acme-agent", installed: true, version: "1.2.3" },
+    { appId: "acme-agent", installed: true },
   );
   assert.equal(
     checkRun.findings.some(({ checkId, errors }) => checkId === "acme/ACME-001" && errors === 1),
