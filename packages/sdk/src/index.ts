@@ -115,7 +115,32 @@ export {
 } from "./environment.js";
 export type { Environment, EnvironmentPlatform, ExecRequest, ExecResult } from "./environment.js";
 export { DEFAULT_HTTP_TIMEOUT_MS, MAX_HTTP_RESPONSE_BYTES, MAX_HTTP_TIMEOUT_MS } from "./http.js";
-export type { HttpFailureReason, HttpGetRequest, HttpGetResult } from "./http.js";
+export type {
+  HttpFailureReason,
+  HttpGetRequest,
+  HttpGetResult,
+  HttpPostRequest,
+  HttpPostResult,
+} from "./http.js";
+export type {
+  CheckRunEvent,
+  CommandFailedEvent,
+  FixRunEvent,
+  SetupRunEvent,
+  SetupRunOutcome,
+  TelemetryAppState,
+  TelemetryCheckCounts,
+  TelemetryCheckFindings,
+  TelemetryCheckFlags,
+  TelemetryCommand,
+  TelemetryEnvelope,
+  TelemetryEvent,
+  TelemetryFixOutcome,
+  TelemetryManifestSummary,
+  TelemetrySink,
+  UndoRunEvent,
+  UndoRunOutcome,
+} from "./telemetry.js";
 export type {
   ArchiveFileOperation,
   ArchiveFileReplacement,

@@ -22,7 +22,13 @@ import { definePlugin, type Adapter, type Environment } from "@tryaura/aura-sdk"
 import claudeCodePlugin from "@tryaura/adapter-claude-code";
 import codexPlugin from "@tryaura/adapter-codex";
 
-import { appsPlugin, BRANDING, findingPlugin } from "../testing.js";
+import {
+  appsPlugin,
+  BRANDING,
+  capturingTelemetry,
+  findingPlugin,
+  noopTelemetry,
+} from "../testing.js";
 import { runSetup, type SetupRequest } from "./setup.js";
 import { SETUP_ABORTED, SETUP_BACK, type SetupStep } from "./types.js";
 import { createScriptedWizardIo, type ScriptedWizardScript } from "./wizard-scripted.js";
@@ -79,6 +85,7 @@ async function createFixture(seed?: (homeDir: string) => Promise<void>): Promise
       stateHomeDir: homeDir,
       stderr: stderr.stream,
       stdout: stdout.stream,
+      telemetry: noopTelemetry(),
       withDetail: false,
       ...overrides,
     }),
@@ -427,6 +434,63 @@ describe("runSetup", () => {
     expect(exitCode).toBe(0);
     expect(fixture.stdout()).toContain("Left everything as it was.");
     await expect(snapshot(fixture.homeDir)).resolves.toEqual(before);
+  });
+
+  it("emits one applied setup-run event, then one converged event on the re-run", async () => {
+    const fixture = await createFixture();
+    const applied = capturingTelemetry();
+
+    await runSetup(fixture.request({}, { telemetry: applied.telemetry }));
+
+    expect(applied.events).toHaveLength(1);
+    expect(applied.events[0]).toMatchObject({
+      command: "setup",
+      exitCode: 0,
+      kind: "setup-run",
+      manifest: { managedAppIds: [], mcpServers: { catalogIds: [], customCount: 0 } },
+      outcome: "applied",
+    });
+    expect(applied.events[0]).toHaveProperty("appliedOperationCount");
+
+    const converged = capturingTelemetry();
+    await runSetup(fixture.request({}, { telemetry: converged.telemetry }));
+    expect(converged.events).toHaveLength(1);
+    expect(converged.events[0]).toMatchObject({ exitCode: 0, outcome: "converged" });
+  });
+
+  it("emits distinct outcomes for dry-run, declined, and aborted runs", async () => {
+    const fixture = await createFixture();
+
+    const dryRun = capturingTelemetry();
+    await runSetup(fixture.request({}, { dryRun: true, telemetry: dryRun.telemetry }));
+    expect(dryRun.events).toEqual([expect.objectContaining({ exitCode: 0, outcome: "dry-run" })]);
+
+    const declined = capturingTelemetry();
+    await runSetup(
+      fixture.request({ confirmations: ["declined"] }, { telemetry: declined.telemetry }),
+    );
+    expect(declined.events).toEqual([
+      expect.objectContaining({ exitCode: 0, outcome: "declined" }),
+    ]);
+
+    const aborted = capturingTelemetry();
+    await runSetup(
+      fixture.request({ confirmations: ["aborted"] }, { telemetry: aborted.telemetry }),
+    );
+    expect(aborted.events).toEqual([expect.objectContaining({ exitCode: 1, outcome: "aborted" })]);
+  });
+
+  it("emits an unusable setup-run event when the manifest cannot be used", async () => {
+    const fixture = await createFixture(async (homeDir) => {
+      await mkdir(join(homeDir, "agents"), { recursive: true });
+      await writeFile(join(homeDir, "agents", "aura.json"), "{ not json", "utf8");
+    });
+    const { events, telemetry } = capturingTelemetry();
+
+    await runSetup(fixture.request({ forms: [{}] }, { telemetry }));
+
+    expect(events).toEqual([expect.objectContaining({ exitCode: 2, outcome: "unusable" })]);
+    expect(events[0]).not.toHaveProperty("manifest");
   });
 });
 

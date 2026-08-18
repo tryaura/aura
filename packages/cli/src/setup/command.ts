@@ -22,7 +22,6 @@ import { createInteractiveWizardIo } from "./wizard-prompt.js";
 import { createDefaultsWizardIo } from "./wizard-scripted.js";
 
 export class SetupCommand extends Command<AuraCliContext> {
-  // fallow-ignore-next-line unused-class-member -- Clipanion reads command metadata at registration.
   static override paths = [["setup"]];
   // fallow-ignore-next-line unused-class-member -- Clipanion reads command metadata at registration.
   static override usage = Command.Usage({
@@ -91,6 +90,7 @@ export class SetupCommand extends Command<AuraCliContext> {
         stderr: this.context.stderr,
         steps: options.steps,
         stdout: this.context.stdout,
+        telemetry: this.context.telemetry,
         withDetail: this.detail,
       });
     } catch (error) {
@@ -100,6 +100,7 @@ export class SetupCommand extends Command<AuraCliContext> {
         this.context.branding,
         this.detail,
         this.context.stderr,
+        this.context.telemetry,
       );
     }
   }

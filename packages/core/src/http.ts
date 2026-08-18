@@ -22,18 +22,11 @@ const LOOPBACK_HOSTS: readonly string[] = ["127.0.0.1", "[::1]"];
  */
 export function createHttpGet(): (request: HttpGetRequest) => Promise<HttpGetResult> {
   return async (request) => {
-    let url: URL;
-    try {
-      url = new URL(request.url);
-    } catch {
-      return { kind: "failure", reason: "invalid-url" };
+    const vetted = vetHttpUrl(request.url);
+    if (!(vetted instanceof URL)) {
+      return { kind: "failure", reason: vetted };
     }
 
-    if (!isAllowedHttpUrl(url)) {
-      return { kind: "failure", reason: "insecure-url" };
-    }
-
-    const timeoutMs = clamp(request.timeoutMs, DEFAULT_HTTP_TIMEOUT_MS, MAX_HTTP_TIMEOUT_MS);
     const maxBytes = clamp(
       request.maxResponseBytes,
       MAX_HTTP_RESPONSE_BYTES,
@@ -41,17 +34,33 @@ export function createHttpGet(): (request: HttpGetRequest) => Promise<HttpGetRes
     );
 
     try {
-      const response = await fetch(url, {
+      const response = await fetch(vetted, {
         headers: request.headers ?? {},
         method: "GET",
         redirect: "error",
-        signal: AbortSignal.timeout(timeoutMs),
+        signal: AbortSignal.timeout(clampHttpTimeout(request.timeoutMs)),
       });
       return await readBody(response, maxBytes);
     } catch (error) {
       return { kind: "failure", reason: failureReason(error) };
     }
   };
+}
+
+/** Parses a URL and applies the TLS-only rule, collapsing both refusals into failure reasons. */
+export function vetHttpUrl(raw: string): URL | "insecure-url" | "invalid-url" {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return "invalid-url";
+  }
+  return isAllowedHttpUrl(url) ? url : "insecure-url";
+}
+
+/** Applies the shared timeout default and ceiling every HTTP client in the kernel honors. */
+export function clampHttpTimeout(value: number | undefined): number {
+  return clamp(value, DEFAULT_HTTP_TIMEOUT_MS, MAX_HTTP_TIMEOUT_MS);
 }
 
 /** Replaces an absent, zero, negative, or non-finite value by the default; caps at the ceiling. */
@@ -118,7 +127,7 @@ function concatenate(chunks: readonly Uint8Array[], length: number): Uint8Array 
  * Error text is deliberately dropped: runtime messages can echo the request, and the request may
  * carry credentials in its headers.
  */
-function failureReason(error: unknown): "network" | "timeout" {
+export function failureReason(error: unknown): "network" | "timeout" {
   const name = error instanceof Error ? error.name : "";
   return name === "TimeoutError" || name === "AbortError" ? "timeout" : "network";
 }

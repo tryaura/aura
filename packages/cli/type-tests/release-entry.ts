@@ -15,3 +15,12 @@ declare const declaration: Declaration;
 
 export const declarationMatchesImplementation: Declaration = implementation;
 export const implementationMatchesDeclaration: Implementation = declaration;
+
+type SinkImplementation = typeof import("../src/http-telemetry-sink.js").createHttpTelemetrySink;
+type SinkDeclaration = typeof import("../src/index.release.js").createHttpTelemetrySink;
+
+declare const sinkImplementation: SinkImplementation;
+declare const sinkDeclaration: SinkDeclaration;
+
+export const sinkDeclarationMatchesImplementation: SinkDeclaration = sinkImplementation;
+export const sinkImplementationMatchesDeclaration: SinkImplementation = sinkDeclaration;

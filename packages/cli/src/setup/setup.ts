@@ -1,24 +1,24 @@
 import type { Writable } from "node:stream";
 
-import type { Environment, Finding } from "@tryaura/aura-sdk";
+import type { AuraManifest, Environment, SetupRunOutcome } from "@tryaura/aura-sdk";
 import {
   applyFixPlan,
   buildWorkspaceModel,
   createFileReader,
   prepareFixPlan,
   readTeamPreset,
-  runChecks,
   type PluginRegistry,
   type TeamPresetState,
   type WorkspaceScan,
 } from "@tryaura/core";
 import { pluralize } from "@tryaura/core/pluralize";
 
-import { createCheckReport } from "../report.js";
-import { renderHuman } from "../render.js";
 import { safe } from "../safe-text.js";
+import { elapsedMs, setupRunEvent } from "../telemetry-events.js";
+import type { TelemetryRecorder } from "../telemetry.js";
 import type { CliBranding, CliExitCode } from "../types.js";
 import { buildAppCatalog } from "./catalog.js";
+import { endOnGreen, gatherFindings } from "./green.js";
 import { planSetup } from "./planner.js";
 import { createSkillCatalog } from "./skills-catalog.js";
 import { createSnippetCatalog } from "./snippets.js";
@@ -48,6 +48,8 @@ export interface SetupRequest {
    * same seam to exercise one step in isolation.
    */
   readonly steps?: readonly SetupStep[] | undefined;
+  /** The run's telemetry recorder. A no-op unless the distribution composed a sink. */
+  readonly telemetry: TelemetryRecorder;
   /** Whether the summary may quote the contents of the files it rewrites. */
   readonly withDetail: boolean;
 }
@@ -62,6 +64,27 @@ export interface SetupRequest {
  */
 export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
   const { branding, environment, io, stdout } = request;
+  const startedAt = environment.now();
+  // The one telemetry funnel: every return below passes through it, so a run emits exactly once.
+  const finish = (
+    exitCode: CliExitCode,
+    outcome: SetupRunOutcome,
+    extras?: {
+      readonly appliedOperationCount?: number | undefined;
+      readonly manifest?: AuraManifest | undefined;
+    },
+  ): CliExitCode => {
+    request.telemetry.record(
+      setupRunEvent({
+        appliedOperationCount: extras?.appliedOperationCount,
+        durationMs: elapsedMs(environment, startedAt),
+        exitCode,
+        manifest: extras?.manifest,
+        outcome,
+      }),
+    );
+    return exitCode;
+  };
   stdout.write(`${branding.displayName} setup\n\n`);
 
   const scan = await buildWorkspaceModel({
@@ -75,14 +98,14 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
 
   if (model.manifest.status === "read-only") {
     request.stderr.write(`${branding.displayName}: ${safe(model.manifest.problem.message)}\n`);
-    return 2;
+    return finish(2, "unusable");
   }
 
   const steps = request.steps ?? SETUP_STEPS;
   // After the early return, and only when a selected step reads them: the duplicate scan among the
   // checks is quadratic in the paragraphs it compares, and `endOnGreen` runs its own pass anyway.
   const initialFindings = steps.some((step) => step.needsFindings === true)
-    ? gatherFindings(request, model, io)
+    ? gatherFindings(request.registry.checks, model, io)
     : undefined;
 
   const appCatalog = buildAppCatalog(request.registry.adapters, model, scan.skipped);
@@ -92,7 +115,7 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
     for (const diagnostic of presetState.diagnostics) {
       request.stderr.write(`${branding.displayName}: ${safe(diagnostic.message)}\n`);
     }
-    return 2;
+    return finish(2, "unusable");
   }
   const skillCatalog = createSkillCatalog({
     environment,
@@ -114,7 +137,7 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
   // The confirmation can send the user ← back into the last step, so gather → plan → confirm
   // repeats until the plan is accepted, declined, or aborted. Nothing is written inside the loop.
   let start: GatherStart = { index: 0, selections: {} };
-  let prepared: PreparedPlan;
+  let ready: { readonly manifest: AuraManifest; readonly prepared: PreparedPlan };
   for (;;) {
     const pass = await runPass(request, steps, stepContext, scan, start);
     if (pass.kind === "back") {
@@ -122,13 +145,13 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
       continue;
     }
     if (pass.kind === "exit") {
-      return pass.code;
+      return finish(pass.code, pass.outcome, { manifest: pass.manifest });
     }
-    prepared = pass.prepared;
+    ready = pass;
     break;
   }
 
-  const result = await applyFixPlan(prepared, {
+  const result = await applyFixPlan(ready.prepared, {
     now: environment.now,
     stateHomeDir: request.stateHomeDir,
   });
@@ -150,36 +173,33 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
     snippets: request.registry.snippets,
     skills: request.registry.skills,
   });
-  return endOnGreen(request, rescanned);
-}
-
-/** Runs the checks whose findings a step asked for, reporting the ones that could not run. */
-function gatherFindings(
-  request: SetupRequest,
-  model: WorkspaceScan["model"],
-  io: WizardIo,
-): readonly Finding[] {
-  const run = runChecks(request.registry.checks, model);
-  for (const diagnostic of run.diagnostics) {
-    // Message only, never `detail`: it is verbatim text from a check that read the user's files.
-    io.note(
-      `${diagnostic.checkId} could not run, so its findings are missing: ${diagnostic.message}`,
-    );
-  }
-  return run.findings;
+  return finish(endOnGreen(request, rescanned), "applied", {
+    appliedOperationCount: result.appliedOperationCount,
+    manifest: ready.manifest,
+  });
 }
 
 type PreparedPlan = Awaited<ReturnType<typeof prepareFixPlan>>;
 
 type PlanOutcome =
-  | { readonly kind: "blocked" }
-  | { readonly kind: "converged" }
-  | { readonly kind: "ready"; readonly prepared: PreparedPlan };
+  | { readonly kind: "blocked"; readonly manifest: AuraManifest }
+  | { readonly kind: "converged"; readonly manifest: AuraManifest }
+  | { readonly kind: "ready"; readonly manifest: AuraManifest; readonly prepared: PreparedPlan };
 
 type PassOutcome =
-  | { readonly kind: "apply"; readonly prepared: PreparedPlan }
+  | {
+      readonly kind: "apply";
+      readonly manifest: AuraManifest;
+      readonly prepared: PreparedPlan;
+    }
   | { readonly kind: "back"; readonly start: GatherStart }
-  | { readonly code: CliExitCode; readonly kind: "exit" };
+  | {
+      readonly code: CliExitCode;
+      readonly kind: "exit";
+      /** Present whenever the pass produced a plan, so popularity data survives a non-write exit. */
+      readonly manifest?: AuraManifest | undefined;
+      readonly outcome: SetupRunOutcome;
+    };
 
 /** One gather → plan → confirm pass; a confirmation backing out restarts at the last step. */
 async function runPass(
@@ -195,24 +215,29 @@ async function runPass(
     request.stderr.write(
       `${branding.displayName}: the ${safe(gathered.stepTitle)} step needs ${safe(gathered.missing)}. Run ${branding.command} setup to establish it, then retry this command.\n`,
     );
-    return { code: 2, kind: "exit" };
+    return { code: 2, kind: "exit", outcome: "unusable" };
   }
   if (gathered.status === "aborted") {
     stdout.write("\nLeft everything as it was.\n");
-    return { code: 1, kind: "exit" };
+    return { code: 1, kind: "exit", outcome: "aborted" };
   }
   const selections = gathered.selections;
 
   const planned = await previewPlan(request, { ...stepContext, selections });
   if (planned.kind === "converged") {
-    return { code: endOnGreen(request, scan), kind: "exit" };
+    return {
+      code: endOnGreen(request, scan),
+      kind: "exit",
+      manifest: planned.manifest,
+      outcome: "converged",
+    };
   }
   if (planned.kind === "blocked") {
-    return { code: 2, kind: "exit" };
+    return { code: 2, kind: "exit", manifest: planned.manifest, outcome: "blocked" };
   }
   if (request.dryRun) {
     stdout.write("\nDry run: nothing was written.\n");
-    return { code: 0, kind: "exit" };
+    return { code: 0, kind: "exit", manifest: planned.manifest, outcome: "dry-run" };
   }
 
   // The confirmation is the flow's Submit: every step is gathered, so the bar shows them done.
@@ -229,9 +254,11 @@ async function runPass(
   }
   if (confirmation !== "accepted") {
     stdout.write("\nLeft everything as it was.\n");
-    return { code: confirmation === "aborted" ? 1 : 0, kind: "exit" };
+    return confirmation === "aborted"
+      ? { code: 1, kind: "exit", manifest: planned.manifest, outcome: "aborted" }
+      : { code: 0, kind: "exit", manifest: planned.manifest, outcome: "declined" };
   }
-  return { kind: "apply", prepared: planned.prepared };
+  return { kind: "apply", manifest: planned.manifest, prepared: planned.prepared };
 }
 
 /** Plans the gathered selections, renders the summary, and classifies what can happen next. */
@@ -249,7 +276,7 @@ async function previewPlan(
     outcome.blockers.length === 0
   ) {
     renderConvergedSetup(prepared.preview, outcome.notices, request.withDetail, stdout);
-    return { kind: "converged" };
+    return { kind: "converged", manifest: outcome.manifest };
   }
 
   stdout.write("\n");
@@ -265,23 +292,7 @@ async function previewPlan(
     request.stderr.write(
       `${request.branding.displayName}: the plan is blocked by the current state of these files; nothing was changed.\n`,
     );
-    return { kind: "blocked" };
+    return { kind: "blocked", manifest: outcome.manifest };
   }
-  return { kind: "ready", prepared };
-}
-
-function endOnGreen(request: SetupRequest, scan: WorkspaceScan): CliExitCode {
-  const run = runChecks(request.registry.checks, scan.model);
-  const report = createCheckReport({
-    adapters: request.registry.adapters,
-    apps: scan.model.apps,
-    checkDiagnostics: run.diagnostics,
-    checks: request.registry.checks,
-    findings: run.findings,
-    scanDiagnostics: scan.diagnostics,
-    skipped: scan.skipped,
-    withDetail: request.withDetail,
-  });
-  renderHuman(report, request.branding, request.stdout, request.colorDepth);
-  return report.summary.exitCode;
+  return { kind: "ready", manifest: outcome.manifest, prepared };
 }

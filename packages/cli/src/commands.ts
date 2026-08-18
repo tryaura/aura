@@ -22,18 +22,15 @@ import {
   reportUnexpectedFailure,
   writeOptionRejection,
 } from "./command-support.js";
+import { explainCheck } from "./check-explain.js";
 import { explainOptionRejection, fixOptionRejection } from "./check-options.js";
 import { selectChecks, type CheckSelection } from "./check-selection.js";
 import { runFixes } from "./fix.js";
 import { createCheckReport, type DiagnosticSource, type ReportFix } from "./report.js";
-import {
-  renderExplanation,
-  renderExplanationJson,
-  renderHuman,
-  renderJson,
-  renderOperationalFailureJson,
-} from "./render.js";
+import { renderHuman, renderJson, renderOperationalFailureJson } from "./render.js";
 import { safe } from "./safe-text.js";
+import { checkRunEvent, elapsedMs, fixRunEvent } from "./telemetry-events.js";
+import type { TelemetryRecorder } from "./telemetry.js";
 import type { CliBranding, CliExitCode } from "./types.js";
 
 export interface AuraCliContext extends BaseContext {
@@ -43,9 +40,13 @@ export interface AuraCliContext extends BaseContext {
   readonly defaultHomeDir: string;
   /** Injected network access; absent means the kernel's own bounded client. */
   readonly httpGet?: Environment["httpGet"] | undefined;
+  /** The run's clock, injected at the process boundary so commands and telemetry agree on time. */
+  readonly now: () => Date;
   readonly registry: PluginRegistry;
   /** Machine-readable output, kept apart from plugin-written `stdout`. */
   readonly report: Writable;
+  /** The run's telemetry recorder. A no-op unless the distribution composed a sink. */
+  readonly telemetry: TelemetryRecorder;
 }
 
 export class CheckCommand extends Command<AuraCliContext> {
@@ -106,7 +107,12 @@ export class CheckCommand extends Command<AuraCliContext> {
     }
 
     if (this.explain !== undefined) {
-      return this.explainCheck(this.explain);
+      // Explaining scans nothing and reports nothing: no environment exists, so no telemetry.
+      return explainCheck(this.explain, {
+        ...this.context,
+        checks: this.context.registry.checks,
+        json: this.json,
+      });
     }
 
     const selected = this.resolveSelection();
@@ -119,6 +125,7 @@ export class CheckCommand extends Command<AuraCliContext> {
     const requester = this.online ? createMcpUrlRequester(this.context.env) : undefined;
     try {
       const environment = createEnvironment(this.environmentOptions());
+      const startedAt = environment.now();
       const scanOptions = {
         adapters: selected.adapters,
         environment,
@@ -187,6 +194,14 @@ export class CheckCommand extends Command<AuraCliContext> {
         renderHuman(report, this.context.branding, this.context.stdout, this.context.colorDepth);
       }
 
+      this.context.telemetry.record(
+        checkRunEvent(report, this.runFlags(), elapsedMs(environment, startedAt)),
+      );
+      if (fixes !== undefined) {
+        this.context.telemetry.record(
+          fixRunEvent(fixes, this.dryRun, this.interactive, report.summary.exitCode),
+        );
+      }
       return report.summary.exitCode;
     } catch (error) {
       // `--json` promises one parseable document on stdout even when the run itself fails.
@@ -199,6 +214,7 @@ export class CheckCommand extends Command<AuraCliContext> {
         this.context.branding,
         this.detail,
         this.context.stderr,
+        this.context.telemetry,
       );
     } finally {
       await requester?.close();
@@ -259,33 +275,15 @@ export class CheckCommand extends Command<AuraCliContext> {
     return undefined;
   }
 
-  /**
-   * Resolves a check id the way a developer typed it.
-   *
-   * Matching is case-insensitive after an exact match, so `env-001` resolves conventionally.
-   */
-  private explainCheck(id: string): CliExitCode {
-    const checks = this.context.registry.checks;
-    const check =
-      checks.find((candidate) => candidate.id === id) ??
-      checks.find((candidate) => candidate.id.toLowerCase() === id.toLowerCase());
-    if (check === undefined) {
-      const available = checks.map((candidate) => candidate.id).join(", ");
-      this.context.stderr.write(
-        `${this.context.branding.displayName}: unknown check ID: ${safe(id)}\n`,
-      );
-      if (available !== "") {
-        this.context.stderr.write(`Available check IDs: ${safe(available)}\n`);
-      }
-      return 2;
-    }
-
-    if (this.json) {
-      renderExplanationJson(check, this.context.report);
-    } else {
-      renderExplanation(check, this.context.branding, this.context.stdout);
-    }
-    return 0;
+  /** The check options a telemetry event carries, so a sink can segment scripted use. */
+  private runFlags() {
+    return {
+      dryRun: this.dryRun,
+      fix: this.fix,
+      interactive: this.interactive,
+      json: this.json,
+      online: this.online,
+    };
   }
 
   private environmentOptions(): EnvironmentBootOptions {

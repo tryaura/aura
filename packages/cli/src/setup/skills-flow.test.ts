@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createEnvironment, createPluginRegistry } from "@tryaura/core";
 import { defineAdapter, definePlugin } from "@tryaura/aura-sdk";
 
-import { BRANDING, findingPlugin } from "../testing.js";
+import { BRANDING, findingPlugin, noopTelemetry } from "../testing.js";
 import { runSetup, type SetupRequest } from "./setup.js";
 import { skillIdentity } from "./skill-planner-paths.js";
 import { skillsStep } from "./steps/skills.js";
@@ -183,6 +183,7 @@ async function createFixture(directoryUrl: string): Promise<Fixture> {
       stderr: output,
       stdout: output,
       steps: [skillsStep],
+      telemetry: noopTelemetry(),
       withDetail: false,
     }),
     stdout: () => captured,

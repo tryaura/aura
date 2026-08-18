@@ -1,6 +1,6 @@
 import type { Writable } from "node:stream";
 
-import type { Environment } from "@tryaura/aura-sdk";
+import type { Environment, UndoRunOutcome } from "@tryaura/aura-sdk";
 import {
   buildWorkspaceModel,
   FixPlanError,
@@ -14,6 +14,8 @@ import { pluralize } from "@tryaura/core/pluralize";
 
 import { safe } from "../safe-text.js";
 import type { WizardIo } from "../setup/wizard-types.js";
+import { undoRunEvent, type UndoRunFacts } from "../telemetry-events.js";
+import type { TelemetryRecorder } from "../telemetry.js";
 import type { CliBranding, CliExitCode } from "../types.js";
 
 /** Everything one `undo` run needs, so the flow does not reach back into the command object. */
@@ -30,7 +32,20 @@ export interface UndoRequest {
   readonly stateHomeDir: string;
   readonly stderr: Writable;
   readonly stdout: Writable;
+  /** The run's telemetry recorder. A no-op unless the distribution composed a sink. */
+  readonly telemetry: TelemetryRecorder;
   readonly yes: boolean;
+}
+
+/** The one telemetry funnel: every return passes through it, so a run emits exactly once. */
+function emit(
+  request: UndoRequest,
+  exitCode: CliExitCode,
+  outcome: UndoRunOutcome,
+  extras?: Omit<UndoRunFacts, "exitCode" | "outcome">,
+): CliExitCode {
+  request.telemetry.record(undoRunEvent({ exitCode, outcome, ...extras }));
+  return exitCode;
 }
 
 type ReadableBackup = Exclude<FixPlanBackup, { status: "unreadable" }>;
@@ -51,7 +66,7 @@ export async function runUndo(request: UndoRequest): Promise<CliExitCode> {
     const backups = await listFixPlanBackups({ homeDir: request.environment.homeDir });
     if (request.list) {
       renderBackupList(backups, branding, stdout);
-      return 0;
+      return emit(request, 0, "listed");
     }
 
     if (request.backupId !== undefined) {
@@ -60,19 +75,19 @@ export async function runUndo(request: UndoRequest): Promise<CliExitCode> {
         request.stderr.write(
           `${branding.displayName}: no backup named ${safe(request.backupId)} exists. Run ${branding.command} undo --list to see every backup.\n`,
         );
-        return 2;
+        return emit(request, 2, "refused");
       }
       if (!isReadable(named)) {
         request.stderr.write(
           `${branding.displayName}: backup ${safe(named.id)} cannot be read — ${safe(named.reason)}.\n`,
         );
-        return 2;
+        return emit(request, 2, "refused");
       }
       if (!named.undoable) {
         request.stderr.write(
           `${branding.displayName}: backup ${safe(named.id)} is already ${named.status} and cannot be undone.\n`,
         );
-        return 2;
+        return emit(request, 2, "refused");
       }
       return await restoreBackup(request, named);
     }
@@ -85,10 +100,10 @@ export async function runUndo(request: UndoRequest): Promise<CliExitCode> {
         request.stderr.write(
           `${branding.displayName}: ${String(unreadable)} ${pluralize(unreadable, "backup")} could not be read and nothing restorable remains. Run ${branding.command} undo --list for details.\n`,
         );
-        return 2;
+        return emit(request, 2, "refused");
       }
       stdout.write("Nothing to undo.\n");
-      return 0;
+      return emit(request, 0, "nothing-to-undo");
     }
     return await restoreBackup(request, latest);
   } catch (error) {
@@ -104,7 +119,7 @@ async function restoreBackup(request: UndoRequest, backup: ReadableBackup): Prom
     stdout.write(
       `Would restore ${described} from ${safe(backup.createdAt)}. Nothing was written.\n`,
     );
-    return 0;
+    return emit(request, 0, "dry-run");
   }
 
   if (!request.yes) {
@@ -115,7 +130,7 @@ async function restoreBackup(request: UndoRequest, backup: ReadableBackup): Prom
       // Declining and aborting both end the run without restoring anything, and the documented
       // contract folds them into one word: exit 1, aborted or declined at the prompt.
       stdout.write("\nLeft everything as it was.\n");
-      return 1;
+      return emit(request, 1, "declined");
     }
   }
 
@@ -134,7 +149,7 @@ async function restoreBackup(request: UndoRequest, backup: ReadableBackup): Prom
   });
   if (result.status === "nothing-to-undo") {
     stdout.write("Nothing to undo.\n");
-    return 0;
+    return emit(request, 0, "nothing-to-undo");
   }
 
   stdout.write(
@@ -145,7 +160,10 @@ async function restoreBackup(request: UndoRequest, backup: ReadableBackup): Prom
       `Skipped ${String(result.skippedBackupIds.length)} unreadable newer ${pluralize(result.skippedBackupIds.length, "backup")}: ${result.skippedBackupIds.map(safe).join(", ")}.\n`,
     );
   }
-  return 0;
+  return emit(request, 0, "restored", {
+    restoredOperationCount: result.restoredOperationCount,
+    skippedBackupCount: result.skippedBackupIds.length,
+  });
 }
 
 function renderBackupList(
@@ -193,11 +211,11 @@ function reportUndoFailure(error: unknown, request: UndoRequest): CliExitCode {
     request.stderr.write(
       `${branding.displayName}: the restore failed and could not be fully rolled back. Review the files it touched before re-running. (${safe(error.message)})\n`,
     );
-    return 3;
+    return emit(request, 3, "failed");
   }
   if (error instanceof FixPlanError) {
     request.stderr.write(`${branding.displayName}: ${safe(error.message)}\n`);
-    return 2;
+    return emit(request, 2, "failed");
   }
   throw error;
 }
