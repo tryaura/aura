@@ -207,6 +207,21 @@ A picker over every allowed skill source, then one Review form per selected dire
   disabled row with the reason in place (`agenticskills.io — unavailable (set ACME_SKILLS_TOKEN)`),
   and a manifest entry whose source is gone or disallowed renders disabled as
   `<id> (preserved)` / `<id> (blocked)` — clearing it is how the skill is removed.
+- The picker prompt ends with a support matrix for the applications selected in the Apps step, in
+  adapter order (`Apps: ✓ Claude Code · ✓ Codex · — Cursor`). It is stated once above the rows
+  rather than per row, because it describes the run and not any one skill. An adapter's declared
+  Agent Skills capability supplies the cell; a managed id this build does not ship cannot be read
+  either way and appears afterward as `? <id> (not in this build)`.
+- When no selected application supports skills, the prompt says so in place of the question and
+  new rows are disabled with the note `no selected app supports skills`. An installed row stays
+  pre-checked while disabled, so it is preserved by default but can still be cleared for the
+  guarded uninstall path. Picks made before the Apps answer changed are cleared with a note
+  naming them, never silently. `setup --add skill` additionally requires an established manifest
+  and either a managed application that supports Agent Skills or a skill already recorded to
+  remove.
+- A disabled row states its own reason after the label (`— source unavailable`,
+  `— blocked by the team preset`, `— no selected app supports skills`); `— unavailable` is the
+  default only where no more specific reason applies.
 - A Review form appears for a directory skill that is new to the manifest or whose upstream
   content changed. It is a select between `Skip` and `Install <id> <version>`; the install row's
   description is the source URL and its preview is the full SKILL.md. **Skip is always the

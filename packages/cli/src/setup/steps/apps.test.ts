@@ -231,6 +231,7 @@ function detected(options: {
       },
     },
     kind: "detected",
+    supportsSkills: false,
   };
 }
 
@@ -240,7 +241,14 @@ function undetected(
   installHint?: string,
   detectionScope?: string,
 ): AppCatalogEntry {
-  return { adapterId, detectionScope, displayName, installHint, kind: "undetected" };
+  return {
+    adapterId,
+    detectionScope,
+    displayName,
+    installHint,
+    kind: "undetected",
+    supportsSkills: false,
+  };
 }
 
 function manifestWith(managed: readonly string[]): AuraManifestState {

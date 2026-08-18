@@ -24,6 +24,9 @@ export function shouldWriteManifest(
     (apps !== undefined && apps.managed.length > 0) ||
     context.selections.instructions !== undefined ||
     context.selections.snippets !== undefined ||
-    context.selections.skills !== undefined
+    // The slice, not its presence: the skills step keeps an approvals-only slice alive so a
+    // revisit does not re-ask which private directories may be contacted, and approving a
+    // connection is not on its own a reason to write a manifest.
+    (context.selections.skills?.selected.length ?? 0) > 0
   );
 }

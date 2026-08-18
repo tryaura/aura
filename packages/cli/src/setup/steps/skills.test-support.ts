@@ -7,6 +7,7 @@ import type {
 import { createWorkspaceModel } from "@tryaura/aura-sdk/testing";
 
 import { skillIdentity } from "../skill-planner-paths.js";
+import type { AppCatalogEntry } from "../catalog.js";
 import type { SkillCatalog, SkillCatalogEntry, UnavailableSkillSource } from "../skills-catalog.js";
 import { emptySkillCatalog } from "../testing.js";
 import type { SetupStepContext } from "../types.js";
@@ -85,14 +86,16 @@ export function fakeCatalog(options: CatalogOptions = {}): SkillCatalog {
 export function skillStepContext(
   catalog: SkillCatalog,
   previous: readonly AuraManifestSkill[] = [],
+  options: SkillStepContextOptions = {},
 ): SetupStepContext {
+  const manifestAppIds = options.manifestAppIds ?? ["codex"];
   const manifest: AuraManifestState = {
     exists: true,
     mode: 0o600,
     path: "/home/dev/agents/aura.json",
     status: "ready",
     value: {
-      apps: {},
+      apps: Object.fromEntries(manifestAppIds.map((id) => [id, { managed: true }])),
       mcpServers: [],
       ownership: {},
       schemaVersion: 1,
@@ -101,19 +104,34 @@ export function skillStepContext(
     },
   };
   return {
-    appCatalog: [],
+    appCatalog: options.appCatalog ?? [supportedApp("codex", "Codex")],
     manifest,
     model: createWorkspaceModel({
       manifest,
       sharedInstructions: { exists: false, path: "/home/dev/agents/AGENTS.md" },
     }),
-    selections: {},
+    selections:
+      options.selectedAppIds === undefined ? {} : { apps: { managed: options.selectedAppIds } },
     skillCatalog: catalog,
     snippetCatalog: {
       entries: () => [],
       load: () => Promise.resolve([]),
     },
   };
+}
+
+interface SkillStepContextOptions {
+  readonly appCatalog?: readonly AppCatalogEntry[];
+  readonly manifestAppIds?: readonly string[];
+  readonly selectedAppIds?: readonly string[];
+}
+
+export function supportedApp(adapterId: string, displayName: string): AppCatalogEntry {
+  return { adapterId, displayName, kind: "undetected", supportsSkills: true };
+}
+
+export function unsupportedApp(adapterId: string, displayName: string): AppCatalogEntry {
+  return { adapterId, displayName, kind: "undetected", supportsSkills: false };
 }
 
 export interface RecordingIo extends ScriptedWizardIo {
