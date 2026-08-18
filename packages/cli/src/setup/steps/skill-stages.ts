@@ -1,6 +1,6 @@
 import type { AuraManifestSkill, ResolvedSkillPack } from "@tryaura/aura-sdk";
 
-import { sortForDisplay } from "../display-order.js";
+import { hasSkillsHome, type ManagedSkillApp } from "../skill-app-support.js";
 import type {
   SkillCatalog,
   SkillCatalogEntry,
@@ -12,6 +12,7 @@ import type { SkillSelection } from "../types.js";
 import type { ChainStage } from "../wizard-chain.js";
 import type { WizardOption, WizardQuestion } from "../wizard-types.js";
 import { selectedValues } from "../wizard-types.js";
+import { pickerOptions, pickerPrompt } from "./skill-picker.js";
 
 /** What the skills chain carries between its picker and review forms. */
 export interface SkillsChainState {
@@ -26,6 +27,7 @@ export interface SkillStageInputs {
   readonly approvedPrivateSourceIds: ReadonlySet<string>;
   readonly catalog: SkillCatalog;
   readonly listing: SkillCatalogListing;
+  readonly managedApps: readonly ManagedSkillApp[];
   readonly manifestSkills: readonly AuraManifestSkill[];
 }
 
@@ -64,7 +66,10 @@ export function manifestByIdentity(
 }
 
 function pickerStage(inputs: SkillStageInputs): ChainStage<SkillsChainState> {
-  const selectable = new Set(inputs.listing.entries.map((entry) => entry.identity));
+  const supportsSkills = hasSkillsHome(inputs.managedApps);
+  const selectable = new Set(
+    supportsSkills ? inputs.listing.entries.map((entry) => entry.identity) : [],
+  );
   const previous = new Set(
     inputs.manifestSkills.map((skill) => skillIdentity(skill.source, skill.id)),
   );
@@ -91,7 +96,7 @@ function pickerStage(inputs: SkillStageInputs): ChainStage<SkillsChainState> {
           kind: "multiselect",
           label: "Skills",
           options,
-          prompt: "Which skills should Aura install to the shared skills directory?",
+          prompt: pickerPrompt(inputs),
         },
       ];
     },
@@ -143,12 +148,7 @@ function reviewStage(inputs: SkillStageInputs): ChainStage<SkillsChainState> {
   };
 }
 
-/**
- * The review form for one remote skill, or nothing when there is no decision to make.
- *
- * No question for a manifest-recorded skill whose fetched tree matches the manifest — nothing
- * changed — or whose fetch failed: the planner then keeps the previous entry untouched.
- */
+/** No review for an unchanged manifest skill or a failed fetch; both preserve the prior entry. */
 function reviewQuestion(
   identity: string,
   state: SkillsChainState,
@@ -227,67 +227,4 @@ function installOption(
     preview: pack.files.find((file) => file.path === "SKILL.md")?.content,
     value: "install",
   };
-}
-
-function pickerOptions(inputs: SkillStageInputs): readonly WizardOption[] {
-  const covered = new Set(inputs.listing.entries.map((entry) => entry.identity));
-  const unavailableById = new Map(
-    inputs.listing.unavailableSources.map((source) => [source.id, source]),
-  );
-  const policy = inputs.catalog.policy;
-
-  const entryRows = sortForDisplay(inputs.listing.entries, (entry) => [
-    entry.sourceName,
-    entry.name,
-    entry.id,
-  ]).map((entry): WizardOption => ({
-    description: `${entry.description} · v${entry.version}`,
-    group: entry.sourceName,
-    label: entry.name,
-    ...(entry.preview === undefined ? {} : { preview: entry.preview }),
-    value: entry.identity,
-  }));
-
-  const manifestRows = inputs.manifestSkills.flatMap((skill): readonly WizardOption[] => {
-    const identity = skillIdentity(skill.source, skill.id);
-    if (covered.has(identity)) {
-      return [];
-    }
-    const unavailable = unavailableById.get(skill.source);
-    if (policy.allowedSourceIds !== undefined && !policy.allowedSourceIds.has(skill.source)) {
-      return [
-        {
-          description: `Not allowed by team preset "${policy.presetName}". Clear it to remove the skill.`,
-          disabled: true,
-          group: skill.source,
-          label: `${skill.id} (blocked)`,
-          value: identity,
-        },
-      ];
-    }
-    return [
-      {
-        description:
-          unavailable === undefined
-            ? "Previously installed, but its source is unavailable. Clear it to remove the skill."
-            : `Its source is unavailable (${unavailable.hint}). Clear it to remove the skill.`,
-        disabled: true,
-        group: unavailable?.name ?? skill.source,
-        label: `${skill.id} (preserved)`,
-        value: identity,
-      },
-    ];
-  });
-
-  const sourceRows = inputs.listing.unavailableSources
-    .filter((source) => inputs.manifestSkills.every((skill) => skill.source !== source.id))
-    .map((source): WizardOption => ({
-      description: `unavailable (${source.hint})`,
-      disabled: true,
-      group: source.name,
-      label: source.name,
-      value: `source:${source.id}`,
-    }));
-
-  return [...entryRows, ...manifestRows, ...sourceRows];
 }

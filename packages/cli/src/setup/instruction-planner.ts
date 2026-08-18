@@ -12,6 +12,7 @@ import {
   instructionTargetContent,
   instructionTargetSource,
 } from "./instructions.js";
+import { managedAppIdList } from "./managed-apps.js";
 import type { SetupBlocker } from "./planner.js";
 import type { InstructionScopeSelection, SetupStepContext } from "./types.js";
 
@@ -202,7 +203,7 @@ function planLinks(
   ownership: Map<string, string[]>,
   manualSteps: string[],
 ): FileOperation[] {
-  const managedIds = managedAppIds(context);
+  const managedIds = new Set(managedAppIdList(context));
   const operations: FileOperation[] = [];
   for (const app of context.model.apps) {
     if (app.synthetic === true || !managedIds.has(app.adapterId)) {
@@ -246,20 +247,6 @@ function planAppLinks(
     ownership.set(app.adapterId, files);
     return [...outcome.plan.operations];
   });
-}
-
-function managedAppIds(context: SetupStepContext): ReadonlySet<string> {
-  const selected = context.selections.apps?.managed;
-  if (selected !== undefined) {
-    return new Set(selected);
-  }
-  return new Set(
-    context.manifest.status === "ready"
-      ? Object.entries(context.manifest.value.apps)
-          .filter(([, app]) => app.managed)
-          .map(([id]) => id)
-      : [],
-  );
 }
 
 function primaryPath(operation: FileOperation): string {

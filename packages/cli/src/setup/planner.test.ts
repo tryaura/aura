@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- one planner matrix shares the same filesystem fixtures. */
 import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -189,9 +190,20 @@ describe("planSetup", () => {
           displayName: "Hinted",
           installHint: "brew install hinted",
           kind: "undetected",
+          supportsSkills: false,
         },
-        { adapterId: "hintless", displayName: "Hintless", kind: "undetected" },
-        { adapterId: "stopped", displayName: "Stopped", kind: "undetected" },
+        {
+          adapterId: "hintless",
+          displayName: "Hintless",
+          kind: "undetected",
+          supportsSkills: false,
+        },
+        {
+          adapterId: "stopped",
+          displayName: "Stopped",
+          kind: "undetected",
+          supportsSkills: false,
+        },
       ],
       manifest: model.manifest,
       model,
@@ -237,7 +249,12 @@ function operationPaths(outcome: ReturnType<typeof planSetup>): readonly string[
 }
 
 function catalog(...ids: readonly string[]): readonly AppCatalogEntry[] {
-  return ids.map((id) => ({ adapterId: id, displayName: id, kind: "undetected" }));
+  return ids.map((id) => ({
+    adapterId: id,
+    displayName: id,
+    kind: "undetected",
+    supportsSkills: false,
+  }));
 }
 
 function context(model: WorkspaceModel, createManifest: boolean): SetupStepContext {

@@ -2,7 +2,13 @@ import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { createMockDirectoryBuilder, createSeedBuilder, runSetup } from "@tryaura/aura-testkit";
+import {
+  codexShimResponses,
+  createMockDirectoryBuilder,
+  createSeedBuilder,
+  cursorShimResponses,
+  runSetup,
+} from "@tryaura/aura-testkit";
 import { describe, expect, it } from "vitest";
 
 import { AURA_DISTRO } from "./distro.js";
@@ -43,9 +49,12 @@ function presetJson(url: string, allowed: readonly string[]): string {
   });
 }
 
-function manifestJson(skills: readonly unknown[]): string {
+function manifestJson(
+  skills: readonly unknown[],
+  apps: Readonly<Record<string, { readonly managed: boolean }>> = {},
+): string {
   return `${JSON.stringify(
-    { apps: {}, mcpServers: [], ownership: {}, schemaVersion: 1, skills, snippets: [] },
+    { apps, mcpServers: [], ownership: {}, schemaVersion: 1, skills, snippets: [] },
     undefined,
     2,
   )}\n`;
@@ -154,6 +163,8 @@ describe("aura setup with a skill directory", () => {
       .skill(LISTING, [{ content: SKILL_MD, path: "SKILL.md" }])
       .build();
     await using seed = await createSeedBuilder()
+      .homeFile("agents/aura.json", manifestJson([], { codex: { managed: true } }))
+      .shim("codex", codexShimResponses({ authenticated: true, version: "0.147.0" }))
       .workspaceFile(".aura/preset.json", presetJson(directory.url, ["directory:acme"]))
       .build();
     await runSetup({ distro: AURA_DISTRO, seed });
@@ -164,7 +175,7 @@ describe("aura setup with a skill directory", () => {
       seed,
     });
 
-    expect(targeted.exitCode).toBe(0);
+    expect(targeted.exitCode, `${targeted.stdout}\n${targeted.stderr}`).toBe(0);
     expect(targeted.diffs).toEqual([]);
     expect(targeted.stdout).toContain("Already converged — nothing to do.");
   });
@@ -176,5 +187,39 @@ describe("aura setup with a skill directory", () => {
 
     expect(targeted.exitCode).toBe(2);
     expect(targeted.stderr).toContain("the Skills step needs an Aura manifest");
+  });
+
+  it("requires a managed application before --add skill runs alone", async () => {
+    await using seed = await createSeedBuilder()
+      .homeFile("agents/aura.json", manifestJson([]))
+      .build();
+
+    const targeted = await runSetup({ args: ["--add", "skill"], distro: AURA_DISTRO, seed });
+
+    expect(targeted.exitCode).toBe(2);
+    expect(targeted.stderr).toContain(
+      "the Skills step needs a managed application that supports Agent Skills",
+    );
+  });
+
+  it("refuses --add skill when the only managed app does not support skills", async () => {
+    await using seed = await createSeedBuilder()
+      .homeFile("agents/aura.json", manifestJson([], { cursor: { managed: true } }))
+      .shim("cursor", cursorShimResponses({ version: "3.11.0" }))
+      .workspaceFile(
+        ".aura/preset.json",
+        JSON.stringify({ allowedSkillSources: [], schemaVersion: 1 }),
+      )
+      .build();
+    await runSetup({ distro: AURA_DISTRO, seed });
+
+    const targeted = await runSetup({ args: ["--add", "skill"], distro: AURA_DISTRO, seed });
+
+    // Naming what is missing beats opening a picker whose every row is disabled.
+    expect(targeted.exitCode).toBe(2);
+    expect(targeted.diffs).toEqual([]);
+    expect(targeted.stderr).toContain(
+      "the Skills step needs a managed application that supports Agent Skills",
+    );
   });
 });

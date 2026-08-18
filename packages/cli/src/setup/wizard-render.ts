@@ -181,7 +181,8 @@ function optionLines(
     view.question.kind === "multiselect"
       ? `${view.selected.has(option.value) ? ANSWERED : UNANSWERED} `
       : `${view.selected.has(option.value) ? SELECTED : UNSELECTED} `;
-  const unavailable = option.disabled === true ? style.dim(" — unavailable") : "";
+  const unavailable =
+    option.disabled === true ? style.dim(` — ${safe(option.disabledNote ?? "unavailable")}`) : "";
   const rows = [`${cursor} ${String(index + 1)}. ${marker}${safe(option.label)}${unavailable}`];
   if (option.description !== undefined) {
     rows.push(style.dim(`      ${safe(option.description)}`));

@@ -92,5 +92,10 @@ function manifest(apps: object): string {
 }
 
 function catalog(...ids: readonly string[]): readonly AppCatalogEntry[] {
-  return ids.map((id) => ({ adapterId: id, displayName: id, kind: "undetected" }));
+  return ids.map((id) => ({
+    adapterId: id,
+    displayName: id,
+    kind: "undetected",
+    supportsSkills: false,
+  }));
 }
