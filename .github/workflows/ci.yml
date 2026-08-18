@@ -37,7 +37,7 @@ jobs:
           bun-version-file: .bun-version
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Verify release packages
+      - name: Verify release packages and example distribution
         run: pnpm verify:packages
 
   checks:

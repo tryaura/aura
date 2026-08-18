@@ -3,11 +3,11 @@ import type { Environment } from "./environment.js";
 /**
  * A single file bundled with a plugin.
  *
- * `url` must be an absolute `file:` URL. Build it relative to the plugin module so the reference
- * stays correct wherever the package is installed:
+ * `url` must be an absolute `file:` URL. Build it with {@link pluginContentUrl} so the reference
+ * stays correct wherever the package is installed, including inside a compiled executable:
  *
  * ```ts
- * const url = new URL("./content/rules.md", import.meta.url).href;
+ * const url = pluginContentUrl(import.meta.url, "rules.md");
  * ```
  */
 export interface FileContentSource {

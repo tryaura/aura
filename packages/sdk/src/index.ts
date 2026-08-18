@@ -70,6 +70,7 @@ export type {
   Snippet,
   StandardDirectorySkillSource,
 } from "./content.js";
+export { pluginContentUrl } from "./plugin-content.js";
 export {
   mcpEnvironmentNameProblem,
   mcpServerNameProblem,
