@@ -30,6 +30,7 @@ export type {
 } from "./capabilities.js";
 export type {
   Check,
+  CheckRuntimeSettings,
   DetectedFinding,
   Finding,
   FindingLocation,
@@ -197,7 +198,7 @@ export type {
   McpSecretTransform,
   McpSecretTransformInput,
 } from "./mcp-secret.js";
-export type { WorkspaceModel } from "./workspace-model.js";
+export type { RequiredMcpServer, WorkspaceModel } from "./workspace-model.js";
 export type {
   InvalidSkillFrontmatterField,
   InstalledSkill,
@@ -244,6 +245,17 @@ export {
 export type { AtImportContext } from "./imports.js";
 export type { AuraPlugin } from "./plugin.js";
 export type { AuraTeamPreset } from "./team-preset.js";
+export type {
+  AuraCheckConfiguration,
+  AuraConfigurationLayer,
+  AuraConfigurationLayerName,
+  AuraConfigurationProvenance,
+  AuraEffectiveCheckConfiguration,
+  AuraEffectiveConfig,
+  AuraEffectivePreset,
+  AuraEffectiveValue,
+  AuraPresetSkillSelection,
+} from "./configuration.js";
 export { detectLineEnding, splitSourceLines } from "./text.js";
 export type { SourceLine } from "./text.js";
 export {

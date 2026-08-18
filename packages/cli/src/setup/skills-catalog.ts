@@ -23,7 +23,12 @@ import type { SkillSelection } from "./types.js";
 export interface SkillSourcePolicy {
   /** Permitted source ids; absent means every source is allowed. */
   readonly allowedSourceIds?: ReadonlySet<string> | undefined;
-  /** How refusals name the preset that decided them. */
+  /**
+   * How refusals name the preset that decided them.
+   *
+   * The origin as resolved, not the conventional path: a policy fetched from a package or a URL
+   * that introduced itself as the local checkout file would be asking for the wrong trust.
+   */
   readonly presetName: string;
 }
 
@@ -90,6 +95,8 @@ export interface SkillCatalogInputs {
   readonly preset: AuraTeamPreset | undefined;
   /** Messages from reading the preset file, surfaced with the catalog's own notes. */
   readonly presetNotes: readonly string[];
+  /** Where the active policy came from. Defaults to the conventional checkout path. */
+  readonly presetOrigin?: string | undefined;
   readonly registryDirectories: readonly DirectorySkillSource[];
 }
 
@@ -126,7 +133,7 @@ export function createSkillCatalog(inputs: SkillCatalogInputs): SkillCatalog {
       ...(inputs.preset?.allowedSkillSources === undefined
         ? {}
         : { allowedSourceIds: new Set<string>(inputs.preset.allowedSkillSources) }),
-      presetName: AURA_TEAM_PRESET_PATH,
+      presetName: inputs.presetOrigin ?? AURA_TEAM_PRESET_PATH,
     },
     privateSources: Object.freeze(
       collected.sources.filter(

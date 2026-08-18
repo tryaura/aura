@@ -33,6 +33,10 @@ const distro: CliDistro = {
     docsUrl: "https://engineering.acme.example/acmedev",
     version: "0.1.0",
   },
+  defaultPreset: "plugin:acme/platform",
+  defaults: {
+    checks: { severity: { "acme/SEC-001": "error" } },
+  },
   plugins: [...OFFICIAL_PLUGINS, acmePlugin],
   registry: OFFICIAL_REGISTRY_OPTIONS,
 };
@@ -47,6 +51,10 @@ Every branding field has one job:
 - `description`: optional top-level help text.
 - `docsUrl`: optional report documentation link.
 - `version`: optional value returned by `--version`.
+
+`defaults` is the lowest runtime configuration layer. `defaultPreset` selects a preset bundled by
+a registered plugin when neither the CLI, manifest, nor repository chooses one. Both are data-only;
+see the [team preset reference](/docs/reference/team-preset/) for the schema and precedence rules.
 
 The frozen official values match the `aura` executable. Named official plugin exports support explicit subsets. Registry privileges belong to the distribution; do not grant private plugins bare check IDs unless you own that compatibility surface.
 

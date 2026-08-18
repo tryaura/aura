@@ -1,15 +1,16 @@
-import type { AuraTeamPreset, DirectorySkillSource, SkillSourceId } from "@tryaura/aura-sdk";
+import type { AuraTeamPreset } from "@tryaura/aura-sdk";
+import { jsonPropertyPath } from "@tryaura/aura-sdk";
 
 import { isRecord } from "../values.js";
-import { directorySourceProblem } from "../skills/directory-config.js";
-import { MAX_TEAM_PRESET_ALLOWED_SOURCES, MAX_TEAM_PRESET_DIRECTORIES } from "../skills/limits.js";
-
-/** Same grammar the manifest accepts for skill provenance ids. */
-const SKILL_SOURCE_ID_PATTERN = /^(?:directory|driver|plugin):[^\s:]+$/u;
-
-const DIRECTORY_PREFIX = "directory:";
-const MAX_REQUIRED_MCP_SERVERS = 256;
-const MCP_CATALOG_ID_PATTERN = /^[a-z0-9][a-z0-9._-]*\/[a-zA-Z0-9][a-zA-Z0-9._-]*$/u;
+import { collectChecks, isChecks } from "./schema-checks.js";
+import {
+  collectIds,
+  CONTENT_ID_PATTERN,
+  firstProblem,
+  MAX_JSON_DEPTH,
+  MCP_CATALOG_ID_PATTERN,
+} from "./schema-common.js";
+import { collectAllowedSources, collectDirectories, collectSkills } from "./schema-sources.js";
 
 /**
  * Why a parsed preset document cannot be used, or the preset when it can.
@@ -21,164 +22,91 @@ export type TeamPresetParseResult =
   | { readonly kind: "invalid"; readonly problem: string }
   | { readonly kind: "preset"; readonly preset: AuraTeamPreset };
 
-/** Validates one parsed JSON document as the minimal team preset. */
+/** Validates and freezes one parsed JSON document as a data-only team preset. */
 export function validateTeamPreset(value: unknown): TeamPresetParseResult {
   if (!isRecord(value)) {
-    return { kind: "invalid", problem: "$: must be an object" };
+    return invalid("$: must be an object");
+  }
+  const depthProblem = documentDepthProblem(value, "$", 0);
+  if (depthProblem !== undefined) {
+    return invalid(depthProblem);
   }
   if (value["schemaVersion"] !== 1) {
-    return { kind: "invalid", problem: "$.schemaVersion: must be 1" };
+    return invalid("$.schemaVersion: must be 1");
   }
 
+  const name = value["name"];
+  if (
+    name !== undefined &&
+    (typeof name !== "string" || name.trim().length === 0 || name.length > 128)
+  ) {
+    return invalid("$.name: must be a non-empty string of at most 128 characters");
+  }
+  const checks = collectChecks(value["checks"]);
   const allowed = collectAllowedSources(value["allowedSkillSources"]);
-  if (typeof allowed === "string") {
-    return { kind: "invalid", problem: allowed };
-  }
-
   const directories = collectDirectories(value["skillDirectories"]);
-  if (typeof directories === "string") {
-    return { kind: "invalid", problem: directories };
-  }
-
-  const requiredMcpServers = collectRequiredMcpServers(value["requiredMcpServers"]);
-  if (typeof requiredMcpServers === "string") {
-    return { kind: "invalid", problem: requiredMcpServers };
+  const requiredMcpServers = collectIds(
+    value["requiredMcpServers"],
+    "$.requiredMcpServers",
+    MCP_CATALOG_ID_PATTERN,
+  );
+  const snippets = collectIds(value["snippets"], "$.snippets", CONTENT_ID_PATTERN);
+  const skills = collectSkills(value["skills"]);
+  const problem = firstProblem([
+    checks,
+    allowed,
+    directories,
+    requiredMcpServers,
+    snippets,
+    skills,
+  ]);
+  if (problem !== undefined) {
+    return invalid(problem);
   }
 
   return {
     kind: "preset",
     preset: Object.freeze({
-      ...(allowed === undefined ? {} : { allowedSkillSources: allowed }),
-      ...(requiredMcpServers === undefined ? {} : { requiredMcpServers }),
+      ...(Array.isArray(allowed) ? { allowedSkillSources: allowed } : {}),
+      ...(isChecks(checks) ? { checks } : {}),
+      ...(Array.isArray(requiredMcpServers) ? { requiredMcpServers } : {}),
+      ...(typeof name === "string" ? { name } : {}),
       schemaVersion: 1,
-      ...(directories === undefined ? {} : { skillDirectories: directories }),
+      ...(Array.isArray(directories) ? { skillDirectories: directories } : {}),
+      ...(Array.isArray(skills) ? { skills } : {}),
+      ...(Array.isArray(snippets) ? { snippets } : {}),
     }),
   };
 }
 
-function collectRequiredMcpServers(value: unknown): readonly string[] | string | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-  if (!Array.isArray(value)) {
-    return "$.requiredMcpServers: must be an array of namespaced MCP catalog ids";
-  }
-  if (value.length > MAX_REQUIRED_MCP_SERVERS) {
-    return `$.requiredMcpServers: must contain at most ${String(MAX_REQUIRED_MCP_SERVERS)} catalog ids`;
-  }
+function invalid(problem: string): TeamPresetParseResult {
+  return { kind: "invalid", problem };
+}
 
-  const ids: string[] = [];
-  const seen = new Set<string>();
-  for (const [index, entry] of value.entries()) {
-    const path = `$.requiredMcpServers[${String(index)}]`;
-    if (typeof entry !== "string" || !MCP_CATALOG_ID_PATTERN.test(entry)) {
-      return `${path}: must be a namespaced catalog id such as "official/github"`;
+/**
+ * Rejects a document nested past the limit before any field is read.
+ *
+ * The per-field collectors recurse, so the depth has to be known safe before they start rather
+ * than discovered partway down. One pass over the parsed document is what buys that.
+ */
+function documentDepthProblem(value: unknown, path: string, depth: number): string | undefined {
+  if (depth > MAX_JSON_DEPTH) {
+    return `${path}: is nested deeper than the ${String(MAX_JSON_DEPTH)} level limit`;
+  }
+  if (Array.isArray(value)) {
+    for (const [index, candidate] of value.entries()) {
+      const problem = documentDepthProblem(candidate, `${path}[${String(index)}]`, depth + 1);
+      if (problem !== undefined) {
+        return problem;
+      }
     }
-    if (seen.has(entry)) {
-      return `${path}: must not duplicate another catalog id`;
+  } else if (isRecord(value)) {
+    for (const [key, candidate] of Object.entries(value)) {
+      const problem = documentDepthProblem(candidate, jsonPropertyPath(path, key), depth + 1);
+      if (problem !== undefined) {
+        return problem;
+      }
     }
-    seen.add(entry);
-    ids.push(entry);
   }
-  return Object.freeze(ids);
-}
-
-/** The parsed list, `undefined` when absent, or the problem string when malformed. */
-function collectAllowedSources(value: unknown): readonly SkillSourceId[] | string | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-  if (!Array.isArray(value)) {
-    return "$.allowedSkillSources: must be an array of skill source ids";
-  }
-  if (value.length > MAX_TEAM_PRESET_ALLOWED_SOURCES) {
-    return (
-      `$.allowedSkillSources: must contain at most ` +
-      `${String(MAX_TEAM_PRESET_ALLOWED_SOURCES)} source ids`
-    );
-  }
-
-  const sources: SkillSourceId[] = [];
-  for (const [index, entry] of value.entries()) {
-    const path = `$.allowedSkillSources[${String(index)}]`;
-    if (typeof entry !== "string" || !SKILL_SOURCE_ID_PATTERN.test(entry)) {
-      return `${path}: must be a skill source id such as "directory:agenticskills"`;
-    }
-    sources.push(toSourceId(entry));
-  }
-  return Object.freeze(sources);
-}
-
-/** The parsed list, `undefined` when absent, or the problem string when malformed. */
-function collectDirectories(value: unknown): readonly DirectorySkillSource[] | string | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-  if (!Array.isArray(value)) {
-    return "$.skillDirectories: must be an array of directory definitions";
-  }
-  if (value.length > MAX_TEAM_PRESET_DIRECTORIES) {
-    return (
-      `$.skillDirectories: must contain at most ` +
-      `${String(MAX_TEAM_PRESET_DIRECTORIES)} directory definitions`
-    );
-  }
-
-  const directories: DirectorySkillSource[] = [];
-  for (const [index, entry] of value.entries()) {
-    const parsed = parseDirectory(entry, `$.skillDirectories[${String(index)}]`);
-    if (typeof parsed === "string") {
-      return parsed;
-    }
-    directories.push(parsed);
-  }
-  return Object.freeze(directories);
-}
-
-// fallow-ignore-next-line complexity -- every branch refuses one malformed preset field.
-function parseDirectory(value: unknown, path: string): DirectorySkillSource | string {
-  if (!isRecord(value)) {
-    return `${path}: must be an object`;
-  }
-
-  const id = value["id"];
-  const name = value["name"];
-  const url = value["url"];
-  const tokenEnv = value["tokenEnv"];
-  if (typeof id !== "string" || !id.startsWith(DIRECTORY_PREFIX)) {
-    return `${path}.id: must be a string starting with "directory:"`;
-  }
-  if (typeof name !== "string" || name.trim().length === 0) {
-    return `${path}.name: must be a non-empty string`;
-  }
-  if (typeof url !== "string") {
-    return `${path}.url: must be a string`;
-  }
-  if (tokenEnv !== undefined && typeof tokenEnv !== "string") {
-    return `${path}.tokenEnv: must be a string environment variable name`;
-  }
-
-  const identifier = toDirectoryId(id);
-  const source: DirectorySkillSource =
-    tokenEnv === undefined
-      ? { id: identifier, kind: "directory", name, url }
-      : { id: identifier, kind: "private-directory", name, tokenEnv, url };
-  const problem = directorySourceProblem(source);
-  return problem === undefined ? source : `${path}: ${problem}`;
-}
-
-/** Re-stamps a validated id with its template-literal type without asserting. */
-function toDirectoryId(id: string): `directory:${string}` {
-  return `${DIRECTORY_PREFIX}${id.slice(DIRECTORY_PREFIX.length)}`;
-}
-
-/** Re-stamps a validated id with its template-literal type without asserting. */
-function toSourceId(id: string): SkillSourceId {
-  if (id.startsWith(DIRECTORY_PREFIX)) {
-    return toDirectoryId(id);
-  }
-  if (id.startsWith("driver:")) {
-    return `driver:${id.slice("driver:".length)}`;
-  }
-  return `plugin:${id.slice(id.indexOf(":") + 1)}`;
+  return undefined;
 }

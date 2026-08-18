@@ -1,8 +1,8 @@
 import type { Writable } from "node:stream";
 
-import type { Check } from "@tryaura/aura-sdk";
+import type { AuraEffectiveConfig, Check } from "@tryaura/aura-sdk";
 
-import { renderExplanation, renderExplanationJson } from "./render.js";
+import { renderExplanation, renderExplanationJson } from "./render-explain.js";
 import { safe } from "./safe-text.js";
 import type { CliBranding, CliExitCode } from "./types.js";
 
@@ -10,6 +10,7 @@ import type { CliBranding, CliExitCode } from "./types.js";
 export interface ExplainCheckContext {
   readonly branding: CliBranding;
   readonly checks: readonly Check[];
+  readonly config: AuraEffectiveConfig;
   readonly json: boolean;
   readonly report: Writable;
   readonly stderr: Writable;
@@ -36,9 +37,9 @@ export function explainCheck(id: string, context: ExplainCheckContext): CliExitC
   }
 
   if (context.json) {
-    renderExplanationJson(check, context.report);
+    renderExplanationJson(check, context.config, context.report);
   } else {
-    renderExplanation(check, context.branding, context.stdout);
+    renderExplanation(check, context.config, context.branding, context.stdout);
   }
   return 0;
 }

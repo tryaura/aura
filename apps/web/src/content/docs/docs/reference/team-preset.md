@@ -1,21 +1,32 @@
 ---
 title: Team preset
-description: The repository-owned .aura/preset.json schema for skill sources and policy.
+description: Runtime team preset schema, references, loading, and layered resolution.
 ---
 
-The optional `.aura/preset.json` file defines the remote skill directories a repository uses and
-the source allowlist enforced during setup. It travels with the repository; credentials never do.
+A team preset is a versioned JSON document that configures checks and shared content without
+executing preset-supplied code. Aura resolves configuration once at boot in this order:
+
+`distribution defaults → selected preset → ~/agents/aura.json → command-line flags`
+
+Later layers win for check activation, severity, and each check's complete threshold object.
+Required MCP servers and skill directories are additive. Manifest content selections replace
+preset onboarding defaults. Every effective value records the layer that supplied it.
 
 ```json
 {
   "schemaVersion": 1,
+  "name": "Acme platform",
+  "checks": {
+    "enabled": ["INS-007"],
+    "disabled": ["MCP-002"],
+    "severity": { "INS-007": "error" },
+    "thresholds": { "INS-007": { "approxTokens": 12000 } }
+  },
+  "requiredMcpServers": ["official/github"],
+  "snippets": ["official/engineering"],
+  "skills": [{ "id": "review", "source": "plugin:official" }],
   "allowedSkillSources": ["plugin:official", "directory:acme"],
   "skillDirectories": [
-    {
-      "id": "directory:community",
-      "name": "Community Skills",
-      "url": "https://skills.example.com/api"
-    },
     {
       "id": "directory:acme",
       "name": "Acme Skills",
@@ -26,40 +37,79 @@ the source allowlist enforced during setup. It travels with the repository; cred
 }
 ```
 
+## Selecting and loading a preset
+
+Aura chooses the first available reference in this order: `--preset`, the manifest's `preset`, an
+implicit repository `.aura/preset.json`, then the distribution's default preset. Supported forms
+are:
+
+- `plugin:<preset-id>` for JSON bundled by a registered plugin;
+- `npm:<package>@<exact-version>` for `package/preset.json` from the public npm registry;
+- an absolute `https://` JSON URL;
+- `file:...`; or
+- a plain absolute or current-working-directory-relative path.
+
+HTTPS and npm reads have time and size limits. npm packages are downloaded and inspected as data:
+Aura never installs or imports the package and never runs lifecycle scripts. Archive links,
+traversal paths, duplicate preset entries, oversized entries, and missing `preset.json` are
+rejected.
+
+An npm tarball must be served from `registry.npmjs.org` and must match the `dist.integrity` digest
+the registry published for that version — `dist.shasum` is accepted for older packages. A version
+publishing neither digest is refused rather than trusted, because bytes that cannot be tied back
+to the resolved version are exactly the ones worth refusing.
+
+Remote results are cached atomically for 24 hours below `~/agents/.cache/presets`. After expiry,
+a refresh failure fails closed instead of using stale data. `--no-cache` bypasses both cache reads
+and writes.
+
+Fetching a remote reference is network access, so `check` performs it only with `--online`; without
+it, an `npm:` or `https:` preset resolves from cache and otherwise fails with a note naming the
+flag. `setup` already contacts skill directories to build its pickers and always resolves remotely.
+
 ## Fields
 
-- `schemaVersion` is required and must be `1`.
-- `allowedSkillSources` is optional. When present, it is exhaustive: sources not listed are hidden
-  and cannot be installed. It accepts up to 256 `plugin:`, `directory:`, or `driver:` source IDs.
-- `skillDirectories` is optional and accepts up to 32 definitions. IDs use `directory:` followed by
-  a kebab-case name of at most 64 characters. Names are human-readable picker labels.
-- `url` must be an absolute HTTPS base URL without credentials, a query string, or a fragment.
-  Literal loopback HTTP addresses are accepted for local development.
-- `tokenEnv` makes a directory private. It names an uppercase environment variable; it never
-  contains the token itself.
+- `schemaVersion` is required and must be `1`. `name` is optional so existing repository presets
+  remain valid.
+- `checks.enabled` and `checks.disabled` contain check IDs. The same ID cannot appear in both.
+- `checks.severity` maps check IDs to `info`, `warn`, or `error`.
+- `checks.thresholds` maps a check ID to an inert JSON object. Only that check receives the object.
+  A check validates its own thresholds, so an unrecognized key or an out-of-range value fails
+  configuration resolution and names the layer that set it, rather than silently leaving the
+  built-in behavior in place. INS-007 accepts `approxTokens`, a positive whole number of tokens.
+- `requiredMcpServers` contains registered catalog IDs. Requirements are added to managed,
+  supported applications at global scope; unknown IDs fail configuration resolution. A requirement
+  whose server name is already configured in your manifest leaves your own entry untouched and
+  reports that it was not applied — the manifest outranks the preset here as it does elsewhere.
+- `snippets` contains snippet IDs. `skills` uses source-qualified `{ "id", "source" }` entries.
+  Optional unavailable content remains selected so setup can explain the problem.
+- `allowedSkillSources` is exhaustive when present. It accepts up to 256 `plugin:`, `directory:`,
+  or `driver:` source IDs.
+- `skillDirectories` accepts up to 32 definitions. IDs begin with `directory:`. URLs must be
+  credential-free HTTPS endpoints; literal loopback HTTP is allowed for development. `tokenEnv`
+  names the uppercase environment variable containing a private directory token, never the token.
 
-An invalid or unreadable preset fails the Skills step closed. Aura reports the exact JSON path to
-repair and performs no skill-directory requests until the file is valid. A missing preset is the
-ordinary default and does not impose an allowlist.
+Unknown fields are tolerated. Recognized fields are depth- and size-bounded, errors identify the
+JSON path, and rejected values are not echoed. Prototype-shaped keys and script-looking strings
+are inert JSON data.
 
-## Private-directory approval
+## Command-line overrides
+
+The check and setup commands accept repeatable `--enable <check>`, `--disable <check>`,
+`--severity <check>=<info|warn|error>`, and `--threshold '<check>=<JSON object>'` options. CLI
+activation wins last. On `check`, `--only` then intersects the enabled set; selecting a disabled
+check reports how to enable it. `check --explain <id>` loads configuration without scanning agent
+adapters and reports effective activation, severity, thresholds, preset, and provenance in human
+or JSON output.
+
+## Private-directory approval and protocol
 
 Before reading a private directory's token, interactive setup shows its name, URL, and environment
-variable and asks which private sources may be contacted during that run. Nothing is preselected.
-`aura setup --yes` therefore never sends a private token or first-installs content from a private
-directory. Approval is deliberately scoped to the current run so a different checkout cannot reuse
-an earlier repository's decision.
+variable and asks which sources may be contacted for that run. `setup --yes` never sends a private
+token or first-installs private content. Tokens are sent only as bearer headers over TLS and are
+never stored.
 
-Tokens are sent only as bearer headers over TLS. Aura refuses redirects and stores token values
-nowhere: not in the preset, manifest, installed files, diagnostics, or logs.
-
-## Directory protocol
-
-Aura requests `index.json` below the configured base URL. It must be a JSON array of listings with
-string `id`, `name`, `description`, and `version` fields. A selected skill is fetched from
-`skills/<id>` and returns the same fields plus `files`, an array of `{ "path", "content" }` objects.
-Every pack must contain a root `SKILL.md`.
-
-Remote paths must be portable across supported operating systems: absolute paths, traversal,
-control characters, Windows-reserved characters and device names, and case-equivalent duplicates
-are refused. Responses, files, entry counts, request duration, and request concurrency are bounded.
+Aura requests `index.json` below a directory base URL. It returns listings with string `id`,
+`name`, `description`, and `version` fields. `skills/<id>` returns those fields plus `files`, an
+array of `{ "path", "content" }`; every pack must contain a root `SKILL.md`. Responses, files,
+paths, counts, duration, and concurrency are bounded, and unsafe or non-portable paths are refused.

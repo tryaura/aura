@@ -1,5 +1,11 @@
 /* eslint-disable max-lines -- one check's loading-model matrix shares document fixtures. */
-import type { AppModel, InstructionDocument, JsonObject } from "@tryaura/aura-sdk";
+import type {
+  AppModel,
+  AuraConfigurationProvenance,
+  AuraEffectiveConfig,
+  InstructionDocument,
+  JsonObject,
+} from "@tryaura/aura-sdk";
 import { runChecks } from "@tryaura/core";
 import { describe, expect, it } from "vitest";
 
@@ -50,6 +56,30 @@ describe("INS-007", () => {
         severity: "info",
       },
     ]);
+  });
+
+  it("uses the resolved approxTokens threshold when one is configured", () => {
+    const source: AuraConfigurationProvenance = { label: "team preset", layer: "preset" };
+    const config: AuraEffectiveConfig = {
+      checks: {
+        "INS-007": {
+          enabled: { provenance: source, value: true },
+          severity: { provenance: source, value: "info" },
+          thresholds: { provenance: source, value: { approxTokens: 1 } },
+        },
+      },
+      requiredMcpServers: [],
+      skillDirectories: [],
+      skills: [],
+      snippets: [],
+    };
+    const codex = withDocuments(app({ adapterId: "codex" }), [
+      document("/home/dev/.codex/AGENTS.md", "12345"),
+    ]);
+
+    expect(
+      runChecks([instructionContextBudgetCheck], model({ apps: [codex] }), config).findings,
+    ).toHaveLength(1);
   });
 
   it("follows modeled Claude imports transitively and counts shared paths once", () => {

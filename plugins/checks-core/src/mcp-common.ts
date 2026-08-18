@@ -14,6 +14,7 @@ import {
 export interface DesiredMcpTarget {
   readonly appId: string;
   readonly name: string;
+  readonly requiredBy?: string | undefined;
   readonly scope: WorkspaceModel["mcpServers"][number]["scope"];
   readonly transport: McpServerDefinition;
 }
@@ -31,13 +32,24 @@ export function desiredMcpTargets(model: WorkspaceModel): readonly DesiredMcpTar
     return [];
   }
   const detected = new Set(model.apps.map((app) => app.adapterId));
-  return manifest.value.mcpServers.flatMap((server) =>
-    server.apps.flatMap((appId) =>
-      detected.has(appId) && manifest.value.apps[appId]?.managed === true
-        ? [{ appId, name: server.name, scope: server.scope, transport: server.transport }]
-        : [],
-    ),
-  );
+  const result = new Map<string, DesiredMcpTarget>();
+  for (const server of [...manifest.value.mcpServers, ...(model.requiredMcpServers ?? [])]) {
+    for (const appId of server.apps) {
+      if (!detected.has(appId) || manifest.value.apps[appId]?.managed !== true) {
+        continue;
+      }
+      result.set(`${appId}\0${server.scope}\0${server.name}`, {
+        appId,
+        name: server.name,
+        ...("requiredBy" in server && typeof server.requiredBy === "string"
+          ? { requiredBy: server.requiredBy }
+          : {}),
+        scope: server.scope,
+        transport: server.transport,
+      });
+    }
+  }
+  return Object.freeze([...result.values()]);
 }
 
 /** Whether a configured server is what the manifest asks for, scope included. */

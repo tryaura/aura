@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "name": "Acme platform",
+  "checks": {
+    "enabled": ["acme/ACME-001"],
+    "severity": {
+      "acme/ACME-001": "error"
+    },
+    "thresholds": {
+      "acme/ACME-001": {
+        "minimumContributions": 4
+      }
+    }
+  },
+  "requiredMcpServers": ["acme/source-control"],
+  "snippets": ["acme/engineering"],
+  "skills": [
+    {
+      "id": "acme-release",
+      "source": "plugin:acme"
+    }
+  ],
+  "allowedSkillSources": ["plugin:acme"]
+}

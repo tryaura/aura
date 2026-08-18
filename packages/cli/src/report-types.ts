@@ -1,5 +1,6 @@
 import type {
   AdapterSupport,
+  AuraConfigurationProvenance,
   FindingLocation,
   FindingPresentation,
   Fixability,
@@ -105,6 +106,7 @@ export interface CheckReportV1 {
 export type CheckReport = CheckReportV1;
 
 export interface CheckExplanationV1 {
+  readonly enabled: boolean;
   readonly explain: string;
   readonly fixability: Fixability;
   readonly fixesApplicable: boolean;
@@ -113,6 +115,13 @@ export interface CheckExplanationV1 {
   readonly schemaVersion: 1;
   readonly scope: Scope;
   readonly severity: Severity;
+  readonly provenance: {
+    readonly enabled: AuraConfigurationProvenance;
+    readonly severity: AuraConfigurationProvenance;
+    readonly thresholds: AuraConfigurationProvenance;
+  };
+  readonly preset?: { readonly name: string; readonly reference: string } | undefined;
+  readonly thresholds: JsonObject;
   readonly title: string;
 }
 

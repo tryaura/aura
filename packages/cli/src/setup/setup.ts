@@ -1,28 +1,27 @@
 import type { Writable } from "node:stream";
 
-import type { AuraManifest, Environment, SetupRunOutcome } from "@tryaura/aura-sdk";
-import {
-  applyFixPlan,
-  buildWorkspaceModel,
-  prepareFixPlan,
-  type PluginRegistry,
-  type WorkspaceScan,
-} from "@tryaura/core";
+import type {
+  AuraConfigurationLayer,
+  AuraManifest,
+  Environment,
+  SetupRunOutcome,
+} from "@tryaura/aura-sdk";
+import { applyFixPlan, buildWorkspaceModel, type PluginRegistry } from "@tryaura/core";
 import { pluralize } from "@tryaura/core/pluralize";
 
 import { safe } from "../safe-text.js";
+import { bootSetup, projectRescan } from "./boot.js";
+import { runPass, type PreparedPlan } from "./pass.js";
 import { elapsedMs, setupRunEvent } from "../telemetry-events.js";
 import type { TelemetryRecorder } from "../telemetry.js";
 import type { CliBranding, CliExitCode } from "../types.js";
 import { buildAppCatalog } from "./catalog.js";
 import { createSetupCatalogs } from "./catalogs.js";
 import { endOnGreen, gatherFindings } from "./green.js";
-import { planSetup } from "./planner.js";
 import { createSnippetCatalog } from "./snippets.js";
 import { SETUP_STEPS } from "./steps/index.js";
-import { renderConvergedSetup, renderSetupSummary } from "./summary.js";
-import { gatherSelections, toFlowStep, type GatherStart } from "./gather.js";
-import type { SetupStep, SetupStepContext } from "./types.js";
+import { type GatherStart } from "./gather.js";
+import type { SetupStep } from "./types.js";
 import type { WizardIo } from "./wizard-types.js";
 
 /** Everything one `setup` run needs, so the flow does not reach back into the command object. */
@@ -30,11 +29,16 @@ export interface SetupRequest {
   readonly branding: CliBranding;
   /** How much color the closing report may use. */
   readonly colorDepth: number;
+  readonly cliLayer?: AuraConfigurationLayer | undefined;
+  readonly cliReference?: string | undefined;
+  readonly defaultPreset?: string | undefined;
+  readonly defaults?: AuraConfigurationLayer | undefined;
   readonly dryRun: boolean;
   readonly environment: Environment;
   /** False when `io` answers for the user, which the MCP step reads before proposing a default. */
   readonly interactive: boolean;
   readonly io: WizardIo;
+  readonly noCache?: boolean | undefined;
   readonly registry: PluginRegistry;
   /** Home captured before `--home`, used for locks shared by every run from this process boundary. */
   readonly stateHomeDir: string;
@@ -86,39 +90,33 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
   };
   stdout.write(`${branding.displayName} setup\n\n`);
 
-  const scan = await buildWorkspaceModel({
-    adapters: request.registry.adapters,
-    environment,
-    mcpCatalog: request.registry.mcpServers,
-    snippets: request.registry.snippets,
-    skills: request.registry.skills,
-  });
-  const model = scan.model;
-
-  if (model.manifest.status === "read-only") {
-    request.stderr.write(`${branding.displayName}: ${safe(model.manifest.problem.message)}\n`);
+  const booted = await bootSetup(request, environment);
+  if (booted.status === "invalid") {
+    request.stderr.write(`${branding.displayName}: ${safe(booted.message)}\n`);
     return finish(2, "unusable");
   }
+  const { activeChecks, configured, effectiveModel, effectiveScan, projected, scan } = booted;
+  const model = scan.model;
 
   const steps = request.steps ?? SETUP_STEPS;
   // After the early return, and only when a selected step reads them: the duplicate scan among the
   // checks is quadratic in the paragraphs it compares, and `endOnGreen` runs its own pass anyway.
   const initialFindings = steps.some((step) => step.needsFindings === true)
-    ? gatherFindings(request.registry.checks, model, io)
+    ? gatherFindings(activeChecks, effectiveModel, io, configured.config)
     : undefined;
 
-  const catalogs = await createSetupCatalogs({
+  const catalogs = createSetupCatalogs({
+    config: configured.config,
     environment,
-    model,
+    model: effectiveModel,
+    preset: configured.preset,
+    presetNotes: [
+      ...configured.notes,
+      ...projected.diagnostics.map((diagnostic) => diagnostic.message),
+    ],
+    presetOrigin: configured.presetOrigin,
     registry: request.registry,
-    steps,
   });
-  if (catalogs.kind === "invalid-preset") {
-    for (const message of catalogs.messages) {
-      request.stderr.write(`${branding.displayName}: ${safe(message)}\n`);
-    }
-    return finish(2, "unusable");
-  }
 
   const stepContext = {
     appCatalog: buildAppCatalog(request.registry.adapters, model, scan.skipped),
@@ -127,7 +125,7 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
     isEnvironmentVariableSet: (name: string) => environment.readVariable(name) !== undefined,
     manifest: model.manifest,
     mcpCatalog: catalogs.mcpCatalog,
-    model,
+    model: effectiveModel,
     skillCatalog: catalogs.skillCatalog,
     snippetCatalog: createSnippetCatalog(request.registry.snippets, model.manifest),
   };
@@ -137,7 +135,15 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
   let start: GatherStart = { index: 0, selections: {} };
   let ready: { readonly manifest: AuraManifest; readonly prepared: PreparedPlan };
   for (;;) {
-    const pass = await runPass(request, steps, stepContext, scan, start);
+    const pass = await runPass(
+      request,
+      steps,
+      stepContext,
+      effectiveScan,
+      start,
+      activeChecks,
+      configured.config,
+    );
     if (pass.kind === "back") {
       start = pass.start;
       continue;
@@ -171,126 +177,9 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
     snippets: request.registry.snippets,
     skills: request.registry.skills,
   });
-  return finish(endOnGreen(request, rescanned), "applied", {
+  const effectiveRescan = projectRescan(rescanned, configured.config);
+  return finish(endOnGreen(request, effectiveRescan, activeChecks, configured.config), "applied", {
     appliedOperationCount: result.appliedOperationCount,
     manifest: ready.manifest,
   });
-}
-
-type PreparedPlan = Awaited<ReturnType<typeof prepareFixPlan>>;
-
-type PlanOutcome =
-  | { readonly kind: "blocked"; readonly manifest: AuraManifest }
-  | { readonly kind: "converged"; readonly manifest: AuraManifest }
-  | { readonly kind: "ready"; readonly manifest: AuraManifest; readonly prepared: PreparedPlan };
-
-type PassOutcome =
-  | {
-      readonly kind: "apply";
-      readonly manifest: AuraManifest;
-      readonly prepared: PreparedPlan;
-    }
-  | { readonly kind: "back"; readonly start: GatherStart }
-  | {
-      readonly code: CliExitCode;
-      readonly kind: "exit";
-      /** Present whenever the pass produced a plan, so popularity data survives a non-write exit. */
-      readonly manifest?: AuraManifest | undefined;
-      readonly outcome: SetupRunOutcome;
-    };
-
-/** One gather → plan → confirm pass; a confirmation backing out restarts at the last step. */
-async function runPass(
-  request: SetupRequest,
-  steps: readonly SetupStep[],
-  stepContext: Omit<SetupStepContext, "selections">,
-  scan: WorkspaceScan,
-  start: GatherStart,
-): Promise<PassOutcome> {
-  const { branding, io, stdout } = request;
-  const gathered = await gatherSelections(steps, stepContext, io, start);
-  if (gathered.status === "invalid-dependency") {
-    request.stderr.write(
-      `${branding.displayName}: the ${safe(gathered.stepTitle)} step needs ${safe(gathered.missing)}. Run ${branding.command} setup to establish it, then retry this command.\n`,
-    );
-    return { code: 2, kind: "exit", outcome: "unusable" };
-  }
-  if (gathered.status === "aborted") {
-    stdout.write("\nLeft everything as it was.\n");
-    return { code: 1, kind: "exit", outcome: "aborted" };
-  }
-  const selections = gathered.selections;
-
-  const planned = await previewPlan(request, { ...stepContext, selections });
-  if (planned.kind === "converged") {
-    return {
-      code: endOnGreen(request, scan),
-      kind: "exit",
-      manifest: planned.manifest,
-      outcome: "converged",
-    };
-  }
-  if (planned.kind === "blocked") {
-    return { code: 2, kind: "exit", manifest: planned.manifest, outcome: "blocked" };
-  }
-  if (request.dryRun) {
-    stdout.write("\nDry run: nothing was written.\n");
-    return { code: 0, kind: "exit", manifest: planned.manifest, outcome: "dry-run" };
-  }
-
-  // The confirmation is the flow's Submit: every step is gathered, so the bar shows them done.
-  const confirmation = await io.confirm("Apply this plan?", {
-    completed: steps.map(toFlowStep),
-    submit: true,
-    upcoming: [],
-  });
-  if (confirmation === "back") {
-    return {
-      kind: "back",
-      start: { entered: "backward", index: Math.max(0, steps.length - 1), selections },
-    };
-  }
-  if (confirmation !== "accepted") {
-    stdout.write("\nLeft everything as it was.\n");
-    return confirmation === "aborted"
-      ? { code: 1, kind: "exit", manifest: planned.manifest, outcome: "aborted" }
-      : { code: 0, kind: "exit", manifest: planned.manifest, outcome: "declined" };
-  }
-  return { kind: "apply", manifest: planned.manifest, prepared: planned.prepared };
-}
-
-/** Plans the gathered selections, renders the summary, and classifies what can happen next. */
-async function previewPlan(
-  request: SetupRequest,
-  inputs: Parameters<typeof planSetup>[0],
-): Promise<PlanOutcome> {
-  const { stdout } = request;
-  const outcome = planSetup(inputs);
-  const prepared = await prepareFixPlan({ model: inputs.model, plan: outcome.plan });
-
-  if (
-    prepared.preview.changedOperationCount === 0 &&
-    prepared.preview.conflictedOperationCount === 0 &&
-    outcome.blockers.length === 0
-  ) {
-    renderConvergedSetup(prepared.preview, outcome.notices, request.withDetail, stdout);
-    return { kind: "converged", manifest: outcome.manifest };
-  }
-
-  stdout.write("\n");
-  renderSetupSummary(
-    prepared.preview,
-    outcome.blockers,
-    outcome.notices,
-    request.withDetail,
-    stdout,
-  );
-
-  if (prepared.preview.conflictedOperationCount > 0 || outcome.blockers.length > 0) {
-    request.stderr.write(
-      `${request.branding.displayName}: the plan is blocked by the current state of these files; nothing was changed.\n`,
-    );
-    return { kind: "blocked", manifest: outcome.manifest };
-  }
-  return { kind: "ready", manifest: outcome.manifest, prepared };
 }

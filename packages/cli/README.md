@@ -8,4 +8,4 @@ The packages are prepared at `0.1.0` but are not published to npm yet. Until the
 use the repository's `pnpm verify:packages` command to build and exercise local tarballs.
 
 See the [distro authoring guide](https://tryaura.sh/docs/guides/distributions) for branding, plugin
-composition, compiled binaries, and testkit usage.
+composition, distribution defaults, bundled runtime presets, compiled binaries, and testkit usage.

@@ -15,6 +15,15 @@ import {
 import type { AuraCliContext } from "../commands.js";
 import type { CliExitCode } from "../types.js";
 import { safe } from "../safe-text.js";
+import {
+  disableOption,
+  enableOption,
+  noCacheOption,
+  parseConfigurationFlagArrays,
+  presetOption,
+  severityOption,
+  thresholdOption,
+} from "../config-options.js";
 import { runSetup } from "./setup.js";
 import { selectSetupSteps, setupAddKinds } from "./steps/index.js";
 import type { SetupStep } from "./types.js";
@@ -44,18 +53,33 @@ export class SetupCommand extends Command<AuraCliContext> {
   dryRun = Option.Boolean("--dry-run", false, {
     description: "Stop after the plan summary and write nothing.",
   });
+  disable = disableOption();
+  enable = enableOption();
   home = homeOption();
+  noCache = noCacheOption();
   pathValue = pathOption();
+  preset = presetOption();
+  severity = severityOption();
+  threshold = thresholdOption();
   yes = Option.Boolean("--yes", false, {
     description:
       "Take every proposed default and apply without asking. Required when stdin is not a terminal.",
   });
 
-  // fallow-ignore-next-line unused-class-member -- Clipanion invokes registered command handlers.
+  // fallow-ignore-next-line complexity, unused-class-member -- coordinates setup validation, IO selection, and the wizard lifecycle.
   async execute(): Promise<CliExitCode> {
     const options = this.resolveOptions();
     if (options.status === "rejected") {
       return writeOptionRejection(this.context, options.reason);
+    }
+    const flags = parseConfigurationFlagArrays(
+      this.disable,
+      this.enable,
+      this.severity,
+      this.threshold,
+    );
+    if (flags.status === "invalid") {
+      return writeOptionRejection(this.context, flags.message);
     }
 
     const interactive =
@@ -82,10 +106,15 @@ export class SetupCommand extends Command<AuraCliContext> {
       return await runSetup({
         branding: this.context.branding,
         colorDepth: this.context.colorDepth,
+        cliLayer: flags.layer,
+        cliReference: this.preset,
+        defaultPreset: this.context.defaultPreset,
+        defaults: this.context.defaults,
         dryRun: this.dryRun,
         environment,
         interactive,
         io,
+        noCache: this.noCache,
         registry: this.context.registry,
         stateHomeDir: this.context.defaultHomeDir,
         stderr: this.context.stderr,

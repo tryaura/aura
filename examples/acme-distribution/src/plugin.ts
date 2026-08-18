@@ -67,6 +67,16 @@ export default definePlugin({
     },
   ],
   name: "Acme internal configuration",
+  presets: [
+    {
+      description: "Acme's default runtime checks, content, and skill policy.",
+      id: "acme/platform",
+      kind: "preset",
+      name: "Acme platform",
+      source: { type: "file", url: contentUrl("presets/platform.json") },
+      version: "1.0.0",
+    },
+  ],
   skills: [
     {
       description: "Prepare and validate an Acme service release.",

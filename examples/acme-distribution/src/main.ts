@@ -20,6 +20,7 @@ const distro: CliDistro = {
     docsUrl: "https://engineering.acme.example/acmedev",
     version: "0.1.0",
   },
+  defaultPreset: "plugin:acme/platform",
   plugins: [...OFFICIAL_PLUGINS, internalPlugin],
   registry: OFFICIAL_REGISTRY_OPTIONS,
   ...(telemetryFile === undefined || telemetryFile === ""

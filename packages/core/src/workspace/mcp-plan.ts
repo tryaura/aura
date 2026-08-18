@@ -6,12 +6,12 @@ import type {
   FileOperation,
   McpConvergenceBlocker,
   McpServer,
-  OwnedServerEntry,
   WorkspaceModel,
 } from "@tryaura/aura-sdk";
 
 import { createAuraManifestWriteOperation } from "../manifest/write.js";
 import type { AppMcpConvergence, AppMcpConvergenceResult } from "./mcp-convergence.js";
+import { desiredEntries, withOwnership, withoutServer } from "./mcp-plan-manifest.js";
 import type {
   DesiredMcpConvergence,
   ManifestMcpConvergence,
@@ -109,7 +109,7 @@ export function planDesiredMcpConvergence(
   }
 
   return target.convergence(
-    desiredEntries(desiredManifest, appId),
+    desiredEntries(model, desiredManifest, appId),
     desiredManifest.ownership[appId]?.mcpServerNames ?? [],
   );
 }
@@ -229,17 +229,6 @@ function ledgeredOperations(
   ];
 }
 
-function withoutServer(manifest: AuraManifest, server: McpServer): AuraManifest {
-  const mcpServers = manifest.mcpServers.flatMap((entry) => {
-    if (entry.name !== server.name || entry.scope !== server.scope) {
-      return [entry];
-    }
-    const apps = entry.apps.filter((appId) => appId !== server.appId);
-    return apps.length === 0 ? [] : [{ ...entry, apps }];
-  });
-  return { ...manifest, mcpServers };
-}
-
 function ambiguousRemoval(model: WorkspaceModel, server: McpServer): boolean {
   const configured = model.mcpServers.filter(
     (candidate) => candidate.appId === server.appId && candidate.name === server.name,
@@ -276,23 +265,4 @@ function resolvePlanner(
   return convergence === undefined
     ? { blockers: [{ message: `${app.displayName}'s adapter cannot write MCP configuration.` }] }
     : { app, convergence };
-}
-
-function desiredEntries(manifest: AuraManifest, appId: string): readonly OwnedServerEntry[] {
-  return manifest.mcpServers
-    .filter((server) => server.apps.includes(appId))
-    .map((server) => ({ name: server.name, scope: server.scope, transport: server.transport }));
-}
-
-function withOwnership(
-  manifest: AuraManifest,
-  appId: string,
-  mcpServerNames: readonly string[],
-): AuraManifest {
-  const previous = manifest.ownership[appId];
-  const ownership = {
-    ...manifest.ownership,
-    [appId]: { ...previous, files: previous?.files ?? [], mcpServerNames },
-  };
-  return { ...manifest, ownership };
 }

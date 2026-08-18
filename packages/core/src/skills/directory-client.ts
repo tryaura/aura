@@ -172,6 +172,9 @@ async function request(
   if (result.kind === "failure") {
     return { kind: "failure", reason: result.reason };
   }
+  if (result.kind !== "response") {
+    return { kind: "failure", reason: "network" };
+  }
   return { body: result.body, kind: "response", status: result.status };
 }
 

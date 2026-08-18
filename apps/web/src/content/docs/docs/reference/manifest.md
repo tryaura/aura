@@ -14,6 +14,12 @@ Every top-level section is required, including sections that are still empty:
 ```json
 {
   "schemaVersion": 1,
+  "preset": "plugin:official/platform",
+  "checks": {
+    "disabled": ["MCP-002"],
+    "severity": { "INS-007": "error" },
+    "thresholds": { "INS-007": { "approxTokens": 12000 } }
+  },
   "apps": {
     "claude-code": { "managed": true }
   },
@@ -69,7 +75,10 @@ Every top-level section is required, including sections that are still empty:
 }
 ```
 
-`apps` records which detected applications Aura should manage. Snippet versions and hashes record
+`preset` is the sticky team preset reference used when `--preset` is absent. `checks` stores
+per-user activation, severity, and threshold overrides. Both fields are optional for compatibility
+with existing manifests, and `check` never persists either field automatically. `apps` records
+which detected applications Aura should manage. Snippet versions and hashes record
 the exact selected content; a pinned snippet is kept at that revision. Each skill records its
 source-local, kebab-case `id`, stable source provenance, source version, deterministic tree hash,
 and pin state. Source provenance starts with `plugin:`, `directory:`, or `driver:`. A pinned skill

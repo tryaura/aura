@@ -20,6 +20,28 @@ const DOCS: AuraManifestMcpServer = {
 };
 
 describe("MCP-001 and MCP-002", () => {
+  it("reports preset-required virtual servers with requirement provenance", () => {
+    const base = workspaceFor({ convergence: readyConvergence(), desired: [], servers: [] });
+    const workspace: WorkspaceModel = {
+      ...base,
+      requiredMcpServers: [
+        {
+          apps: ["claude-code"],
+          catalogId: "official/docs",
+          name: "docs",
+          requiredBy: "Acme platform",
+          scope: "global",
+          transport: DOCS.transport,
+        },
+      ],
+    };
+
+    expect(runChecks([mcp001], workspace).findings[0]).toMatchObject({
+      id: "missing:claude-code:docs",
+      metadata: { requiredBy: "Acme platform" },
+    });
+  });
+
   it("reports and fixes a missing manifest server", () => {
     const workspace = workspaceFor({ convergence: readyConvergence(), servers: [] });
     const finding = runChecks([mcp001], workspace).findings[0];

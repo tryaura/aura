@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import {
   defineCheck,
   type AppModel,
+  type CheckRuntimeSettings,
   type DetectedFinding,
   type FindingMetadataTablePresentation,
   type InstructionDocument,
@@ -80,18 +81,42 @@ Start with the largest files in the reported table, remove duplicate guidance re
   id: "INS-007",
   scope: "global",
   title: "Instruction context stays within a practical budget",
+  validateThresholds: validateContextBudget,
 });
 
-function contextBudgetFindings(model: WorkspaceModel): readonly DetectedFinding[] {
+/** The one tunable INS-007 has, and the only key it will accept. */
+function validateContextBudget(thresholds: JsonObject): string | undefined {
+  const keys = Object.keys(thresholds);
+  const unknown = keys.filter((key) => key !== "approxTokens");
+  if (unknown.length > 0) {
+    return `unknown threshold ${unknown.join(", ")}; INS-007 accepts only "approxTokens"`;
+  }
+  const approxTokens = thresholds["approxTokens"];
+  if (approxTokens === undefined) {
+    return undefined;
+  }
+  return typeof approxTokens === "number" && Number.isInteger(approxTokens) && approxTokens > 0
+    ? undefined
+    : `"approxTokens" must be a positive whole number of tokens`;
+}
+
+function contextBudgetFindings(
+  model: WorkspaceModel,
+  settings: CheckRuntimeSettings,
+): readonly DetectedFinding[] {
   const graph = instructionGraphFor(model.instructionFiles);
   const workspaceDocuments = documentMap(model.instructionFiles);
+  const budgetBytes = contextBudgetBytes(settings);
 
   return model.apps.flatMap((app) => {
     if (app.synthetic === true) {
       return [];
     }
     const classified = classifyDocuments(app, graph, workspaceDocuments);
-    const finding = classified === undefined ? unmodeledFinding(app) : findingFor(app, classified);
+    const finding =
+      classified === undefined
+        ? unmodeledFinding(app, budgetBytes)
+        : findingFor(app, classified, budgetBytes);
     return finding === undefined ? [] : [finding];
   });
 }
@@ -104,12 +129,12 @@ function contextBudgetFindings(model: WorkspaceModel): readonly DetectedFinding[
  * one user who most needs to hear otherwise. Below the budget there is nothing to warn about
  * whatever the loading rules turn out to be, so the gap is only worth naming above it.
  */
-function unmodeledFinding(app: AppModel): DetectedFinding | undefined {
+function unmodeledFinding(app: AppModel, budgetBytes: number): DetectedFinding | undefined {
   const totalBytes = app.instructionFiles.reduce(
     (total, document) => total + Buffer.byteLength(document.content, "utf8"),
     0,
   );
-  if (totalBytes <= DEFAULT_CONTEXT_BUDGET_BYTES) {
+  if (totalBytes <= budgetBytes) {
     return undefined;
   }
   const approxTokens = Math.ceil(totalBytes / 4);
@@ -187,10 +212,14 @@ function documentsAtPaths(
   });
 }
 
-function findingFor(app: AppModel, classified: ClassifiedDocuments): DetectedFinding | undefined {
+function findingFor(
+  app: AppModel,
+  classified: ClassifiedDocuments,
+  budgetBytes: number,
+): DetectedFinding | undefined {
   const effective = classified.effective.map(measureDocument);
   const totalBytes = effective.reduce((total, file) => total + file.bytes, 0);
-  if (totalBytes <= DEFAULT_CONTEXT_BUDGET_BYTES) {
+  if (totalBytes <= budgetBytes) {
     return undefined;
   }
 
@@ -243,6 +272,13 @@ function findingFor(app: AppModel, classified: ClassifiedDocuments): DetectedFin
     },
     presentation: PRESENTATION,
   };
+}
+
+function contextBudgetBytes(settings: CheckRuntimeSettings): number {
+  const approxTokens = settings.thresholds["approxTokens"];
+  return typeof approxTokens === "number" && Number.isFinite(approxTokens) && approxTokens > 0
+    ? Math.ceil(approxTokens * 4)
+    : DEFAULT_CONTEXT_BUDGET_BYTES;
 }
 
 /** Names the conditional files the table lists, so the message and the table agree on the count. */

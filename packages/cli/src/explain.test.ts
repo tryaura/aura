@@ -62,14 +62,21 @@ describe("check --explain", () => {
     expect(await runCli(distro([findingPlugin("info", [])]), capture.runtime)).toBe(0);
     // `--json` keeps the document alone on stdout and moves everything else to stderr.
     expect(parseCheckExplanation(capture.stdout.text)).toEqual({
+      enabled: true,
       explain: "Test check.",
       fixability: "manual",
       fixesApplicable: false,
       id: "fixture-info/INFO",
       kind: "check-explanation",
+      provenance: {
+        enabled: { label: "built-in defaults", layer: "default" },
+        severity: { label: "built-in defaults", layer: "default" },
+        thresholds: { label: "built-in defaults", layer: "default" },
+      },
       schemaVersion: 1,
       scope: "global",
       severity: "info",
+      thresholds: {},
       title: "info check",
     });
     expect(capture.stderr.text).toBe("");

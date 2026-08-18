@@ -1,6 +1,11 @@
 import type { Readable, Writable } from "node:stream";
 
-import type { AuraPlugin, Environment, TelemetrySink } from "@tryaura/aura-sdk";
+import type {
+  AuraConfigurationLayer,
+  AuraPlugin,
+  Environment,
+  TelemetrySink,
+} from "@tryaura/aura-sdk";
 
 /** Process status produced by every Aura CLI command. */
 export type CliExitCode = 0 | 1 | 2 | 3;
@@ -28,6 +33,10 @@ export interface CliRegistryOptions {
 /** Build-time composition of one Aura distribution. */
 export interface CliDistro {
   readonly branding: CliBranding;
+  /** Data-only defaults applied below a selected team preset. */
+  readonly defaults?: AuraConfigurationLayer | undefined;
+  /** Bundled preset reference used when neither the workspace nor user selected one. */
+  readonly defaultPreset?: string | undefined;
   readonly plugins: readonly AuraPlugin[];
   /**
    * Registry policy this distribution grants its own plugins, such as bare check ids.
