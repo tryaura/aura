@@ -15,7 +15,7 @@ import type { ValidatedOperation } from "./path-policy.js";
 import { resolveWriteMode, type EnforcedModes } from "./prepare-modes.js";
 import { conflict, createPreview, noop, type PreparedOperation } from "./prepared.js";
 import { isCapturedFile } from "./state.js";
-import { writeRejection } from "./write-validation.js";
+import { unmetPrecondition, writeRejection } from "./write-validation.js";
 
 type WritableBefore = Exclude<CapturedState, { readonly kind: "directory" }>;
 
@@ -48,6 +48,11 @@ export async function prepareWriteGroup(
   const before = captured.state;
   if (before.kind === "directory") {
     return conflict(leader, "cannot replace a directory with a file");
+  }
+
+  const unmet = unmetPrecondition(writes, before);
+  if (unmet !== undefined) {
+    return conflict(leader, unmet);
   }
 
   const mode = compatibleMode(writes, before, enforcedMode);

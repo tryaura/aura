@@ -1,10 +1,18 @@
 import {
   collectJsonMcpServers,
+  EMPTY_COLLECTION,
   isConfigRecord,
+  jsonMcpEntry,
+  parseJsonMcpConfig,
   parseConfigObject,
+  writeJsonMcpServers,
   type AdapterSourceFile,
   type JsonMcpConfigOptions,
-  type McpServer,
+  type McpEntryCollection,
+  type McpWrite,
+  type OwnedServerEntry,
+  type ParsedJsonMcpConfig,
+  type UnusableMcpServer,
 } from "@tryaura/aura-sdk";
 
 import { CLAUDE_CODE_ADAPTER_ID } from "./contract.js";
@@ -15,36 +23,27 @@ const OPTIONS: JsonMcpConfigOptions = {
 };
 
 /** What one Claude Code configuration file contributed. */
-export interface ClaudeMcpConfig {
-  /**
-   * Whether the file held something other than a JSON object.
-   *
-   * Kept apart from an empty server list because the two need opposite advice: one user has no MCP
-   * servers, the other has servers that are silently not loading.
-   */
-  readonly malformed: boolean;
-  readonly servers: readonly McpServer[];
-}
+export type ClaudeMcpConfig = ParsedJsonMcpConfig;
 
 /** What `~/.claude.json` contributed, split by the two records it keeps servers in. */
 export interface ClaudeGlobalMcpConfig {
   /** Servers at the top of the document, which apply wherever Claude Code runs. */
-  readonly globalServers: readonly McpServer[];
-  /** See {@link ClaudeMcpConfig.malformed}. */
+  readonly globalServers: McpEntryCollection["servers"];
+  /** See {@link ParsedJsonMcpConfig.malformed}. */
   readonly malformed: boolean;
   /** Servers `projects` configures for the invocation directory alone. */
-  readonly localServers: readonly McpServer[];
+  readonly localServers: McpEntryCollection["servers"];
+  /** Entries from either record that Aura recognized by name but could not model. */
+  readonly unusable: readonly UnusableMcpServer[];
 }
 
 /** Parses a file whose servers sit at the top level, as a project `.mcp.json` does. */
 export function parseMcpServers(file: AdapterSourceFile): ClaudeMcpConfig {
-  const root = parseConfigObject(file.content, parseJson);
-  if (root === undefined) {
-    return { malformed: file.content !== undefined, servers: [] };
-  }
-
-  return { malformed: false, servers: collectJsonMcpServers(file, root["mcpServers"], OPTIONS) };
+  return parseJsonMcpConfig(file, OPTIONS);
 }
+
+/** Serializes one canonical Claude Code MCP target without touching unrelated JSON entries. */
+export const writeMcpServers: McpWrite = (input) => writeJsonMcpServers(input, writeEntry);
 
 /**
  * Parses `~/.claude.json`, which holds the global servers and the local-scope ones together.
@@ -60,13 +59,21 @@ export function parseMcpServers(file: AdapterSourceFile): ClaudeMcpConfig {
 export function parseGlobalMcpServers(file: AdapterSourceFile, cwd: string): ClaudeGlobalMcpConfig {
   const root = parseConfigObject(file.content, parseJson);
   if (root === undefined) {
-    return { globalServers: [], localServers: [], malformed: file.content !== undefined };
+    return {
+      globalServers: [],
+      localServers: [],
+      malformed: file.content !== undefined,
+      unusable: [],
+    };
   }
 
+  const global = collectJsonMcpServers(file, root["mcpServers"], OPTIONS);
+  const local = localServers(file, root, cwd);
   return {
-    globalServers: collectJsonMcpServers(file, root["mcpServers"], OPTIONS),
-    localServers: localServers(file, root, cwd),
+    globalServers: global.servers,
+    localServers: local.servers,
     malformed: false,
+    unusable: [...global.unusable, ...local.unusable],
   };
 }
 
@@ -81,15 +88,15 @@ function localServers(
   file: AdapterSourceFile,
   root: Readonly<Record<string, unknown>>,
   cwd: string,
-): readonly McpServer[] {
+): McpEntryCollection {
   const projects = root["projects"];
   if (!isConfigRecord(projects)) {
-    return [];
+    return EMPTY_COLLECTION;
   }
 
   const project = projects[cwd];
   if (!isConfigRecord(project)) {
-    return [];
+    return EMPTY_COLLECTION;
   }
 
   const projectFile: AdapterSourceFile = { ...file, spec: { ...file.spec, scope: "project" } };
@@ -98,4 +105,8 @@ function localServers(
 
 function parseJson(text: string): unknown {
   return JSON.parse(text);
+}
+
+function writeEntry(entry: OwnedServerEntry): Readonly<Record<string, unknown>> {
+  return jsonMcpEntry(entry, (name) => `\${${name}}`);
 }

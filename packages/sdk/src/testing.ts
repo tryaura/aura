@@ -19,6 +19,7 @@ const EMPTY_MODEL = {
   mcpServers: [],
   sharedSkills: [],
   skills: [],
+  unusableMcpServers: [],
 } as const;
 
 /**

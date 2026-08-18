@@ -13,6 +13,8 @@ import { instructionPrecedenceCheck } from "./ins-008/index.js";
 import { sharedInstructionLinksCheck, sharedInstructionsCheck } from "./instructions.js";
 import { legacyInstructionsAdapter } from "./legacy-adapter.js";
 import { managedBlockHashCheck } from "./mgd-001.js";
+import { mcp001 } from "./mcp-001.js";
+import { mcp002 } from "./mcp-002.js";
 
 export default definePlugin({
   adapters: [legacyInstructionsAdapter],
@@ -31,6 +33,8 @@ export default definePlugin({
     instructionContextBudgetCheck,
     instructionPrecedenceCheck,
     managedBlockHashCheck,
+    mcp001,
+    mcp002,
   ],
   id: "checks-core",
   name: "Aura Core Checks",

@@ -6,6 +6,21 @@
  */
 export type FileMode = 0o600 | 0o644 | 0o700 | 0o755;
 
+/**
+ * What the filesystem must still look like for a whole-file write to mean what its author intended.
+ *
+ * A plan is built from a scan and applied later. For an operation whose `content` was derived from
+ * the file's own previous bytes — a rewritten configuration document rather than a generated one —
+ * that gap is a correctness problem: if the application rewrote the file in between, applying the
+ * plan silently reverts it. Declaring what was read turns that into a reported conflict.
+ *
+ * `absent` states that the file did not exist; `sha256` is the hex digest of the UTF-8 bytes the
+ * plan's author read.
+ */
+export type WritePrecondition =
+  | { readonly kind: "absent" }
+  | { readonly digest: string; readonly kind: "sha256" };
+
 /** Creates or replaces a file. */
 export interface WriteFileOperation {
   /** Full file contents. */
@@ -23,6 +38,13 @@ export interface WriteFileOperation {
   readonly mode?: FileMode | undefined;
   /** Absolute path to write. */
   readonly path: string;
+  /**
+   * State the file must be in for this write to apply. Omitted means the write is unconditional.
+   *
+   * Reported as a conflict rather than raised, like every other thing the current filesystem does
+   * not permit, so the rest of the plan still previews.
+   */
+  readonly precondition?: WritePrecondition | undefined;
   /** Discriminant. */
   readonly type: "write";
 }

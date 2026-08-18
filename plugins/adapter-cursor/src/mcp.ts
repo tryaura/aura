@@ -1,9 +1,12 @@
 import {
-  collectJsonMcpServers,
-  parseConfigObject,
+  jsonMcpEntry,
+  parseJsonMcpConfig,
+  writeJsonMcpServers,
   type AdapterSourceFile,
   type JsonMcpConfigOptions,
-  type McpServer,
+  type McpWrite,
+  type OwnedServerEntry,
+  type ParsedJsonMcpConfig,
 } from "@tryaura/aura-sdk";
 
 import { CURSOR_ADAPTER_ID } from "./contract.js";
@@ -14,22 +17,15 @@ const OPTIONS: JsonMcpConfigOptions = {
 };
 
 /** What one Cursor MCP configuration file contributed. */
-export interface CursorMcpConfig {
-  /**
-   * Whether the file held something other than a JSON object.
-   *
-   * Kept apart from an empty server list because the two need opposite advice: one user has no MCP
-   * servers, the other has servers that are silently not loading.
-   */
-  readonly malformed: boolean;
-  readonly servers: readonly McpServer[];
-}
+export type CursorMcpConfig = ParsedJsonMcpConfig;
 
 export function parseMcpServers(file: AdapterSourceFile): CursorMcpConfig {
-  const root = parseConfigObject(file.content, (text): unknown => JSON.parse(text));
-  if (root === undefined) {
-    return { malformed: file.content !== undefined, servers: [] };
-  }
+  return parseJsonMcpConfig(file, OPTIONS);
+}
 
-  return { malformed: false, servers: collectJsonMcpServers(file, root["mcpServers"], OPTIONS) };
+/** Serializes one canonical Cursor MCP target using Cursor's environment-reference spelling. */
+export const writeMcpServers: McpWrite = (input) => writeJsonMcpServers(input, writeEntry);
+
+function writeEntry(entry: OwnedServerEntry): Readonly<Record<string, unknown>> {
+  return jsonMcpEntry(entry, (name) => `\${env:${name}}`);
 }

@@ -1,6 +1,7 @@
 /* eslint-disable max-lines -- one kernel safety matrix exercises cross-operation invariants. */
 import { Buffer } from "node:buffer";
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { chmod, lstat, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { join, sep } from "node:path";
 import { promisify } from "node:util";
@@ -358,6 +359,47 @@ describe("fix-plan path safety", () => {
 
     expect(preview.operations[0]?.effect).toBe("conflict");
     expect(preview.operations[0]?.conflict).toContain("reversible");
+  });
+
+  it("refuses a write whose contents were derived from bytes the file no longer has", async () => {
+    const fixture = await createFixture();
+    const path = join(fixture.workspace, "config.json");
+    await writeFile(path, '{"a":1}\n', "utf8");
+    const digest = createHash("sha256").update('{"a":1}\n', "utf8").digest("hex");
+    const plan: FixPlan = {
+      operations: [
+        { content: "rewritten", path, precondition: { digest, kind: "sha256" }, type: "write" },
+      ],
+      summary: "Rewrite a scanned file.",
+    };
+
+    const beforeEdit = await previewFixPlan({ model: fixture.model, plan });
+    expect(beforeEdit.operations[0]?.effect).toBe("update");
+
+    await writeFile(path, '{"a":2}\n', "utf8");
+    const afterEdit = await previewFixPlan({ model: fixture.model, plan });
+
+    expect(afterEdit.operations[0]?.effect).toBe("conflict");
+    expect(afterEdit.operations[0]?.conflict).toContain("changed after Aura read it");
+    expect(await readFile(path, "utf8")).toBe('{"a":2}\n');
+  });
+
+  it("refuses a write that expected to create a file someone else has since created", async () => {
+    const fixture = await createFixture();
+    const path = join(fixture.workspace, "new.json");
+    const plan: FixPlan = {
+      operations: [{ content: "{}", path, precondition: { kind: "absent" }, type: "write" }],
+      summary: "Create a scanned file.",
+    };
+
+    expect((await previewFixPlan({ model: fixture.model, plan })).operations[0]?.effect).toBe(
+      "create",
+    );
+    await writeFile(path, "someone else got here first", "utf8");
+
+    expect((await previewFixPlan({ model: fixture.model, plan })).operations[0]?.effect).toBe(
+      "conflict",
+    );
   });
 });
 

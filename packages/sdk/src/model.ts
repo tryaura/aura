@@ -93,6 +93,15 @@ export interface StdioMcpTransport {
    * recording only the names keeps them out of reports, logs, and the model.
    */
   readonly environmentVariables?: readonly string[] | undefined;
+  /**
+   * Set when the entry supplies a credential as a literal rather than an environment reference.
+   *
+   * The value itself never enters the model, which is exactly why this flag has to: an `env` of
+   * `{"TOKEN": "sk-live-…"}` and one of `{"TOKEN": "${TOKEN}"}` both reduce to the name `TOKEN`,
+   * so without it a check comparing transports cannot see that the first holds a secret in
+   * plaintext where desired state asks for a reference.
+   */
+  readonly inlineCredentialValues?: true | undefined;
   /** Discriminant. */
   readonly type: "stdio";
 }
@@ -105,6 +114,8 @@ export interface HttpMcpTransport {
    * Names only — never the values. See {@link StdioMcpTransport.environmentVariables}.
    */
   readonly headerEnvironmentVariables?: readonly string[] | undefined;
+  /** See {@link StdioMcpTransport.inlineCredentialValues}. */
+  readonly inlineCredentialValues?: true | undefined;
   /**
    * Discriminant. `sse` is the Server-Sent Events transport MCP has since superseded.
    *
@@ -137,6 +148,28 @@ export interface McpServer {
   readonly sourceId: string;
   /** How Aura reaches the server. */
   readonly transport: McpTransport;
+}
+
+/** Why a configured MCP entry is not part of the application's running configuration. */
+export type UnusableMcpReason = "disabled" | "unrecognized";
+
+/**
+ * A configured MCP entry Aura found by name but cannot model as a running server.
+ *
+ * Recorded rather than dropped. A name that vanishes from the model reads as absent to everything
+ * downstream, which is how a check comes to report a server as missing while the writer refuses to
+ * add it because that exact key is sitting in the file.
+ */
+export interface UnusableMcpServer {
+  /** The {@link Adapter.id} that parsed this entry. */
+  readonly appId: string;
+  /** Entry name as configured by the user. */
+  readonly name: string;
+  readonly reason: UnusableMcpReason;
+  /** Whether this is user-level or workspace-level configuration. */
+  readonly scope: Scope;
+  /** The {@link AdapterFileSpec.id} this entry came from. */
+  readonly sourceId: string;
 }
 
 /**
@@ -180,6 +213,8 @@ export interface AdapterSnapshot {
   readonly problems?: readonly AdapterProblem[] | undefined;
   /** Skills installed for this application. */
   readonly skills: readonly InstalledSkill[];
+  /** Configured MCP entries this adapter recognized by name but could not model. */
+  readonly unusableMcpServers?: readonly UnusableMcpServer[] | undefined;
 }
 
 /** One adapter's shared-link declaration after core resolves its entry path and template. */
@@ -229,7 +264,9 @@ export interface AppModel extends Omit<AdapterSnapshot, "problems"> {
    * Which declared paths were found.
    *
    * Contents are intentionally absent: they were consumed by {@link Adapter.parse} and are not
-   * retained alongside the documents parsed out of them.
+   * retained alongside the documents parsed out of them. Nothing reachable from this model hands
+   * them back either — the MCP convergence planner that does hold configuration bytes is core's,
+   * keyed off this object from outside it, and never returns rendered file contents to a check.
    */
   readonly sourceFiles: readonly AdapterFileStatus[];
   /** Resolved directories where this application discovers skills. */

@@ -12,7 +12,7 @@ import {
 } from "@tryaura/aura-sdk";
 
 import { CURSOR_ADAPTER_ID, CURSOR_SOURCE_IDS as SOURCE_IDS } from "./contract.js";
-import { parseMcpServers } from "./mcp.js";
+import { parseMcpServers, writeMcpServers } from "./mcp.js";
 import { parseRuleFile } from "./rules.js";
 
 export const cursorAdapter = defineAdapter({
@@ -36,6 +36,7 @@ export const cursorAdapter = defineAdapter({
   id: CURSOR_ADAPTER_ID,
   installHint:
     "Use Help > Check for Updates in Cursor, or install the latest release from https://cursor.com/downloads.",
+  mcpWrite: writeMcpServers,
   parse: ({ files, homeDir }) => {
     const mcpFiles = [SOURCE_IDS.mcpGlobal, SOURCE_IDS.mcpProject].flatMap((id) => {
       const file = files.get(id);
@@ -49,6 +50,7 @@ export const cursorAdapter = defineAdapter({
       mcpServers: mcpFiles.flatMap(({ config }) => config.servers),
       problems: mcpFiles.flatMap(({ config, file }) => unusableMcp(file, config.malformed)),
       skills: [],
+      unusableMcpServers: mcpFiles.flatMap(({ config }) => config.unusable),
     };
   },
   sharedLink: {

@@ -87,6 +87,19 @@ export type {
   ResolvedMcpServerDef,
   StdioMcpServerDefinition,
 } from "./mcp-definition-types.js";
+export {
+  McpWriteError,
+  mcpCommandEntry,
+  mcpWriteResult,
+  normalizeMcpServerDefinition,
+} from "./mcp-write.js";
+export type {
+  McpConvergenceBlocker,
+  McpWrite,
+  McpWriteInput,
+  McpWriteResult,
+  OwnedServerEntry,
+} from "./mcp-write.js";
 export { defineAdapter, defineCheck, definePlugin } from "./define.js";
 export { detectExecutable } from "./detect.js";
 export type { DetectExecutableOptions } from "./detect.js";
@@ -112,6 +125,7 @@ export type {
   RemovePathOperation,
   SymlinkOperation,
   WriteFileOperation,
+  WritePrecondition,
 } from "./fix.js";
 export type {
   AuraManifest,
@@ -139,6 +153,8 @@ export type {
   ResolvedSnippet,
   SharedInstructionsState,
   StdioMcpTransport,
+  UnusableMcpReason,
+  UnusableMcpServer,
 } from "./model.js";
 export type { WorkspaceModel } from "./workspace-model.js";
 export type {
@@ -155,6 +171,7 @@ export type {
 } from "./repository.js";
 export {
   collectMcpServers,
+  EMPTY_COLLECTION,
   configStringArray,
   configStringRecord,
   isConfigRecord,
@@ -162,9 +179,13 @@ export {
   parseConfigObject,
   redactMcpArguments,
   sanitizeMcpUrl,
+  stdioTransport,
 } from "./mcp.js";
-export { collectJsonMcpServers, parseJsonMcpServers } from "./mcp-config.js";
-export type { JsonMcpConfigOptions } from "./mcp-config.js";
+export type { McpEntryCollection, McpEntryParse, StdioTransportFields } from "./mcp.js";
+export { collectJsonMcpServers, parseJsonMcpConfig, parseJsonMcpServers } from "./mcp-config.js";
+export type { JsonMcpConfigOptions, ParsedJsonMcpConfig } from "./mcp-config.js";
+export { jsonMcpEntry, writeJsonMcpServers } from "./json-mcp-write.js";
+export type { JsonMcpEntryWriter } from "./json-mcp-write.js";
 export { maskMarkdownCode } from "./markdown.js";
 export { advanceMarkdownFence } from "./markdown-fence.js";
 export type { MarkdownFence } from "./markdown-fence.js";

@@ -7,6 +7,7 @@ import type {
   McpServer,
   ResolvedSnippet,
   SharedInstructionsState,
+  UnusableMcpServer,
 } from "./model.js";
 import type { RepositoryModel } from "./repository.js";
 import type { InstalledSkill, SharedSkillState } from "./skill-model.js";
@@ -46,4 +47,11 @@ export interface WorkspaceModel {
   readonly sharedSkills?: readonly SharedSkillState[] | undefined;
   /** Installed skills across every application. */
   readonly skills: readonly InstalledSkill[];
+  /**
+   * Configured MCP entries across every application that Aura found by name but cannot model.
+   *
+   * A check comparing desired state against {@link mcpServers} alone would call one of these
+   * absent, and then propose adding a name the file already declares.
+   */
+  readonly unusableMcpServers: readonly UnusableMcpServer[];
 }
