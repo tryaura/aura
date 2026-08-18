@@ -34,6 +34,14 @@ export default definePlugin({
   // user-facing snippet id, and "official/commit-conventions" is the intended spelling.
   id: "official",
   name: "Aura Official Content",
+  skillDirectories: [
+    {
+      id: "directory:agenticskills",
+      kind: "directory",
+      name: "agenticskills.io",
+      url: "https://agenticskills.io",
+    },
+  ],
   snippets: [
     {
       category: "git",

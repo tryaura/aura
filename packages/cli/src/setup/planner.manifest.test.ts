@@ -6,7 +6,7 @@ import { createWorkspaceModel } from "@tryaura/aura-sdk/testing";
 
 import type { AppCatalogEntry } from "./catalog.js";
 import { planSetup } from "./planner.js";
-import { emptySnippetCatalog } from "./testing.js";
+import { emptySkillCatalog, emptySnippetCatalog } from "./testing.js";
 import type { SetupStepContext } from "./types.js";
 
 const PATH = "/home/dev/agents/aura.json";
@@ -75,6 +75,7 @@ function context(
     manifest: state,
     model,
     selections: { apps: { managed } },
+    skillCatalog: emptySkillCatalog(),
     snippetCatalog: emptySnippetCatalog(),
   };
 }

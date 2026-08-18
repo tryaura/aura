@@ -12,7 +12,9 @@ import {
   createMcpServer,
   createPlugin,
   createPreset,
+  createPrivateSkillDirectory,
   createSkill,
+  createSkillDirectory,
   createSkillSource,
   createSnippet,
 } from "./plugin-fixtures.js";
@@ -153,6 +155,46 @@ describe("createPluginRegistry", () => {
     ]);
 
     expect(error.message).toContain('duplicate skill-pack ID "plugin:alpha/review"');
+  });
+
+  it("registers plugin skill directories under their global ids", () => {
+    const official = createSkillDirectory("agenticskills");
+    const acme = createPrivateSkillDirectory("acme");
+    const alpha = createPlugin("alpha", { skillDirectories: [official, acme] });
+
+    const registry = createPluginRegistry([alpha]);
+
+    expect(registry.skillDirectories).toEqual([official, acme]);
+    expect(registry.ownerOf("skill-directory", "directory:agenticskills")).toBe(alpha);
+  });
+
+  it("rejects two plugins claiming the same skill directory id", () => {
+    const error = captureRegistryError([
+      createPlugin("alpha", { skillDirectories: [createSkillDirectory("agenticskills")] }),
+      createPlugin("beta", { skillDirectories: [createSkillDirectory("agenticskills")] }),
+    ]);
+
+    expect(error.message).toContain('duplicate skill-directory ID "directory:agenticskills"');
+  });
+
+  it("rejects malformed skill directory ids, URLs, and token variable names", () => {
+    const idError = captureRegistryError([
+      createPlugin("alpha", { skillDirectories: [createSkillDirectory("Bad-Name")] }),
+    ]);
+    const urlError = captureRegistryError([
+      createPlugin("alpha", {
+        skillDirectories: [createSkillDirectory("acme", { url: "http://acme.example" })],
+      }),
+    ]);
+    const tokenError = captureRegistryError([
+      createPlugin("alpha", {
+        skillDirectories: [createPrivateSkillDirectory("acme", { tokenEnv: "acme-token" })],
+      }),
+    ]);
+
+    expect(idError.message).toContain('expected "directory:" followed by a kebab-case name');
+    expect(urlError.message).toContain("expected https (plain http is loopback-only)");
+    expect(tokenError.message).toContain("a name, never a value");
   });
 
   it("allows the same local ID in different bundled sources", () => {

@@ -7,6 +7,15 @@ export type { ConvergenceRunResult, ConvergedTwiceResult } from "./convergence.j
 export { captureFilesystem } from "./filesystem.js";
 export type { FilesystemSnapshot } from "./filesystem.js";
 export { createSeedBuilder } from "./seed.js";
+export { loopbackOnlyHttpGet } from "./http.js";
+export { createMockDirectoryBuilder } from "./mock-directory.js";
+export type {
+  MockDirectory,
+  MockDirectoryBuilder,
+  MockDirectoryFile,
+  MockDirectoryListing,
+  MockDirectoryRequest,
+} from "./mock-directory.js";
 export { claudeCodeShimResponses, createClaudeCodeSeed } from "./fixtures/claude-code.js";
 export { CODEX_NESTED_PACKAGE, codexShimResponses, createCodexSeed } from "./fixtures/codex.js";
 export { createCursorSeed, cursorShimResponses } from "./fixtures/cursor.js";

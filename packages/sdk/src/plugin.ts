@@ -1,6 +1,13 @@
 import type { Adapter } from "./adapter.js";
 import type { Check } from "./check.js";
-import type { McpServerDef, Preset, SkillPack, SkillSourceDriver, Snippet } from "./content.js";
+import type {
+  DirectorySkillSource,
+  McpServerDef,
+  Preset,
+  SkillPack,
+  SkillSourceDriver,
+  Snippet,
+} from "./content.js";
 
 /**
  * Everything a plugin contributes to an Aura distribution.
@@ -39,6 +46,13 @@ export interface AuraPlugin {
   readonly name: string;
   /** Bundles of contributions installable in one step. */
   readonly presets?: readonly Preset[] | undefined;
+  /**
+   * Remote skill directories this plugin registers with Aura's built-in directory client.
+   *
+   * Ids are global (`directory:agenticskills`) rather than plugin-namespaced: a directory names a
+   * place, and two plugins pointing Aura at the same id must collide, not coexist.
+   */
+  readonly skillDirectories?: readonly DirectorySkillSource[] | undefined;
   /** Skill directories bundled with this plugin. */
   readonly skills?: readonly SkillPack[] | undefined;
   /** Drivers that discover skills outside this plugin's package. */

@@ -262,9 +262,11 @@ function environmentWithExec(
       return Promise.resolve(respond(request));
     },
     homeDir: "/home/dev",
+    httpGet: () => Promise.resolve({ kind: "failure", reason: "network" }),
     now: () => new Date(0),
     pathEntries: ["/first", "/second"],
     platform: "linux",
+    readVariable: () => undefined,
   };
 }
 

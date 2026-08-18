@@ -2,6 +2,7 @@ import { Readable } from "node:stream";
 
 import { runCli } from "@tryaura/aura-cli";
 
+import { loopbackOnlyHttpGet } from "./http.js";
 import { collectCheckResult } from "./run-result.js";
 import { createTextCapture } from "./text-capture.js";
 import type { RunCheckOptions, TestRunResult } from "./types.js";
@@ -18,6 +19,7 @@ export async function runCheck(options: RunCheckOptions): Promise<TestRunResult>
       cwd: options.seed.workspaceDir,
       environmentVariables: { PATH: options.seed.pathDir },
       homeDir: options.seed.homeDir,
+      httpGet: loopbackOnlyHttpGet,
       setExitCode: (code) => {
         appliedExitCode = code;
       },

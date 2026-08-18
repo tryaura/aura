@@ -11,15 +11,16 @@ registration.
 
 Every slot is optional.
 
-| Slot           | Purpose                                                                                                 |
-| -------------- | ------------------------------------------------------------------------------------------------------- |
-| `adapters`     | Detect an agent application, declare files for core to read, parse contents into a normalized snapshot. |
-| `checks`       | Synchronously inspect the `WorkspaceModel` and optionally return a `FixPlan`.                           |
-| `snippets`     | Reference Markdown files.                                                                               |
-| `skills`       | Reference skill directories.                                                                            |
-| `skillSources` | Build-time drivers that list and resolve external skills.                                               |
-| `mcpCatalog`   | Reference JSON MCP catalog entries.                                                                     |
-| `presets`      | Reference JSON preset definitions.                                                                      |
+| Slot               | Purpose                                                                                                 |
+| ------------------ | ------------------------------------------------------------------------------------------------------- |
+| `adapters`         | Detect an agent application, declare files for core to read, parse contents into a normalized snapshot. |
+| `checks`           | Synchronously inspect the `WorkspaceModel` and optionally return a `FixPlan`.                           |
+| `snippets`         | Reference Markdown files.                                                                               |
+| `skills`           | Reference skill directories.                                                                            |
+| `skillDirectories` | Remote directories served through Aura's standard bounded HTTP protocol.                                |
+| `skillSources`     | Build-time drivers that list and resolve non-standard external skills.                                  |
+| `mcpCatalog`       | Reference JSON MCP catalog entries.                                                                     |
+| `presets`          | Reference JSON preset definitions.                                                                      |
 
 ## Namespacing
 

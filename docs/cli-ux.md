@@ -84,7 +84,7 @@ One or two lines. The **top row** is a static map of the flow's real steps, sepa
 always in flow order, ending in **Submit**:
 
 ```
- ✔ Applications │ ▶ Instructions ☐ │ Snippets ☐ │ Baseline ☐ │ Submit
+ ✔ Applications │ ▶ Instructions ☐ │ Snippets ☐ │ Skills ☐ │ Baseline ☐ │ Submit
 ```
 
 The top row never mutates as a step's internal forms advance: the active step keeps its own name
@@ -107,6 +107,12 @@ When the active step runs a sequence of internal forms (a chain step like Instru
 - Both instruction scopes flow through one sub-row; the `Global` / `Project` action tabs double
   as scope section markers, so repeated stage names read unambiguously left to right:
   `✔ Global │ ✔ Sources │ ✔ Archive │ ▶ Project ☐ │ Sources ☐`.
+- The Skills step is the second chain precedent: its Review stage exists only while a directory
+  skill is selected, one review question per skill —
+  `└ ✔ Skills │ ▶ Review claude-md ☐ │ Review commit-style ☐`.
+- Before the picker, private directories appear in an explicit connection form naming the URL and
+  token variable. Its initial selection is empty, including under `--yes`; no credential is read
+  until the user opts in for that run.
 - A step whose single form is named like the step shows no sub-row.
 
 Tab states, in either row:
@@ -189,6 +195,27 @@ whole frame with a scrollable overlay:
 - ↑/↓ scroll one row; page up/page down scroll ten. `esc`, `↵`, or `p` return to the picker with
   the selection untouched; ctrl+c still aborts the wizard. While the overlay is open every other
   key is inert.
+- The skills Review form leans on this overlay as its security boundary: the Install option of a
+  directory skill carries the full fetched SKILL.md as its preview, so the whole prompt content is
+  one `p` away at the decision point.
+
+### Skills step
+
+A picker over every allowed skill source, then one Review form per selected directory skill.
+
+- The picker groups rows by source (`option.group`); a source that cannot be listed renders one
+  disabled row with the reason in place (`agenticskills.io — unavailable (set ACME_SKILLS_TOKEN)`),
+  and a manifest entry whose source is gone or disallowed renders disabled as
+  `<id> (preserved)` / `<id> (blocked)` — clearing it is how the skill is removed.
+- A Review form appears for a directory skill that is new to the manifest or whose upstream
+  content changed. It is a select between `Skip` and `Install <id> <version>`; the install row's
+  description is the source URL and its preview is the full SKILL.md. **Skip is always the
+  initial answer**, so `--yes` and exhausted scripts can only re-apply skills the manifest
+  already records — a non-interactive run never first-installs remote prompt content.
+- Installs from a source the team preset's `allowedSkillSources` does not permit are refused at
+  planning time with a blocker naming the preset
+  (`Skill "<id>" comes from <source>, which the team preset ".aura/preset.json" does not allow.`),
+  which also covers `--add skill` and manifest entries whose source lost its permission.
 
 ### Implementation status
 

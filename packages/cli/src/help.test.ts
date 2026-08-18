@@ -74,7 +74,7 @@ describe("help screens", () => {
   });
 
   it("renders the setup screen and points at check afterwards", () => {
-    expect(renderSetupHelp(BRANDING, ["snippet"])).toMatchInlineSnapshot(`
+    expect(renderSetupHelp(BRANDING, ["snippet", "skill"])).toMatchInlineSnapshot(`
       "acme setup — Set up this machine interactively and converge it
 
         Everyday use
@@ -84,7 +84,7 @@ describe("help screens", () => {
         Options
           --yes                   Accept every proposed default; required when stdin is not a terminal
           --detail                Include the full diff of every planned change
-          --add <kind>            Run one setup addition (supported: snippet)
+          --add <kind>            Run one setup addition (supported: snippet, skill)
 
         Advanced
           --home <dir>            Override the home directory

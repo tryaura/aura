@@ -1,3 +1,5 @@
+import type { HttpGetRequest, HttpGetResult } from "./http.js";
+
 /** Operating systems Aura runs on. */
 export type EnvironmentPlatform = "darwin" | "linux" | "win32";
 
@@ -120,6 +122,16 @@ export interface Environment {
   readonly exec: (request: ExecRequest) => Promise<ExecResult>;
   /** The current user's home directory. */
   readonly homeDir: string;
+  /** Fetches one HTTPS resource. See {@link HttpGetRequest} for the caps and safety contract. */
+  readonly httpGet: (request: HttpGetRequest) => Promise<HttpGetResult>;
+  /**
+   * Reads one variable from the environment captured at boot, by exact name.
+   *
+   * Values are credentials such as skill-directory tokens. Read a value at the moment of use and
+   * let it leave scope with the call: never store it, and never place it in a manifest, cache key,
+   * diagnostic, or log. `undefined` when the variable is unset or empty.
+   */
+  readonly readVariable: (name: string) => string | undefined;
   /** The current time. Injected so plugin behavior stays deterministic under test. */
   readonly now: () => Date;
   /** `PATH` split into entries, in resolution order. */

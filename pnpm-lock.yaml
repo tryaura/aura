@@ -168,6 +168,9 @@ importers:
       '@tryaura/aura-sdk':
         specifier: workspace:*
         version: link:../sdk
+      '@tryaura/core':
+        specifier: workspace:*
+        version: link:../core
       diff:
         specifier: 9.0.0
         version: 9.0.0
@@ -181,9 +184,6 @@ importers:
       '@tryaura/adapter-cursor':
         specifier: workspace:*
         version: link:../../plugins/adapter-cursor
-      '@tryaura/core':
-        specifier: workspace:*
-        version: link:../core
       '@types/node':
         specifier: 24.13.3
         version: 24.13.3

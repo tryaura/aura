@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- one reconciliation matrix shares the same context fixtures. */
 import type {
   AppModel,
   AuraManifest,
@@ -10,7 +11,7 @@ import type {
 import { createWorkspaceModel } from "@tryaura/aura-sdk/testing";
 import { describe, expect, it } from "vitest";
 
-import { emptySnippetCatalog } from "./testing.js";
+import { emptySkillCatalog, emptySnippetCatalog } from "./testing.js";
 import { planSkills } from "./skill-planner.js";
 import type { SetupStepContext, SkillSelection } from "./types.js";
 
@@ -167,13 +168,89 @@ describe("skill setup planner", () => {
     expect(realDirectory.operations).toEqual([]);
     expect(realDirectory.manualSteps[0]).toContain("not an Aura-managed skill link");
   });
+
+  it("installs a reviewed directory pack carried by the step's resolved slice", () => {
+    const remote: ResolvedSkillPack = {
+      ...pack("plugin:unused", HASH_1),
+      source: {
+        id: "directory:acme",
+        kind: "directory",
+        name: "Acme",
+        url: "https://acme.example",
+      },
+    };
+    const result = planSkills(
+      context({
+        resolved: [remote],
+        selections: [{ id: "review", source: "directory:acme" }],
+      }),
+    );
+
+    expect(result.blockers).toEqual([]);
+    expect(result.manifestSkills).toEqual([manifestSkill("directory:acme", HASH_1)]);
+    expect(result.operations).toContainEqual({
+      content: "---\nname: review\n---\n",
+      path: `${SHARED_ROOT}/review/SKILL.md`,
+      type: "write",
+    });
+  });
+
+  it("blocks a selection from a source the team preset does not allow, naming the preset", () => {
+    const result = planSkills(
+      context({
+        allowedSourceIds: ["plugin:official"],
+        resolved: [],
+        selections: [{ id: "review", source: "directory:acme" }],
+      }),
+    );
+
+    expect(result.operations).toEqual([]);
+    expect(result.blockers).toHaveLength(1);
+    expect(result.blockers[0]?.reason).toContain("directory:acme");
+    expect(result.blockers[0]?.reason).toContain('team preset ".aura/preset.json"');
+    expect(result.manifestSkills).toEqual([]);
+  });
+
+  it("blocks a manifest entry from a now-disallowed source even when the step never ran", () => {
+    const previous = manifestSkill("directory:acme", HASH_1);
+    const result = planSkills(
+      context({
+        allowedSourceIds: ["plugin:official"],
+        previous: [previous],
+        selections: undefined,
+      }),
+    );
+
+    expect(result.blockers).toHaveLength(1);
+    expect(result.blockers[0]?.reason).toContain('team preset ".aura/preset.json"');
+    // The previous manifest survives so a blocked run never rewrites provenance.
+    expect(result.manifestSkills).toEqual([previous]);
+  });
+
+  it("keeps a manifest-recorded directory skill untouched when no pack was resolved", () => {
+    const previous = manifestSkill("directory:acme", HASH_1);
+    const result = planSkills(
+      context({
+        previous: [previous],
+        resolved: [],
+        selections: [{ id: "review", source: "directory:acme" }],
+        sharedSkills: [shared(HASH_1)],
+      }),
+    );
+
+    expect(result.blockers).toEqual([]);
+    expect(result.manifestSkills).toEqual([previous]);
+    expect(result.operations).toEqual([]);
+  });
 });
 
 interface ContextOptions {
+  readonly allowedSourceIds?: readonly string[];
   readonly apps?: readonly AppModel[];
   readonly availableSkills?: readonly ResolvedSkillPack[];
   readonly previous?: readonly AuraManifestSkill[];
-  readonly selections: readonly SkillSelection[];
+  readonly resolved?: readonly ResolvedSkillPack[];
+  readonly selections: readonly SkillSelection[] | undefined;
   readonly sharedSkills?: readonly SharedSkillState[];
 }
 
@@ -202,11 +279,30 @@ function context(options: ContextOptions): SetupStepContext {
     sharedInstructions: { exists: false, path: "/home/dev/agents/AGENTS.md" },
     sharedSkills: options.sharedSkills ?? [],
   });
+  const base = emptySkillCatalog();
   return {
     appCatalog: [],
     manifest,
     model,
-    selections: { skills: { selected: options.selections } },
+    selections:
+      options.selections === undefined
+        ? {}
+        : {
+            skills: {
+              ...(options.resolved === undefined ? {} : { resolved: options.resolved }),
+              selected: options.selections,
+            },
+          },
+    skillCatalog: {
+      ...base,
+      policy:
+        options.allowedSourceIds === undefined
+          ? base.policy
+          : {
+              allowedSourceIds: new Set(options.allowedSourceIds),
+              presetName: ".aura/preset.json",
+            },
+    },
     snippetCatalog: emptySnippetCatalog(),
   };
 }

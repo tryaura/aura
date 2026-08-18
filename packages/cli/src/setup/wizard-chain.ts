@@ -23,12 +23,22 @@ export interface ChainStage<S> {
    * Cheap test for whether this stage currently has questions.
    *
    * Progress rendering uses this instead of materializing full question previews for every
-   * upcoming stage. When omitted, it falls back to calling {@link questions}.
+   * upcoming stage. When omitted, it falls back to calling {@link questions} — which is why a
+   * stage whose `questions` is async must supply this: progress rendering never awaits, so an
+   * async stage without it is assumed applicable until its form actually runs.
    */
   readonly isApplicable?: ((state: S) => boolean) | undefined;
   /** Sub-row tab for this stage when it is not the live form. */
   readonly label: string;
-  readonly questions: (state: S) => readonly WizardQuestion[] | undefined;
+  /**
+   * The stage's questions, or nothing when the state gives it nothing to ask.
+   *
+   * May be async for a stage whose questions come from somewhere slow — a network fetch between a
+   * picker and its review. Async stages must declare {@link isApplicable}.
+   */
+  readonly questions: (
+    state: S,
+  ) => Promise<readonly WizardQuestion[] | undefined> | readonly WizardQuestion[] | undefined;
 }
 
 /** Which end of the chain a run opens on; "end" is how ← re-enters an already-answered step. */
@@ -79,7 +89,7 @@ export async function runFormChain<S>(
 
   while (index < stages.length) {
     const stage = stages[index];
-    const questions = stage?.questions(state);
+    const questions = await stage?.questions(state);
     if (stage === undefined || questions === undefined || questions.length === 0) {
       index += 1;
       continue;
@@ -143,7 +153,17 @@ function askFlow<S>(
 }
 
 function hasQuestions<S>(stage: ChainStage<S>, state: S): boolean {
-  return stage.isApplicable?.(state) ?? (stage.questions(state)?.length ?? 0) > 0;
+  const applicable = stage.isApplicable?.(state);
+  if (applicable !== undefined) {
+    return applicable;
+  }
+  const questions = stage.questions(state);
+  // An async stage without isApplicable cannot be answered synchronously; assume it applies and
+  // let the run loop skip it when its resolved questions turn out empty.
+  if (questions instanceof Promise) {
+    return true;
+  }
+  return (questions?.length ?? 0) > 0;
 }
 
 function toStageStep<S>(stage: ChainStage<S>): WizardFlowStep {

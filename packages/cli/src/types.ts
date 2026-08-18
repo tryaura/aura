@@ -1,6 +1,6 @@
 import type { Readable, Writable } from "node:stream";
 
-import type { AuraPlugin } from "@tryaura/aura-sdk";
+import type { AuraPlugin, Environment } from "@tryaura/aura-sdk";
 
 /** Process status produced by every Aura CLI command. */
 export type CliExitCode = 0 | 1 | 2 | 3;
@@ -60,6 +60,11 @@ export interface CliRuntime {
   readonly environmentVariables?: Readonly<Record<string, string | undefined>> | undefined;
   /** Base home directory before a `--home` override. Defaults to the operating-system home. */
   readonly homeDir?: string | undefined;
+  /**
+   * Network access for the run. Defaults to the kernel's bounded TLS-only client; the testkit
+   * injects a loopback-only variant so no test run can reach beyond the machine.
+   */
+  readonly httpGet?: Environment["httpGet"] | undefined;
   readonly stderr?: Writable | undefined;
   readonly stdin?: Readable | undefined;
   readonly stdout?: Writable | undefined;

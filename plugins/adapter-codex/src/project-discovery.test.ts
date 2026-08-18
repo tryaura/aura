@@ -186,9 +186,11 @@ function environment(cwd: string): Environment {
     cwd,
     exec: () => Promise.resolve({ exitCode: 0, stderr: "", stdout: "" }),
     homeDir: "/home/dev",
+    httpGet: () => Promise.resolve({ kind: "failure", reason: "network" }),
     now: () => new Date(0),
     pathEntries: [],
     platform: "linux",
+    readVariable: () => undefined,
   };
 }
 
