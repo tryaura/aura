@@ -28,6 +28,16 @@ export interface DetectExecutableOptions {
   /** Executable name without extension; `.exe` is appended on Windows. */
   readonly binaryName: string;
   /**
+   * Directories probed ahead of {@link Environment.pathEntries}, in order.
+   *
+   * A companion CLI installed beside an already-resolved executable is then found in one spawn
+   * rather than a full search-path walk. That matters most when the companion is usually absent:
+   * without a hit the walk runs to the last entry, paying a failed spawn for each one. Entries are
+   * deduplicated against the search path, so naming a directory that also appears there costs
+   * nothing.
+   */
+  readonly preferredDirectories?: readonly string[];
+  /**
    * Full executable name to probe on Windows, replacing the default `.exe`.
    *
    * A Windows CLI is routinely a `.cmd` shim rather than an `.exe` — Cursor's search-path entry
@@ -47,8 +57,10 @@ export interface DetectExecutableOptions {
  * Aura could not confirm the binary is the requested application, and an unrelated program of the
  * same name on the path should not be handed the authentication arguments of the one it shadows.
  *
- * Duplicate path entries are skipped. Nothing here touches the filesystem: an adapter has no
- * reader, so probing an entry means running it, and running it once each is the floor.
+ * Duplicate path entries are skipped, including one named by
+ * {@link DetectExecutableOptions.preferredDirectories}. Nothing here touches the filesystem: an
+ * adapter has no reader, so probing an entry means running it, and running it once each is the
+ * floor.
  */
 export async function detectExecutable(
   environment: Environment,
@@ -58,7 +70,7 @@ export async function detectExecutable(
   const probed = new Set<string>();
   let unknownVersionPath: string | undefined;
 
-  for (const pathEntry of environment.pathEntries) {
+  for (const pathEntry of [...(options.preferredDirectories ?? []), ...environment.pathEntries]) {
     if (!isAbsolute(pathEntry) || probed.has(pathEntry)) {
       continue;
     }
