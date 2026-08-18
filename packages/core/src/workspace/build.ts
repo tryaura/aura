@@ -152,6 +152,7 @@ export async function buildWorkspaceModel(options: WorkspaceScanOptions): Promis
       sharedInstructions: toSharedInstructions(sharedPath, sharedContents),
       sharedSkills,
       skills: apps.flatMap((app) => app.skills),
+      unusableMcpServers: apps.flatMap((app) => app.unusableMcpServers ?? []),
     },
     skipped,
   };

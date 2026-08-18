@@ -20,6 +20,7 @@ import type {
 } from "@tryaura/aura-sdk";
 import { createWorkspaceModel } from "@tryaura/aura-sdk/testing";
 import { runChecks } from "@tryaura/core";
+import { rememberMcpConvergence, type AppMcpConvergence } from "@tryaura/core/testing";
 
 /**
  * What core would carry into {@link AppModel.capabilities} for a bundled adapter's id.
@@ -53,6 +54,10 @@ export interface TestAppOptions {
   readonly instructionFiles?: readonly InstructionDocument[];
   readonly link?: ResolvedSharedLink;
   readonly metadata?: JsonObject;
+  /** Installs core's convergence planner for this app, as a real scan would. */
+  readonly mcpConvergence?: AppMcpConvergence;
+  readonly mcpServers?: AppModel["mcpServers"];
+  readonly unusableMcpServers?: AppModel["unusableMcpServers"];
   readonly source?:
     | {
         readonly exists: boolean;
@@ -88,7 +93,7 @@ export function app(options: TestAppOptions = {}): AppModel {
           },
         ];
   const capabilities = options.capabilities ?? BUNDLED_CAPABILITIES.get(adapterId);
-  return {
+  const built: AppModel = {
     adapterId,
     ...(capabilities === undefined ? {} : { capabilities }),
     detection: {
@@ -99,7 +104,10 @@ export function app(options: TestAppOptions = {}): AppModel {
     displayName: options.displayName ?? "Alpha",
     installHint: options.installHint,
     instructionFiles: options.instructionFiles ?? [],
-    mcpServers: [],
+    mcpServers: options.mcpServers ?? [],
+    ...(options.unusableMcpServers === undefined
+      ? {}
+      : { unusableMcpServers: options.unusableMcpServers }),
     metadata: options.metadata,
     skills: [],
     ...(options.link === undefined ? {} : { sharedLink: options.link }),
@@ -111,6 +119,11 @@ export function app(options: TestAppOptions = {}): AppModel {
     },
     synthetic: options.synthetic,
   };
+
+  if (options.mcpConvergence !== undefined) {
+    rememberMcpConvergence(built, options.mcpConvergence);
+  }
+  return built;
 }
 
 /** Everything the fixture fills in for what a test does not say about an instruction file. */
@@ -156,6 +169,7 @@ export function model(
     readonly apps?: readonly AppModel[];
     /** Documents the apps do not carry, for checks that read the workspace-wide list directly. */
     readonly instructionFiles?: readonly InstructionDocument[];
+    readonly manifest?: WorkspaceModel["manifest"];
     readonly sharedInstructions?: {
       readonly content?: string | undefined;
       readonly exists: boolean;
@@ -170,8 +184,15 @@ export function model(
       ...apps.flatMap((candidate) => candidate.instructionFiles),
       ...(options.instructionFiles ?? []),
     ],
-    manifest: { exists: false, path: "/home/dev/agents/aura.json", status: "missing" },
+    manifest:
+      options.manifest ??
+      ({
+        exists: false,
+        path: "/home/dev/agents/aura.json",
+        status: "missing",
+      } satisfies WorkspaceModel["manifest"]),
     mcpServers: apps.flatMap((candidate) => candidate.mcpServers),
+    unusableMcpServers: apps.flatMap((candidate) => candidate.unusableMcpServers ?? []),
     // Absent by default: the environment checks never read it, and a fixture that claimed a shared
     // source exists would make unrelated INS checks inherit state they did not ask for.
     sharedInstructions: {

@@ -145,6 +145,7 @@ export interface TestAdapterOptions {
   readonly files?: Adapter["files"] | undefined;
   readonly id?: string | undefined;
   readonly installHint?: string | undefined;
+  readonly mcpWrite?: Adapter["mcpWrite"] | undefined;
   readonly parse?: ((input: AdapterParseInput) => AdapterSnapshot) | undefined;
   readonly supportedRange?: string | undefined;
 }
@@ -159,6 +160,7 @@ export function createTestAdapter(options: TestAdapterOptions = {}): Adapter {
     files: options.files ?? (() => []),
     id,
     ...(options.installHint === undefined ? {} : { installHint: options.installHint }),
+    ...(options.mcpWrite === undefined ? {} : { mcpWrite: options.mcpWrite }),
     parse: options.parse ?? (() => createSnapshot()),
     supportedRange: options.supportedRange ?? ">=1 <2",
   };

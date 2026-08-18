@@ -1,8 +1,9 @@
-import type { AdapterSourceFile } from "@tryaura/aura-sdk";
+import type { AdapterSourceFile, McpWriteInput, McpWriteResult } from "@tryaura/aura-sdk";
 import { describe, expect, it } from "vitest";
 
 import { codexAdapter } from "./adapter.js";
 import { parseMcpServers } from "./mcp.js";
+import { writeMcpServers } from "./mcp-write.js";
 
 describe("Codex MCP configuration", () => {
   it("normalizes stdio and HTTP servers without retaining secrets", () => {
@@ -32,6 +33,7 @@ env_http_headers = { Authorization = "AUTH_TOKEN", "X-Region" = "REGION" }
           args: ["-y", "@example/docs", "--api-key=[redacted]"],
           command: "npx",
           environmentVariables: ["DOCS_TOKEN", "LOCAL_TOKEN", "REGION", "REMOTE_TOKEN"],
+          inlineCredentialValues: true,
           type: "stdio",
         },
       },
@@ -42,6 +44,7 @@ env_http_headers = { Authorization = "AUTH_TOKEN", "X-Region" = "REGION" }
         sourceId: "codex.mcp.global",
         transport: {
           headerEnvironmentVariables: ["AUTH_TOKEN", "REGION", "SENTRY_TOKEN"],
+          inlineCredentialValues: true,
           type: "http",
           url: "https://mcp.sentry.dev/mcp?team=[redacted]",
         },
@@ -53,8 +56,8 @@ env_http_headers = { Authorization = "AUTH_TOKEN", "X-Region" = "REGION" }
     expect(serialized).not.toContain("hunter2");
   });
 
-  it("omits disabled servers and returns partial results for malformed entries", () => {
-    const { servers } = parseMcpServers(
+  it("records disabled and unmodelable entries instead of dropping their names", () => {
+    const { servers, unusable } = parseMcpServers(
       mcpFile(`
 [mcp_servers.good]
 command = "tool"
@@ -85,6 +88,14 @@ url = "not a url"
     );
 
     expect(servers.map((server) => server.name)).toEqual(["good"]);
+    expect(unusable.map((entry) => [entry.name, entry.reason])).toEqual([
+      ["disabled", "disabled"],
+      ["ambiguous", "unrecognized"],
+      ["bad_args", "unrecognized"],
+      ["bad_enabled", "disabled"],
+      ["bad_headers", "unrecognized"],
+      ["bad_url", "unrecognized"],
+    ]);
   });
 
   it("redacts separate and bare argument credentials", () => {
@@ -99,14 +110,17 @@ args = ["@example/mcp", "--token", "plain-secret", "ghp_deadbeef", "--verbose"]
     expect(servers[0]?.transport).toEqual({
       args: ["@example/mcp", "--token", "[redacted]", "[redacted]", "--verbose"],
       command: "npx",
+      inlineCredentialValues: true,
       type: "stdio",
     });
   });
 
   it("distinguishes a config without servers from one that does not parse", () => {
-    expect(parseMcpServers(mcpFile('model = "gpt"\n'))).toEqual({ malformed: false, servers: [] });
-    expect(parseMcpServers(mcpFile("[mcp_servers"))).toEqual({ malformed: true, servers: [] });
-    expect(parseMcpServers(mcpFile(undefined))).toEqual({ malformed: false, servers: [] });
+    const empty = { servers: [], unusable: [] };
+
+    expect(parseMcpServers(mcpFile('model = "gpt"\n'))).toEqual({ ...empty, malformed: false });
+    expect(parseMcpServers(mcpFile("[mcp_servers"))).toEqual({ ...empty, malformed: true });
+    expect(parseMcpServers(mcpFile(undefined))).toEqual({ ...empty, malformed: false });
   });
 
   it("reports a config.toml that does not parse instead of claiming no servers", () => {
@@ -156,7 +170,94 @@ args = ["@example/mcp", "--token", "plain-secret", "ghp_deadbeef", "--verbose"]
     expect(snapshot.metadata?.["projectTrust"]).toBe("unknown");
     expect(snapshot.problems).toEqual([]);
   });
+
+  it("writes and replaces a validated managed section while preserving CRLF", () => {
+    const desired = [
+      {
+        name: "docs",
+        scope: "global",
+        transport: { command: "npx", env: ["TOKEN"], type: "stdio" },
+      },
+    ] as const;
+    const first = content(write('model = "gpt-5"\r\n', desired, []));
+    const second = content(write(first, desired, ["docs"]));
+
+    expect(first).toBe(second);
+    expect(first).toContain("# aura:begin MCP\r\n[mcp_servers.docs]\r\n");
+    expect(first).toContain('env_vars = [ "TOKEN" ]');
+    expect(first.replaceAll("\r\n", "")).not.toContain("\n");
+    expect(content(write(first, [], ["docs"]))).toBe('model = "gpt-5"\r\n');
+  });
+
+  it("refuses a name the ledger owns that someone moved outside the managed section", () => {
+    const existing = '[mcp_servers.docs]\ncommand = "hand-written"\n';
+
+    expect(write(existing, [], ["docs"])).toEqual({
+      refusal: expect.stringContaining("outside Aura's managed Codex section"),
+    });
+    expect(
+      write(
+        existing,
+        [{ name: "docs", scope: "global", transport: { command: "npx", type: "stdio" } }],
+        [],
+      ),
+    ).toEqual({ refusal: expect.stringContaining("outside Aura's managed Codex section") });
+  });
+
+  it("ignores marker text inside multiline strings and refuses malformed markers", () => {
+    const spoof = 'note = """\n# aura:begin MCP\n# aura:end MCP\n"""\n';
+    const output = content(
+      write(
+        spoof,
+        [{ name: "docs", scope: "global", transport: { command: "npx", type: "stdio" } }],
+        [],
+      ),
+    );
+    const malformed = { refusal: expect.stringContaining("markers are malformed") };
+
+    expect(output.match(/# aura:begin MCP/gu)).toHaveLength(2);
+    expect(write("# aura:begin MCP\n", [], ["docs"])).toEqual(malformed);
+    expect(write("# aura:begin MCP\n# aura:end MCP\n# aura:end MCP\n", [], ["docs"])).toEqual(
+      malformed,
+    );
+    expect(write(" # aura:begin MCP\n# aura:end MCP\n", [], ["docs"])).toEqual(malformed);
+  });
+
+  it("refuses HTTP header templates Codex cannot represent", () => {
+    expect(
+      write(
+        "",
+        [
+          {
+            name: "remote",
+            scope: "global",
+            transport: {
+              headers: { "X-Key": "Token ${TOKEN}" },
+              type: "http",
+              url: "https://example.com/mcp",
+            },
+          },
+        ],
+        [],
+      ),
+    ).toEqual({ refusal: expect.stringContaining("cannot represent") });
+  });
 });
+
+function write(
+  existingContent: string,
+  desired: McpWriteInput["desired"],
+  ledgerNames: readonly string[],
+): McpWriteResult {
+  return writeMcpServers({ desired, existingContent, ledgerNames });
+}
+
+function content(result: McpWriteResult): string {
+  if ("refusal" in result) {
+    throw new Error(`expected content, got refusal: ${result.refusal}`);
+  }
+  return result.content;
+}
 
 function mcpFile(content: string | undefined): AdapterSourceFile {
   return {

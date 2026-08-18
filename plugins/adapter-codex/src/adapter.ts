@@ -22,6 +22,7 @@ import {
 import { parseCodexProjectSettings } from "./config.js";
 import { selectInstructionFiles } from "./instructions.js";
 import { parseMcpServers } from "./mcp.js";
+import { writeMcpServers } from "./mcp-write.js";
 import { codexProjectInstructionFiles } from "./project-instructions.js";
 import { parseProjectTrust } from "./trust.js";
 
@@ -43,6 +44,7 @@ export const codexAdapter = defineAdapter({
   id: CODEX_ADAPTER_ID,
   installHint:
     "Run `npm install -g @openai/codex@latest`, or update Codex with your package manager.",
+  mcpWrite: writeMcpServers,
   parse: (input) => {
     const { cwd, files, homeDir, projectRoot } = input;
     const mcp = files.get(SOURCE_IDS.mcp);
@@ -65,6 +67,7 @@ export const codexAdapter = defineAdapter({
         ...unusableConfig(mcp, mcpConfig.malformed),
       ],
       skills: parseInstalledSkills(CODEX_ADAPTER_ID, input, SKILL_DIRECTORIES),
+      unusableMcpServers: mcpConfig.unusable,
     };
   },
   sharedLink: {
@@ -78,7 +81,7 @@ export const codexAdapter = defineAdapter({
 });
 
 /** What an absent file contributes, so `parse` reads the same whether or not one was found. */
-const EMPTY_MCP = Object.freeze({ malformed: false, servers: [] });
+const EMPTY_MCP = Object.freeze({ malformed: false, servers: [], unusable: [] });
 
 /**
  * Reports configuration that is present but unreadable.

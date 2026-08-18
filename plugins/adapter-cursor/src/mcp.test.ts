@@ -1,7 +1,7 @@
 import type { AdapterSourceFile } from "@tryaura/aura-sdk";
 import { describe, expect, it } from "vitest";
 
-import { parseMcpServers } from "./mcp.js";
+import { parseMcpServers, writeMcpServers } from "./mcp.js";
 
 describe("Cursor MCP configuration", () => {
   it("normalizes stdio and remote servers without retaining secret values", () => {
@@ -36,6 +36,7 @@ describe("Cursor MCP configuration", () => {
           args: ["-y", "@example/docs", "--api-key", "[redacted]"],
           command: "npx",
           environmentVariables: ["DOCS_TOKEN"],
+          inlineCredentialValues: true,
           type: "stdio",
         },
       },
@@ -80,9 +81,76 @@ describe("Cursor MCP configuration", () => {
   });
 
   it("distinguishes a config without servers from one that does not parse", () => {
-    expect(parseMcpServers(mcpFile("{}"))).toEqual({ malformed: false, servers: [] });
-    expect(parseMcpServers(mcpFile("{"))).toEqual({ malformed: true, servers: [] });
-    expect(parseMcpServers(mcpFile("[1, 2]"))).toEqual({ malformed: true, servers: [] });
+    expect(parseMcpServers(mcpFile("{}"))).toEqual({ malformed: false, servers: [], unusable: [] });
+    expect(parseMcpServers(mcpFile("{"))).toEqual({ malformed: true, servers: [], unusable: [] });
+    expect(parseMcpServers(mcpFile("[1, 2]"))).toEqual({
+      malformed: true,
+      servers: [],
+      unusable: [],
+    });
+  });
+
+  it("records a disabled entry rather than dropping its name", () => {
+    const parsed = parseMcpServers(
+      mcpFile(
+        JSON.stringify({
+          mcpServers: {
+            disabled: { command: "off", enabled: false },
+            ready: { command: "on" },
+          },
+        }),
+      ),
+    );
+
+    expect(parsed.servers.map((server) => server.name)).toEqual(["ready"]);
+    expect(parsed.unusable).toEqual([
+      {
+        appId: "cursor",
+        name: "disabled",
+        reason: "disabled",
+        scope: "project",
+        sourceId: "cursor.mcp.project",
+      },
+    ]);
+  });
+
+  it("flags an entry that stores a credential where a reference belongs", () => {
+    const parsed = parseMcpServers(
+      mcpFile(
+        JSON.stringify({
+          mcpServers: {
+            inline: { command: "npx", env: { TOKEN: "sk-live-secret" } },
+            referenced: { command: "npx", env: { TOKEN: "${env:TOKEN}" } },
+          },
+        }),
+      ),
+    );
+
+    expect(parsed.servers.map((server) => server.transport.inlineCredentialValues)).toEqual([
+      true,
+      undefined,
+    ]);
+  });
+
+  it("writes Cursor environment references", () => {
+    const result = writeMcpServers({
+      desired: [
+        {
+          name: "remote",
+          scope: "project",
+          transport: {
+            headers: { Authorization: "Bearer ${TOKEN}" },
+            type: "http",
+            url: "https://example.com/mcp",
+          },
+        },
+      ],
+      existingContent: "{}\n",
+      ledgerNames: [],
+    });
+
+    expect(result).toEqual({ content: expect.stringContaining("Bearer ${env:TOKEN}") });
+    expect(() => JSON.parse("content" in result ? result.content : "")).not.toThrow();
   });
 });
 

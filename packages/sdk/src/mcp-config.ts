@@ -3,12 +3,16 @@ import {
   collectMcpServers,
   configStringArray,
   configStringRecord,
+  EMPTY_COLLECTION,
   isConfigRecord,
   parseConfigObject,
   redactMcpArguments,
   sanitizeMcpUrl,
+  stdioTransport,
+  type McpEntryCollection,
+  type McpEntryParse,
 } from "./mcp.js";
-import type { McpServer, McpTransport } from "./model.js";
+import type { McpTransport } from "./model.js";
 
 /** Application-specific details for the common JSON `mcpServers` configuration shape. */
 export interface JsonMcpConfigOptions {
@@ -23,6 +27,29 @@ export interface JsonMcpConfigOptions {
   readonly variablePattern: RegExp;
 }
 
+/** The parse outcome for one JSON MCP configuration file. */
+export interface ParsedJsonMcpConfig extends McpEntryCollection {
+  /**
+   * Whether the file held something other than a JSON object.
+   *
+   * Kept apart from an empty server list because the two need opposite advice: one user has no MCP
+   * servers, the other has servers that are silently not loading.
+   */
+  readonly malformed: boolean;
+}
+
+/** Parses the common JSON MCP shape while distinguishing malformed input from an empty list. */
+export function parseJsonMcpConfig(
+  file: AdapterSourceFile,
+  options: JsonMcpConfigOptions,
+): ParsedJsonMcpConfig {
+  const root = parseConfigObject(file.content, (text): unknown => JSON.parse(text));
+  if (root === undefined) {
+    return { ...EMPTY_COLLECTION, malformed: file.content !== undefined };
+  }
+  return { ...collectJsonMcpServers(file, root["mcpServers"], options), malformed: false };
+}
+
 /**
  * Normalizes the JSON `mcpServers` format that agent applications share.
  *
@@ -33,7 +60,7 @@ export interface JsonMcpConfigOptions {
 export function parseJsonMcpServers(
   file: AdapterSourceFile,
   options: JsonMcpConfigOptions,
-): readonly McpServer[] {
+): McpEntryCollection {
   const root = parseConfigObject(file.content, (text): unknown => JSON.parse(text));
   return collectJsonMcpServers(file, root?.["mcpServers"], options);
 }
@@ -49,7 +76,7 @@ export function collectJsonMcpServers(
   file: AdapterSourceFile,
   entries: unknown,
   options: JsonMcpConfigOptions,
-): readonly McpServer[] {
+): McpEntryCollection {
   if (!options.variablePattern.global) {
     throw new TypeError(
       "JsonMcpConfigOptions.variablePattern must be a global regular expression (g flag).",
@@ -57,7 +84,7 @@ export function collectJsonMcpServers(
   }
 
   return collectMcpServers(file, options.appId, entries, (candidate) =>
-    parseTransport(candidate, options.variablePattern),
+    parseEntry(candidate, options.variablePattern),
   );
 }
 
@@ -69,24 +96,52 @@ export function collectJsonMcpServers(
  * `sse` server. A `type` naming a transport Aura has no model for is still refused, so a `ws`
  * entry does not get quietly filed as HTTP.
  */
-function parseTransport(candidate: unknown, variablePattern: RegExp): McpTransport | undefined {
+function parseEntry(candidate: unknown, variablePattern: RegExp): McpEntryParse {
   if (!isConfigRecord(candidate)) {
-    return undefined;
+    return UNRECOGNIZED;
+  }
+  if (!isEnabled(candidate["enabled"])) {
+    return DISABLED;
   }
 
+  const transport = parseTransportType(candidate, variablePattern);
+  return transport === undefined ? UNRECOGNIZED : { transport };
+}
+
+const DISABLED: McpEntryParse = Object.freeze({ reason: "disabled" });
+const UNRECOGNIZED: McpEntryParse = Object.freeze({ reason: "unrecognized" });
+
+/**
+ * Whether the application will start this entry.
+ *
+ * An `enabled` that is neither absent nor `true` counts as off: the applications that honor the
+ * field disagree on what a non-boolean means, and treating an entry Aura cannot vouch for as
+ * running is the reading that produces a wrong answer silently.
+ */
+function isEnabled(value: unknown): boolean {
+  return value === undefined || value === true;
+}
+
+function parseTransportType(
+  candidate: Readonly<Record<string, unknown>>,
+  variablePattern: RegExp,
+): McpTransport | undefined {
   const type = candidate["type"];
   if (type === "http" || type === "sse") {
     return parseHttp(candidate, type, variablePattern);
   }
   if (type === undefined) {
     return candidate["url"] === undefined
-      ? parseStdio(candidate)
+      ? parseStdio(candidate, variablePattern)
       : parseHttp(candidate, "http", variablePattern);
   }
-  return type === "stdio" ? parseStdio(candidate) : undefined;
+  return type === "stdio" ? parseStdio(candidate, variablePattern) : undefined;
 }
 
-function parseStdio(candidate: Readonly<Record<string, unknown>>): McpTransport | undefined {
+function parseStdio(
+  candidate: Readonly<Record<string, unknown>>,
+  variablePattern: RegExp,
+): McpTransport | undefined {
   const command = candidate["command"];
   const args = configStringArray(candidate["args"]);
   const environmentVariables = objectKeys(candidate["env"]);
@@ -95,12 +150,14 @@ function parseStdio(candidate: Readonly<Record<string, unknown>>): McpTransport 
   }
 
   const redacted = redactMcpArguments(args);
-  return {
+  return stdioTransport({
+    args: redacted,
     command,
-    type: "stdio",
-    ...(redacted.length === 0 ? {} : { args: redacted }),
-    ...(environmentVariables.length === 0 ? {} : { environmentVariables }),
-  };
+    environmentVariables,
+    inlineCredentialValues:
+      redacted.some((argument, index) => argument !== args[index]) ||
+      hasLiteralValue(candidate["env"], variablePattern),
+  });
 }
 
 function parseHttp(
@@ -123,7 +180,36 @@ function parseHttp(
     type,
     url: endpoint,
     ...(headerEnvironmentVariables.length === 0 ? {} : { headerEnvironmentVariables }),
+    ...(hasLiteralValue(candidate["headers"], variablePattern)
+      ? { inlineCredentialValues: true }
+      : {}),
   };
+}
+
+/** Whether any value in a record supplies content of its own rather than naming a variable. */
+function hasLiteralValue(value: unknown, variablePattern: RegExp): boolean {
+  if (!isConfigRecord(value)) {
+    return false;
+  }
+  return Object.values(value).some(
+    (entry) => typeof entry !== "string" || holdsLiteral(entry, variablePattern),
+  );
+}
+
+/**
+ * Whether a configured value carries anything beyond variable references and surrounding syntax.
+ *
+ * `${TOKEN}` and `Bearer ${TOKEN}` name a credential; `sk-live-…` and `Bearer sk-live-…` are one.
+ * Removing every reference and every non-secret scheme word leaves nothing in the first case, so
+ * what remains is the part the user pasted in.
+ */
+function holdsLiteral(value: string, variablePattern: RegExp): boolean {
+  return (
+    value
+      .replaceAll(variablePattern, "")
+      .replace(/^\s*bearer\b/iu, "")
+      .trim().length > 0
+  );
 }
 
 /** Names the environment keys an entry declares, whatever it assigns them. */

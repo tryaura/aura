@@ -21,7 +21,7 @@ import {
 } from "./prepared.js";
 import { inspectPath, isCapturedFile } from "./state.js";
 import type { FixPlanPreview, FixPlanPreviewOptions } from "./types.js";
-import { writeRejection } from "./write-validation.js";
+import { unmetPrecondition, writeRejection } from "./write-validation.js";
 
 // fallow-ignore-next-line complexity -- coordinates preparation across the closed operation union.
 export async function prepareOperations(
@@ -169,6 +169,10 @@ async function prepareWrite(
   const before = captured.state;
   if (before.kind === "directory") {
     return conflict(validated, "cannot replace a directory with a file");
+  }
+  const unmet = unmetPrecondition([operation], before);
+  if (unmet !== undefined) {
+    return conflict(validated, unmet);
   }
 
   const mode = resolveWriteMode(operation, before, enforcedMode);

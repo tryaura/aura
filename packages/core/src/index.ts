@@ -96,6 +96,7 @@ export type {
 } from "./workspace/shared-link-plan.js";
 export { projectSharedInstructionsPath } from "./workspace/shared-links.js";
 export { describeFailure } from "./workspace/diagnostics.js";
+export { mcpConvergenceBlockers, planManifestMcpConvergence } from "./workspace/mcp-plan.js";
 export type { ScanDiagnostic, ScanPhase } from "./workspace/diagnostics.js";
 export { createFileReader, MAX_FILE_BYTES } from "./workspace/reader.js";
 /** @public */

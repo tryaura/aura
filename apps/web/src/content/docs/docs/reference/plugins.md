@@ -60,6 +60,19 @@ pattern.
 contributed by adapters from other plugins. Do not copy `InstructionDocument` content into a
 finding.
 
+Adapters may opt into manifest-driven MCP remediation with a pure `mcpWrite` serializer. It receives
+one declared MCP file's existing contents, the desired owned servers for that file's scope, and the
+application's ownership-ledger names, and returns either `{ content }` or `{ refusal }`. It must
+preserve unrelated entries and refuse malformed or unrepresentable configuration rather than
+guessing. Core keeps the captured bytes to itself: a check sees `McpConvergenceBlocker` values and
+never the rendered file, and every successful write carries the digest of what was read, so a
+configuration the application rewrote in the meantime becomes a preview conflict instead of a silent
+revert.
+
+A parser reports every named entry it finds. One it cannot model — turned off, or written in a shape
+it does not recognize — belongs in `AdapterSnapshot.unusableMcpServers` rather than being dropped,
+so a check can tell "no such server" from "declared but not running".
+
 ## Full API
 
 The [SDK README](https://github.com/tryaura/aura/tree/main/packages/sdk) carries the complete type

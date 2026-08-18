@@ -21,6 +21,8 @@ import type { DocumentResolver } from "./documents.js";
 import type { FileReader } from "./reader.js";
 import { resolveAdapterProjectSharedLink, resolveAdapterSharedLink } from "./shared-links.js";
 import { evaluateSupport, isComparableRange } from "./support.js";
+import { createAppMcpConvergence } from "./mcp-convergence.js";
+import { rememberMcpConvergence } from "./mcp-plan.js";
 
 /** What one adapter needs from the surrounding scan to run its lifecycle. */
 export interface ScanContext {
@@ -112,32 +114,43 @@ export async function scanAdapter(adapter: Adapter, context: ScanContext): Promi
     });
   }
 
-  return {
-    app: {
-      adapterId: adapter.id,
-      ...(adapter.capabilities === undefined ? {} : { capabilities: adapter.capabilities }),
-      detection,
-      displayName: adapter.displayName,
-      ...(adapter.installHint === undefined ? {} : { installHint: adapter.installHint }),
-      instructionFiles: snapshot.instructionFiles,
-      mcpServers: snapshot.mcpServers,
-      metadata: snapshot.metadata,
-      skills: snapshot.skills,
-      skillDirectories: (adapter.capabilities?.skills?.directories ?? []).map((directory) =>
-        resolveSkillDirectory(directory, context.environment.homeDir, context.environment.cwd),
-      ),
-      // Contents are dropped here: they were consumed by parse and are not retained beside the
-      // documents parsed out of them.
-      sourceFiles: [...discovery.files.values()]
-        .filter((file) => file.spec.kind !== "probe")
-        .map(toStatus),
-      ...(projectSharedLink === undefined ? {} : { projectSharedLink }),
-      ...(sharedLink === undefined ? {} : { sharedLink }),
-      support: evaluateSupport(adapter.supportedRange, detection.version),
-      ...(adapter.synthetic === undefined ? {} : { synthetic: adapter.synthetic }),
-    },
-    diagnostics,
+  const app: AppModel = {
+    adapterId: adapter.id,
+    ...(adapter.capabilities === undefined ? {} : { capabilities: adapter.capabilities }),
+    detection,
+    displayName: adapter.displayName,
+    ...(adapter.installHint === undefined ? {} : { installHint: adapter.installHint }),
+    instructionFiles: snapshot.instructionFiles,
+    mcpServers: snapshot.mcpServers,
+    metadata: snapshot.metadata,
+    skills: snapshot.skills,
+    skillDirectories: (adapter.capabilities?.skills?.directories ?? []).map((directory) =>
+      resolveSkillDirectory(directory, context.environment.homeDir, context.environment.cwd),
+    ),
+    // Contents are dropped here: they were consumed by parse and are not retained beside the
+    // documents parsed out of them.
+    sourceFiles: [...discovery.files.values()]
+      .filter((file) => file.spec.kind !== "probe")
+      .map(toStatus),
+    ...(projectSharedLink === undefined ? {} : { projectSharedLink }),
+    ...(sharedLink === undefined ? {} : { sharedLink }),
+    support: evaluateSupport(adapter.supportedRange, detection.version),
+    ...(adapter.synthetic === undefined ? {} : { synthetic: adapter.synthetic }),
+    ...(snapshot.unusableMcpServers === undefined
+      ? {}
+      : { unusableMcpServers: snapshot.unusableMcpServers }),
   };
+
+  // Registered rather than attached: the planner holds the bytes this model promises not to keep.
+  const convergence = createAppMcpConvergence(adapter, discovery.files, {
+    servers: snapshot.mcpServers,
+    unusable: snapshot.unusableMcpServers ?? [],
+  });
+  if (convergence !== undefined) {
+    rememberMcpConvergence(app, convergence);
+  }
+
+  return { app, diagnostics };
 }
 
 /**
@@ -168,6 +181,7 @@ async function parseAdapter(
         mcpServers: [...parsed.mcpServers],
         metadata: parsed.metadata,
         skills: [...parsed.skills],
+        unusableMcpServers: [...(parsed.unusableMcpServers ?? [])],
       },
     };
   } catch (error) {
