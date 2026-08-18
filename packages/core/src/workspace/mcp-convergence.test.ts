@@ -2,7 +2,9 @@ import { join } from "node:path";
 
 import {
   parseJsonMcpServers,
+  jsonMcpSecretTransform,
   writeJsonMcpServers,
+  type Adapter,
   type AuraManifest,
   type WorkspaceModel,
 } from "@tryaura/aura-sdk";
@@ -10,6 +12,7 @@ import { describe, expect, it } from "vitest";
 
 import { buildWorkspaceModel } from "./build.js";
 import { planManifestMcpConvergence } from "./mcp-plan.js";
+import { canPlanMcpSecretRemediation, planMcpSecretRemediation } from "./mcp-secret-plan.js";
 import { createMemoryReader, createTestAdapter, createTestEnvironment } from "./testing.js";
 
 const SECRET_CONFIG = '{"private":"keep-secret","mcpServers":{"personal":{"command":"keep"}}}\n';
@@ -81,6 +84,65 @@ describe("manifest MCP convergence", () => {
 
     expect(planManifestMcpConvergence(model, "fake").blockers).toEqual([]);
   });
+
+  it("plans one whole-file rewrite for every representable sighting without retaining values", async () => {
+    const sentinel = "sk-aura-whole-file-sentinel";
+    const { model } = await scan({
+      config: `${JSON.stringify({
+        mcpServers: {
+          managed: {
+            args: ["--api-key", sentinel],
+            command: "manifest-command",
+            env: { API_TOKEN: sentinel },
+          },
+        },
+      })}\n`,
+      ownership: ["managed"],
+    });
+    const sighting = model.mcpSecretSightings[0];
+    if (sighting === undefined) {
+      throw new Error("Expected an inline MCP credential sighting.");
+    }
+
+    const plan = planMcpSecretRemediation(model, sighting);
+    expect(plan?.operations).toHaveLength(1);
+    const operation = plan?.operations[0];
+    expect(operation?.type === "write" ? operation.content : "").not.toContain(sentinel);
+    expect(operation?.type === "write" ? operation.content : "").toContain("${API_TOKEN}");
+    expect(plan?.manualSteps?.slice(0, 2)).toEqual([
+      expect.stringContaining("Copy the current value"),
+      expect.stringContaining("Copy the current value"),
+    ]);
+    expect(plan?.manualSteps?.[2]).toContain("export");
+    expect(plan?.manualSteps?.at(-2)).toContain("Rotate");
+    expect(JSON.stringify(model)).not.toContain(sentinel);
+  });
+
+  /*
+   * `supports` only reads the locator's shape, so it can say yes to a field the writer then turns
+   * out to be unable to edit. Reporting that as fixable sends the user to `--fix --interactive`
+   * for a guided choice that is never offered.
+   */
+  it("does not advertise a fix when the adapter declines to rewrite the file", async () => {
+    const { model } = await scan({
+      config: `${JSON.stringify({
+        mcpServers: { managed: { command: "manifest-command", env: { API_TOKEN: "sk-refuse" } } },
+      })}\n`,
+      ownership: ["managed"],
+      secrets: {
+        redact: ({ content }) => ({ content, unresolved: [] }),
+        rewrite: () => ({ refusal: "this adapter cannot rewrite that file" }),
+        supports: () => true,
+      },
+    });
+    const sighting = model.mcpSecretSightings[0];
+    if (sighting === undefined) {
+      throw new Error("Expected an inline MCP credential sighting.");
+    }
+
+    expect(planMcpSecretRemediation(model, sighting)).toBeUndefined();
+    expect(canPlanMcpSecretRemediation(model, sighting)).toBe(false);
+  });
 });
 
 interface ScanOptions {
@@ -88,6 +150,7 @@ interface ScanOptions {
   readonly managed?: boolean;
   readonly ownership?: readonly string[];
   readonly project?: string;
+  readonly secrets?: Adapter["mcpSecrets"];
 }
 
 async function scan(options: ScanOptions): Promise<{
@@ -100,7 +163,7 @@ async function scan(options: ScanOptions): Promise<{
   const projectPath = join(environment.cwd, ".fake.json");
   const manifestPath = join(environment.homeDir, "agents", "aura.json");
   const built = await buildWorkspaceModel({
-    adapters: [fakeAdapter(configPath, projectPath)],
+    adapters: [fakeAdapter(configPath, projectPath, options.secrets)],
     environment,
     reader: createMemoryReader({
       [configPath]: options.config,
@@ -111,7 +174,14 @@ async function scan(options: ScanOptions): Promise<{
   return { configPath, manifestPath, model: built.model };
 }
 
-function fakeAdapter(configPath: string, projectPath: string) {
+function fakeAdapter(
+  configPath: string,
+  projectPath: string,
+  secrets: Adapter["mcpSecrets"] = jsonMcpSecretTransform(
+    (name) => `\${${name}}`,
+    /\$\{([A-Z_][A-Z0-9_]*)\}/gu,
+  ),
+) {
   return createTestAdapter({
     files: () => [
       { id: "fake.mcp.global", kind: "mcp", path: configPath, scope: "global" },
@@ -124,6 +194,7 @@ function fakeAdapter(configPath: string, projectPath: string) {
           ? { command: entry.transport.command }
           : { type: "http", url: entry.transport.url },
       ),
+    mcpSecrets: secrets,
     parse: ({ files }) => {
       const parsed = ["fake.mcp.global", "fake.mcp.project"].map((id) => {
         const file = files.get(id);
@@ -136,6 +207,7 @@ function fakeAdapter(configPath: string, projectPath: string) {
       });
       return {
         instructionFiles: [],
+        mcpSecretSightings: parsed.flatMap((entry) => entry.secretSightings ?? []),
         mcpServers: parsed.flatMap((entry) => entry.servers),
         skills: [],
         unusableMcpServers: parsed.flatMap((entry) => entry.unusable),

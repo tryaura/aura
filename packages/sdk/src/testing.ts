@@ -16,6 +16,7 @@ const EMPTY_MODEL = {
   cwd: "/workspace",
   homeDir: "/home/dev",
   instructionFiles: [],
+  mcpSecretSightings: [],
   mcpServers: [],
   sharedSkills: [],
   skills: [],

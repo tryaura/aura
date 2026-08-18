@@ -36,6 +36,19 @@ export function renderWriteDiff(
   );
 }
 
+/** Fail-closed write preview used when a semantic redactor cannot safely project both sides. */
+export function renderWriteSummary(
+  path: string,
+  before: PathState,
+  requestedMode: FileMode | undefined,
+  mode: number,
+): string {
+  return (
+    renderSummary("write", path, "Sensitive MCP configuration would change.") +
+    modeNote(before, requestedMode, mode)
+  );
+}
+
 export function renderRemoveDiff(path: string, before: PathState): string {
   if (before.kind === "directory") {
     return renderSummary("remove", path, "Remove empty directory.");

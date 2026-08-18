@@ -42,7 +42,7 @@ describe("aura check --fix", () => {
     expect(first.stdout.indexOf("Fix preview")).toBeLessThan(
       first.stdout.indexOf("Applied 4 fix operations."),
     );
-    expect(first.stdout).toContain("16 passed, 0 informational, 0 warnings, 0 errors");
+    expect(first.stdout).toContain("17 passed, 0 informational, 0 warnings, 0 errors");
     await expect(readFile(sharedPath, "utf8")).resolves.toBe(SHARED_TEMPLATE);
     await expect(readFile(claudePath, "utf8")).resolves.toContain("@~/agents/AGENTS.md");
     await expect(readlink(codexPath)).resolves.toBe(sharedPath);

@@ -27,12 +27,20 @@ describe("Claude Code MCP configuration", () => {
   });
 
   it("records disabled servers and malformed enabled flags by name", () => {
-    const { servers, unusable } = parseMcpServers(
+    const { secretSightings, servers, unusable } = parseMcpServers(
       mcpFile(
         JSON.stringify({
           mcpServers: {
-            disabled: { command: "off", enabled: false },
-            malformed: { command: "bad", enabled: "yes" },
+            disabled: {
+              command: "off",
+              enabled: false,
+              env: { API_TOKEN: "sk-disabled-secret" },
+            },
+            malformed: {
+              command: "bad",
+              enabled: "yes",
+              headers: { Authorization: "Bearer sk-unmodelable-secret" },
+            },
             ready: { command: "on", enabled: true },
           },
         }),
@@ -44,6 +52,12 @@ describe("Claude Code MCP configuration", () => {
       ["disabled", "disabled"],
       ["malformed", "disabled"],
     ]);
+    expect(secretSightings?.map((sighting) => [sighting.serverName, sighting.field])).toEqual([
+      ["disabled", "env.API_TOKEN"],
+      ["malformed", "headers.Authorization"],
+    ]);
+    expect(JSON.stringify(secretSightings)).not.toContain("sk-disabled-secret");
+    expect(JSON.stringify(secretSightings)).not.toContain("sk-unmodelable-secret");
   });
 
   it.each([

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseMcpServers } from "./mcp.js";
+import { parseMcpServers, transformMcpSecrets } from "./mcp.js";
 import { mcpFile } from "./mcp-fixture.js";
 
 describe("Claude Code MCP credential redaction", () => {
@@ -172,5 +172,79 @@ describe("Claude Code MCP credential redaction", () => {
       { type: "sse", url: "https://sse.example.com/mcp" },
       { type: "http", url: "https://untyped.example.com/mcp" },
     ]);
+  });
+
+  it("rewrites every sighting in a JSON file and masks both preview sides", () => {
+    const sentinel = "sk-aura-guided-rewrite-sentinel";
+    const content = `${JSON.stringify(
+      {
+        keep: true,
+        mcpServers: {
+          docs: {
+            args: ["--api-key", sentinel],
+            command: "npx",
+            env: { API_TOKEN: sentinel },
+            headers: { Authorization: `Bearer ${sentinel}` },
+            url: `https://user:${sentinel}@example.com/mcp?token=${sentinel}`,
+          },
+        },
+      },
+      undefined,
+      4,
+    )}\n`;
+    const parsed = parseMcpServers(mcpFile(content));
+    const sightings = parsed.secretSightings ?? [];
+    const rewritten = transformMcpSecrets.rewrite({ content, sightings });
+
+    expect(rewritten).not.toHaveProperty("refusal");
+    if ("refusal" in rewritten) {
+      throw new Error(rewritten.refusal);
+    }
+    expect(rewritten.rewrittenFields).toHaveLength(sightings.length);
+    expect(rewritten.content).toContain('    "keep": true');
+    expect(rewritten.content).not.toContain(sentinel);
+    expect(rewritten.content).toContain("${API_TOKEN}");
+    expect(parseMcpServers(mcpFile(rewritten.content)).secretSightings ?? []).toEqual([]);
+    for (const side of [content, rewritten.content]) {
+      const redaction = transformMcpSecrets.redact({ content: side, sightings });
+      expect(redaction?.unresolved).toEqual([]);
+      expect(redaction?.content).not.toContain(sentinel);
+    }
+  });
+
+  /*
+   * `~/.claude.json` holds an entry per project the user has ever opened, and a scan only inspects
+   * the invocation directory's — so a diff hunk can reach a credential no sighting names. Masking
+   * only what was sighted left those in the preview.
+   */
+  it("masks credential-shaped values the scan never sighted", () => {
+    const sentinel = "sk-aura-other-project-sentinel";
+    const content = `${JSON.stringify({
+      mcpServers: { docs: { command: "npx", env: { API_TOKEN: "sk-aura-scanned-sentinel" } } },
+      projects: {
+        "/some/other/project": {
+          mcpServers: { other: { command: "npx", env: { API_TOKEN: sentinel } } },
+        },
+      },
+    })}\n`;
+    const sightings = parseMcpServers(mcpFile(content)).secretSightings ?? [];
+    const redaction = transformMcpSecrets.redact({ content, sightings });
+
+    expect(sightings.map((sighting) => sighting.field)).toEqual(["env.API_TOKEN"]);
+    expect(redaction?.unresolved).toEqual([]);
+    expect(redaction?.content).not.toContain(sentinel);
+    expect(redaction?.content).not.toContain("sk-aura-scanned-sentinel");
+  });
+
+  it("reports a sighting whose record path the content does not contain", () => {
+    const sightings =
+      parseMcpServers(
+        mcpFile(
+          JSON.stringify({ mcpServers: { docs: { command: "npx", env: { API_TOKEN: "sk-x" } } } }),
+        ),
+      ).secretSightings ?? [];
+    const redaction = transformMcpSecrets.redact({ content: "{}", sightings });
+
+    expect(redaction?.unresolved).toEqual(["env.API_TOKEN"]);
   });
 });

@@ -10,6 +10,7 @@ import type {
   UnusableMcpServer,
 } from "./model.js";
 import type { RepositoryModel } from "./repository.js";
+import type { McpSecretSighting } from "./mcp-secret.js";
 import type { InstalledSkill, SharedSkillState } from "./skill-model.js";
 
 /**
@@ -37,6 +38,8 @@ export interface WorkspaceModel {
   readonly manifest: AuraManifestState;
   /** MCP servers across every application. */
   readonly mcpServers: readonly McpServer[];
+  /** Inline MCP credential locations across every application, without credential bytes. */
+  readonly mcpSecretSightings: readonly McpSecretSighting[];
   /** Repository root, when `cwd` is inside one. */
   readonly projectRoot?: string | undefined;
   /** Repository state captured once by core, when the workspace is inside a repository. */

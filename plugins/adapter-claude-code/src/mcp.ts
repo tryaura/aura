@@ -2,6 +2,7 @@ import {
   collectJsonMcpServers,
   EMPTY_COLLECTION,
   isConfigRecord,
+  jsonMcpSecretTransform,
   jsonMcpEntry,
   parseJsonMcpConfig,
   parseConfigObject,
@@ -9,6 +10,7 @@ import {
   type AdapterSourceFile,
   type JsonMcpConfigOptions,
   type McpEntryCollection,
+  type McpSecretSighting,
   type McpWrite,
   type OwnedServerEntry,
   type ParsedJsonMcpConfig,
@@ -31,6 +33,8 @@ export interface ClaudeGlobalMcpConfig {
   readonly globalServers: McpEntryCollection["servers"];
   /** See {@link ParsedJsonMcpConfig.malformed}. */
   readonly malformed: boolean;
+  /** Value-free inline credential locations from both records. */
+  readonly secretSightings?: readonly McpSecretSighting[] | undefined;
   /** Servers `projects` configures for the invocation directory alone. */
   readonly localServers: McpEntryCollection["servers"];
   /** Entries from either record that Aura recognized by name but could not model. */
@@ -73,6 +77,7 @@ export function parseGlobalMcpServers(file: AdapterSourceFile, cwd: string): Cla
     globalServers: global.servers,
     localServers: local.servers,
     malformed: false,
+    secretSightings: [...(global.secretSightings ?? []), ...(local.secretSightings ?? [])],
     unusable: [...global.unusable, ...local.unusable],
   };
 }
@@ -100,8 +105,17 @@ function localServers(
   }
 
   const projectFile: AdapterSourceFile = { ...file, spec: { ...file.spec, scope: "project" } };
-  return collectJsonMcpServers(projectFile, project["mcpServers"], OPTIONS);
+  return collectJsonMcpServers(projectFile, project["mcpServers"], {
+    ...OPTIONS,
+    recordPath: ["projects", cwd, "mcpServers"],
+  });
 }
+
+/** Claude Code expands `${VAR}` references throughout MCP entries. */
+export const transformMcpSecrets = jsonMcpSecretTransform(
+  (name) => `\${${name}}`,
+  OPTIONS.variablePattern,
+);
 
 function parseJson(text: string): unknown {
   return JSON.parse(text);

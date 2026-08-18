@@ -1,4 +1,4 @@
-import { resolveSkillDirectory } from "@tryaura/aura-sdk";
+import { resolveMcpSecretNameCollisions, resolveSkillDirectory } from "@tryaura/aura-sdk";
 import type {
   Adapter,
   AdapterDetection,
@@ -24,6 +24,7 @@ import { resolveAdapterProjectSharedLink, resolveAdapterSharedLink } from "./sha
 import { evaluateSupport, isComparableRange } from "./support.js";
 import { createAppMcpConvergence } from "./mcp-convergence.js";
 import { rememberMcpConvergence } from "./mcp-plan.js";
+import { createAppMcpSecretPlanner, rememberMcpSecretPlanner } from "./mcp-secret-plan.js";
 
 /** What one adapter needs from the surrounding scan to run its lifecycle. */
 export interface ScanContext {
@@ -58,6 +59,7 @@ export interface AdapterScan {
  * trusted to that extent, but one that throws must not take the rest of the scan with it: the user
  * still gets findings for the applications that did parse, plus a diagnostic naming the offender.
  */
+// fallow-ignore-next-line complexity -- guards each plugin lifecycle phase without letting one failure abort the scan.
 export async function scanAdapter(adapter: Adapter, context: ScanContext): Promise<AdapterScan> {
   const diagnostics: ScanDiagnostic[] = [];
 
@@ -124,6 +126,9 @@ export async function scanAdapter(adapter: Adapter, context: ScanContext): Promi
     displayName: adapter.displayName,
     ...(adapter.installHint === undefined ? {} : { installHint: adapter.installHint }),
     instructionFiles: snapshot.instructionFiles,
+    ...(snapshot.mcpSecretSightings === undefined
+      ? {}
+      : { mcpSecretSightings: snapshot.mcpSecretSightings }),
     mcpServers,
     metadata: snapshot.metadata,
     skills: snapshot.skills,
@@ -146,11 +151,20 @@ export async function scanAdapter(adapter: Adapter, context: ScanContext): Promi
 
   // Registered rather than attached: the planner holds the bytes this model promises not to keep.
   const convergence = createAppMcpConvergence(adapter, discovery.files, {
+    secretSightings: snapshot.mcpSecretSightings ?? [],
     servers: mcpServers,
     unusable: snapshot.unusableMcpServers ?? [],
   });
   if (convergence !== undefined) {
     rememberMcpConvergence(app, convergence);
+  }
+  const secretPlanner = createAppMcpSecretPlanner(
+    adapter,
+    discovery.files,
+    snapshot.mcpSecretSightings ?? [],
+  );
+  if (secretPlanner !== undefined) {
+    rememberMcpSecretPlanner(app, secretPlanner);
   }
 
   return { app, diagnostics };
@@ -181,6 +195,7 @@ async function parseAdapter(
       diagnostics: describeAdapterProblems(adapter, parsed.problems ?? [], discovery.files),
       snapshot: {
         instructionFiles: await context.documents.resolve(parsed.instructionFiles),
+        mcpSecretSightings: resolveMcpSecretNameCollisions(parsed.mcpSecretSightings ?? []),
         mcpServers: [...parsed.mcpServers],
         metadata: parsed.metadata,
         skills: [...parsed.skills],

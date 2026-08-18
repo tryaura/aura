@@ -19,6 +19,7 @@ const RUNTIME_PACKAGES = [
   "semver",
   "smol-toml",
   "string-width",
+  "toml-eslint-parser",
   "typanion",
   "undici",
 ];

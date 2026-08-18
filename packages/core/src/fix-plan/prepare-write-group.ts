@@ -9,13 +9,13 @@ import {
   spendBudget,
   type RetentionBudget,
 } from "./capture.js";
-import { renderWriteDiff } from "./diff.js";
 import { mergeWriteContents } from "./merge-writes.js";
 import type { ValidatedOperation } from "./path-policy.js";
 import { resolveWriteMode, type EnforcedModes } from "./prepare-modes.js";
 import { conflict, createPreview, noop, type PreparedOperation } from "./prepared.js";
 import { isCapturedFile } from "./state.js";
 import { unmetPrecondition, writeRejection } from "./write-validation.js";
+import { renderRedactedWriteDiff } from "./write-redaction.js";
 
 type WritableBefore = Exclude<CapturedState, { readonly kind: "directory" }>;
 
@@ -87,7 +87,14 @@ export async function prepareWriteGroup(
     preview: createPreview(
       mergedLeader,
       before.kind === "missing" ? "create" : "update",
-      renderWriteDiff(operation.path, before, operation.content, operation.mode, mode),
+      renderRedactedWriteDiff(
+        writes,
+        operation.path,
+        before,
+        operation.content,
+        operation.mode,
+        mode,
+      ),
     ),
     type: "write",
   };

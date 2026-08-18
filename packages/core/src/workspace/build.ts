@@ -162,6 +162,7 @@ export async function buildWorkspaceModel(options: WorkspaceScanOptions): Promis
       homeDir: environment.homeDir,
       instructionFiles: apps.flatMap((app) => app.instructionFiles),
       manifest,
+      mcpSecretSightings: apps.flatMap((app) => app.mcpSecretSightings ?? []),
       mcpServers: apps.flatMap((app) => app.mcpServers),
       projectRoot: root,
       ...(repository === undefined ? {} : { repository }),

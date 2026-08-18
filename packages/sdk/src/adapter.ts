@@ -3,6 +3,7 @@ import type { JsonObject, Scope } from "./common.js";
 import type { Environment } from "./environment.js";
 import type { AdapterSnapshot } from "./model.js";
 import type { McpWrite } from "./mcp-write.js";
+import type { McpSecretTransform } from "./mcp-secret.js";
 import type { AdapterSharedLink } from "./shared-link.js";
 
 /** What an adapter expects a declared filesystem path to contain. */
@@ -237,6 +238,8 @@ export interface Adapter {
   readonly installHint?: string | undefined;
   /** Pure serializer for this application's declared MCP configuration targets. */
   readonly mcpWrite?: McpWrite | undefined;
+  /** Private, value-eliding MCP credential rewrite and preview-redaction behavior. */
+  readonly mcpSecrets?: McpSecretTransform | undefined;
   /**
    * Normalizes the supplied file contents.
    *

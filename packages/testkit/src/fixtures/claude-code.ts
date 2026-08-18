@@ -6,6 +6,8 @@ export type ClaudeCodeFixtureVersion = "2.1.233" | "3.0.0";
 
 export interface ClaudeCodeSeedOptions {
   readonly authenticated: boolean;
+  /** Whether the fixture includes literals used by credential-redaction tests. Defaults to true. */
+  readonly inlineSecrets?: boolean | undefined;
   readonly version: ClaudeCodeFixtureVersion;
 }
 
@@ -44,7 +46,9 @@ export function createClaudeCodeSeed(options: ClaudeCodeSeedOptions): Promise<Te
       .homeFile(".claude/settings.json", '{"permissions":{"allow":["Bash(pnpm test)"]}}\n')
       .homeFile("agents/AGENTS.md", "# Shared agent instructions\n")
       // Keyed by the workspace path, the way Claude Code records a `claude mcp add -s local` server.
-      .homeFile(".claude.json", ({ workspaceDir }) => claudeConfiguration(workspaceDir))
+      .homeFile(".claude.json", ({ workspaceDir }) =>
+        claudeConfiguration(workspaceDir, options.inlineSecrets !== false),
+      )
       .workspaceFile(
         "CLAUDE.md",
         [
@@ -80,7 +84,7 @@ export function createClaudeCodeSeed(options: ClaudeCodeSeedOptions): Promise<Te
   );
 }
 
-function claudeConfiguration(workspaceDir: string): string {
+function claudeConfiguration(workspaceDir: string, inlineSecrets: boolean): string {
   return (
     JSON.stringify(
       {
@@ -92,7 +96,11 @@ function claudeConfiguration(workspaceDir: string): string {
           },
           // Configured the way a user who pasted a token on the command line would have it.
           legacy: {
-            args: ["@example/legacy-mcp", "--api-key", "sk-fixture-secret"],
+            args: [
+              "@example/legacy-mcp",
+              "--api-key",
+              inlineSecrets ? "sk-fixture-secret" : "${LEGACY_TOKEN}",
+            ],
             command: "npx",
           },
           sentry: {
@@ -100,7 +108,10 @@ function claudeConfiguration(workspaceDir: string): string {
             type: "http",
             url: "https://mcp.sentry.dev",
           },
-          streaming: { type: "sse", url: "https://sse.example.com/mcp?token=sk-fixture-secret" },
+          streaming: {
+            type: "sse",
+            url: `https://sse.example.com/mcp?token=${inlineSecrets ? "sk-fixture-secret" : "${STREAMING_TOKEN}"}`,
+          },
         },
         projects: {
           "/unrelated/project": {
@@ -111,7 +122,7 @@ function claudeConfiguration(workspaceDir: string): string {
               local: {
                 headers: { Authorization: "Bearer ${LOCAL_TOKEN}" },
                 type: "http",
-                url: "https://local.example.com/mcp?token=sk-local-secret",
+                url: `https://local.example.com/mcp?token=${inlineSecrets ? "sk-local-secret" : "${LOCAL_URL_TOKEN}"}`,
               },
             },
           },
