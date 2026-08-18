@@ -13,7 +13,7 @@ import {
   type AuraPlugin,
 } from "@tryaura/aura-sdk";
 
-import { BRANDING } from "../testing.js";
+import { BRANDING, noopTelemetry } from "../testing.js";
 import type { McpSetupCatalog } from "./mcp-catalog.js";
 import type { SetupRequest } from "./setup.js";
 import type { SkillCatalog } from "./skills-catalog.js";
@@ -124,6 +124,7 @@ export async function createFixture(): Promise<Fixture> {
         stateHomeDir: homeDir,
         stderr,
         stdout,
+        telemetry: noopTelemetry(),
         withDetail: false,
       };
     },

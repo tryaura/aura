@@ -19,7 +19,6 @@ import type { CliExitCode } from "../types.js";
 import { runUndo, type UndoRequest } from "./undo.js";
 
 export class UndoCommand extends Command<AuraCliContext> {
-  // fallow-ignore-next-line unused-class-member -- Clipanion reads command metadata at registration.
   static override paths = [["undo"]];
   // fallow-ignore-next-line unused-class-member -- Clipanion reads command metadata at registration.
   static override usage = Command.Usage({
@@ -70,6 +69,7 @@ export class UndoCommand extends Command<AuraCliContext> {
         this.context.branding,
         this.detail,
         this.context.stderr,
+        this.context.telemetry,
       );
     }
   }
@@ -97,6 +97,7 @@ export class UndoCommand extends Command<AuraCliContext> {
       stateHomeDir: this.context.defaultHomeDir,
       stderr: this.context.stderr,
       stdout: this.context.stdout,
+      telemetry: this.context.telemetry,
       yes: this.yes,
     };
   }

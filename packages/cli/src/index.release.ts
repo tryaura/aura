@@ -1,6 +1,15 @@
+import type { TelemetrySink } from "@tryaura/aura-sdk";
+
+import type { HttpTelemetrySinkOptions } from "./http-telemetry-sink.js";
 import type { CliDistro, CliExitCode, CliRuntime } from "./types.js";
 
 export declare function runCli(distro: CliDistro, runtime?: CliRuntime): Promise<CliExitCode>;
+export declare function createHttpTelemetrySink(options: HttpTelemetrySinkOptions): TelemetrySink;
+export type {
+  HttpTelemetryDeliveryFailure,
+  HttpTelemetrySinkOptions,
+} from "./http-telemetry-sink.js";
+export type { TelemetryEvent, TelemetrySink } from "@tryaura/aura-sdk";
 export type {
   CheckCounts,
   CheckExplanation,

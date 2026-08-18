@@ -91,6 +91,7 @@ export class SetupCommand extends Command<AuraCliContext> {
         stderr: this.context.stderr,
         steps: options.steps,
         stdout: this.context.stdout,
+        telemetry: this.context.telemetry,
         withDetail: this.detail,
       });
     } catch (error) {
@@ -100,6 +101,7 @@ export class SetupCommand extends Command<AuraCliContext> {
         this.context.branding,
         this.detail,
         this.context.stderr,
+        this.context.telemetry,
       );
     }
   }

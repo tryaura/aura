@@ -58,6 +58,43 @@ export interface HttpGetRequest {
 }
 
 /**
+ * A request to deliver one JSON document over HTTPS.
+ *
+ * The same transport rules as {@link HttpGetRequest} apply: plain `http:` is refused except for
+ * the literal loopback hosts, and redirects are refused rather than followed so headers — which
+ * may carry credentials — are never re-sent to an address the caller did not name.
+ */
+export interface HttpPostRequest {
+  /** Request body, sent verbatim as `application/json`. */
+  readonly body: string;
+  /**
+   * Additional headers sent with the request. See {@link HttpGetRequest.headers} for credential
+   * rules. `content-type` is always replaced by `application/json`.
+   */
+  readonly headers?: Readonly<Record<string, string>> | undefined;
+  /** Optional caller cancellation, combined with the transport's mandatory timeout. */
+  readonly signal?: AbortSignal | undefined;
+  /** Milliseconds before the request is aborted. Same defaults and clamp as {@link HttpGetRequest.timeoutMs}. */
+  readonly timeoutMs?: number | undefined;
+  /** Absolute URL of the endpoint. See the interface doc for the `https:` requirement. */
+  readonly url: string;
+}
+
+/**
+ * The outcome of an {@link HttpPostRequest}. Resolves for every outcome and never rejects.
+ *
+ * Deliveries need no response body, so none is captured: the shape carries only the status code,
+ * and — like {@link HttpGetResult} — no echo of the request.
+ */
+export type HttpPostResult =
+  | { readonly kind: "failure"; readonly reason: HttpFailureReason }
+  | {
+      readonly kind: "response";
+      /** HTTP status code as received; a non-2xx status is a response, not a failure. */
+      readonly status: number;
+    };
+
+/**
  * Why a request produced no response.
  *
  * Reasons are a closed vocabulary rather than error text so no server- or runtime-supplied string

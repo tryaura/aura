@@ -78,6 +78,32 @@ Aura v1 accepts only `apiVersion: 1`. Namespace contributions under the plugin I
 
 For a private registry, publish under a scope such as `@acme/aura-plugin`, configure its token only in distribution CI, and install it into the distribution project. End users receive the compiled distro; they do not install plugins at runtime. Never place registry tokens in source, metadata, assets, or binaries.
 
+## Send telemetry
+
+By default a distribution sends nothing: with no sink composed, telemetry is a no-op. To measure how an organization's setups are doing, add a `TelemetrySink` to the distro:
+
+```ts
+import { createHttpTelemetrySink, type CliDistro } from "@tryaura/aura-cli";
+
+const distro: CliDistro = {
+  branding: { command: "acmedev", displayName: "Acme Dev" },
+  plugins: [...OFFICIAL_PLUGINS],
+  telemetry: createHttpTelemetrySink({
+    url: "https://telemetry.acme.example/aura",
+  }),
+};
+```
+
+A compiled CLI cannot keep a bearer token or other embedded credential secret: anyone with the binary can extract it. Use an intentionally public, write-only ingestion endpoint protected by server-side validation, rate limits, and abuse controls, or acquire a narrowly scoped per-user credential at runtime. Never put a secret telemetry credential in source, metadata, assets, or the compiled binary.
+
+Eligible commands emit one or more events: `check-run` (apps detected, per-check finding counts, passed check IDs, duration, exit code), an additional `fix-run` when fixing was requested, `setup-run` (how the run ended plus distribution-owned manifest metadata), and `undo-run`. Help, explanations, and usage rejections emit no event. Events are delivered together in one batched flush as the process exits.
+
+Payloads contain distribution-owned IDs and versions, counts, booleans, and durations. They never contain file paths, file contents, finding messages, display names, environment values, detected application version strings, custom MCP server names, or externally sourced skill metadata. External skills and custom MCP servers are represented by counts.
+
+A custom sink implements `TelemetrySink` from the SDK: `record(event)` must buffer and return immediately, and `flush(signal)` runs once at the end of the run under a bound of about two seconds. The sink must stop its I/O when `signal` aborts so undelivered work cannot keep the process open. Throws are swallowed, and nothing the sink does may write to the process streams. The built-in HTTP sink validates its configuration when created and accepts an `onDeliveryFailure` callback for privacy-safe operational monitoring.
+
+The user always wins over the distribution: `DO_NOT_TRACK` (non-empty, other than `0`) or `AURA_TELEMETRY=off` in the invoking environment disables the sink before it sees a single event, and a distribution cannot override that.
+
 ## Keep the protocol stable
 
 Branding can change presentation, not Aura's protocol. Retain:

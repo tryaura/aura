@@ -1,6 +1,6 @@
 import type { Readable, Writable } from "node:stream";
 
-import type { AuraPlugin, Environment } from "@tryaura/aura-sdk";
+import type { AuraPlugin, Environment, TelemetrySink } from "@tryaura/aura-sdk";
 
 /** Process status produced by every Aura CLI command. */
 export type CliExitCode = 0 | 1 | 2 | 3;
@@ -36,6 +36,14 @@ export interface CliDistro {
    * a build-time list this distribution controls.
    */
   readonly registry?: CliRegistryOptions | undefined;
+  /**
+   * Where run events are sent. Absent, telemetry is a no-op and the run records nothing.
+   *
+   * The sink can never fail a run: throws are swallowed, and the final flush is bounded. The user
+   * always wins over the distribution — `DO_NOT_TRACK` or `AURA_TELEMETRY=off` in the invoking
+   * environment disables the sink outright.
+   */
+  readonly telemetry?: TelemetrySink | undefined;
 }
 
 /**
@@ -65,6 +73,8 @@ export interface CliRuntime {
    * injects a loopback-only variant so no test run can reach beyond the machine.
    */
   readonly httpGet?: Environment["httpGet"] | undefined;
+  /** Clock used to stamp telemetry events. Defaults to the system clock. */
+  readonly now?: (() => Date) | undefined;
   readonly stderr?: Writable | undefined;
   readonly stdin?: Readable | undefined;
   readonly stdout?: Writable | undefined;

@@ -11,7 +11,7 @@ import type { Environment } from "@tryaura/aura-sdk";
 import { runSetup } from "../setup/setup.js";
 import { backupEntry } from "../setup/testing.js";
 import { createScriptedWizardIo, type ScriptedWizardScript } from "../setup/wizard-scripted.js";
-import { BRANDING, findingPlugin } from "../testing.js";
+import { BRANDING, capturingTelemetry, findingPlugin, noopTelemetry } from "../testing.js";
 import { runUndo, type UndoRequest } from "./undo.js";
 
 const temporaryDirectories: string[] = [];
@@ -65,6 +65,7 @@ async function createFixture(): Promise<Fixture> {
       stateHomeDir: homeDir,
       stderr: stderr.stream,
       stdout: stdout.stream,
+      telemetry: noopTelemetry(),
       yes: false,
       ...overrides,
     }),
@@ -80,6 +81,7 @@ async function createFixture(): Promise<Fixture> {
         stateHomeDir: homeDir,
         stderr: stderr.stream,
         stdout: stdout.stream,
+        telemetry: noopTelemetry(),
         withDetail: false,
       });
       expect(exitCode).toBe(0);
@@ -222,6 +224,52 @@ describe("runUndo", () => {
 
     expect(fixture.stdout()).toContain("Left everything as it was.");
     await expect(access(manifest)).resolves.toBeUndefined();
+  });
+
+  it("emits one undo-run event naming how the run ended", async () => {
+    const fixture = await createFixture();
+
+    const listed = capturingTelemetry();
+    await runUndo(fixture.request({ list: true, telemetry: listed.telemetry }));
+    expect(listed.events).toEqual([
+      expect.objectContaining({
+        command: "undo",
+        exitCode: 0,
+        kind: "undo-run",
+        outcome: "listed",
+      }),
+    ]);
+
+    const nothing = capturingTelemetry();
+    await runUndo(fixture.request({ telemetry: nothing.telemetry, yes: true }));
+    expect(nothing.events).toEqual([
+      expect.objectContaining({ exitCode: 0, outcome: "nothing-to-undo" }),
+    ]);
+
+    await fixture.setup();
+
+    const refused = capturingTelemetry();
+    await runUndo(fixture.request({ backupId: "no-such-backup", telemetry: refused.telemetry }));
+    expect(refused.events).toEqual([expect.objectContaining({ exitCode: 2, outcome: "refused" })]);
+
+    const declined = capturingTelemetry();
+    await runUndo(
+      fixture.request({ telemetry: declined.telemetry }, { confirmations: ["declined"] }),
+    );
+    expect(declined.events).toEqual([
+      expect.objectContaining({ exitCode: 1, outcome: "declined" }),
+    ]);
+
+    const restored = capturingTelemetry();
+    await runUndo(fixture.request({ telemetry: restored.telemetry, yes: true }));
+    expect(restored.events).toEqual([
+      expect.objectContaining({
+        exitCode: 0,
+        outcome: "restored",
+        restoredOperationCount: expect.any(Number),
+        skippedBackupCount: 0,
+      }),
+    ]);
   });
 });
 
