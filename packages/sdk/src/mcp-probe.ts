@@ -16,4 +16,12 @@ export interface McpProbeResult {
   readonly detail?: string | undefined;
   readonly kind: McpProbeKind;
   readonly status: McpProbeStatus;
+  /**
+   * Set when an `error` may not reproduce: a timeout, or a server that answered with a fault of
+   * its own.
+   *
+   * "The probe could not finish" and "the server is definitely wrong" are different claims, and a
+   * check that gates a run on the first one is a check people stop running.
+   */
+  readonly transient?: true | undefined;
 }

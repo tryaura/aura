@@ -14,22 +14,34 @@ export interface McpUrlResponse {
 /** Injectable transport seam used to make online probing deterministic in tests and embedders. */
 export type McpUrlRequest = (input: McpUrlRequestInput) => Promise<McpUrlResponse>;
 
-/** Builds a proxy-aware requester from the same captured environment snapshot the CLI uses. */
-export function createMcpUrlRequest(
-  environmentVariables: Readonly<Record<string, string | undefined>>,
-): McpUrlRequest {
-  const httpProxy = environmentValue(environmentVariables, "HTTP_PROXY");
-  const httpsProxy = environmentValue(environmentVariables, "HTTPS_PROXY");
-  const noProxy = environmentValue(environmentVariables, "NO_PROXY");
-  const proxyOptions = {
-    ...(httpProxy === undefined ? {} : { httpProxy }),
-    ...(httpsProxy === undefined ? {} : { httpsProxy }),
-    ...(noProxy === undefined ? {} : { noProxy }),
-  };
+/** A requester and the pooled connections it holds open. */
+export interface McpUrlRequester {
+  /** Releases pooled sockets. Without it the process waits out undici's keep-alive before exiting. */
+  readonly close: () => Promise<void>;
+  readonly request: McpUrlRequest;
+}
 
-  return async (input): Promise<McpUrlResponse> => {
-    const dispatcher = new EnvHttpProxyAgent(proxyOptions);
-    try {
+/**
+ * Builds a proxy-aware requester from the same captured environment snapshot the CLI uses.
+ *
+ * One dispatcher serves every probe: building one per request would pay a fresh proxy and TLS
+ * handshake on each redirect hop, inside a budget measured in seconds.
+ */
+export function createMcpUrlRequester(
+  environmentVariables: Readonly<Record<string, string | undefined>>,
+): McpUrlRequester {
+  // Every proxy key is passed, including the ones the snapshot does not carry: undici falls back
+  // to `process.env` for an *omitted* option, which would route probes through a proxy that the
+  // captured environment never mentioned. An empty string pins the option and reads as "none".
+  const dispatcher = new EnvHttpProxyAgent({
+    httpProxy: environmentValue(environmentVariables, "http_proxy") ?? "",
+    httpsProxy: environmentValue(environmentVariables, "https_proxy") ?? "",
+    noProxy: environmentValue(environmentVariables, "no_proxy") ?? "",
+  });
+
+  return {
+    close: () => dispatcher.close(),
+    request: async (input): Promise<McpUrlResponse> => {
       const response = await fetch(input.url, {
         dispatcher,
         method: input.method,
@@ -39,16 +51,14 @@ export function createMcpUrlRequest(
       const location = response.headers.get("location") ?? undefined;
       await response.body?.cancel();
       return { ...(location === undefined ? {} : { location }), status: response.status };
-    } finally {
-      await dispatcher.close();
-    }
+    },
   };
 }
 
+/** Reads one proxy variable in undici's own precedence, so both agree on which case wins. */
 function environmentValue(
   variables: Readonly<Record<string, string | undefined>>,
   name: string,
 ): string | undefined {
-  const key = Object.keys(variables).find((candidate) => candidate.toUpperCase() === name);
-  return key === undefined ? undefined : variables[key];
+  return variables[name] ?? variables[name.toUpperCase()];
 }

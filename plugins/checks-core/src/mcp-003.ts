@@ -6,6 +6,7 @@ import {
   type FixPlan,
   type GuidedFixChoice,
   type McpProbeKind,
+  type McpProbeResult,
   type McpServer,
   type WorkspaceModel,
 } from "@tryaura/aura-sdk";
@@ -14,7 +15,7 @@ const CHECK_ID = "MCP-003";
 
 const EXPLAIN = `Aura checks stdio commands with filesystem-only PATH resolution. It never starts an MCP server during a check. Package launchers such as npx, uvx, and bunx are checked, but Aura does not guess whether the requested package is installed or cached.
 
-Remote URLs are silent and generate no network traffic unless \`check --online\` is supplied. Online probes use short, bounded requests without configured authentication headers. Re-run with \`--fix --interactive\` to choose whether to repair or remove a server that definitely failed its probe.`;
+Remote URLs are silent and generate no network traffic unless \`check --online\` is supplied. Online probes use short, bounded requests without configured authentication headers, and they skip an endpoint whose credentials Aura stripped, because the remaining URL no longer addresses the configured server. A redirect to a private address is reported rather than followed. A timeout or a server-side fault is a warning, not an error: it may not repeat. Re-run with \`--fix --interactive\` to choose whether to repair or remove a server that definitely failed its probe.`;
 
 export const mcp003 = defineCheck({
   defaultSeverity: "error",
@@ -32,16 +33,17 @@ function detectDeadServers(model: WorkspaceModel): readonly DetectedFinding[] {
   return model.mcpServers.flatMap((server) =>
     (server.probes ?? [])
       .filter((probe) => probe.status === "error")
-      .map((probe): DetectedFinding => findingFor(server, probe.kind, probe.detail, model)),
+      .map((probe): DetectedFinding => findingFor(server, probe, model)),
   );
 }
 
 function findingFor(
   server: McpServer,
-  kind: McpProbeKind,
-  detail: string | undefined,
+  probe: McpProbeResult,
   model: WorkspaceModel,
 ): DetectedFinding {
+  const kind: McpProbeKind = probe.kind;
+  const detail = probe.detail;
   const app = model.apps.find((candidate) => candidate.adapterId === server.appId);
   const path = app?.sourceFiles.find((file) => file.spec.id === server.sourceId)?.spec.path;
   const displayName = app?.displayName ?? server.appId;
@@ -61,6 +63,9 @@ function findingFor(
       serverScope: server.scope,
       sourceId: server.sourceId,
     },
+    // A timeout or a server's own fault may not repeat, and a run that exits non-zero on a network
+    // blip is a run people stop making with `--online`.
+    ...(probe.transient === true ? { severity: "warn" as const } : {}),
   };
 }
 

@@ -86,21 +86,34 @@ describe("buildWorkspaceModel", () => {
       "/home/dev/CLAUDE.md",
       "/home/dev/AGENTS.md",
     ]);
-    expect(model.mcpServers).toEqual([
-      {
-        ...SERVER,
-        probes: [
-          {
-            detail: "URL reachability was not checked because online probing was not enabled.",
-            kind: "url",
-            status: "unavailable",
-          },
-        ],
-      },
-    ]);
+    expect(model.mcpServers).toEqual([SERVER]);
     expect(model.skills.map((skill) => skill.id)).toEqual(["alpha/review", "beta/review"]);
     expect(model.cwd).toBe("/workspace");
     expect(model.homeDir).toBe("/home/dev");
+  });
+
+  it("probes MCP servers only when the scan asks for it", async () => {
+    const adapter = createTestAdapter({
+      id: "alpha",
+      parse: () => createSnapshot({ mcpServers: [SERVER] }),
+    });
+    const options: WorkspaceScanOptions = {
+      adapters: [adapter],
+      environment: createTestEnvironment(),
+      reader: createMemoryReader(),
+    };
+
+    const silent = await buildWorkspaceModel(options);
+    const probed = await buildWorkspaceModel({ ...options, mcpProbes: {} });
+
+    expect(silent.model.mcpServers[0]?.probes).toBeUndefined();
+    expect(probed.model.mcpServers[0]?.probes).toEqual([
+      {
+        detail: "URL reachability was not checked because online probing was not enabled.",
+        kind: "url",
+        status: "unavailable",
+      },
+    ]);
   });
 
   it("records which declared paths were found without retaining their contents", async () => {

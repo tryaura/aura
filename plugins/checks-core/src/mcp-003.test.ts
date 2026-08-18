@@ -39,6 +39,26 @@ describe("MCP-003", () => {
     });
   });
 
+  it("warns rather than fails when the probe may not repeat", () => {
+    const server = serverWithProbe("url", "error", "http");
+    const workspace = workspaceFor({
+      ...server,
+      probes: [
+        {
+          detail: "The URL responded with HTTP 503.",
+          kind: "url",
+          status: "error",
+          transient: true,
+        },
+      ],
+    });
+
+    expect(runChecks([mcp003], workspace).findings[0]).toMatchObject({
+      checkId: "MCP-003",
+      severity: "warn",
+    });
+  });
+
   it("offers transport-specific repair instructions", () => {
     const commandWorkspace = workspaceFor(serverWithProbe("command", "error"));
     const urlWorkspace = workspaceFor(serverWithProbe("url", "error", "http"));

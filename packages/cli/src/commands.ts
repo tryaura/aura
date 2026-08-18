@@ -7,7 +7,7 @@ import type { Environment } from "@tryaura/aura-sdk";
 import {
   buildWorkspaceModel,
   createEnvironment,
-  createMcpUrlRequest,
+  createMcpUrlRequester,
   runChecks,
   type EnvironmentBootOptions,
   type PluginRegistry,
@@ -114,16 +114,18 @@ export class CheckCommand extends Command<AuraCliContext> {
       return 2;
     }
 
+    // Held open across both scans of a `--fix` run, and closed once so pooled sockets do not keep
+    // the process alive after the report is written.
+    const requester = this.online ? createMcpUrlRequester(this.context.env) : undefined;
     try {
       const environment = createEnvironment(this.environmentOptions());
       const scanOptions = {
         adapters: selected.adapters,
         environment,
         mcpCatalog: this.context.registry.mcpServers,
-        online: this.online,
+        mcpProbes: requester === undefined ? {} : { urlRequest: requester.request },
         skills: this.context.registry.skills,
         snippets: this.context.registry.snippets,
-        ...(this.online ? { urlRequest: createMcpUrlRequest(this.context.env) } : {}),
       };
       let scan = await buildWorkspaceModel(scanOptions);
       let run = runChecks(selected.checks, scan.model);
@@ -198,6 +200,8 @@ export class CheckCommand extends Command<AuraCliContext> {
         this.detail,
         this.context.stderr,
       );
+    } finally {
+      await requester?.close();
     }
   }
 

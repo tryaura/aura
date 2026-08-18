@@ -175,6 +175,7 @@ export {
   EMPTY_COLLECTION,
   configStringArray,
   configStringRecord,
+  hasMcpRedaction,
   isConfigRecord,
   isMcpCredentialLiteral,
   parseConfigObject,

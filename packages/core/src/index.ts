@@ -88,7 +88,7 @@ export { SUPPORTED_PLUGIN_API_VERSION } from "./plugin-validation.js";
 export type { ContributionKind, PluginCandidate } from "./plugin-validation.js";
 export { buildWorkspaceModel } from "./workspace/build.js";
 export type { SkippedApp, WorkspaceScan, WorkspaceScanOptions } from "./workspace/build.js";
-export { createMcpUrlRequest } from "./workspace/mcp-url-request.js";
+export { createMcpUrlRequester } from "./workspace/mcp-url-request.js";
 export { planSharedInstructionLink } from "./workspace/shared-link-plan.js";
 /** @public */
 export type {
