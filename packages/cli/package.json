@@ -77,7 +77,7 @@
     "@tryaura/checks-core": "workspace:*",
     "@tryaura/content-official": "workspace:*",
     "@tryaura/core": "workspace:*",
-    "@types/node": "24.13.3",
+    "@types/node": "26.2.0",
     "ajv": "8.20.0",
     "vitest": "4.1.10"
   },

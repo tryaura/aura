@@ -21,7 +21,7 @@
     "@tryaura/aura-sdk": "workspace:*",
     "@tryaura/aura-testkit": "workspace:*",
     "@tryaura/core": "workspace:*",
-    "@types/node": "24.13.3",
+    "@types/node": "26.2.0",
     "vitest": "4.1.10"
   },
   "engines": {

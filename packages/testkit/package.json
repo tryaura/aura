@@ -50,7 +50,7 @@
     "@tryaura/adapter-codex": "workspace:*",
     "@tryaura/adapter-cursor": "workspace:*",
     "@tryaura/core": "workspace:*",
-    "@types/node": "24.13.3",
+    "@types/node": "26.2.0",
     "diff": "9.0.0",
     "vitest": "4.1.10"
   },
