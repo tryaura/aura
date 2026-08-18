@@ -127,3 +127,64 @@ jobs:
             artifacts/SHA256SUMS
           generate_release_notes: true
           fail_on_unmatched_files: true
+
+  # The registry authenticates this job by its OIDC identity, so there is no npm token anywhere in
+  # the repository. Each package names this workflow as its trusted publisher on npmjs.com; a run
+  # from any other workflow or repository cannot mint a credential for them.
+  publish-npm:
+    name: Publish npm packages
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Mints the OIDC token npm exchanges for a short-lived publish credential. Without it the
+      # publish falls back to looking for a token and fails.
+      id-token: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      # Trusted publishing landed in npm 11.5.1, which is newer than the npm bundled with some Node
+      # 24 releases. Pinning the floor here keeps the job from silently reverting to token auth.
+      - name: Ensure npm supports trusted publishing
+        run: |
+          npm install --global npm@latest
+          npm --version
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build
+        run: pnpm build
+      # The trio ships in lockstep off the SDK manifest, and the tag is what consumers will ask for.
+      # Publishing is irreversible per version, so a tag that disagrees with the manifest stops the
+      # job rather than burning a version number on the wrong contents.
+      - name: Assert tag matches package version
+        env:
+          AURA_TAG: ${{ github.ref_name }}
+        run: |
+          tag="${AURA_TAG#v}"
+          manifest="$(node -p "require('./packages/sdk/package.json').version")"
+          if [ "${tag}" != "${manifest}" ]; then
+            echo "::error::Tag ${AURA_TAG} does not match the published version ${manifest}"
+            exit 1
+          fi
+      # pnpm packs rather than publishes because it is what rewrites `workspace:*` into the real
+      # version range; npm then does the publishing because it is what performs the OIDC exchange.
+      - name: Pack packages
+        run: |
+          mkdir -p dist-npm
+          pnpm --filter @tryaura/aura-sdk --filter @tryaura/aura-cli --filter @tryaura/aura-testkit \
+            pack --pack-destination dist-npm
+      # Dependency order: a consumer that installs the CLI the moment it appears should already be
+      # able to resolve the SDK version its manifest pins.
+      - name: Publish to npm
+        run: |
+          for package in tryaura-aura-sdk tryaura-aura-cli tryaura-aura-testkit; do
+            npm publish "dist-npm/${package}-"*.tgz --access public
+          done
