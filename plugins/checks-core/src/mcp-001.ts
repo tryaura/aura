@@ -4,6 +4,7 @@ import {
   configuredFor,
   convergenceFix,
   desiredMcpTargets,
+  hasMisplacedServerFor,
   unusableFor,
   withBlockers,
   type DesiredMcpTarget,
@@ -37,7 +38,7 @@ function detectParity(model: WorkspaceModel): readonly DetectedFinding[] {
     const names = desiredByApp.get(target.appId) ?? new Set<string>();
     names.add(target.name);
     desiredByApp.set(target.appId, names);
-    const finding = parityFinding(model, target);
+    const finding = parityFinding(model, desired, target);
     if (finding !== undefined) {
       affected.add(target.appId);
       findings.push(finding);
@@ -72,6 +73,7 @@ function managedApps(model: WorkspaceModel): ReadonlySet<string> {
  */
 function parityFinding(
   model: WorkspaceModel,
+  desired: readonly DesiredMcpTarget[],
   target: DesiredMcpTarget,
 ): DetectedFinding | undefined {
   const unusable = unusableFor(model, target);
@@ -91,6 +93,10 @@ function parityFinding(
         sourceId: unusable.sourceId,
       },
     };
+  }
+
+  if (hasMisplacedServerFor(model, desired, target)) {
+    return undefined;
   }
 
   return configuredFor(model, target).length > 0

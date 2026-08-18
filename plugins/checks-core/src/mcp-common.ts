@@ -75,6 +75,31 @@ export function configuredFor(
   );
 }
 
+/**
+ * Whether MCP-005, rather than MCP-001, owns this target's absent expected-scope entry.
+ *
+ * Takes the desired list rather than deriving it: the caller evaluates this once per target, and
+ * recomputing the manifest's selection inside that loop rebuilt the whole list every time.
+ */
+export function hasMisplacedServerFor(
+  model: WorkspaceModel,
+  desired: readonly DesiredMcpTarget[],
+  target: DesiredMcpTarget,
+): boolean {
+  return model.mcpServers.some(
+    (server) =>
+      server.appId === target.appId &&
+      server.name === target.name &&
+      server.scope !== target.scope &&
+      !desired.some(
+        (candidate) =>
+          candidate.appId === server.appId &&
+          candidate.name === server.name &&
+          candidate.scope === server.scope,
+      ),
+  );
+}
+
 /** Turns one application's convergence blockers into findings a user can act on. */
 function blockerFindings(
   appId: string,
