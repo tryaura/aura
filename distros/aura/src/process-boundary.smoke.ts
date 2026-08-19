@@ -16,7 +16,7 @@ describe("compiled Aura process boundary", () => {
     const args = ["check", "--home", seed.homeDir, "--path", seed.pathDir];
 
     const human = await runCompiled(seed, args);
-    expect(human.exitCode).toBe(2);
+    expect(human.exitCode).toBe(0);
     expect(human.stdout).not.toContain("[");
     expect(human.stdout).toContain("Docs: https://tryaura.sh/docs/introduction");
     expect(human.stderr).toBe("");
@@ -31,9 +31,10 @@ describe("compiled Aura process boundary", () => {
    * A reader closing the pipe must not rewrite the verdict.
    *
    * `aura check | head` is someone glancing at the top of a report, and `| grep -q` is a script
-   * asking one question of it. Both close the pipe early, and a run that answered "action
-   * required" before the close still has to say so — an EPIPE that reported success would mark
-   * every failing machine clean in exactly the pipelines built to gate on it.
+   * asking one question of it. Both close the pipe early, on a run that completed its checks and
+   * so exits 0 whatever it found. The failure this pins is the write that lands after the reader
+   * is gone: an unhandled EPIPE turns a finished run into an operational failure, and a script
+   * that pipes the report would then fail on machines the same command clears when it does not.
    */
   it("keeps its exit code when a reader closes the pipe", async () => {
     await using seed = await createSeedBuilder().build();
@@ -60,6 +61,6 @@ describe("compiled Aura process boundary", () => {
 
     expect(piped.stdout).toMatch(/^Aura check — /);
     expect(piped.stderr).toBe("");
-    expect((await readFile(statusFile, "utf8")).trim()).toBe("2");
+    expect((await readFile(statusFile, "utf8")).trim()).toBe("0");
   });
 });

@@ -5,6 +5,8 @@ import { pathToFileURL } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { MAX_SNIPPET_BYTES } from "@tryaura/core";
+
 import type { AuraManifestState, Snippet } from "@tryaura/aura-sdk";
 
 import { resolveSnippetCatalog } from "./snippets.js";
@@ -46,7 +48,7 @@ describe("snippet catalog resolution", () => {
     const root = await mkdtemp(join(tmpdir(), "aura-snippet-catalog-"));
     temporaryDirectories.push(root);
     const oversized = join(root, "oversized.md");
-    await writeFile(oversized, "x".repeat(64 * 1024 + 1), "utf8");
+    await writeFile(oversized, "x".repeat(MAX_SNIPPET_BYTES + 1), "utf8");
 
     const catalog = await resolveSnippetCatalog(
       [snippet("official/oversized", pathToFileURL(oversized).href)],
@@ -54,7 +56,7 @@ describe("snippet catalog resolution", () => {
     );
 
     expect(catalog[0]).toMatchObject({
-      reason: "Source is 65 KiB; snippets are limited to 64 KiB.",
+      reason: "Source is 251 KiB; snippets are limited to 250 KiB.",
       status: "unavailable",
     });
   });
