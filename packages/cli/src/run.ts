@@ -1,4 +1,3 @@
-import { homedir } from "node:os";
 import process from "node:process";
 
 // Deep import on purpose: clipanion's ESM entry contains a directory import Node cannot resolve, so
@@ -11,6 +10,7 @@ import { UnknownSyntaxError } from "clipanion/lib/errors.js";
 
 import { createPluginRegistry } from "@tryaura/core";
 
+import { writeRunFailure } from "./command-support.js";
 import { CheckCommand, type AuraCliContext } from "./commands.js";
 import { DefaultCommand } from "./default-command.js";
 import {
@@ -20,6 +20,7 @@ import {
   renderUndoHelp,
   renderUnknownCommand,
 } from "./help.js";
+import { resolveRuntime, type ResolvedRuntime } from "./resolve-runtime.js";
 import { SetupCommand } from "./setup/command.js";
 import { setupAddKinds } from "./setup/steps/index.js";
 import { createTelemetryRecorder, telemetryEnabled, type TelemetryRecorder } from "./telemetry.js";
@@ -28,7 +29,7 @@ import type { CliBranding, CliDistro, CliExitCode, CliRuntime } from "./types.js
 
 /** Runs one build-time-composed Aura distribution. */
 export async function runCli(distro: CliDistro, runtime?: CliRuntime): Promise<CliExitCode> {
-  const resolved = resolveRuntime(runtime);
+  const resolved = resolveRuntime(runtime, distro.branding);
   // The user's environment always wins over the distribution: an opted-out run gets a recorder
   // whose sink is absent, which is indistinguishable from a distribution that sends nothing.
   const telemetry = createTelemetryRecorder({
@@ -37,9 +38,12 @@ export async function runCli(distro: CliDistro, runtime?: CliRuntime): Promise<C
     sink: telemetryEnabled(resolved.environmentVariables) ? distro.telemetry : undefined,
   });
 
-  const exitCode = await runResolved(distro, resolved, telemetry);
+  const verdict = await runResolved(distro, resolved, telemetry);
   // Recorded events flush — bounded, never throwing — before the exit code is applied.
   await telemetry.flush();
+  // A run that could not write its own output never delivered the verdict it computed, so the
+  // operational failure outranks it. A reader closing the pipe is not that, and never lands here.
+  const exitCode = resolved.outputFailure.failed ? 3 : verdict;
   applyExitCode(exitCode, runtime);
   return exitCode;
 }
@@ -102,78 +106,14 @@ async function runResolved(
   }
 }
 
-/** Writes the one-line operational failure every uncaught throw becomes. */
+/** Maps every uncaught throw to the one-line operational failure and its exit code. */
 function reportRunFailure(
   error: unknown,
   branding: CliBranding,
   stderr: ResolvedRuntime["stderr"],
 ): CliExitCode {
-  const message = error instanceof Error ? error.message : String(error);
-  stderr.write(`${branding.displayName}: ${message}\n`);
+  writeRunFailure(error, branding, stderr);
   return 3;
-}
-
-interface ResolvedRuntime {
-  readonly argv: string[];
-  readonly colorDepth: number;
-  readonly cwd: string;
-  readonly environmentVariables: Record<string, string | undefined>;
-  readonly homeDir: string;
-  /** Absent means the kernel's own bounded client. */
-  readonly httpGet: CliRuntime["httpGet"];
-  readonly now: () => Date;
-  readonly stderr: NonNullable<CliRuntime["stderr"]>;
-  readonly stdin: NonNullable<CliRuntime["stdin"]>;
-  readonly stdout: NonNullable<CliRuntime["stdout"]>;
-}
-
-/**
- * Captures every ambient value the run depends on.
- *
- * This is the CLI's half of the boundary `Environment` draws inside the kernel: an embedder that
- * fills in the whole runtime gets a run that reads nothing from the surrounding process — including
- * the home directory, which is the one thing a caller sandboxing `HOME` would otherwise still leak.
- */
-function resolveRuntime(runtime: CliRuntime | undefined): ResolvedRuntime {
-  const environmentVariables = {
-    ...resolveValue(runtime?.environmentVariables, () => process.env),
-  };
-
-  return {
-    argv: [...resolveValue(runtime?.argv, () => process.argv.slice(2))],
-    colorDepth: resolveColorDepth(runtime, environmentVariables),
-    cwd: resolveValue(runtime?.cwd, () => process.cwd()),
-    environmentVariables,
-    homeDir: resolveValue(runtime?.homeDir, () => homedir()),
-    httpGet: runtime?.httpGet,
-    now: resolveValue(runtime?.now, () => () => new Date()),
-    ...resolveStreams(runtime),
-  };
-}
-
-/** The three process streams, resolved together so each injected one replaces its default. */
-function resolveStreams(
-  runtime: CliRuntime | undefined,
-): Pick<ResolvedRuntime, "stderr" | "stdin" | "stdout"> {
-  return {
-    stderr: resolveValue(runtime?.stderr, () => process.stderr),
-    stdin: resolveValue(runtime?.stdin, () => process.stdin),
-    stdout: resolveValue(runtime?.stdout, () => process.stdout),
-  };
-}
-
-function resolveColorDepth(
-  runtime: CliRuntime | undefined,
-  environmentVariables: Record<string, string | undefined>,
-): number {
-  return resolveValue(runtime?.colorDepth, () =>
-    // An injected stream is not a terminal Aura can ask about color, so it never gets any.
-    runtime?.stdout === undefined ? detectColorDepth(environmentVariables) : 0,
-  );
-}
-
-function resolveValue<T>(value: T | undefined, fallback: () => T): T {
-  return value === undefined ? fallback() : value;
 }
 
 /** First tokens of every registered command path, kept next to `createCli`'s registrations. */
@@ -213,28 +153,6 @@ function helpScreen(argv: readonly string[], branding: CliBranding): string {
     return renderUndoHelp(branding);
   }
   return renderRootHelp(branding);
-}
-
-/**
- * Decides how much color the terminal should get.
- *
- * One decision for the whole run: the command framework's help and error output, the wizard, and
- * the report's severity and verdict styling all read this depth, so no layer forms a second,
- * disagreeing opinion about color. Injected streams resolve to 0, which keeps every captured run
- * free of escape sequences.
- */
-function detectColorDepth(environmentVariables: Record<string, string | undefined>): number {
-  const noColor = environmentVariables["NO_COLOR"];
-  if (noColor !== undefined && noColor !== "") {
-    return 0;
-  }
-
-  const forceColor = environmentVariables["FORCE_COLOR"];
-  if (forceColor !== undefined && forceColor !== "" && forceColor !== "0") {
-    return 8;
-  }
-
-  return process.stdout.isTTY === true ? 8 : 0;
 }
 
 /**
