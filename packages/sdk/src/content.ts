@@ -84,7 +84,7 @@ export interface SkillPack extends SkillListing {
 export interface McpServerDef extends ContentContribution {
   /** Discriminant. */
   readonly kind: "mcp-server";
-  /** The JSON definition file. */
+  /** The JSON definition file, conforming to {@link McpServerManifest}. */
   readonly source: FileContentSource;
 }
 
@@ -92,7 +92,7 @@ export interface McpServerDef extends ContentContribution {
 export interface Preset extends ContentContribution {
   /** Discriminant. */
   readonly kind: "preset";
-  /** The JSON preset file. */
+  /** The JSON preset file, conforming to {@link AuraTeamPreset}. */
   readonly source: FileContentSource;
 }
 

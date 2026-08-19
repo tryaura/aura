@@ -142,6 +142,8 @@ export {
   resolveEffectiveConfig,
 } from "./preset/configuration.js";
 export { loadTeamPreset } from "./preset/load.js";
+export { hashRepoPreset, isRepoPresetTrusted, readRepoPreset } from "./preset/repo-trust.js";
+export { MAX_TRUSTED_REPO_PRESETS } from "./manifest/schema-trust.js";
 export { applyRequiredMcpServers } from "./preset/required-mcp.js";
 export type { RequiredMcpProjection } from "./preset/required-mcp.js";
 /** @public */

@@ -64,6 +64,13 @@ export type SeedContent = string | ((roots: SeedRoots) => string);
 export interface TestSeedBuilder {
   homeFile(path: string, content: SeedContent): TestSeedBuilder;
   shim(command: string, responses: readonly ShimResponse[]): TestSeedBuilder;
+  /**
+   * Records the seeded workspace preset as trusted in the seed's `agents/aura.json`.
+   *
+   * A repository preset applies only after a person accepted it, and `--yes` runs never accept
+   * one; a seed that wants the preset in effect declares the acceptance that already happened.
+   */
+  trustWorkspacePreset(path?: string): TestSeedBuilder;
   workspaceFile(path: string, content: SeedContent): TestSeedBuilder;
   build(): Promise<TestSeed>;
 }

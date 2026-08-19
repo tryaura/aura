@@ -30,6 +30,7 @@ import {
   noopTelemetry,
 } from "../testing.js";
 import { runSetup, type SetupRequest } from "./setup.js";
+import { projectConsolidationPlugin } from "./testing-plugins.js";
 import { SETUP_ABORTED, SETUP_BACK, type SetupStep } from "./types.js";
 import { createScriptedWizardIo, type ScriptedWizardScript } from "./wizard-scripted.js";
 import type { WizardFlowContext, WizardIo } from "./wizard-types.js";
@@ -110,7 +111,7 @@ describe("runSetup", () => {
     );
     const manifestMode = (await stat(join(fixture.homeDir, "agents", "aura.json"))).mode & 0o777;
     expect(manifestMode).toBe(0o600);
-    expect(fixture.stdout()).toContain("Passed (1)");
+    expect(fixture.stdout()).toContain("✓ 1 check passed");
     expect(fixture.stdout()).toContain("backup");
   });
 
@@ -433,6 +434,36 @@ describe("runSetup", () => {
       { backward: true, id: "first", revisited: true },
       { backward: false, id: "second", revisited: true },
     ]);
+  });
+
+  it("offers the project opt-out last, so --yes still configures rather than declining", async () => {
+    const fixture = await createFixture();
+    await writeFile(join(fixture.environment.cwd, "CLAUDE.md"), "# Project\n\nRules.\n", "utf8");
+    const registry = createPluginRegistry(
+      [projectConsolidationPlugin(), findingPlugin("info", [])],
+      {},
+    );
+    let options: readonly { readonly value: string }[] = [];
+    const base = createScriptedWizardIo({});
+    const io: WizardIo = {
+      ...base,
+      ask: async (questions, flow) => {
+        const action = questions.find((question) => question.id === "project-instruction-action");
+        if (action?.kind === "select") {
+          options = action.options;
+        }
+        return base.ask(questions, flow);
+      },
+    };
+
+    await expect(runSetup(fixture.request({}, { io, registry }))).resolves.toBe(0);
+
+    // An empty script is the `--yes` path, and it takes each question's first option: the opt-out
+    // must therefore sit last, or every non-interactive run would silently decline the scope.
+    expect(options.map((option) => option.value)).toEqual(["consolidate", "template", "skip"]);
+    await expect(readFile(join(fixture.environment.cwd, "AGENTS.md"), "utf8")).resolves.toContain(
+      "# Instructions from CLAUDE.md",
+    );
   });
 
   it("returns to the last step when the final confirmation backs out", async () => {

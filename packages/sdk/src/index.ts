@@ -33,6 +33,7 @@ export type {
   CheckRuntimeSettings,
   DetectedFinding,
   Finding,
+  FindingGroupPresentation,
   FindingLocation,
   FindingMetadataBooleanColumn,
   FindingMetadataColumnFormat,
@@ -167,6 +168,7 @@ export type {
   AuraManifestSkill,
   AuraManifestSnippet,
   AuraManifestState,
+  AuraManifestTrustedRepoPreset,
   AuraManifestV1,
 } from "./manifest.js";
 export type {

@@ -52,6 +52,39 @@ describe("resolveEffectiveConfig", () => {
     expect(enabledChecks([check], result.config)).toEqual([check]);
   });
 
+  it("applies the repo layer above the selected preset and below the manifest", () => {
+    const result = resolveEffectiveConfig({
+      checks: [check],
+      manifest: {
+        checks: { thresholds: { "INS-007": { approxTokens: 9000 } } },
+      },
+      preset: {
+        checks: { severity: { "INS-007": "warn" }, thresholds: { "INS-007": { approxTokens: 1 } } },
+      },
+      repo: {
+        checks: {
+          enabled: ["INS-007"],
+          severity: { "INS-007": "error" },
+          thresholds: { "INS-007": { approxTokens: 12_000 } },
+        },
+      },
+      selectedPreset: { name: "Acme", reference: "plugin:acme/platform" },
+    });
+
+    expect(result.status).toBe("ready");
+    if (result.status !== "ready") {
+      return;
+    }
+    expect(result.config.checks["INS-007"]).toEqual({
+      enabled: { provenance: { label: ".aura/preset.json", layer: "repo" }, value: true },
+      severity: { provenance: { label: ".aura/preset.json", layer: "repo" }, value: "error" },
+      thresholds: {
+        provenance: { label: "user manifest", layer: "manifest" },
+        value: { approxTokens: 9000 },
+      },
+    });
+  });
+
   it("fails closed for unknown checks and required MCP catalog ids", () => {
     const result = resolveEffectiveConfig({
       checks: [check],

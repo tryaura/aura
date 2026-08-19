@@ -21,7 +21,7 @@
       "required": ["label", "layer"],
       "properties": {
         "label": { "type": "string" },
-        "layer": { "enum": ["cli", "default", "distro", "manifest", "preset"] }
+        "layer": { "enum": ["cli", "default", "distro", "manifest", "preset", "repo"] }
       }
     },
     "summary": {
@@ -59,6 +59,21 @@
         "message": { "type": "string" },
         "path": { "type": "string" },
         "phase": { "enum": ["check", "detect", "files", "fix", "parse", "read", "support"] }
+      }
+    },
+    "configuration": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "repositoryPreset": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "status"],
+          "properties": {
+            "path": { "type": "string" },
+            "status": { "enum": ["applied", "held"] }
+          }
+        }
       }
     },
     "support": {
@@ -186,6 +201,7 @@
       ],
       "properties": {
         "apps": { "type": "array", "items": { "$ref": "#/$defs/app" } },
+        "configuration": { "$ref": "#/$defs/configuration" },
         "diagnostics": { "type": "array", "items": { "$ref": "#/$defs/diagnostic" } },
         "findings": { "type": "array", "items": { "$ref": "#/$defs/finding" } },
         "fixes": { "type": "array", "items": { "$ref": "#/$defs/fix" } },
@@ -225,6 +241,7 @@
         "title"
       ],
       "properties": {
+        "configuration": { "$ref": "#/$defs/configuration" },
         "enabled": { "type": "boolean" },
         "explain": { "type": "string" },
         "fixability": { "enum": ["auto", "guided", "manual"] },

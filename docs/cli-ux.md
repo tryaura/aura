@@ -35,8 +35,9 @@ Rendered by `packages/cli/src/help.ts`; exact layouts pinned in `help.test.ts`.
   `Docs:` footer when branding defines one. The Help section lists `aura <command> --help`, and an
   `aura --version` row exactly when branding carries a version (which is also when the flag is
   registered at all).
-- `aura check --help` — Everyday use, Narrow it down, Fixing behavior, Scripting, Advanced, then
-  the exit-code footer.
+- `aura check --help` — Everyday use, Narrow it down, Reporting, Configuration, Fixing behavior,
+  Scripting, Advanced, then the exit-code footer. "Narrow it down" scopes what runs; "Reporting"
+  (`--verbose`, `--detail`) controls how much the run says about it.
 - `aura setup --help` — Everyday use, Options (including every registered `--add` kind),
   Advanced, then a footer pointing at `check`.
 - `aura undo --help` — Everyday use, Options, Advanced, then the restore exit-code footer.
@@ -48,6 +49,42 @@ Layout rules: terms align to one shared column across the whole screen; section 
 indented two spaces, rows four; no boxes, rules, or banner lines; no trailing periods on row
 descriptions. Clipanion's default help renderer is bypassed entirely (`runCli` intercepts the
 internal help command and unknown-command errors).
+
+## Check report
+
+Human check output is action-first. The concise default renders the human verdict and severity
+counts, the one command that can address the available fixes, then Available fixes, Manual
+attention, and Suggestions. Informational findings are suggestions, never manual work. Passed
+checks and detected applications collapse into one summary line.
+
+Checks may declare a plugin-namespaced `findingGroup` with an action-oriented title and
+description. Findings sharing that group render under one heading that states the remediation
+once — but a group summarizes the _fix_, never the _evidence_: every member is still named on its
+own line beneath it, with its own detail and locations, so no run reports a count where it could
+report a file. The concise default caps that list at three occurrences and two locations each and
+says how many more are waiting. A grouped heading always carries its member count, including at one member, so
+the halves of a group split across remediation sections stay recognizable as one problem. Checks
+without a group remain individual, so an older plugin never loses its message. Check IDs appear
+below the human copy as secondary metadata rather than leading a line, and the closing More section
+carries the `--explain <id>` that turns one into a full explanation.
+
+`--verbose` lifts the caps and adds every occurrence, location, metadata table, passed check, and
+application. It does not restore a severity-first ledger. Indentation carries the
+hierarchy: group heading at two spaces, its shared description and check ids at four, each
+occurrence at four, and that occurrence's own detail and locations at six. Project paths render
+relative to the project root (the invocation directory outside a repository), home paths use `~/`,
+and other paths remain absolute — one shared helper (`@tryaura/core/display-path`) serves both the
+CLI's location lines and the paths checks bake into their messages, so a report cannot name the
+same file two ways. `--verbose` works with scans and fixes but not with `--json` or `--explain`;
+`--detail` remains the separate gate for potentially sensitive plugin failure text.
+
+The summary line above the sections reports what was inspected, not a verdict: it takes a green `✓`
+only when at least one check passed, and a plain `·` when the run inspected nothing.
+
+When guided fixes exist, the report recommends `aura check --fix --interactive`, which includes
+automatic fixes in the same reviewed plan. With automatic fixes alone it recommends
+`aura check --fix`. An operationally incomplete scan recommends neither because its findings may
+be incomplete.
 
 ## Exit codes
 
@@ -107,6 +144,18 @@ When the active step runs a sequence of internal forms (a chain step like Instru
 - Both instruction scopes flow through one sub-row; the `Global` / `Project` action tabs double
   as scope section markers, so repeated stage names read unambiguously left to right:
   `✔ Global │ ✔ Sources │ ✔ Archive │ ▶ Project ☐ │ Sources ☐`.
+- The Project action offers a final `Skip project instructions` option that the Global action does
+  not: declining the global scope would leave the shared-source and application-link checks failing,
+  so setup could not end on green. A declined scope contributes only its action tab — no Sources,
+  Duplicates, or Archive tabs follow it, by the same honest-map rule:
+  `✔ Global │ ✔ Sources │ ✔ Archive │ ▶ Project ☐`.
+- Declining is not undoing, and the option says so where it matters: when the project target already
+  has content, the option's description names the file and states that it, and anything linking to
+  it, stay as they are. Otherwise the only thing a skip-only run would say about an earlier run's
+  target and link is that everything had already converged.
+- The same reasoning binds the answers a scope can settle on, not just the ones it is shown: an
+  action that was not on that scope's menu falls back to the proposed one, and a Global scope whose
+  Sources form ends up empty is a blocker rather than a silent decline through the back door.
 - The Skills step is the second chain precedent: its Review stage exists only while a directory
   skill is selected or a recorded skill's source revision moved, one review question per skill —
   `└ ✔ Skills │ ▶ Review claude-md ☐ │ Review commit-style ☐`.
@@ -204,6 +253,43 @@ whole frame with a scrollable overlay:
   directory skill carries the full fetched SKILL.md as its preview, so the whole prompt content is
   one `p` away at the decision point.
 
+### Repository preset trust
+
+A repository's `.aura/preset.json` is a configuration layer above the selected team preset and
+below the user's manifest — and it arrives by cloning, not by anything the user selected, so it
+applies only after the user trusts it for that repository.
+
+- Interactive `setup` asks once, before the wizard opens, after one note naming the preset and a
+  validated capability summary. The summary lists check policy, required MCP servers, allowed skill
+  sources, selected skills and snippets, and every skill-directory URL (plus its token variable), so
+  repository-controlled network endpoints are visible before consent. The opening note is
+  `This repository provides the preset "<name>" at .aura/preset.json.` The prompt is
+  `Trust the repository preset at .aura/preset.json? Its settings apply to every Aura run in this
+repository until the file changes.` Accepting applies the layer for the run and records the
+  acceptance — the preset's absolute path and a hash of its contents — in the manifest when the
+  plan is applied; a declined or aborted plan records nothing. Declining leaves the layer
+  unapplied and unrecorded, so the next interactive setup asks again. Aborting ends the run with
+  `Left everything as it was.` and exit 1.
+- Trust binds to exact contents. A file that changes after acceptance is untrusted again, and the
+  next interactive setup re-asks as a change, never as a first sighting
+  (`The repository preset at .aura/preset.json changed since you trusted it. Trust the new
+contents?`).
+- Non-interactive runs never accept: `--yes` answers confirmations for the user, and the first
+  application of a repository's file is exactly the decision it must not answer. `setup --yes`
+  resolves without the layer and the plan summary carries the held notice (below). Human `check`
+  and `check --explain` output name the held policy. Their JSON documents expose the same state as
+  `configuration.repositoryPreset = { "path": ".aura/preset.json", "status": "held" }`. `check` prints
+  one `· Configuration` group line naming the fix (`Repository preset .aura/preset.json is present
+but not trusted on this machine, so it was not applied. Run <command> setup to review and trust
+it.`).
+- An unreadable or invalid repository preset fails the run closed with exit 2
+  (`Repository preset ".aura/preset.json" is not valid JSON. Fix or remove the file to
+continue.`): proceeding without it would silently widen whatever the file was written to lock
+  down.
+- Applied repo-layer check settings appear in the plan summary as their own read-only policy
+  group, mirroring the team preset's: values apply through configuration resolution and are never
+  copied into the manifest.
+
 ### Skills step
 
 A picker over every allowed skill source, then one Review form per selected directory skill.
@@ -255,12 +341,13 @@ A picker over every allowed skill source, then one Review form per selected dire
   an upgrade. **Skip is always the initial answer**, so `--yes` and exhausted scripts can only
   re-apply skills the manifest already records — a non-interactive run never first-installs remote
   prompt content, and never changes the revision of content it already manages.
-- Installs from a source the team preset's `allowedSkillSources` does not permit are refused at
-  planning time with a blocker naming the preset
+- Installs from a source the active `allowedSkillSources` does not permit are refused at
+  planning time with a blocker naming the policy source
   (`Skill "<id>" comes from <source>, which the team preset "<origin>" does not allow.`), which
   also covers `--add skill` and manifest entries whose source lost its permission. `<origin>` is
-  the preset as resolved — `npm:@acme/preset@1.2.0`, an HTTPS URL, or `.aura/preset.json` — never
-  the conventional path standing in for a policy that came from somewhere else.
+  the preset as resolved — `npm:@acme/preset@1.2.0` or an HTTPS URL — and a policy supplied by
+  the repository's own file is named `repository preset ".aura/preset.json"`, so a policy is
+  never presented as coming from somewhere it did not.
 
 ### MCP step
 
@@ -323,6 +410,8 @@ Hand edits Aura is replacing:
 Preserved content Aura does not own:
 Managed content kept at its recorded revision:
 Effective check policy from preset <name> (not copied into your manifest):
+Effective check policy from the repository preset .aura/preset.json (not copied into your manifest):
+Repository preset held (not trusted on this machine):
 ```
 
 - A group naming a shared source names it once, in the heading. Repeating "(from preset acme)" on

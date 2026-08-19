@@ -11,7 +11,14 @@ import {
   undoRunEvent,
 } from "./telemetry-events.js";
 
-const FLAGS = { dryRun: false, fix: false, interactive: false, json: false, online: false };
+const FLAGS = {
+  dryRun: false,
+  fix: false,
+  interactive: false,
+  json: false,
+  online: false,
+  verbose: false,
+};
 
 const REPORT: CheckReportV1 = {
   apps: [

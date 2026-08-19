@@ -13,6 +13,7 @@ import type {
 
 import { directorySourceProblem } from "./skills/directory-config.js";
 import { contentVersionProblem } from "./plugin-validation-version.js";
+import { collectFindingGroupViolations } from "./plugin-validation-finding-group.js";
 import { skillIdProblem } from "./skills/path-guards.js";
 
 import {
@@ -157,6 +158,7 @@ function collectCandidate(
   collected.plugins.push(plugin);
 
   collectAdapterViolations(state, plugin.adapters, plugin);
+  collectFindingGroupViolations(state, plugin.checks, plugin);
 
   // Adapter ids name the application itself (`claude-code`, `cursor`) rather than the plugin, so
   // they are deliberately global: two plugins teaching Aura the same app must collide, not coexist

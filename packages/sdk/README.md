@@ -18,8 +18,10 @@ Create plugins with `definePlugin`. A plugin declares an `id`, a `name`, a `vers
 - `snippets` reference Markdown files.
 - `skills` reference skill directories.
 - `skillSources` are build-time drivers that list and resolve external skills.
-- `mcpCatalog` references JSON MCP catalog entries.
-- `presets` references JSON preset definitions.
+- `mcpCatalog` references JSON entries following the
+  [MCP catalog format](https://tryaura.sh/docs/reference/mcp-catalog/).
+- `presets` references JSON definitions following the
+  [team preset format](https://tryaura.sh/docs/reference/team-preset/).
 
 Aura v1 accepts only plugins with `apiVersion: 1`. The registry validates versions, IDs, and
 collisions before use. Most contribution IDs are namespaced under the plugin's own ID, so plugin
