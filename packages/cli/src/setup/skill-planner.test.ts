@@ -207,7 +207,7 @@ describe("skill setup planner", () => {
     expect(result.operations).toEqual([]);
     expect(result.blockers).toHaveLength(1);
     expect(result.blockers[0]?.reason).toContain("directory:acme");
-    expect(result.blockers[0]?.reason).toContain('team preset ".aura/preset.json"');
+    expect(result.blockers[0]?.reason).toContain('repository preset ".aura/preset.json"');
     expect(result.manifestSkills).toEqual([]);
   });
 
@@ -222,7 +222,7 @@ describe("skill setup planner", () => {
     );
 
     expect(result.blockers).toHaveLength(1);
-    expect(result.blockers[0]?.reason).toContain('team preset ".aura/preset.json"');
+    expect(result.blockers[0]?.reason).toContain('repository preset ".aura/preset.json"');
     // The previous manifest survives so a blocked run never rewrites provenance.
     expect(result.manifestSkills).toEqual([previous]);
   });

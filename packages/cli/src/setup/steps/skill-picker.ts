@@ -1,6 +1,7 @@
 import { sortForDisplay } from "../display-order.js";
 import { hasSkillsHome, skillSupportMatrix } from "../skill-app-support.js";
 import { skillIdentity } from "../skill-planner-paths.js";
+import { describePresetPolicy } from "../skill-planner-policy.js";
 import type { WizardOption } from "../wizard-types.js";
 import type { SkillStageInputs } from "./skill-stages.js";
 
@@ -53,7 +54,7 @@ export function pickerOptions(inputs: SkillStageInputs): readonly WizardOption[]
     if (policy.allowedSourceIds !== undefined && !policy.allowedSourceIds.has(skill.source)) {
       return [
         {
-          description: `Not allowed by team preset "${policy.presetName}". Clear it to remove the skill.`,
+          description: `Not allowed by ${describePresetPolicy(policy.presetName)}. Clear it to remove the skill.`,
           disabled: true,
           disabledNote: "blocked by the team preset",
           group: skill.source,

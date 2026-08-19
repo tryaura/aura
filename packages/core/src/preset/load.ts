@@ -7,7 +7,6 @@ import { MAX_TEAM_PRESET_BYTES } from "../workspace/reader-limits.js";
 import { createFileReader, type FileReader } from "../workspace/reader.js";
 import { readPresetCache, writePresetCache } from "./cache.js";
 import { loadNpmPreset } from "./npm.js";
-import { resolveTeamPresetPath } from "./protocol.js";
 import { validateTeamPreset } from "./schema.js";
 
 const NPM_PREFIX = "npm:";
@@ -52,7 +51,7 @@ export type LoadedTeamPreset =
 /** Selects and loads one runtime team preset without importing or executing its package. */
 export async function loadTeamPreset(options: TeamPresetLoadOptions): Promise<LoadedTeamPreset> {
   const reader = options.reader ?? createFileReader();
-  const selection = await selectReference(options, reader);
+  const selection = selectReference(options);
   if (selection === undefined) {
     return { status: "missing" };
   }
@@ -85,21 +84,19 @@ interface PresetSelection {
   readonly reference: string;
 }
 
-async function selectReference(
-  options: TeamPresetLoadOptions,
-  reader: FileReader,
-): Promise<PresetSelection | undefined> {
+/**
+ * Picks the team-preset reference: `--preset`, then the manifest, then the distro default.
+ *
+ * The repository's `.aura/preset.json` is deliberately not a candidate — it is its own
+ * configuration layer above whichever preset is selected here, applied only after the user
+ * trusted it for the repository.
+ */
+function selectReference(options: TeamPresetLoadOptions): PresetSelection | undefined {
   if (options.cliReference !== undefined) {
     return { label: options.cliReference, reference: options.cliReference };
   }
   if (options.manifestReference !== undefined) {
     return { label: options.manifestReference, reference: options.manifestReference };
-  }
-
-  const implicitPath = resolveTeamPresetPath(options.environment.cwd);
-  const implicit = await reader.read(implicitPath, { maxBytes: MAX_TEAM_PRESET_BYTES });
-  if (implicit.exists) {
-    return { label: ".aura/preset.json", reference: implicitPath };
   }
   return options.defaultReference === undefined
     ? undefined

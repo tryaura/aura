@@ -7,7 +7,7 @@ import { PassThrough } from "node:stream";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createEnvironment, createPluginRegistry } from "@tryaura/core";
+import { createEnvironment, createPluginRegistry, hashRepoPreset } from "@tryaura/core";
 import { defineAdapter, definePlugin } from "@tryaura/aura-sdk";
 
 import { BRANDING, findingPlugin, noopTelemetry } from "../testing.js";
@@ -100,6 +100,18 @@ async function createFixture(directoryUrl: string): Promise<Fixture> {
   const workspace = join(root, "workspace");
   await mkdir(join(homeDir, "agents"), { recursive: true });
   await mkdir(join(workspace, ".aura"), { recursive: true });
+  const preset = JSON.stringify({
+    allowedSkillSources: ["directory:acme"],
+    schemaVersion: 1,
+    skillDirectories: [
+      {
+        id: "directory:acme",
+        name: "Acme Skills",
+        tokenEnv: "ACME_SKILLS_TOKEN",
+        url: directoryUrl,
+      },
+    ],
+  });
   await writeFile(
     join(homeDir, "agents", "aura.json"),
     `${JSON.stringify(
@@ -110,27 +122,18 @@ async function createFixture(directoryUrl: string): Promise<Fixture> {
         schemaVersion: 1,
         skills: [],
         snippets: [],
+        // The repository preset is pre-trusted: this suite covers the install flow, and the
+        // first-use trust prompt is interactive-only while these runs answer for the user.
+        trustedRepoPresets: [
+          { hash: hashRepoPreset(preset), path: join(workspace, ".aura", "preset.json") },
+        ],
       },
       undefined,
       2,
     )}\n`,
     { mode: 0o600 },
   );
-  await writeFile(
-    join(workspace, ".aura", "preset.json"),
-    JSON.stringify({
-      allowedSkillSources: ["directory:acme"],
-      schemaVersion: 1,
-      skillDirectories: [
-        {
-          id: "directory:acme",
-          name: "Acme Skills",
-          tokenEnv: "ACME_SKILLS_TOKEN",
-          url: directoryUrl,
-        },
-      ],
-    }),
-  );
+  await writeFile(join(workspace, ".aura", "preset.json"), preset);
 
   const environment = createEnvironment({
     cwd: workspace,

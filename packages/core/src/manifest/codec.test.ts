@@ -89,6 +89,9 @@ describe("Aura manifest protocol", () => {
           version: "1.0.0",
         },
       ],
+      trustedRepoPresets: [
+        { acceptedBy: "future-build", hash: HASH, path: "/repo/.aura/preset.json" },
+      ],
     };
 
     const state = parseAuraManifest(JSON.stringify(source), PATH);
@@ -378,6 +381,51 @@ describe("Aura manifest protocol", () => {
       },
       "$.overrides.not a key",
       "must be a camelCase override name",
+    ],
+    [
+      {
+        apps: {},
+        mcpServers: [],
+        ownership: {},
+        schemaVersion: 1,
+        skills: [],
+        snippets: [],
+        trustedRepoPresets: [{ hash: "not-a-hash", path: "/repo/.aura/preset.json" }],
+      },
+      "$.trustedRepoPresets[0].hash",
+      "must be a lowercase SHA-256 hash",
+    ],
+    [
+      {
+        apps: {},
+        mcpServers: [],
+        ownership: {},
+        schemaVersion: 1,
+        skills: [],
+        snippets: [],
+        trustedRepoPresets: [
+          { hash: "a".repeat(64), path: "/repo/.aura/preset.json" },
+          { hash: "b".repeat(64), path: "/repo/.aura/preset.json" },
+        ],
+      },
+      "$.trustedRepoPresets[1].path",
+      "must not duplicate another trusted preset path",
+    ],
+    [
+      {
+        apps: {},
+        mcpServers: [],
+        ownership: {},
+        schemaVersion: 1,
+        skills: [],
+        snippets: [],
+        trustedRepoPresets: Array.from({ length: 65 }, (_unused, index) => ({
+          hash: "a".repeat(64),
+          path: `/repo-${String(index)}/.aura/preset.json`,
+        })),
+      },
+      "$.trustedRepoPresets",
+      "must contain at most 64 entries",
     ],
   ])("reports the precise path for invalid known fields", (value, jsonPath, reason) => {
     const state = parseAuraManifest(JSON.stringify(value), PATH);

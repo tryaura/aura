@@ -17,18 +17,14 @@ const DOCUMENT =
   '{"schemaVersion":1,"name":"acme-platform","checks":{"disabled":["INS-007"],"thresholds":{"INS-007":{"approxTokens":12000}}},"scripts":{"postinstall":"exit 99"},"vendor":{"__proto__":{"polluted":true}}}';
 
 describe("loadTeamPreset", () => {
-  it("keeps .aura/preset.json as the implicit local fallback", async () => {
+  it("never selects the repository .aura/preset.json, which is its own layer", async () => {
     const environment = createEnvironment({ cwd: "/workspace", homeDir: "/home/dev" });
     const result = await loadTeamPreset({
       environment,
       reader: createMemoryReader({ "/workspace/.aura/preset.json": DOCUMENT }),
     });
 
-    expect(result).toMatchObject({
-      preset: { name: "acme-platform", schemaVersion: 1 },
-      selected: { name: "acme-platform", reference: "/workspace/.aura/preset.json" },
-      status: "ready",
-    });
+    expect(result).toEqual({ status: "missing" });
   });
 
   it.each(["team.json", "file:///workspace/team.json"])(
@@ -69,35 +65,22 @@ describe("loadTeamPreset", () => {
   it.each([
     [{ cliReference: "cli.json", manifestReference: "manifest.json" }, "cli"],
     [{ manifestReference: "manifest.json" }, "manifest"],
-    [{}, "implicit"],
-  ])(
-    "selects CLI, manifest, then implicit references before the distro default",
-    async (refs, name) => {
-      const environment = createEnvironment({ cwd: "/workspace", homeDir: "/home/dev" });
-      const result = await loadTeamPreset({
-        ...refs,
-        defaultReference: "default.json",
-        environment,
-        reader: createMemoryReader({
-          "/workspace/.aura/preset.json": namedDocument("implicit"),
-          "/workspace/cli.json": namedDocument("cli"),
-          "/workspace/default.json": namedDocument("default"),
-          "/workspace/manifest.json": namedDocument("manifest"),
-        }),
-      });
-
-      expect(result).toMatchObject({ preset: { name }, status: "ready" });
-    },
-  );
-
-  it("uses the distro default only when the workspace has no implicit preset", async () => {
+    [{}, "default"],
+  ])("selects CLI, then manifest references before the distro default", async (refs, name) => {
+    const environment = createEnvironment({ cwd: "/workspace", homeDir: "/home/dev" });
     const result = await loadTeamPreset({
+      ...refs,
       defaultReference: "default.json",
-      environment: createEnvironment({ cwd: "/workspace", homeDir: "/home/dev" }),
-      reader: createMemoryReader({ "/workspace/default.json": namedDocument("default") }),
+      environment,
+      reader: createMemoryReader({
+        "/workspace/.aura/preset.json": namedDocument("implicit"),
+        "/workspace/cli.json": namedDocument("cli"),
+        "/workspace/default.json": namedDocument("default"),
+        "/workspace/manifest.json": namedDocument("manifest"),
+      }),
     });
 
-    expect(result).toMatchObject({ preset: { name: "default" }, status: "ready" });
+    expect(result).toMatchObject({ preset: { name }, status: "ready" });
   });
 
   it("loads HTTPS JSON through the bounded injected client", async () => {

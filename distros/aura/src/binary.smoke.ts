@@ -214,6 +214,7 @@ describe("compiled Aura distribution", () => {
         ".aura/preset.json",
         '{"schemaVersion":1,"requiredMcpServers":["official/github"]}\n',
       )
+      .trustWorkspacePreset()
       .shim("codex", [
         { args: ["--version"], stdout: "codex-cli 0.147.0\n" },
         { args: ["login", "status"], stdout: "Logged in using ChatGPT\n" },

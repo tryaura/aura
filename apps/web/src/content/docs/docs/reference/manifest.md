@@ -70,6 +70,12 @@ Every top-level section is required, including sections that are still empty:
   "overrides": {
     "requiredMcpServers": ["official/github"]
   },
+  "trustedRepoPresets": [
+    {
+      "path": "/home/dev/projects/acme/.aura/preset.json",
+      "hash": "456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123"
+    }
+  ],
   "ownership": {
     "claude-code": {
       "mcpServerNames": [],
@@ -101,6 +107,13 @@ They and `overrides` are optional; no schema-version bump is required.
 Unknown keys inside `overrides` are preserved so a manifest written by a newer Aura survives a
 downgrade, bounded at 32 camelCase names — setup rebuilds this object on every run, so the
 forward-compatibility window is deliberately not general-purpose storage.
+
+`trustedRepoPresets` records repository presets the user accepted during interactive setup: the
+preset's absolute path and a SHA-256 hash of its canonicalized contents. Only acceptances are
+recorded — declining leaves no entry, so the next interactive setup asks again — and an entry
+whose hash no longer matches the file treats the preset as untrusted until the new contents are
+reviewed. The list holds at most 64 entries; recording a new acceptance past that drops the
+oldest. The field is optional and needs no schema-version bump.
 
 Aura installs each managed skill once below `~/agents/skills/<id>` and links supported application
 skill directories to that shared copy. Two sources may publish the same local ID, but a manifest

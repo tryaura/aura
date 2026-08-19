@@ -11,12 +11,16 @@ import {
 } from "@tryaura/core";
 
 import { resolveRuntimeConfig, type RuntimeConfigResult } from "../runtime-config.js";
+import { establishRepoPresetTrust } from "./repo-trust.js";
 import type { SetupRequest } from "./setup.js";
 
-/** Everything one setup run establishes before it asks the user anything. */
+/** Everything one setup run establishes before it asks the user anything else. */
 export type SetupBoot =
   | { readonly message: string; readonly status: "invalid" }
+  | { readonly status: "aborted" }
   | {
+      /** Hash the trust prompt accepted this run, absent when nothing was newly accepted. */
+      readonly acceptedRepoPresetHash?: string | undefined;
       readonly activeChecks: readonly Check[];
       readonly configured: Extract<RuntimeConfigResult, { status: "ready" }>;
       readonly effectiveModel: WorkspaceModel;
@@ -29,9 +33,12 @@ export type SetupBoot =
 /**
  * Resolves configuration, scans the machine, and projects preset requirements onto the model.
  *
- * All of it happens before the first prompt so a wizard never asks a question it will then have to
- * take back — an unusable manifest or an unresolvable preset stops the run while nothing has been
- * shown and nothing has been written.
+ * All of it happens before the first wizard prompt so the wizard never asks a question it will
+ * then have to take back — an unusable manifest or an unresolvable preset stops the run while
+ * nothing has been shown and nothing has been written. The one exception is the repository preset
+ * trust confirmation: its answer decides whether the repo layer joins the configuration at all, so
+ * it must precede resolution, and the read-only manifest check runs before it so it is never asked
+ * for a run that is already dead.
  */
 export async function bootSetup(
   request: SetupRequest,
@@ -39,7 +46,20 @@ export async function bootSetup(
 ): Promise<SetupBoot> {
   const manifestPath = resolveAuraManifestPath(environment.homeDir);
   const manifest = readAuraManifest(manifestPath, await createFileReader().read(manifestPath));
+  if (manifest.status === "read-only") {
+    return { message: manifest.problem.message, status: "invalid" };
+  }
+  const trust = await establishRepoPresetTrust({
+    environment,
+    interactive: request.interactive,
+    io: request.io,
+    manifest,
+  });
+  if (trust.kind === "aborted") {
+    return { status: "aborted" };
+  }
   const configured = await resolveRuntimeConfig({
+    acceptedRepoPresetHash: trust.acceptedHash,
     cliLayer: request.cliLayer,
     cliReference: request.cliReference,
     defaultPreset: request.defaultPreset,
@@ -65,6 +85,7 @@ export async function bootSetup(
   });
   const projected = applyRequiredMcpServers(scan.model, configured.config);
   return {
+    ...(trust.acceptedHash === undefined ? {} : { acceptedRepoPresetHash: trust.acceptedHash }),
     activeChecks: enabledChecks(request.registry.checks, configured.config),
     configured,
     effectiveModel: projected.model,
