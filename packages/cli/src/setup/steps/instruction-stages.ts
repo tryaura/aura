@@ -22,7 +22,6 @@ export const SKIP_VALUE = "skip";
 /** What the chain has gathered for one scope so far; every field appears once its form resolves. */
 export interface ScopeDraft {
   readonly action?: string | undefined;
-  readonly archiveOriginals?: boolean | undefined;
   readonly duplicateWinners?: Readonly<Record<string, string>> | undefined;
   readonly selectedSources?: readonly string[] | undefined;
 }
@@ -50,7 +49,6 @@ export function scopeStages(input: ScopeInput): readonly ChainStage<ChainState>[
   const fallback = options[0]?.value ?? TEMPLATE_VALUE;
   const actionId = `${input.scope}-instruction-action`;
   const sourcesId = `${input.scope}-instruction-sources`;
-  const archiveId = `${input.scope}-archive-originals`;
   const draft = (state: ChainState): ScopeDraft => state[input.scope];
   const update = (state: ChainState, patch: ScopeDraft): ChainState => ({
     ...state,
@@ -134,41 +132,6 @@ export function scopeStages(input: ScopeInput): readonly ChainStage<ChainState>[
         return questions.length === 0 ? undefined : questions;
       },
     },
-    {
-      isApplicable: consolidating,
-      label: "Files",
-      apply: (state, answers) =>
-        update(state, {
-          archiveOriginals: selectedValues(answers[archiveId]).includes("archive"),
-        }),
-      questions: (state) =>
-        consolidating(state)
-          ? [
-              {
-                id: archiveId,
-                // Defaults to the additive answer, because a question's `initial` is also what
-                // `--yes` accepts: a non-interactive run must not be the one that removes files
-                // the user wrote by hand.
-                initial: [draft(state).archiveOriginals === true ? "archive" : "keep"],
-                kind: "select",
-                label: "Files",
-                options: [
-                  {
-                    description: `Keep the existing instructions in the selected files. Aura will also copy them to ${basename(input.targetPath)}.`,
-                    label: "Keep instructions in both places",
-                    value: "keep",
-                  },
-                  {
-                    description: `Back up the selected files, then replace them with links to ${basename(input.targetPath)} or delete them if no link is needed.`,
-                    label: `Keep instructions only in ${basename(input.targetPath)}`,
-                    value: "archive",
-                  },
-                ],
-                prompt: `After Aura copies the selected instructions to ${basename(input.targetPath)}, where should they stay?`,
-              },
-            ]
-          : undefined,
-    },
   ];
 }
 
@@ -209,7 +172,7 @@ function actionOptions(input: ScopeInput): readonly WizardOption[] {
   }
   if (input.sources.length > 0) {
     options.push({
-      description: `Copy instructions from the files you select into this ${basename(input.targetPath)} file.`,
+      description: `Move instructions from the files you select into this ${basename(input.targetPath)} file. Aura backs up the originals for undo.`,
       label: "Combine found instructions",
       value: CONSOLIDATE_VALUE,
     });

@@ -150,7 +150,7 @@ When the active step runs a sequence of internal forms (a chain step like Instru
 **sub-row** prefixed with `└` maps that step's internal progress around the live form:
 
 ```
- └ ✔ Global │ ▶ Sources ☐ │ Duplicates ☐ │ Files ☐
+ └ ✔ Global │ ▶ Sources ☐ │ Duplicates ☐
 ```
 
 - The live form's questions appear individually (`▶ Duplicate 2 ☐`); a completed or upcoming
@@ -162,12 +162,12 @@ When the active step runs a sequence of internal forms (a chain step like Instru
   remembered answer will re-seed it.
 - Both instruction scopes flow through one sub-row; the `Global` / `Project` action tabs double
   as scope section markers, so repeated stage names read unambiguously left to right:
-  `✔ Global │ ✔ Sources │ ✔ Files │ ▶ Project ☐ │ Sources ☐`.
+  `✔ Global │ ✔ Sources │ ▶ Project ☐ │ Sources ☐`.
 - The Project action offers a final `Skip project instructions` option that the Global action does
   not: declining the global scope would leave the shared-source and application-link checks failing,
-  so setup could not end on green. A declined scope contributes only its action tab — no Sources,
-  Duplicates, or Files tabs follow it, by the same honest-map rule:
-  `✔ Global │ ✔ Sources │ ✔ Files │ ▶ Project ☐`.
+  so setup could not end on green. A declined scope contributes only its action tab — no Sources or
+  Duplicates tabs follow it, by the same honest-map rule:
+  `✔ Global │ ✔ Sources │ ▶ Project ☐`.
 - Declining is not undoing, and the option says so where it matters: when the project target already
   has content, the option's description names the file and states that it, and anything linking to
   it, stay as they are. Otherwise the only thing a skip-only run would say about an earlier run's
@@ -175,6 +175,16 @@ When the active step runs a sequence of internal forms (a chain step like Instru
 - The same reasoning binds the answers a scope can settle on, not just the ones it is shown: an
   action that was not on that scope's menu falls back to the proposed one, and a Global scope whose
   Sources form ends up empty is a blocker rather than a silent decline through the back door.
+- **Consolidating is a migration, not a copy**, and every surface that offers it says so: the
+  option's description, and a footer line on `setup --help`. The sources it merges are backed up
+  and taken off disk in the same plan, and `undo` restores them. `Keep existing shared file` leads
+  the menu wherever there is a target to keep, so this is what `--yes` takes only on a machine that
+  has no shared file yet — the run that has nothing to overwrite, and the one whose plan summary
+  lists every move before applying it.
+- A source the merge could not place is the exception: its provenance heading is already in the
+  target, so nothing new was appended, and the file has changed since. Archiving it would delete
+  the only copy of what it now says, so it stays where it is and the run names it under _Steps to
+  take yourself_ until someone resolves the divergence.
 - The Skills step is the second chain precedent: its Review stage exists only while a directory
   skill is selected or a recorded skill's source revision moved, one review question per skill —
   `└ ✔ Skills │ ▶ Review claude-md ☐ │ Review commit-style ☐`.
@@ -206,9 +216,11 @@ Tab states, in either row:
   it stands and advances_, so a backed-into flow retraces forward without re-answering. → never
   reaches Submit: it stops on the flow's last form, and on the Submit confirmation it is inert.
   Submit is an action, not a step, so getting there is always an explicit ↵. A step re-entered
-  backward opens on its **last** form (← from Snippets lands on Files, not Global), a step with
-  nothing to ask passes ← straight through, and the final confirmation backs out into the last
-  step the same way. Informational banners print only on a step's first visit.
+  backward opens on its **last applicable** form — the last one that step actually asked, which for
+  Instructions is Project Duplicates when a duplicate review applies, otherwise Project Sources,
+  otherwise the Global action — a step with nothing to ask passes ← straight through, and the final
+  confirmation backs out into the last step the same way. Informational banners print only on a
+  step's first visit.
 - Re-entering a completed form shows its current answers and allows changing them: a select marks
   its standing answer with `●` and opens with the cursor on it, a multiselect keeps its `☑`
   checks, a free-text draft is re-seeded. → never re-answers — it commits the form exactly as it
@@ -493,4 +505,4 @@ old row count and the painted frame recounted at the new width, so a shrink leav
 rows behind.
 
 One refinement remains open: a _multi-question_ form reopened via back lands on its first
-question tab (← from Files opens the duplicates form on Duplicate 1, not Duplicate 4).
+question tab (backing into duplicates opens Duplicate 1, not Duplicate 4).

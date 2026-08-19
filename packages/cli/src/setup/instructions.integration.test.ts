@@ -9,19 +9,13 @@ import type { WizardAnswers } from "./wizard-types.js";
 
 import { findingPlugin } from "../testing.js";
 import { consolidationPlugin, projectConsolidationPlugin } from "./testing-plugins.js";
-import {
-  archiveOriginals,
-  backupEntry,
-  cleanupFixtures,
-  createFixture,
-  snapshot,
-} from "./testing.js";
+import { backupEntry, cleanupFixtures, createFixture, snapshot } from "./testing.js";
 import { runSetup } from "./setup.js";
 
 afterEach(cleanupFixtures);
 
 describe("instruction consolidation setup", () => {
-  it("archives a messy home, deduplicates it, wires the app, and converges", async () => {
+  it("automatically archives a messy home, deduplicates it, wires the app, and converges", async () => {
     const duplicate =
       "Always run the full verification suite before considering implementation complete.";
     const originals = {
@@ -39,7 +33,7 @@ describe("instruction consolidation setup", () => {
       bareCheckIdPlugins: ["checks-core"],
     });
 
-    await expect(runSetup(fixture.request(registry, archiveOriginals()))).resolves.toBe(0);
+    await expect(runSetup(fixture.request(registry))).resolves.toBe(0);
 
     const shared = await readFile(join(fixture.homeDir, "agents", "AGENTS.md"), "utf8");
     expect(shared).toContain("# Instructions from ~/.claude/CLAUDE.md");
@@ -63,7 +57,7 @@ describe("instruction consolidation setup", () => {
     );
 
     const before = await snapshot(fixture.homeDir);
-    await expect(runSetup(fixture.request(registry, archiveOriginals()))).resolves.toBe(0);
+    await expect(runSetup(fixture.request(registry))).resolves.toBe(0);
     await expect(snapshot(fixture.homeDir)).resolves.toEqual(before);
   });
 
@@ -78,7 +72,7 @@ describe("instruction consolidation setup", () => {
       bareCheckIdPlugins: ["checks-core"],
     });
 
-    await expect(runSetup(fixture.request(registry, archiveOriginals()))).resolves.toBe(0);
+    await expect(runSetup(fixture.request(registry))).resolves.toBe(0);
 
     // The copy that lost everything must not leave a dangling provenance heading behind.
     const shared = await readFile(join(fixture.homeDir, "agents", "AGENTS.md"), "utf8");
@@ -88,11 +82,11 @@ describe("instruction consolidation setup", () => {
     expect(shared.match(/Always run the full verification suite/gu)).toHaveLength(1);
 
     const before = await snapshot(fixture.homeDir);
-    await expect(runSetup(fixture.request(registry, archiveOriginals()))).resolves.toBe(0);
+    await expect(runSetup(fixture.request(registry))).resolves.toBe(0);
     await expect(snapshot(fixture.homeDir)).resolves.toEqual(before);
   });
 
-  it("converges on the default answers, which leave every original in place", async () => {
+  it("completes migration on the default answers without leaving duplicate warnings", async () => {
     const duplicate = "Always run the full verification suite before considering work complete.";
     const fixture = await createFixture();
     await mkdir(join(fixture.homeDir, ".claude"), { recursive: true });
@@ -106,21 +100,23 @@ describe("instruction consolidation setup", () => {
       bareCheckIdPlugins: ["checks-core"],
     });
 
-    // Warnings, not a clean bill: keeping the originals is what leaves the same guidance in two
-    // places, and the end-on-green rescan reports that rather than the plan pretending otherwise.
-    await expect(runSetup(fixture.request(registry))).resolves.toBe(1);
+    await expect(runSetup(fixture.request(registry))).resolves.toBe(0);
 
-    // The default answer is additive: the shared file appears, the sources it was built from stay.
-    await expect(readFile(join(fixture.homeDir, ".cursorrules"), "utf8")).resolves.toContain(
-      "# Cursor",
+    // Consolidation is a migration: the legacy file is archived and the app entry becomes a link.
+    await expect(lstat(join(fixture.homeDir, ".cursorrules"))).rejects.toHaveProperty(
+      "code",
+      "ENOENT",
     );
+    await expect(
+      readFile(join(fixture.homeDir, ".claude", "CLAUDE.md"), "utf8"),
+    ).resolves.toContain("@~/agents/AGENTS.md");
     const shared = await readFile(join(fixture.homeDir, "agents", "AGENTS.md"), "utf8");
     expect(shared).toContain("# Instructions from ~/.cursorrules");
     expect(shared.match(/# Instructions from/gu)).toHaveLength(2);
 
     // Re-running must not merge the same sources into the target a second time.
     const before = await snapshot(fixture.homeDir);
-    await expect(runSetup(fixture.request(registry))).resolves.toBe(1);
+    await expect(runSetup(fixture.request(registry))).resolves.toBe(0);
     await expect(snapshot(fixture.homeDir)).resolves.toEqual(before);
   });
 
@@ -133,7 +129,7 @@ describe("instruction consolidation setup", () => {
       {},
     );
 
-    await expect(runSetup(fixture.request(registry, archiveOriginals()))).resolves.toBe(0);
+    await expect(runSetup(fixture.request(registry))).resolves.toBe(0);
 
     // Repository-relative provenance: this file is committed, so an absolute path would publish
     // the developer's username and resolve to nothing on anyone else's checkout.
@@ -237,7 +233,7 @@ describe("instruction consolidation setup", () => {
   });
 });
 
-/** Repeated per form the flow may open, as `archiveOriginals` documents. */
+/** Repeated per form the flow may open, since scripted answers are consumed one form at a time. */
 function repeatedAnswers(answer: WizardAnswers): readonly WizardAnswers[] {
   return Array.from({ length: 8 }, () => answer);
 }

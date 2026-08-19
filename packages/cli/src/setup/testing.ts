@@ -47,24 +47,6 @@ export async function createTemporaryRoot(prefix: string): Promise<string> {
   return root;
 }
 
-/**
- * Asks for archival wherever the question comes up.
- *
- * Spelled out because the question defaults to keeping originals: a question's initial answer is
- * what `--yes` accepts, and removing files the user wrote by hand is not something a
- * non-interactive run should choose on its own.
- *
- * Repeated once per form the flow may open, since the scripted io consumes one entry per `ask` and
- * ignores ids that question did not pose — which keeps this independent of step ordering.
- */
-export function archiveOriginals(): readonly WizardAnswers[] {
-  const answer: WizardAnswers = {
-    "global-archive-originals": { kind: "options", values: ["archive"] },
-    "project-archive-originals": { kind: "options", values: ["archive"] },
-  };
-  return Array.from({ length: 8 }, () => answer);
-}
-
 /** The real catalog over an empty registry, for a context whose test never reaches a snippet. */
 export function emptySnippetCatalog(): SnippetCatalog {
   return createSnippetCatalog([], {

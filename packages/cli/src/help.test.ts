@@ -115,6 +115,8 @@ describe("help screens", () => {
           --no-color                    Disable terminal colors
           --path <dir>                  Override the executable search path
 
+        Consolidating moves the instruction files you select; 'acme undo' restores them
+
         After setup, run 'acme check' to verify the machine converged
 
         Exit codes: 0 applied/converged/dry-run/declined · 1 aborted or warnings · 2 conflicts/errors/invalid usage · 3 operational failures

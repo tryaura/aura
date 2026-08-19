@@ -52,7 +52,7 @@ aura setup
 The wizard:
 
 1. detects Claude Code, Codex, and Cursor and asks which applications Aura should manage;
-2. creates or consolidates global and project instructions, with optional archival of originals;
+2. creates or consolidates global and project instructions, archiving migrated originals for undo;
 3. offers the seven bundled snippets for Git, safety, Atlassian, TypeScript, and Python guidance;
 4. records desired state and ownership in `~/agents/aura.json`; and
 5. previews one combined plan, asks once, applies it atomically, then rescans the machine.
