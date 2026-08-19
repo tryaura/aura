@@ -211,6 +211,7 @@ never contains the credential itself:
   "schemaVersion": 1,
   "id": "acme/source-control",
   "name": "Acme source control",
+  "serverName": "acme-source-control",
   "description": "Search Acme repositories, pull requests, and code owners.",
   "docsUrl": "https://engineering.acme.example/mcp/source-control",
   "supportedApps": ["acme-agent", "claude-code", "codex", "cursor"],
@@ -230,6 +231,10 @@ never contains the credential itself:
   }
 }
 ```
+
+Every catalog document must include `docsUrl` and `credentialEnv`. A server that needs no
+credentials still declares `"credentialEnv": []`. See the
+[MCP catalog reference](/docs/reference/mcp-catalog/) for the complete field and transport rules.
 
 The `credentialEnv` list declares every variable referenced by the transport. Stdio definitions
 use `env: ["VARIABLE_NAME"]`; HTTP headers use `${VARIABLE_NAME}` templates. Never put a token in
