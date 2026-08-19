@@ -1,6 +1,6 @@
 {
   "name": "@tryaura/aura-testkit",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Deterministic filesystem seeds and CLI harnesses for Aura plugins and distributions.",
   "keywords": [
     "aura",
