@@ -4,6 +4,7 @@ import type { AuraEffectiveConfig, Check } from "@tryaura/aura-sdk";
 import { effectiveCheckConfiguration } from "@tryaura/core";
 
 import { createCheckExplanation } from "./report.js";
+import type { ReportConfiguration } from "./report-types.js";
 import { safe, safeMultiline } from "./safe-text.js";
 import type { CliBranding } from "./types.js";
 
@@ -19,10 +20,12 @@ export function renderExplanation(
   config: AuraEffectiveConfig,
   branding: CliBranding,
   output: Writable,
+  configuration?: ReportConfiguration,
 ): void {
   const effective = effectiveCheckConfiguration(check, config);
   const fixability = FIXABILITY_DESCRIPTIONS[check.fixability] ?? check.fixability;
   output.write(`${branding.displayName} check ${safe(check.id)}\n\n`);
+  renderConfiguration(configuration, branding, output);
   output.write(`${safe(check.title)}\n`);
   output.write(
     `Enabled: ${effective.enabled.value ? "yes" : "no"} — set by ${safe(effective.enabled.provenance.label)}\n`,
@@ -45,6 +48,23 @@ export function renderExplanationJson(
   check: Check,
   config: AuraEffectiveConfig,
   output: Writable,
+  configuration?: ReportConfiguration,
 ): void {
-  output.write(`${JSON.stringify(createCheckExplanation(check, config))}\n`);
+  output.write(`${JSON.stringify(createCheckExplanation(check, config, configuration))}\n`);
+}
+
+function renderConfiguration(
+  configuration: ReportConfiguration | undefined,
+  branding: CliBranding,
+  output: Writable,
+): void {
+  const repo = configuration?.repositoryPreset;
+  if (repo === undefined) {
+    return;
+  }
+  const status =
+    repo.status === "applied"
+      ? "applied"
+      : `held because it is not trusted; run ${branding.command} setup to review it`;
+  output.write(`Repository preset: ${safe(repo.path)} — ${safe(status)}\n\n`);
 }

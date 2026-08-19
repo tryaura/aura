@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "name": "Aura repository",
+  "checks": {
+    "severity": { "INS-007": "error" },
+    "thresholds": { "INS-007": { "approxTokens": 12000 } }
+  }
+}

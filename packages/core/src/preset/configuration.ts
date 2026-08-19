@@ -18,6 +18,7 @@ import {
   lastValues,
   type NamedLayer,
 } from "./configuration-layers.js";
+import { AURA_TEAM_PRESET_PATH } from "./protocol.js";
 
 const EMPTY_THRESHOLDS: JsonObject = Object.freeze({});
 
@@ -28,6 +29,8 @@ export interface EffectiveConfigInput {
   readonly knownMcpServers?: ReadonlySet<string> | undefined;
   readonly manifest?: AuraConfigurationLayer | undefined;
   readonly preset?: AuraConfigurationLayer | undefined;
+  /** The trusted repository preset, applied above the selected preset and below the manifest. */
+  readonly repo?: AuraConfigurationLayer | undefined;
   readonly selectedPreset?: AuraEffectivePreset | undefined;
 }
 
@@ -130,6 +133,9 @@ function namedLayers(input: EffectiveConfigInput): readonly NamedLayer[] {
             provenance: provenance("preset", selected?.name ?? "team preset"),
           },
         ]),
+    ...(input.repo === undefined
+      ? []
+      : [{ config: input.repo, provenance: provenance("repo", AURA_TEAM_PRESET_PATH) }]),
     ...(input.manifest === undefined
       ? []
       : [{ config: input.manifest, provenance: provenance("manifest", "user manifest") }]),

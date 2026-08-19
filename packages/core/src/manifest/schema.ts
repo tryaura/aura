@@ -16,17 +16,18 @@ import { isRecord } from "../values.js";
 import { AURA_MANIFEST_SCHEMA_VERSION } from "./protocol.js";
 import { optionalChecks, optionalPreset } from "./schema-checks.js";
 import { mcpServers } from "./schema-mcp.js";
+import { optionalTrustedRepoPresets } from "./schema-trust.js";
 import {
   invalid,
   requiredBoolean,
   requiredObject,
   requiredString,
+  SHA256_PATTERN,
   stringArray,
 } from "./schema-values.js";
 
 export { AuraManifestValidationError } from "./schema-values.js";
 
-const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
 const APP_ID_PATTERN = /^[a-z0-9][a-z0-9._-]*$/u;
 const MCP_CATALOG_ID_PATTERN = /^[a-z0-9][a-z0-9._-]*\/[a-zA-Z0-9][a-zA-Z0-9._-]*$/u;
 const SKILL_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
@@ -69,6 +70,7 @@ export function validateAuraManifest(value: unknown): AuraManifest {
     schemaVersion: AURA_MANIFEST_SCHEMA_VERSION,
     skills: skills(source["skills"]),
     snippets: snippets(source["snippets"]),
+    ...optionalTrustedRepoPresets(source["trustedRepoPresets"]),
   });
 }
 

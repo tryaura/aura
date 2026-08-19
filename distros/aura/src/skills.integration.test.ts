@@ -93,6 +93,7 @@ describe("aura setup with a skill directory", () => {
     await using seed = await createSeedBuilder()
       .homeFile("agents/aura.json", manifestJson([recorded]))
       .workspaceFile(".aura/preset.json", presetJson(directory.url, ["directory:acme"]))
+      .trustWorkspacePreset()
       .build();
 
     const result = await runSetup({
@@ -113,6 +114,22 @@ describe("aura setup with a skill directory", () => {
     expect(result.stderr).not.toContain(TOKEN);
   });
 
+  it("holds an untrusted repository preset under --yes and says so", async () => {
+    await using directory = await createMockDirectoryBuilder()
+      .skill(LISTING, [{ content: SKILL_MD, path: "SKILL.md" }])
+      .build();
+    await using seed = await createSeedBuilder()
+      .homeFile("agents/aura.json", manifestJson([]))
+      .workspaceFile(".aura/preset.json", presetJson(directory.url, ["directory:acme"]))
+      .build();
+
+    const result = await runSetup({ distro: AURA_DISTRO, seed });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("Repository preset held (not trusted on this machine):");
+    expect(directory.requests).toEqual([]);
+  });
+
   it("refuses a manifest entry from a disallowed source before anything is written", async () => {
     await using seed = await createSeedBuilder()
       .homeFile(
@@ -128,12 +145,13 @@ describe("aura setup with a skill directory", () => {
         ]),
       )
       .workspaceFile(".aura/preset.json", presetJson("https://acme.example", ["plugin:official"]))
+      .trustWorkspacePreset()
       .build();
 
     const result = await runSetup({ distro: AURA_DISTRO, seed });
 
     expect(result.exitCode).toBe(2);
-    expect(result.stdout).toContain('team preset ".aura/preset.json"');
+    expect(result.stdout).toContain('repository preset ".aura/preset.json"');
     expect(result.stderr).toContain("blocked");
     expect(result.diffs).toEqual([]);
   });
@@ -145,6 +163,7 @@ describe("aura setup with a skill directory", () => {
       .build();
     await using seed = await createSeedBuilder()
       .workspaceFile(".aura/preset.json", presetJson(directory.url, ["directory:acme"]))
+      .trustWorkspacePreset()
       .build();
 
     const result = await runSetup({
@@ -166,6 +185,7 @@ describe("aura setup with a skill directory", () => {
       .homeFile("agents/aura.json", manifestJson([], { codex: { managed: true } }))
       .shim("codex", codexShimResponses({ authenticated: true, version: "0.147.0" }))
       .workspaceFile(".aura/preset.json", presetJson(directory.url, ["directory:acme"]))
+      .trustWorkspacePreset()
       .build();
     await runSetup({ distro: AURA_DISTRO, seed });
 
@@ -210,6 +230,7 @@ describe("aura setup with a skill directory", () => {
         ".aura/preset.json",
         JSON.stringify({ allowedSkillSources: [], schemaVersion: 1 }),
       )
+      .trustWorkspacePreset()
       .build();
     await runSetup({ distro: AURA_DISTRO, seed });
 

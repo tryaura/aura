@@ -41,9 +41,14 @@ export function renderHuman(
   branding: CliBranding,
   output: Writable,
   colorDepth = 0,
+  configurationNotes: readonly string[] = [],
 ): void {
   const style = createStyle(colorDepth);
   output.write(`${branding.displayName} check\n`);
+
+  if (configurationNotes.length > 0) {
+    renderGroup("·", "Configuration", configurationNotes.map(safe), output);
+  }
 
   if (report.passedChecks.length > 0) {
     renderGroup(

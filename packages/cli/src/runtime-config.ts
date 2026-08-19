@@ -7,12 +7,21 @@ import type {
 } from "@tryaura/aura-sdk";
 import {
   AURA_TEAM_PRESET_PATH,
+  isRepoPresetTrusted,
   loadTeamPreset,
+  readRepoPreset,
   resolveEffectiveConfig,
   type PluginRegistry,
 } from "@tryaura/core";
 
 export interface RuntimeConfigInput {
+  /**
+   * Hash of repository preset contents the user accepted earlier in this run.
+   *
+   * A hash rather than a boolean so the layer applies only when the file still holds exactly what
+   * the user saw — a write racing the prompt falls back to untrusted instead of winning consent.
+   */
+  readonly acceptedRepoPresetHash?: string | undefined;
   readonly cliLayer?: AuraConfigurationLayer | undefined;
   readonly cliReference?: string | undefined;
   readonly defaultPreset?: string | undefined;
@@ -30,6 +39,13 @@ export interface RuntimeConfigInput {
   readonly registry: PluginRegistry;
 }
 
+/** How this run treated the repository's `.aura/preset.json`, absent when no file exists. */
+interface RuntimeRepoPreset {
+  readonly hash: string;
+  readonly path: string;
+  readonly status: "applied" | "held";
+}
+
 export type RuntimeConfigResult =
   | { readonly message: string; readonly status: "invalid" }
   | {
@@ -39,6 +55,7 @@ export type RuntimeConfigResult =
       readonly preset?: AuraTeamPreset | undefined;
       /** Where the active policy came from, in the words a user should see. */
       readonly presetOrigin: string;
+      readonly repoPreset?: RuntimeRepoPreset | undefined;
       readonly status: "ready";
     };
 
@@ -63,6 +80,20 @@ export async function resolveRuntimeConfig(
   if (loaded.status === "invalid") {
     return loaded;
   }
+  const repo = await readRepoPreset(input.environment);
+  if (repo.status === "invalid") {
+    // A broken repository preset fails closed: proceeding without it would silently widen
+    // whatever the file was written to lock down.
+    return {
+      message: `${repo.diagnostics[0]?.message ?? `Repository preset ${repo.path} cannot be read.`} Fix or remove the file to continue.`,
+      status: "invalid",
+    };
+  }
+  const repoTrusted =
+    repo.status === "ready" &&
+    repo.hash !== undefined &&
+    (repo.hash === input.acceptedRepoPresetHash ||
+      isRepoPresetTrusted(manifest, repo.path, repo.hash));
   const resolved = resolveEffectiveConfig({
     checks: input.registry.checks,
     cli: input.cliLayer,
@@ -80,6 +111,7 @@ export async function resolveRuntimeConfig(
     ...(loaded.status === "ready"
       ? { preset: loaded.preset, selectedPreset: loaded.selected }
       : {}),
+    ...(repoTrusted ? { repo: repo.preset } : {}),
   });
   if (resolved.status === "invalid") {
     return { message: resolved.problems.join("\n"), status: "invalid" };
@@ -109,6 +141,15 @@ export async function resolveRuntimeConfig(
     ...(policyPreset === undefined ? {} : { preset: policyPreset }),
     presetOrigin:
       loaded.status === "ready" ? loaded.origin : (policyPreset?.name ?? AURA_TEAM_PRESET_PATH),
+    ...(repo.status === "ready" && repo.hash !== undefined
+      ? {
+          repoPreset: {
+            hash: repo.hash,
+            path: repo.path,
+            status: repoTrusted ? "applied" : "held",
+          },
+        }
+      : {}),
     status: "ready",
   };
 }

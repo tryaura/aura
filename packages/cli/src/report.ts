@@ -16,6 +16,7 @@ import type {
   CheckExplanation,
   CheckReport,
   PassedCheck,
+  ReportConfiguration,
   ReportDiagnostic,
   ReportFix,
   ReportStatus,
@@ -31,9 +32,11 @@ const CHECK_JSON_SCHEMA_VERSION = 1;
 export function createCheckExplanation(
   check: Check,
   config: AuraEffectiveConfig,
+  configuration?: ReportConfiguration,
 ): CheckExplanation {
   const effective = effectiveCheckConfiguration(check, config);
   return Object.freeze({
+    ...(configuration === undefined ? {} : { configuration }),
     enabled: effective.enabled.value,
     explain: check.explain,
     fixability: check.fixability,
@@ -82,6 +85,7 @@ export interface CheckReportInput {
   readonly apps: readonly AppModel[];
   readonly checkDiagnostics: readonly CheckDiagnostic[];
   readonly checks: readonly Check[];
+  readonly configuration?: ReportConfiguration | undefined;
   readonly findings: readonly Finding[];
   readonly fixDiagnostics?: readonly DiagnosticSource[] | undefined;
   readonly fixes?: readonly ReportFix[] | undefined;
@@ -117,6 +121,7 @@ export function createCheckReport(input: CheckReportInput): CheckReport {
 
   return Object.freeze({
     apps: Object.freeze(reportApps(input.adapters, input.apps, input.skipped)),
+    ...(input.configuration === undefined ? {} : { configuration: input.configuration }),
     diagnostics: Object.freeze(diagnostics),
     findings: Object.freeze(input.findings.map((finding) => reportFinding(finding, input.checks))),
     ...(input.fixes === undefined ? {} : { fixes: Object.freeze([...input.fixes]) }),

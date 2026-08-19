@@ -1,8 +1,17 @@
 import { join } from "node:path";
 
+import { AURA_TEAM_PRESET_PATH } from "@tryaura/core";
+
 import type { SetupBlocker } from "./planner.js";
 import type { SkillSourcePolicy } from "./skills-catalog.js";
 import type { SkillSelection } from "./types.js";
+
+/** Names a policy source: the conventional repo path reads as what it is, not as a preset name. */
+export function describePresetPolicy(name: string): string {
+  return name === AURA_TEAM_PRESET_PATH
+    ? `repository preset "${AURA_TEAM_PRESET_PATH}"`
+    : `team preset "${name}"`;
+}
 
 /**
  * Blockers for selections the team preset does not allow.
@@ -26,7 +35,7 @@ export function disallowedSkillBlockers(
     .map((selection) => ({
       path: join(sharedRoot, selection.id),
       reason:
-        `Skill "${selection.id}" comes from ${selection.source}, which the team preset ` +
-        `"${policy.presetName}" does not allow. Clear it in the Skills step or update the preset.`,
+        `Skill "${selection.id}" comes from ${selection.source}, which the ` +
+        `${describePresetPolicy(policy.presetName)} does not allow. Clear it in the Skills step or update the preset.`,
     }));
 }
