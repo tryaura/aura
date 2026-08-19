@@ -6,10 +6,9 @@ import type {
   AdapterSourceFile,
   Environment,
 } from "@tryaura/aura-sdk";
-import { join } from "node:path";
-
 import type { ScanDiagnostic } from "./diagnostics.js";
 import type { FileReader } from "./reader.js";
+import { sharedSkillsRoot } from "./skill-deployment-plan.js";
 import { readSpec } from "./specs.js";
 
 /** The most times core asks one adapter to expand its file declarations. */
@@ -91,7 +90,7 @@ export async function discoverAdapterFiles(
           adapter,
           projectBoundary,
           reader,
-          sharedSkillsRoot: join(environment.homeDir, "agents", "skills"),
+          sharedSkillsRoot: sharedSkillsRoot(environment.homeDir),
         }),
       ),
     );

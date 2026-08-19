@@ -59,7 +59,9 @@ function shouldWriteManifest(
 ): boolean {
   return context.manifest.status === "ready"
     ? differsFromDisk(context.manifest, desired)
-    : createManifest || answersSomethingToRecord(context.selections, apps);
+    : createManifest ||
+        context.preset?.explicit === true ||
+        answersSomethingToRecord(context.selections, apps);
 }
 
 function differsFromDisk(

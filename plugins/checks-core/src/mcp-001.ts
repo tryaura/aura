@@ -31,7 +31,20 @@ function detectParity(model: WorkspaceModel): readonly DetectedFinding[] {
   }
   const desired = desiredMcpTargets(model);
   const desiredByApp = new Map<string, Set<string>>();
-  const findings: DetectedFinding[] = [];
+  const findings: DetectedFinding[] = (model.overriddenRequiredMcpServers ?? []).map(
+    (override) => ({
+      details:
+        "The omission was explicitly confirmed during setup and remains recorded in the Aura manifest. Run `aura setup` to add the server or keep the documented deviation.",
+      id: `override:${override.catalogId}`,
+      message: `MCP server ${override.catalogId} required by ${override.requiredBy} is explicitly omitted; this machine deviates from the team preset.`,
+      metadata: {
+        catalogId: override.catalogId,
+        kind: "preset-override",
+        requiredBy: override.requiredBy,
+      },
+      severity: "info",
+    }),
+  );
   const affected = new Set<string>();
 
   for (const target of desired) {

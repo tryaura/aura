@@ -1,18 +1,13 @@
 import type { AuraManifestSkill, ResolvedSkillPack } from "@tryaura/aura-sdk";
 
 import { hasSkillsHome, type ManagedSkillApp } from "../skill-app-support.js";
-import type {
-  SkillCatalog,
-  SkillCatalogEntry,
-  SkillCatalogListing,
-  SkillResolution,
-} from "../skills-catalog.js";
+import type { SkillCatalog, SkillCatalogListing, SkillResolution } from "../skills-catalog.js";
 import { skillIdentity } from "../skill-planner-paths.js";
 import type { SkillSelection } from "../types.js";
 import type { ChainStage } from "../wizard-chain.js";
-import type { WizardOption, WizardQuestion } from "../wizard-types.js";
-import { selectedValues } from "../wizard-types.js";
+import { foldDecisions, selectedValues } from "../wizard-types.js";
 import { pickerOptions, pickerPrompt } from "./skill-picker.js";
+import { movedFrom, REVIEW_PREFIX, reviewQuestion } from "./skill-review.js";
 
 /** What the skills chain carries between its picker and review forms. */
 export interface SkillsChainState {
@@ -25,13 +20,13 @@ export interface SkillsChainState {
 /** Everything the stages read but never change during one gather. */
 export interface SkillStageInputs {
   readonly approvedPrivateSourceIds: ReadonlySet<string>;
+  readonly availableSkills: readonly ResolvedSkillPack[];
   readonly catalog: SkillCatalog;
   readonly listing: SkillCatalogListing;
   readonly managedApps: readonly ManagedSkillApp[];
   readonly manifestSkills: readonly AuraManifestSkill[];
+  readonly presetSkills: readonly SkillSelection[];
 }
-
-const REVIEW_PREFIX = "review:";
 
 export function skillStages(inputs: SkillStageInputs): readonly ChainStage<SkillsChainState>[] {
   return [pickerStage(inputs), reviewStage(inputs)];
@@ -56,6 +51,12 @@ export function selectionsByIdentity(
       selections.set(identity, { id: skill.id, source: skill.source });
     }
   }
+  for (const skill of inputs.presetSkills) {
+    const identity = skillIdentity(skill.source, skill.id);
+    if (!selections.has(identity)) {
+      selections.set(identity, skill);
+    }
+  }
   return selections;
 }
 
@@ -71,7 +72,9 @@ function pickerStage(inputs: SkillStageInputs): ChainStage<SkillsChainState> {
     supportsSkills ? inputs.listing.entries.map((entry) => entry.identity) : [],
   );
   const previous = new Set(
-    inputs.manifestSkills.map((skill) => skillIdentity(skill.source, skill.id)),
+    [...inputs.manifestSkills, ...inputs.presetSkills].map((skill) =>
+      skillIdentity(skill.source, skill.id),
+    ),
   );
 
   return {
@@ -107,25 +110,21 @@ function reviewStage(inputs: SkillStageInputs): ChainStage<SkillsChainState> {
   const recorded = manifestByIdentity(inputs.manifestSkills);
   const offered = selectionsByIdentity(inputs);
   const entries = new Map(inputs.listing.entries.map((entry) => [entry.identity, entry]));
+  // Built once for the whole gather: `needsReview` runs on every selected identity for both the
+  // progress test and the question list, so re-deriving these per call was quadratic by default.
+  const bundled = bundledByIdentity(inputs.availableSkills);
+  const reviewable = (identity: string): boolean => needsReview(identity, recorded, bundled);
 
   return {
-    apply: (state, answers) => {
-      const decisions = { ...state.decisions };
-      for (const [id, answer] of Object.entries(answers)) {
-        if (id.startsWith(REVIEW_PREFIX)) {
-          decisions[id.slice(REVIEW_PREFIX.length)] = selectedValues(answer)[0] ?? "skip";
-        }
-      }
-      return { ...state, decisions };
-    },
+    apply: (state, answers) => ({
+      ...state,
+      decisions: foldDecisions(state.decisions, answers, REVIEW_PREFIX, "skip"),
+    }),
     compactLabel: "Review",
-    isApplicable: (state) => state.selected.some(isRemoteIdentity),
+    isApplicable: (state) => state.selected.some(reviewable),
     label: "Review",
     questions: async (state) => {
       const remote = state.selected.filter(isRemoteIdentity);
-      if (remote.length === 0) {
-        return undefined;
-      }
       const resolution = await inputs.catalog.resolve(
         remote.flatMap((identity) => {
           const selection = offered.get(identity);
@@ -133,98 +132,42 @@ function reviewStage(inputs: SkillStageInputs): ChainStage<SkillsChainState> {
         }),
         inputs.approvedPrivateSourceIds,
       );
-      const questions = remote.flatMap((identity) =>
-        reviewQuestion(
-          identity,
-          state,
-          resolution,
-          recorded,
-          entries.get(identity),
-          offered.get(identity),
-        ),
-      );
+      const resolutionWithBundled: SkillResolution = {
+        problems: resolution.problems,
+        resolved: new Map([...resolution.resolved, ...bundled]),
+      };
+      const questions = state.selected
+        .filter(reviewable)
+        .flatMap((identity) =>
+          reviewQuestion(
+            identity,
+            state.decisions,
+            resolutionWithBundled,
+            recorded,
+            entries.get(identity),
+            offered.get(identity),
+          ),
+        );
       return questions.length === 0 ? undefined : questions;
     },
   };
 }
 
-/** No review for an unchanged manifest skill or a failed fetch; both preserve the prior entry. */
-function reviewQuestion(
+function bundledByIdentity(
+  packs: readonly ResolvedSkillPack[],
+): ReadonlyMap<string, ResolvedSkillPack> {
+  return new Map(packs.map((pack) => [skillIdentity(pack.source.id, pack.id), pack]));
+}
+
+function needsReview(
   identity: string,
-  state: SkillsChainState,
-  resolution: SkillResolution,
   recorded: ReadonlyMap<string, AuraManifestSkill>,
-  entry: SkillCatalogEntry | undefined,
-  selection: SkillSelection | undefined,
-): readonly WizardQuestion[] {
-  const pack = resolution.resolved.get(identity);
+  bundled: ReadonlyMap<string, ResolvedSkillPack>,
+): boolean {
+  if (isRemoteIdentity(identity)) {
+    return true;
+  }
   const previous = recorded.get(identity);
-  if (previous !== undefined && (pack === undefined || pack.treeHash === previous.treeHash)) {
-    return [];
-  }
-
-  const localId = entry?.id ?? selection?.id ?? identity;
-  const update = previous !== undefined;
-  return [
-    {
-      id: `${REVIEW_PREFIX}${identity}`,
-      initial: [state.decisions[identity] ?? "skip"],
-      kind: "select",
-      label: `Review ${localId}`,
-      options: [
-        skipOption(update),
-        installOption(localId, update, pack, entry, resolution.problems.get(identity)),
-      ],
-      prompt: reviewPrompt(localId, update, pack, entry),
-    },
-  ];
-}
-
-function skipOption(update: boolean): WizardOption {
-  return {
-    description: update
-      ? "Keep the installed version and its manifest entry."
-      : "Leave this skill out of the plan.",
-    label: update ? "Skip — keep the installed version" : "Skip — do not install",
-    value: "skip",
-  };
-}
-
-function reviewPrompt(
-  localId: string,
-  update: boolean,
-  pack: ResolvedSkillPack | undefined,
-  entry: SkillCatalogEntry | undefined,
-): string {
-  const sourceName = entry?.sourceName ?? "its directory";
-  if (pack === undefined) {
-    return `"${localId}" could not be fetched from ${sourceName}.`;
-  }
-  return (
-    `${update ? "Update" : "Install"} "${pack.name}" ${pack.version} from ${sourceName}? ` +
-    "Press p on the install row to read its full SKILL.md before deciding."
-  );
-}
-
-function installOption(
-  localId: string,
-  update: boolean,
-  pack: ResolvedSkillPack | undefined,
-  entry: SkillCatalogEntry | undefined,
-  problem: string | undefined,
-): WizardOption {
-  if (pack === undefined) {
-    return {
-      description: problem ?? "This skill could not be fetched.",
-      disabled: true,
-      label: `Install ${localId}`,
-      value: "install",
-    };
-  }
-  return {
-    description: entry?.sourceUrl ?? entry?.sourceName ?? "",
-    label: `${update ? "Update to" : "Install"} ${localId} ${pack.version}`,
-    preview: pack.files.find((file) => file.path === "SKILL.md")?.content,
-    value: "install",
-  };
+  const available = bundled.get(identity);
+  return previous !== undefined && available !== undefined && movedFrom(previous, available);
 }

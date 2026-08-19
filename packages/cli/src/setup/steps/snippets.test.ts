@@ -1,29 +1,20 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
-
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { AuraManifestState, Snippet } from "@tryaura/aura-sdk";
-import { createWorkspaceModel } from "@tryaura/aura-sdk/testing";
-
-import { createSnippetCatalog } from "../snippets.js";
-import { emptyMcpCatalog, emptySkillCatalog } from "../testing.js";
-import type { SetupStepContext } from "../types.js";
 import { createScriptedWizardIo } from "../wizard-scripted.js";
-import type { WizardAnswers, WizardOption, WizardQuestion } from "../wizard-types.js";
+import type { WizardAnswers, WizardQuestion } from "../wizard-types.js";
 import { snippetsStep } from "./snippets.js";
+import { cleanupFixtures } from "../testing.js";
+import {
+  askedOptions,
+  context,
+  createRoot,
+  file,
+  missingManifest,
+  readyManifest,
+  updateContext,
+} from "./snippets.test-support.js";
 
-const temporaryDirectories: string[] = [];
-
-afterEach(async () => {
-  await Promise.all(
-    temporaryDirectories
-      .splice(0)
-      .map((directory) => rm(directory, { force: true, recursive: true })),
-  );
-});
+afterEach(cleanupFixtures);
 
 describe("snippets step", () => {
   it("orders the picker by category so each heading covers one run of rows", async () => {
@@ -41,6 +32,117 @@ describe("snippets step", () => {
       ["safety", "official/zulu"],
       ["workflow", "official/alpha"],
     ]);
+  });
+
+  it("labels and preselects a fresh preset snippet", async () => {
+    const root = await createRoot();
+    const presetSnippet = await file(root, "official/rules", "workflow");
+    const stepContext = context([presetSnippet], missingManifest(), ["official/rules"]);
+    const asked: WizardQuestion[] = [];
+    const scripted = createScriptedWizardIo();
+
+    const outcome = await snippetsStep.gather(stepContext, {
+      ask: async (questions) => {
+        asked.push(...questions);
+        return scripted.ask(questions);
+      },
+      confirm: scripted.confirm,
+      note: scripted.note,
+    });
+
+    expect(asked[0]?.initial).toEqual(["official/rules"]);
+    expect(asked[0]?.options[0]?.label).toContain("(from preset)");
+    expect(outcome).toEqual({ snippets: { selected: ["official/rules"] } });
+  });
+
+  it("keeps existing manifest selections authoritative over preset defaults", async () => {
+    const root = await createRoot();
+    const installed = await file(root, "official/installed", "workflow");
+    const preset = await file(root, "official/preset", "workflow");
+    const stepContext = context([installed, preset], readyManifest("official/installed"), [
+      "official/preset",
+    ]);
+    const asked: WizardQuestion[] = [];
+    const scripted = createScriptedWizardIo();
+
+    await snippetsStep.gather(stepContext, {
+      ask: async (questions) => {
+        asked.push(...questions);
+        return scripted.ask(questions);
+      },
+      confirm: scripted.confirm,
+      note: scripted.note,
+    });
+
+    expect(asked[0]?.initial).toEqual(["official/installed"]);
+  });
+
+  it("keeps an installed revision by default and records an accepted reviewed update", async () => {
+    const root = await createRoot();
+    const id = "official/rules";
+    const available = await file(root, id, "workflow", "new rules\n", "2.0.0");
+    const stepContext = updateContext(available, "old rules");
+
+    const kept = await snippetsStep.gather(stepContext, createScriptedWizardIo());
+    const updated = await snippetsStep.gather(
+      stepContext,
+      createScriptedWizardIo({
+        forms: [{}, { [`snippet-update:${id}`]: { kind: "options", values: ["update"] } }],
+      }),
+    );
+
+    expect(kept).toEqual({ snippets: { selected: [id] } });
+    expect(updated).toEqual({ snippets: { selected: [id], updates: [id] } });
+  });
+
+  it("returns to the picker rather than out of the step when a review is backed out of", async () => {
+    // Leaving the step here would discard both the ticks of this pass and every review already
+    // answered, so ← has to rewind into the picker instead.
+    const root = await createRoot();
+    const id = "official/rules";
+    const available = await file(root, id, "workflow", "new rules\n", "2.0.0");
+    const stepContext = updateContext(available, "old rules");
+    const asked: WizardQuestion[] = [];
+    const scripted = createScriptedWizardIo({ forms: [{}, "back", {}, {}] });
+
+    const outcome = await snippetsStep.gather(stepContext, {
+      ask: async (questions) => {
+        asked.push(...questions);
+        return scripted.ask(questions);
+      },
+      confirm: scripted.confirm,
+      note: scripted.note,
+    });
+
+    expect(asked.map((question) => question.id)).toEqual([
+      "snippets",
+      `snippet-update:${id}`,
+      "snippets",
+      `snippet-update:${id}`,
+    ]);
+    expect(outcome).toEqual({ snippets: { selected: [id] } });
+  });
+
+  it("offers a source revision that is not newer as a deliberate switch", async () => {
+    const root = await createRoot();
+    const id = "official/rules";
+    const rolledBack = await file(root, id, "workflow", "older rules\n", "0.9.0");
+    const stepContext = updateContext(rolledBack, "old rules");
+    const asked: WizardQuestion[] = [];
+    const scripted = createScriptedWizardIo();
+
+    await snippetsStep.gather(stepContext, {
+      ask: async (questions) => {
+        asked.push(...questions);
+        return scripted.ask(questions);
+      },
+      confirm: scripted.confirm,
+      note: scripted.note,
+    });
+
+    const review = asked.find((question) => question.id === `snippet-update:${id}`);
+    expect(review?.prompt).toContain("which is not newer");
+    expect(review?.options[1]?.label).toBe("Switch to 0.9.0");
   });
 
   it("keeps a cleared unavailable selection cleared", async () => {
@@ -68,81 +170,3 @@ describe("snippets step", () => {
     expect(outcome).toEqual({ snippets: { selected: ["retired/rules"] } });
   });
 });
-
-async function askedOptions(stepContext: SetupStepContext): Promise<readonly WizardOption[]> {
-  const scripted = createScriptedWizardIo();
-  const asked: WizardQuestion[] = [];
-
-  await snippetsStep.gather(stepContext, {
-    ask: async (questions) => {
-      asked.push(...questions);
-      return scripted.ask(questions);
-    },
-    confirm: scripted.confirm,
-    note: scripted.note,
-  });
-
-  const question = asked[0];
-  if (question === undefined) {
-    throw new Error("no question was asked");
-  }
-  return question.options;
-}
-
-async function createRoot(): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), "aura-snippet-step-"));
-  temporaryDirectories.push(root);
-  return root;
-}
-
-async function file(root: string, id: string, category: string): Promise<Snippet> {
-  const path = join(root, `${id.replace("/", "-")}.md`);
-  await writeFile(path, `Body of ${id}.\n`, "utf8");
-  return {
-    category,
-    description: `Description for ${id}.`,
-    id,
-    kind: "snippet",
-    name: id,
-    source: { type: "file", url: pathToFileURL(path).href },
-    version: "1.0.0",
-  };
-}
-
-function context(snippets: readonly Snippet[], manifest: AuraManifestState): SetupStepContext {
-  return {
-    appCatalog: [],
-    findings: [],
-    interactive: false,
-    isEnvironmentVariableSet: () => false,
-    manifest,
-    mcpCatalog: emptyMcpCatalog(),
-    model: createWorkspaceModel({
-      manifest,
-      sharedInstructions: { exists: false, path: "/home/dev/agents/AGENTS.md" },
-    }),
-    selections: {},
-    skillCatalog: emptySkillCatalog(),
-    snippetCatalog: createSnippetCatalog(snippets, manifest),
-  };
-}
-
-function missingManifest(): AuraManifestState {
-  return { exists: false, path: "/home/dev/agents/aura.json", status: "missing" };
-}
-
-function readyManifest(id: string): AuraManifestState {
-  return {
-    exists: true,
-    path: "/home/dev/agents/aura.json",
-    status: "ready",
-    value: {
-      apps: {},
-      mcpServers: [],
-      ownership: {},
-      schemaVersion: 1,
-      skills: [],
-      snippets: [{ hash: "a".repeat(64), id, pinned: false, version: "1.2.3" }],
-    },
-  };
-}

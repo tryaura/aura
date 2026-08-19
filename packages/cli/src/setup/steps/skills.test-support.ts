@@ -17,6 +17,7 @@ import type { WizardAnswers, WizardQuestion } from "../wizard-types.js";
 export const HASH_1 = "1".repeat(64);
 export const HASH_2 = "2".repeat(64);
 export const REMOTE_IDENTITY = skillIdentity("directory:acme", "review");
+export const BUNDLED_IDENTITY = skillIdentity("plugin:official", "review");
 
 export const REMOTE_ENTRY: SkillCatalogEntry = {
   description: "Review changes before landing.",
@@ -55,6 +56,18 @@ export function remotePack(treeHash: string): ResolvedSkillPack {
   };
 }
 
+export function bundledPack(treeHash: string, version = "1.0.0"): ResolvedSkillPack {
+  return {
+    description: "Review changes before landing.",
+    files: [{ content: "# Review skill\n", path: "SKILL.md" }],
+    id: "review",
+    name: "Review",
+    source: { id: "plugin:official", kind: "bundled", name: "Official" },
+    treeHash,
+    version,
+  };
+}
+
 interface CatalogOptions {
   readonly entries?: readonly SkillCatalogEntry[];
   readonly notes?: readonly string[];
@@ -89,20 +102,23 @@ export function skillStepContext(
   options: SkillStepContextOptions = {},
 ): SetupStepContext {
   const manifestAppIds = options.manifestAppIds ?? ["codex"];
-  const manifest: AuraManifestState = {
-    exists: true,
-    mode: 0o600,
-    path: "/home/dev/agents/aura.json",
-    status: "ready",
-    value: {
-      apps: Object.fromEntries(manifestAppIds.map((id) => [id, { managed: true }])),
-      mcpServers: [],
-      ownership: {},
-      schemaVersion: 1,
-      skills: previous,
-      snippets: [],
-    },
-  };
+  const manifest: AuraManifestState =
+    options.manifestMissing === true
+      ? { exists: false, path: "/home/dev/agents/aura.json", status: "missing" }
+      : {
+          exists: true,
+          mode: 0o600,
+          path: "/home/dev/agents/aura.json",
+          status: "ready",
+          value: {
+            apps: Object.fromEntries(manifestAppIds.map((id) => [id, { managed: true }])),
+            mcpServers: [],
+            ownership: {},
+            schemaVersion: 1,
+            skills: previous,
+            snippets: [],
+          },
+        };
   return {
     appCatalog: options.appCatalog ?? [supportedApp("codex", "Codex")],
     interactive: false,
@@ -110,11 +126,28 @@ export function skillStepContext(
     manifest,
     mcpCatalog: emptyMcpCatalog(),
     model: createWorkspaceModel({
+      availableSkills: options.availableSkills ?? [],
       manifest,
       sharedInstructions: { exists: false, path: "/home/dev/agents/AGENTS.md" },
     }),
+    ...(options.presetSkills === undefined
+      ? {}
+      : {
+          preset: {
+            checkSummary: [],
+            explicit: true,
+            name: "Fixture preset",
+            reference: "plugin:fixture/onboarding",
+            skills: options.presetSkills,
+            snippets: [],
+          },
+        }),
     selections:
-      options.selectedAppIds === undefined ? {} : { apps: { managed: options.selectedAppIds } },
+      options.selectedAppIds === undefined
+        ? options.manifestMissing === true
+          ? { apps: { managed: manifestAppIds } }
+          : {}
+        : { apps: { managed: options.selectedAppIds } },
     skillCatalog: catalog,
     snippetCatalog: {
       entries: () => [],
@@ -125,7 +158,10 @@ export function skillStepContext(
 
 interface SkillStepContextOptions {
   readonly appCatalog?: readonly AppCatalogEntry[];
+  readonly availableSkills?: readonly ResolvedSkillPack[];
   readonly manifestAppIds?: readonly string[];
+  readonly manifestMissing?: boolean;
+  readonly presetSkills?: NonNullable<SetupStepContext["preset"]>["skills"];
   readonly selectedAppIds?: readonly string[];
 }
 

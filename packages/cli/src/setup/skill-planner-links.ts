@@ -1,7 +1,7 @@
 import { dirname, join, resolve } from "node:path";
 
 import type { AdapterFileStatus, FileOperation } from "@tryaura/aura-sdk";
-import { planSkillDeployment } from "@tryaura/core";
+import { planSkillDeployment, sharedSkillsRoot } from "@tryaura/core";
 
 import { managedAppIdList } from "./managed-apps.js";
 import type { SetupStepContext } from "./types.js";
@@ -13,7 +13,7 @@ export interface SkillPlanBuffers {
 }
 
 export function sharedRoot(context: SetupStepContext): string {
-  return join(context.model.homeDir, "agents", "skills");
+  return sharedSkillsRoot(context.model.homeDir);
 }
 
 export function planLinks(id: string, context: SetupStepContext, state: SkillPlanBuffers): void {

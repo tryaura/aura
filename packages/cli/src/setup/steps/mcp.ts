@@ -17,7 +17,6 @@ import type { McpStepControl, WorkingMcpEntry } from "./mcp-step-types.js";
 
 const ADD_CUSTOM = "mcp:add-custom";
 
-/** Selects catalog and custom MCP servers, then captures their target name, scope, and apps. */
 export const mcpStep: SetupStep = {
   addKind: "mcp",
   compactTitle: "MCP",
@@ -51,8 +50,13 @@ async function gatherMcp(context: SetupStepContext, io: WizardIo) {
     return { ...context.selections, mcp: { servers: [] } };
   }
 
-  let selectedKeys = initialKeys(entries, context.interactive);
-  const overriddenRequiredIds = new Set(context.selections.mcp?.overriddenRequiredIds ?? []);
+  const overriddenRequiredIds = new Set(
+    context.selections.mcp?.overriddenRequiredIds ??
+      (context.manifest.status === "ready"
+        ? (context.manifest.value.overrides?.requiredMcpServers ?? [])
+        : []),
+  );
+  let selectedKeys = initialKeys(entries, context.interactive, overriddenRequiredIds);
   for (;;) {
     const picked = await pickServers(context, entries, selectedKeys, overriddenRequiredIds, io);
     if (picked === SETUP_ABORTED || picked === SETUP_BACK) {
@@ -142,10 +146,20 @@ function matchesEntry(server: AuraManifestMcpServer, entry: McpSetupCatalogEntry
  * sight is exactly the first-configuration the skills step refuses for the same reason. Left
  * unchecked the requirement becomes a blocker naming the interactive run, never a silent skip.
  */
-function initialKeys(entries: readonly WorkingMcpEntry[], interactive: boolean): Set<string> {
+function initialKeys(
+  entries: readonly WorkingMcpEntry[],
+  interactive: boolean,
+  overriddenRequiredIds: ReadonlySet<string>,
+): Set<string> {
   return new Set(
     entries
-      .filter((entry) => entry.selectedServer !== undefined || (entry.required && interactive))
+      .filter(
+        (entry) =>
+          entry.selectedServer !== undefined ||
+          (entry.required &&
+            interactive &&
+            (entry.catalog === undefined || !overriddenRequiredIds.has(entry.catalog.id))),
+      )
       .map((entry) => entry.key),
   );
 }
@@ -189,7 +203,7 @@ async function pickServers(
       return selected;
     }
     const confirmation = await io.confirm(
-      `Override the team preset for this run and omit ${missingRequired.map(safe).join(", ")}?`,
+      `Override the team preset on this machine and omit ${missingRequired.map(safe).join(", ")}?`,
     );
     if (confirmation === "accepted") {
       for (const id of missingRequired) {
@@ -217,7 +231,7 @@ function reconcileRequiredOverrides(
       overriddenRequiredIds.delete(id);
     }
   }
-  return missing;
+  return missing.filter((id) => !overriddenRequiredIds.has(id));
 }
 
 function requiredCatalogIds(entries: readonly WorkingMcpEntry[]): readonly string[] {
@@ -233,7 +247,7 @@ function requiredCatalogIds(entries: readonly WorkingMcpEntry[]): readonly strin
 function serverOption(entry: WorkingMcpEntry): WizardOption {
   const configured = entry.selectedServer !== undefined || entry.existing !== undefined;
   const tags = [
-    ...(entry.required ? ["preset required"] : []),
+    ...(entry.required ? ["from preset", "required"] : []),
     ...(configured ? [entry.catalog === undefined ? "custom" : "configured"] : []),
   ];
   const suffix = tags.length === 0 ? "" : ` (${tags.join(", ")})`;

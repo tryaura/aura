@@ -45,7 +45,7 @@ export const appsStep: SetupStep = {
     if (selected === SETUP_ABORTED || selected === SETUP_BACK) {
       return selected;
     }
-    return withApps(context, selected);
+    return withApps(context, selected, catalog);
   },
   compactTitle: "Apps",
   id: "apps",
@@ -75,7 +75,11 @@ function initialSelection(
   return (
     context.selections.apps?.managed ??
     catalog
-      .filter((entry) => entry.kind === "detected" || previouslyManaged.has(catalogEntryId(entry)))
+      .filter(
+        (entry) =>
+          previouslyManaged.has(catalogEntryId(entry)) ||
+          (entry.kind === "detected" && !ignoredAppIds(context).has(catalogEntryId(entry))),
+      )
       .map(catalogEntryId)
   );
 }
@@ -135,8 +139,34 @@ async function askForSelection(
 function withApps(
   context: SetupStepContext,
   managed: readonly string[],
+  catalog: readonly AppCatalogEntry[],
 ): SetupStepContext["selections"] {
-  return { ...context.selections, apps: { managed } };
+  const selected = new Set(managed);
+  const manifestApps =
+    context.manifest.status === "ready"
+      ? new Set(Object.keys(context.manifest.value.apps))
+      : new Set<string>();
+  const preserved = ignoredAppIds(context);
+  const ignored = catalog.flatMap((entry) => {
+    const id = catalogEntryId(entry);
+    if (selected.has(id)) {
+      return [];
+    }
+    if (entry.kind === "detected" && !manifestApps.has(id)) {
+      return [id];
+    }
+    return preserved.has(id) ? [id] : [];
+  });
+  return {
+    ...context.selections,
+    apps: ignored.length === 0 ? { managed } : { ignored, managed },
+  };
+}
+
+function ignoredAppIds(context: SetupStepContext): ReadonlySet<string> {
+  return new Set(
+    context.manifest.status === "ready" ? (context.manifest.value.ignoredApps ?? []) : [],
+  );
 }
 
 function previouslyManagedIds(context: SetupStepContext): ReadonlySet<string> {

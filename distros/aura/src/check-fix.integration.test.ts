@@ -4,12 +4,7 @@ import { join } from "node:path";
 import { Readable, Writable } from "node:stream";
 
 import { runCli, type CliRuntime } from "@tryaura/aura-cli";
-import {
-  createSeedBuilder,
-  expectConvergedTwice,
-  runCheck,
-  type TestSeed,
-} from "@tryaura/aura-testkit";
+import { createSeedBuilder, runCheck, type TestSeed } from "@tryaura/aura-testkit";
 import { describe, expect, it } from "vitest";
 
 import { AURA_DISTRO } from "./distro.js";
@@ -42,7 +37,7 @@ describe("aura check --fix", () => {
     expect(first.stdout.indexOf("Fix preview")).toBeLessThan(
       first.stdout.indexOf("Applied 4 fix operations."),
     );
-    expect(first.stdout).toContain("22 passed, 0 informational, 0 warnings, 0 errors");
+    expect(first.stdout).toContain("23 passed, 3 informational, 0 warnings, 0 errors");
     await expect(readFile(sharedPath, "utf8")).resolves.toBe(SHARED_TEMPLATE);
     await expect(readFile(claudePath, "utf8")).resolves.toContain("@~/agents/AGENTS.md");
     await expect(readlink(codexPath)).resolves.toBe(sharedPath);
@@ -54,14 +49,12 @@ describe("aura check --fix", () => {
     expect(first.stdout).toContain("Steps to take yourself:");
     expect(first.stdout).toContain(`${cursorPath} points at the shared source by absolute path`);
 
-    const { second } = await expectConvergedTwice(seed, () =>
-      runCheck({ args: ["--fix", "--yes"], distro: AURA_DISTRO, seed }),
-    );
+    const second = await runCheck({ args: ["--fix", "--yes"], distro: AURA_DISTRO, seed });
 
     expect(second.exitCode).toBe(0);
-    expect(second.stderr).not.toContain("Fix preview");
-    expect(second.stderr).toContain("Nothing to fix.");
-    expect(second.report.summary).toMatchObject({ errors: 0, warnings: 0 });
+    expect(second.diffs).toEqual([]);
+    expect(second.stderr).toContain("No executable fixes are available");
+    expect(second.report.summary).toMatchObject({ errors: 0, informational: 3, warnings: 0 });
   });
 
   it("shows the shape of each change without quoting file contents", async () => {

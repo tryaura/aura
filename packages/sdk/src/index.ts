@@ -162,6 +162,7 @@ export type {
   AuraManifestEntry,
   AuraManifestMcpServer,
   AuraManifestOwnership,
+  AuraManifestOverrides,
   AuraManifestProblem,
   AuraManifestSkill,
   AuraManifestSnippet,
@@ -198,7 +199,11 @@ export type {
   McpSecretTransform,
   McpSecretTransformInput,
 } from "./mcp-secret.js";
-export type { RequiredMcpServer, WorkspaceModel } from "./workspace-model.js";
+export type {
+  OverriddenRequiredMcpServer,
+  RequiredMcpServer,
+  WorkspaceModel,
+} from "./workspace-model.js";
 export type {
   InvalidSkillFrontmatterField,
   InstalledSkill,

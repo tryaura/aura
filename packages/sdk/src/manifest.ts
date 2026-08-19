@@ -76,16 +76,26 @@ export interface AuraManifestOwnership {
   readonly mcpServerNames: readonly string[];
 }
 
+/** Explicit departures from policy selected by the user during setup. */
+export interface AuraManifestOverrides {
+  /** Preset-required MCP catalog entries the user chose not to configure. */
+  readonly requiredMcpServers?: readonly string[] | undefined;
+}
+
 /** Version 1 of the distribution-independent `~/agents/aura.json` protocol. */
 export interface AuraManifestV1 {
   /** Application selections keyed by stable adapter id. */
   readonly apps: Readonly<Record<string, AuraManifestApp>>;
   /** Per-user check overrides applied above the selected team preset. */
   readonly checks?: AuraCheckConfiguration | undefined;
+  /** Detected applications the user deliberately leaves outside Aura management. */
+  readonly ignoredApps?: readonly string[] | undefined;
   /** MCP servers Aura should converge into their selected applications. */
   readonly mcpServers: readonly AuraManifestMcpServer[];
   /** What Aura owns in each application's configuration, keyed by adapter id. */
   readonly ownership: Readonly<Record<string, AuraManifestOwnership>>;
+  /** Explicit, reviewable departures from the active team preset. */
+  readonly overrides?: AuraManifestOverrides | undefined;
   /** Sticky runtime preset reference. CLI `--preset` overrides it for one run. */
   readonly preset?: string | undefined;
   readonly schemaVersion: 1;

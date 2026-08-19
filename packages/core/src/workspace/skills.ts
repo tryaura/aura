@@ -16,6 +16,7 @@ import {
 import type { RegisteredSkillPack } from "../plugin-registry.js";
 import type { ScanDiagnostic } from "./diagnostics.js";
 import type { FileReader, PathContents } from "./reader.js";
+import { sharedSkillsRoot } from "./skill-deployment-plan.js";
 
 const SKILLS_DIAGNOSTIC_ID = "core/skills";
 const SKILL_FILE = "SKILL.md";
@@ -33,7 +34,7 @@ interface WalkProblem {
 
 /** Canonical shared skill root for one captured environment. */
 function sharedSkillsPath(environment: Pick<Environment, "homeDir">): string {
-  return join(environment.homeDir, "agents", "skills");
+  return sharedSkillsRoot(environment.homeDir);
 }
 
 /** Resolves every bundled skill pack without letting one broken pack hide the others. */

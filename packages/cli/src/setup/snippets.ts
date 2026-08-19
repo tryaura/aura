@@ -44,6 +44,7 @@ export interface SnippetCatalog {
 export function createSnippetCatalog(
   snippets: readonly Snippet[],
   manifest: AuraManifestState,
+  presetIds: readonly string[] = [],
 ): SnippetCatalog {
   let resolved: readonly SnippetCatalogEntry[] = [];
   let pending: Promise<readonly SnippetCatalogEntry[]> | undefined;
@@ -51,7 +52,7 @@ export function createSnippetCatalog(
   return {
     entries: () => resolved,
     load: () => {
-      pending ??= resolveSnippetCatalog(snippets, manifest).then((entries) => {
+      pending ??= resolveSnippetCatalog(snippets, manifest, presetIds).then((entries) => {
         resolved = entries;
         return entries;
       });
@@ -64,10 +65,12 @@ export function createSnippetCatalog(
 export async function resolveSnippetCatalog(
   snippets: readonly Snippet[],
   manifest: AuraManifestState,
+  presetIds: readonly string[] = [],
 ): Promise<readonly SnippetCatalogEntry[]> {
   const registered = new Set(snippets.map((snippet) => snippet.id));
   const resolved = await Promise.all(snippets.map(resolveSnippet));
   const previous = manifest.status === "ready" ? manifest.value.snippets : [];
+  const previousIds = new Set(previous.map((snippet) => snippet.id));
   return Object.freeze([
     ...resolved,
     ...previous
@@ -81,6 +84,19 @@ export async function resolveSnippetCatalog(
           reason: "The contributing plugin is unavailable.",
           status: "unavailable",
           version: snippet.version,
+        }),
+      ),
+    ...presetIds
+      .filter((id) => !registered.has(id) && !previousIds.has(id))
+      .map((id): UnavailableSnippetCatalogEntry =>
+        Object.freeze({
+          category: "general",
+          description: "Selected by the active team preset, but unavailable in this build.",
+          id,
+          name: id,
+          reason: "No installed plugin provides this preset selection.",
+          status: "unavailable",
+          version: "unknown",
         }),
       ),
   ]);

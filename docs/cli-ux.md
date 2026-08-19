@@ -108,8 +108,13 @@ When the active step runs a sequence of internal forms (a chain step like Instru
   as scope section markers, so repeated stage names read unambiguously left to right:
   `✔ Global │ ✔ Sources │ ✔ Archive │ ▶ Project ☐ │ Sources ☐`.
 - The Skills step is the second chain precedent: its Review stage exists only while a directory
-  skill is selected, one review question per skill —
+  skill is selected or a recorded skill's source revision moved, one review question per skill —
   `└ ✔ Skills │ ▶ Review claude-md ☐ │ Review commit-style ☐`.
+- The Snippets step follows the same shape: a picker, then a Review stage carrying one question per
+  selected snippet whose source revision no longer matches the recorded one —
+  `└ ✔ Snippets │ ▶ Review official/rules ☐`. ← from a review returns to the picker with that
+  pass's ticks intact; it leaves the step only from the picker itself, because backing out of a
+  review would discard both the selection just made and every review already answered.
 - Before the picker, private directories appear in an explicit connection form naming the URL and
   token variable. Its initial selection is empty, including under `--yes`; no credential is read
   until the user opts in for that run.
@@ -223,10 +228,14 @@ A picker over every allowed skill source, then one Review form per selected dire
   `— blocked by the team preset`, `— no selected app supports skills`); `— unavailable` is the
   default only where no more specific reason applies.
 - A Review form appears for a directory skill that is new to the manifest or whose upstream
-  content changed. It is a select between `Skip` and `Install <id> <version>`; the install row's
-  description is the source URL and its preview is the full SKILL.md. **Skip is always the
-  initial answer**, so `--yes` and exhausted scripts can only re-apply skills the manifest
-  already records — a non-interactive run never first-installs remote prompt content.
+  content changed, and for a bundled skill whose recorded revision no longer matches the installed
+  plugin's. It is a select between `Skip` and one of `Install <id> <version>`,
+  `Update to <id> <version>`, or `Switch to <id> <version>`; the install row's description is the
+  source URL and its preview is the full SKILL.md. `Switch to` names a revision that is not newer —
+  a rollback, or a pair of versions this build cannot order — so a move backward is never labelled
+  an upgrade. **Skip is always the initial answer**, so `--yes` and exhausted scripts can only
+  re-apply skills the manifest already records — a non-interactive run never first-installs remote
+  prompt content, and never changes the revision of content it already manages.
 - Installs from a source the team preset's `allowedSkillSources` does not permit are refused at
   planning time with a blocker naming the preset
   (`Skill "<id>" comes from <source>, which the team preset "<origin>" does not allow.`), which
@@ -270,8 +279,10 @@ capturing its name, scope, and applications. Runs after Skills, before Baseline.
   This is the skills-step rule applied to a credential-bearing remote endpoint: a non-interactive
   run never first-configures one on a repository's say-so.
 - Interactively, clearing a required row asks for one explicit confirmation
-  (`Override the team preset for this run and omit official/github?`), and re-checking the row
-  clears the override. A required id the installed plugins do not provide is a blocker naming the
+  (`Override the team preset on this machine and omit official/github?`), and re-checking the row
+  clears the override. Only a run that resolved the preset rewrites the recorded overrides, so an
+  offline run leaves a confirmed deviation in place rather than reading a failed fetch as a
+  withdrawn requirement. A required id the installed plugins do not provide is a blocker naming the
   preset, never a silent omission.
 - ← from any per-server form returns to the picker with every answer of that pass intact,
   including a custom transport, which becomes editable again on the return trip.
@@ -282,6 +293,24 @@ capturing its name, scope, and applications. Runs after Skills, before Baseline.
   held.
 - `setup --add mcp` requires an established manifest and either a managed application that
   supports MCP configuration or a server already recorded to remove.
+
+### Plan summary notices
+
+Above the manual steps, the summary groups what the plan did not simply write, each group under one
+heading and one `·` bullet per line:
+
+```
+Hand edits Aura is replacing:
+Preserved content Aura does not own:
+Managed content kept at its recorded revision:
+Effective check policy from preset <name> (not copied into your manifest):
+```
+
+- A group naming a shared source names it once, in the heading. Repeating "(from preset acme)" on
+  every line hides the settings the line is actually there to show.
+- The held group is what keeps a non-interactive run honest: every snippet and skill left at its
+  recorded revision is listed with the version that is waiting, so a `--yes` run that declined a
+  dozen updates cannot read as a run with nothing to do.
 
 ### Implementation status
 

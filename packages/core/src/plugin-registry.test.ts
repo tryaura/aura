@@ -149,6 +149,39 @@ describe("createPluginRegistry", () => {
     },
   );
 
+  // Managed content is held at its recorded revision until a newer one is reviewed, and "newer" is
+  // a semver comparison. A version semver cannot order has no upgrade path at all, so it would sit
+  // frozen forever with neither setup nor MGD-002 ever naming it.
+  it.each(["2024-05", "v1.0.0", "1.0", "latest"])(
+    "rejects a snippet version it could never compare: %s",
+    (version) => {
+      const error = captureRegistryError([
+        createPlugin("alpha", { snippets: [{ ...createSnippet("alpha/rules"), version }] }),
+      ]);
+
+      expect(error.message).toContain(`snippet "alpha/rules" declares version "${version}"`);
+      expect(error.message).toContain("held at its recorded revision");
+    },
+  );
+
+  it("rejects a skill version it could never compare", () => {
+    const error = captureRegistryError([
+      createPlugin("alpha", { skills: [{ ...createSkill("review"), version: "2024-05" }] }),
+    ]);
+
+    expect(error.message).toContain('skill "review" declares version "2024-05"');
+  });
+
+  it("accepts a canonical prerelease and build-metadata version", () => {
+    const registry = createPluginRegistry([
+      createPlugin("alpha", {
+        snippets: [{ ...createSnippet("alpha/rules"), version: "1.2.3-rc.1+build.5" }],
+      }),
+    ]);
+
+    expect(registry.snippets[0]?.version).toBe("1.2.3-rc.1+build.5");
+  });
+
   it("rejects duplicate local IDs within one bundled source", () => {
     const error = captureRegistryError([
       createPlugin("alpha", { skills: [createSkill("review"), createSkill("review")] }),

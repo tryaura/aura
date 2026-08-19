@@ -7,10 +7,13 @@ import type {
 } from "@tryaura/aura-sdk";
 import { createEmptyAuraManifest } from "@tryaura/core";
 
-import { catalogEntryId, catalogEntryName, type AppCatalogEntry } from "./catalog.js";
+import { catalogEntryId, type AppCatalogEntry } from "./catalog.js";
+import { appManualSteps } from "./planner-app-steps.js";
+import { withIgnoredAppSelections } from "./app-ignore.js";
 import { planInstructions } from "./instruction-planner.js";
 import { planManifestWrite } from "./manifest-write.js";
 import { planSetupMcp } from "./mcp-planner.js";
+import { presetPolicyNotices } from "./preset-policy.js";
 import { planSnippets } from "./snippet-planner.js";
 import { planSkills } from "./skill-planner.js";
 import type { SetupSelections, SetupStepContext } from "./types.js";
@@ -29,7 +32,14 @@ export interface SetupBlocker {
  * heading, because "we kept your text" and "we are about to discard it" are opposite messages.
  */
 export interface SetupNotice {
-  readonly kind: "overwritten" | "preserved";
+  /**
+   * Replaces this kind's default heading for the whole group.
+   *
+   * Lets a group name its source once — "from preset acme" belongs above the list, not repeated on
+   * every line of it. The first notice of the kind that carries one wins.
+   */
+  readonly heading?: string | undefined;
+  readonly kind: "held" | "overwritten" | "policy" | "preserved";
   readonly message: string;
 }
 
@@ -67,6 +77,7 @@ export function planSetup(context: SetupStepContext): SetupPlanOutcome {
     instructionPlan.ownership,
     context.selections.snippets === undefined ? undefined : snippetPlan.manifestSnippets,
     skillPlan.manifestSkills,
+    context,
   );
   const mcpPlan = planSetupMcp(context, baseManifest);
   blockers.push(...mcpPlan.blockers);
@@ -107,7 +118,7 @@ export function planSetup(context: SetupStepContext): SetupPlanOutcome {
   return Object.freeze({
     blockers: Object.freeze(blockers),
     manifest,
-    notices: snippetPlan.notices,
+    notices: [...snippetPlan.notices, ...skillPlan.notices, ...presetPolicyNotices(context)],
     plan: Object.freeze({
       manualSteps: Object.freeze([
         ...appManualSteps(context),
@@ -128,15 +139,24 @@ function desiredManifest(
   ownershipUpdates: ReadonlyMap<string, readonly string[]>,
   snippets: AuraManifest["snippets"] | undefined,
   skills: AuraManifest["skills"],
+  context: SetupStepContext,
 ): AuraManifest {
   const base = state.status === "ready" ? state.value : createEmptyAuraManifest();
   const ownership = desiredOwnership(base, ownershipUpdates);
-  const withApps =
+  const withApps: AuraManifest =
     apps === undefined
       ? { ...base, ownership }
-      : { ...base, apps: desiredApps(base, apps, appCatalog), ownership };
+      : withIgnoredAppSelections(
+          { ...base, apps: desiredApps(base, apps, appCatalog), ownership },
+          base,
+          apps,
+          appCatalog,
+        );
   const withSkills = { ...withApps, skills };
-  return snippets === undefined ? withSkills : { ...withSkills, snippets };
+  const withSnippets = snippets === undefined ? withSkills : { ...withSkills, snippets };
+  return context.preset?.explicit === true
+    ? { ...withSnippets, preset: context.preset.reference }
+    : withSnippets;
 }
 
 function planSetupSnippets(
@@ -237,51 +257,4 @@ function desiredApps(
   }
   // Object.fromEntries defines special keys such as `__proto__` as own data properties.
   return Object.fromEntries(next);
-}
-
-/**
- * Summary lines the plan cannot express as file operations: installing an app Aura does not
- * install itself, and what unchecking a previously-managed app does — the manifest flips to
- * `managed: false` while the app's own configuration stays in place (ownership cleanup is a later
- * milestone).
- */
-function appManualSteps(context: SetupStepContext): readonly string[] {
-  const apps = context.selections.apps;
-  if (apps === undefined) {
-    return [];
-  }
-  return [...installSteps(context, apps.managed), ...stopManagingSteps(context, apps.managed)];
-}
-
-function installSteps(context: SetupStepContext, managed: readonly string[]): readonly string[] {
-  const steps: string[] = [];
-  for (const id of managed) {
-    const entry = context.appCatalog.find((candidate) => catalogEntryId(candidate) === id);
-    if (entry?.kind === "undetected") {
-      steps.push(
-        entry.installHint === undefined
-          ? `Install ${entry.displayName} — its adapter provides no install instructions.`
-          : `Install ${entry.displayName}: ${entry.installHint}`,
-      );
-    }
-  }
-  return steps;
-}
-
-function stopManagingSteps(
-  context: SetupStepContext,
-  managed: readonly string[],
-): readonly string[] {
-  const previous = context.manifest.status === "ready" ? context.manifest.value.apps : {};
-  const managedIds = new Set(managed);
-  const steps: string[] = [];
-  for (const [id, app] of Object.entries(previous)) {
-    const entry = context.appCatalog.find((candidate) => catalogEntryId(candidate) === id);
-    if (entry !== undefined && app.managed && !managedIds.has(id)) {
-      steps.push(
-        `Aura stops managing ${catalogEntryName(entry)}; its existing configuration is left in place.`,
-      );
-    }
-  }
-  return steps;
 }

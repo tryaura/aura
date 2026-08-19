@@ -42,6 +42,16 @@ export function planSetupMcp(
     ),
   );
   const overriddenRequiredIds = new Set(context.selections.mcp.overriddenRequiredIds ?? []);
+  // Only a run that actually resolved the preset knows what it requires. Rebuilding the override
+  // list from an empty requirement set would erase a confirmed deviation whenever the preset
+  // merely failed to fetch, and "offline" must not read the same as "the requirement is gone".
+  if (context.preset !== undefined) {
+    manifest = withRequiredOverrides(
+      manifest,
+      context.mcpCatalog.requiredIds,
+      overriddenRequiredIds,
+    );
+  }
   for (const id of context.mcpCatalog.requiredIds) {
     if (
       !missingDefinitions.has(id) &&
@@ -78,6 +88,22 @@ export function planSetupMcp(
     manualSteps: credentialSteps(context, manifest),
     operations,
   };
+}
+
+function withRequiredOverrides(
+  manifest: AuraManifest,
+  requiredIds: ReadonlySet<string>,
+  overriddenIds: ReadonlySet<string>,
+): AuraManifest {
+  const requiredMcpServers = [...requiredIds].filter((id) => overriddenIds.has(id));
+  const previous = manifest.overrides;
+  const { requiredMcpServers: _previousRequired, ...extension } = previous ?? {};
+  const overrides =
+    requiredMcpServers.length === 0 && Object.keys(extension).length === 0
+      ? undefined
+      : { ...extension, ...(requiredMcpServers.length === 0 ? {} : { requiredMcpServers }) };
+  const { overrides: _previousOverrides, ...rest } = manifest;
+  return overrides === undefined ? rest : { ...rest, overrides };
 }
 
 /**

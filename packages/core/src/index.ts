@@ -66,6 +66,12 @@ export {
 export { readManagedBlock } from "./managed-block/read.js";
 export { diffManagedSnippet, reconcileManagedSnippet } from "./managed-block/reconcile-snippet.js";
 export { reconcileManagedBlock, reconcileParsedManagedBlock } from "./managed-block/reconcile.js";
+export {
+  managedContentRevisionStatus,
+  planSharedSkillTreeUpdate,
+} from "./managed-content/revision.js";
+/** @public */
+export type { ManagedContentRevisionStatus } from "./managed-content/revision.js";
 /** @public */
 export type {
   DesiredManagedSnippet,
