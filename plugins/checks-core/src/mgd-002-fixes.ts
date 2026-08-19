@@ -263,7 +263,7 @@ function resolveDriftFirst(contentId: string): GuidedFixChoice {
     label: "Resolve local edits first",
     plan: {
       manualSteps: [
-        `Run \`aura check --only MGD-001 --fix --interactive\` and resolve edits to ${contentId}, then review this update again.`,
+        `Run \`aura check --only MGD-001 --fix\` and resolve edits to ${contentId}, then review this update again.`,
       ],
       operations: [],
       summary: `Resolve local edits to ${contentId} before updating it.`,

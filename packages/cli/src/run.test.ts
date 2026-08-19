@@ -265,6 +265,21 @@ describe("runCli", () => {
     },
   );
 
+  it("keeps the retired --interactive flag as a hidden compatibility alias", async () => {
+    const capture = createCapture(["check", "--fix", "--interactive"]);
+
+    expect(await runCli(distro([findingPlugin("info", [])]), capture.runtime)).toBe(0);
+    expect(capture.stdout.text).toContain("Nothing to fix");
+    expect(capture.stderr.text).toBe("");
+  });
+
+  it("rejects the retired --interactive alias with --yes", async () => {
+    const capture = createCapture(["check", "--fix", "--interactive", "--yes"]);
+
+    expect(await runCli(distro(), capture.runtime)).toBe(2);
+    expect(capture.stderr.text).toContain("--interactive and --yes contradict each other");
+  });
+
   it("rejects --dry-run with --yes", async () => {
     const capture = createCapture(["check", "--fix", "--dry-run", "--yes"]);
 
@@ -273,18 +288,8 @@ describe("runCli", () => {
     expect(capture.stderr.text).toContain("--dry-run and --yes contradict each other");
   });
 
-  it("rejects --interactive with --yes and with redirected prompt streams", async () => {
-    const contradictory = createCapture(["check", "--fix", "--interactive", "--yes"]);
-    const redirected = createCapture(["check", "--fix", "--interactive"]);
-
-    expect(await runCli(distro(), contradictory.runtime)).toBe(2);
-    expect(contradictory.stderr.text).toContain("--interactive and --yes contradict each other");
-    expect(await runCli(distro(), redirected.runtime)).toBe(2);
-    expect(redirected.stderr.text).toContain("stdin and prompt output must both be terminals");
-  });
-
-  it("allows interactive JSON when prompts can use terminal stderr", async () => {
-    const capture = createCapture(["check", "--fix", "--interactive", "--json"]);
+  it("runs a JSON fix without asking, even when prompts could use terminal stderr", async () => {
+    const capture = createCapture(["check", "--fix", "--json"]);
     const stdin = Object.assign(Readable.from([]), { isTTY: true });
     Object.assign(capture.stderr, { isTTY: true });
 

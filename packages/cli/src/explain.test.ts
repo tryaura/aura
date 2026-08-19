@@ -111,7 +111,7 @@ describe("check --explain", () => {
     expect(capture.stdout.text).toContain("apply with check --fix");
   });
 
-  it("names the interactive command for guided fixes and reports them as applicable in JSON", async () => {
+  it("names the command that asks for guided fixes and reports them as applicable in JSON", async () => {
     const plugin = definePlugin({
       apiVersion: 1,
       checks: [
@@ -134,7 +134,7 @@ describe("check --explain", () => {
     const json = createCapture(["check", "--explain", "fixture-guided/GUIDED", "--json"]);
 
     expect(await runCli(distro([plugin]), human.runtime)).toBe(0);
-    expect(human.stdout.text).toContain("check --fix --interactive");
+    expect(human.stdout.text).toContain("check --fix puts to you");
     expect(await runCli(distro([plugin]), json.runtime)).toBe(0);
     expect(parseCheckExplanation(json.stdout.text)).toMatchObject({
       fixability: "guided",

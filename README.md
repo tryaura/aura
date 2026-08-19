@@ -100,9 +100,9 @@ aura check --json                       # emit the versioned JSON report
 aura check --only ENV --only claude     # run environment checks for Claude Code
 aura check --detail                     # include plugin diagnostics and fix diffs
 aura check --explain ENV-003             # explain one check without scanning
-aura check --fix --dry-run               # preview automatic fixes without writing
-aura check --fix                         # preview, confirm, and apply automatic fixes
-aura check --fix --interactive           # include guided remediation choices
+aura check --fix --dry-run               # choose resolutions and preview, without writing
+aura check --fix                         # choose resolutions, preview, confirm, and apply
+aura check --fix --yes                   # apply automatic fixes without being asked
 ```
 
 The bundled checks cover:
@@ -124,10 +124,9 @@ The bundled checks cover:
 | `--verbose`      | Expand human output within its 100-finding and 100-location safety ceilings.                       |
 | `--no-color`     | Disable terminal colors. This global flag is accepted before or after a command.                   |
 | `--explain`      | Explain a check by ID without scanning adapters or repository state.                               |
-| `--fix`          | Preview automatic fixes and apply them after one confirmation.                                     |
-| `--interactive`  | With `--fix`, choose guided remediations before the combined preview. Requires terminal prompts.   |
+| `--fix`          | Choose any guided resolutions, preview the combined plan, and apply it after one confirmation.     |
 | `--dry-run`      | With `--fix`, prepare and preview the same plan without confirming or writing.                     |
-| `--yes`          | With `--fix`, apply automatic fixes without confirmation.                                          |
+| `--yes`          | With `--fix`, apply automatic fixes without confirmation. Guided fixes need a run that can ask.    |
 | `--home`         | Override the home directory. Must be absolute.                                                     |
 | `--path`         | Override the executable search path. Must list absolute directories.                               |
 

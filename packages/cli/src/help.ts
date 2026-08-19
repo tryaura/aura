@@ -99,8 +99,10 @@ export function renderCheckHelp(branding: CliBranding): string {
       },
       {
         rows: [
-          { term: "--interactive", text: "With --fix, walk through guided remediation choices" },
-          { term: "--yes", text: "Apply without asking; required when stdin is not a terminal" },
+          {
+            term: "--yes",
+            text: "Apply automatic fixes without asking; required when stdin is not a terminal",
+          },
         ],
         title: "Fixing behavior",
       },

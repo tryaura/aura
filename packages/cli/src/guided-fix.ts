@@ -1,9 +1,17 @@
-import { describeFailure, prepareFixCandidates, type FixCandidate } from "@tryaura/core";
-import type { Check, Finding, GuidedFixChoice, WorkspaceModel } from "@tryaura/aura-sdk";
+import {
+  createLimiter,
+  describeFailure,
+  prepareFixCandidates,
+  type FixCandidate,
+} from "@tryaura/core";
+import type { Check, Finding, FixPlan, GuidedFixChoice, WorkspaceModel } from "@tryaura/aura-sdk";
 
 import type { FixRequest } from "./fix.js";
 import type { DiagnosticSource } from "./report.js";
 import { selectedValues, type WizardIo, type WizardOption } from "./setup/wizard-types.js";
+
+/** Keeps simultaneous path probes and retained preview buffers within a small fixed ceiling. */
+const MAX_CONCURRENT_GUIDED_PREVIEWS = 4;
 
 // fallow-ignore-next-line complexity -- each branch is one explicit wizard outcome or diagnostic.
 export async function gatherGuidedFixes(
@@ -12,7 +20,9 @@ export async function gatherGuidedFixes(
   diagnostics: DiagnosticSource[],
 ): Promise<readonly FixCandidate[] | "aborted"> {
   const checks = new Map(request.checks.map((check) => [check.id, check]));
+  const limitPreview = createLimiter(MAX_CONCURRENT_GUIDED_PREVIEWS);
   const selected: FixCandidate[] = [];
+  const presented = new Set<FixPlan>();
 
   for (const [index, finding] of request.findings.entries()) {
     const check = checks.get(finding.checkId);
@@ -35,21 +45,29 @@ export async function gatherGuidedFixes(
       });
       continue;
     }
-    if (choices.length === 0) {
+    // A check may hand several findings the very same plan object — MCP-004 rewrites a whole file,
+    // so every credential in it shares one plan. Asking again would collect an answer the first
+    // one already gave, and put the same file in the preview once per finding.
+    if (choices.every((choice) => presented.has(choice.plan))) {
       continue;
+    }
+    for (const choice of choices) {
+      presented.add(choice.plan);
     }
 
     // Concurrent on purpose: every choice is an independent preview of the same untouched
     // filesystem, and each one costs a path-policy probe, a read per target, and a rendered diff.
     // Awaiting them in turn made the wait before a question scale with the number of answers.
     const previewed = await Promise.all(
-      choices.map(async (choice, choiceIndex) => {
-        try {
-          return { option: await guidedOption(check, finding, choice, choiceIndex, request) };
-        } catch (error) {
-          return { choice, error };
-        }
-      }),
+      choices.map((choice, choiceIndex) =>
+        limitPreview(async () => {
+          try {
+            return { option: await guidedOption(check, finding, choice, choiceIndex, request) };
+          } catch (error) {
+            return { choice, error };
+          }
+        }),
+      ),
     );
     const options: WizardOption[] = [];
     for (const outcome of previewed) {
@@ -92,6 +110,16 @@ export async function gatherGuidedFixes(
   }
 
   return Object.freeze(selected);
+}
+
+/** How many findings a run would have to ask about before it could fix them. */
+export function guidedFindingCount(checks: readonly Check[], findings: readonly Finding[]): number {
+  const guided = new Set(
+    checks.filter((check) => check.fixability === "guided").map((check) => check.id),
+  );
+  return findings.filter(
+    (finding) => guided.has(finding.checkId) && finding.fixability !== "manual",
+  ).length;
 }
 
 export function orderCandidates(

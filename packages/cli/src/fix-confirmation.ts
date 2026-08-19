@@ -4,13 +4,45 @@ import { createInteractiveWizardIo } from "./setup/wizard-prompt.js";
 import type { WizardIo } from "./setup/wizard-types.js";
 
 /**
+ * Whether a check run would put guided questions on screen — the telemetry sense of interactive.
+ *
+ * `--json` promises one machine-readable document and a machine cannot answer, so that run declines
+ * the questions it is otherwise able to ask.
+ */
+export function runAsksGuided(
+  options: Pick<FixRequest, "stdin" | "stdout" | "yes"> & {
+    readonly fix: boolean;
+    readonly json: boolean;
+  },
+): boolean {
+  return options.fix && !options.json && canPrompt(options, undefined);
+}
+
+/**
+ * Whether this run can put a question on screen and read the answer.
+ *
+ * The guided step and the confirmation step ask the same thing of the same streams, so they read
+ * the capability from here rather than each deciding for itself — a run that may not ask which
+ * resolution to take may not ask whether to apply one either.
+ */
+export function canPrompt(
+  request: Pick<FixRequest, "stdin" | "stdout" | "yes">,
+  wizard: WizardIo | undefined,
+): boolean {
+  if (request.yes) {
+    return false;
+  }
+  return wizard !== undefined || (isTerminal(request.stdin) && isTerminal(request.stdout));
+}
+
+/**
  * One confirmation idiom for every fix path.
  *
- * A plain `check --fix` confirms through the same Apply/Cancel wizard form that setup, undo, and
- * `--fix --interactive` use, instead of presenting a second `[y/N]` dialect for the same decision.
- * A caller that already holds a wizard (the interactive branch, or a test's scripted seam) keeps
- * it; otherwise one is built here — only when both streams are terminals, so non-TTY runs still
- * report the prompt unavailable rather than hanging.
+ * `check --fix` confirms through the same Apply/Cancel wizard form that setup, undo, and the guided
+ * questions use, instead of presenting a second `[y/N]` dialect for the same decision. A caller
+ * that already holds a wizard (the guided branch, or a test's scripted seam) keeps it; otherwise
+ * one is built here — only when both streams are terminals, so non-TTY runs still report the prompt
+ * unavailable rather than hanging.
  */
 export async function confirmFixes(
   request: Pick<FixRequest, "colorDepth" | "stdin" | "stdout" | "yes">,
@@ -19,7 +51,7 @@ export async function confirmFixes(
   if (request.yes) {
     return "accepted";
   }
-  if (wizard === undefined && (!isTerminal(request.stdin) || !isTerminal(request.stdout))) {
+  if (!canPrompt(request, wizard)) {
     return "unavailable";
   }
   const io =

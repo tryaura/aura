@@ -11,10 +11,11 @@ import {
 import { pluralize } from "@tryaura/core/pluralize";
 import type { Check, Environment, Finding, WorkspaceModel } from "@tryaura/aura-sdk";
 
-import { confirmFixes } from "./fix-confirmation.js";
+import { canPrompt, confirmFixes } from "./fix-confirmation.js";
+import { finishWithoutFixes } from "./fix-fixless.js";
 import { fixlessMessage, reportFixes, reportUnpreparedFixes } from "./fix-report.js";
-import { gatherGuidedFixes, orderCandidates } from "./guided-fix.js";
-import { renderFixPreview, renderGuidedHint, renderManualSteps } from "./preview-render.js";
+import { gatherGuidedFixes, guidedFindingCount, orderCandidates } from "./guided-fix.js";
+import { renderFixPreview } from "./preview-render.js";
 import type { DiagnosticSource, ReportFix } from "./report.js";
 import { safe } from "./safe-text.js";
 import { createInteractiveWizardIo } from "./setup/wizard-prompt.js";
@@ -36,7 +37,8 @@ export interface FixRequest {
   readonly dryRun: boolean;
   readonly environment: Environment;
   readonly findings: readonly Finding[];
-  readonly interactive: boolean;
+  /** Whether the run permits guided questions at all, separate from being able to ask them. */
+  readonly guidedChoices: boolean;
   readonly model: WorkspaceModel;
   readonly stderr: Writable;
   readonly stdin: Readable;
@@ -67,8 +69,9 @@ export async function runFixes(request: FixRequest): Promise<FixOutcome> {
   let candidates = [...automatic.candidates];
   let wizard = request.wizard;
   let guidedAborted = false;
+  const asksGuided = request.guidedChoices && canPrompt(request, wizard);
 
-  if (request.interactive) {
+  if (asksGuided) {
     wizard ??= createInteractiveWizardIo({
       colorDepth: request.colorDepth,
       stdin: request.stdin,
@@ -114,14 +117,14 @@ export async function runFixes(request: FixRequest): Promise<FixOutcome> {
       ),
     };
   }
+  const unasked = asksGuided ? 0 : guidedFindingCount(request.checks, request.findings);
   if (prepared.prepared === undefined) {
-    return finishWithoutFixes(
-      request,
-      automatic.diagnostics,
-      fixDiagnostics,
-      prepared.manualSteps,
-      fixlessMessage(prepared.candidates.length, request.findings.length),
-    );
+    const message = fixlessMessage(prepared.candidates.length, request.findings.length, unasked);
+    return finishWithoutFixes(request, automatic.diagnostics, fixDiagnostics, {
+      manualSteps: prepared.manualSteps,
+      message,
+      unasked,
+    });
   }
 
   if (
@@ -130,13 +133,11 @@ export async function runFixes(request: FixRequest): Promise<FixOutcome> {
   ) {
     // A plan exists only when findings produced candidates, so this is convergence, not absence:
     // the files already read the way every planned operation would leave them.
-    return finishWithoutFixes(
-      request,
-      automatic.diagnostics,
-      fixDiagnostics,
-      prepared.manualSteps,
-      "The planned fixes already match the current file contents.\n\n",
-    );
+    return finishWithoutFixes(request, automatic.diagnostics, fixDiagnostics, {
+      manualSteps: prepared.manualSteps,
+      message: "The planned fixes already match the current file contents.\n\n",
+      unasked,
+    });
   }
 
   renderFixPreview(prepared, request.withDetail, request.stdout);
@@ -278,19 +279,4 @@ export async function runFixes(request: FixRequest): Promise<FixOutcome> {
       fixes: reportFixes(prepared, "failed", request.withDetail, "Apply failed and rolled back."),
     };
   }
-}
-
-function finishWithoutFixes(
-  request: FixRequest,
-  diagnostics: readonly CheckDiagnostic[],
-  fixDiagnostics: readonly DiagnosticSource[],
-  manualSteps: readonly string[],
-  message: string,
-): FixOutcome {
-  request.stdout.write(message);
-  renderManualSteps(manualSteps, request.stdout);
-  if (!request.interactive) {
-    renderGuidedHint(request.checks, request.findings, request.branding, request.stdout);
-  }
-  return { applied: false, diagnostics, fixDiagnostics, fixes: [] };
 }
