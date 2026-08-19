@@ -13,6 +13,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createEnvironment } from "../environment.boundary.js";
 import type { FileReader } from "../workspace/reader.js";
+import { createMemoryReader } from "../workspace/testing.js";
 import { MAX_SKILL_DRIVER_CALL_MS, MAX_SKILL_FILE_BYTES } from "./limits.js";
 import { listDriverSkills, resolveDriverSkills } from "./driver-client.js";
 
@@ -156,6 +157,8 @@ function aliasReader(): FileReader {
         size: 6,
       });
     },
+    readWithin: (path, _directories, options) =>
+      createMemoryReader({ [path]: "alias\n" }).readWithin(path, ["/"], options),
     realPath: (path) => Promise.resolve(path),
   };
 }

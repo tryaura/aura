@@ -11,6 +11,7 @@ import type {
 import { Buffer } from "node:buffer";
 
 import type { FileReadOptions, FileReader, PathContents } from "./reader.js";
+import { containsPath } from "./path-containment.js";
 
 /** Marks an entry of {@link createMemoryReader} as a directory rather than a file. */
 export const DIRECTORY = null;
@@ -64,6 +65,33 @@ export function createMemoryReader(
       }
 
       return Promise.resolve(toContents(path, entries, readOptions));
+    },
+    readWithin: (path, directories, readOptions) => {
+      reads.push(path);
+      const problem = options.problems?.[path];
+      const link = options.links?.[path];
+      // Absence settles before containment, as it does on a real filesystem: nothing stands at the
+      // path, so there is nothing that could have escaped and nothing to refuse. A link counts as
+      // something standing there, whether or not this filesystem also holds its target.
+      if (problem === undefined && link === undefined && entries[path] === undefined) {
+        return Promise.resolve({ contents: { exists: false, isDirectory: false }, kind: "read" });
+      }
+      const resolvedPath = link ?? path;
+      if (!directories.some((directory) => containsPath(directory, resolvedPath))) {
+        return Promise.resolve({
+          contents: { exists: true, isDirectory: false, problem: "outside-project" },
+          kind: "outside",
+          resolvedPath,
+        });
+      }
+      return Promise.resolve({
+        contents:
+          problem === undefined
+            ? toContents(path, entries, readOptions)
+            : { exists: true, isDirectory: false, problem },
+        kind: "read",
+        resolvedPath,
+      });
     },
     // A memory filesystem has no reason to fail resolution, so an unlinked path is its own target.
     realPath: (path) => Promise.resolve(options.links?.[path] ?? path),
