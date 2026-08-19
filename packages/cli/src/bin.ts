@@ -2,13 +2,14 @@
 import packageManifest from "../package.json" with { type: "json" };
 
 import { OFFICIAL_PLUGINS, OFFICIAL_REGISTRY_OPTIONS } from "./plugins.js";
-import { runCli } from "./run.js";
+import { runCli } from "./run.boundary.js";
 
 await runCli({
   branding: {
     command: "aura",
     description: "Agent Unification & Repair Assistant",
     displayName: "Aura",
+    docsUrl: "https://tryaura.sh/docs/introduction",
     version: packageManifest.version,
   },
   plugins: OFFICIAL_PLUGINS,

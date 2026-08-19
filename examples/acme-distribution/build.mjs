@@ -14,7 +14,7 @@ const result = spawnSync(
   "bun",
   [
     "build",
-    "src/main.ts",
+    "src/main.boundary.ts",
     ...(await contentEntrypoints(root)),
     "--compile",
     "--asset-naming=[dir]/[name].[ext]",

@@ -9,13 +9,15 @@ describe("displayPath", () => {
     const roots = { ...ROOTS, projectRoot: "/work/project" };
 
     expect(displayPath("/work/project/README.md", roots)).toBe("README.md");
-    expect(displayPath("/work/project/packages/cli/src/run.ts", roots)).toBe(
-      "packages/cli/src/run.ts",
+    expect(displayPath("/work/project/packages/cli/src/run.boundary.ts", roots)).toBe(
+      "packages/cli/src/run.boundary.ts",
     );
   });
 
   it("falls back to the invocation directory outside a repository", () => {
-    expect(displayPath("/work/project/packages/cli/src/run.ts", ROOTS)).toBe("src/run.ts");
+    expect(displayPath("/work/project/packages/cli/src/run.boundary.ts", ROOTS)).toBe(
+      "src/run.boundary.ts",
+    );
   });
 
   it("shortens home paths with a forward slash on every platform", () => {

@@ -131,6 +131,9 @@ describe("fix-plan execution", () => {
     expect(second.backupId).toBeUndefined();
     expect(second.preview.changedOperationCount).toBe(0);
     expect(second.preview.operations.every((operation) => operation.effect === "noop")).toBe(true);
+    expect(
+      second.preview.operations.every((operation) => operation.diff === "Already satisfied.\n"),
+    ).toBe(true);
     expect(afterSecond).toEqual(afterFirst);
   });
 

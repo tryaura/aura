@@ -4,10 +4,16 @@ import type { Check } from "@tryaura/aura-sdk";
 import { pluralize } from "@tryaura/core/pluralize";
 
 import { notFoundLine } from "./not-found-line.js";
-import { findingsHaveHiddenDetail, renderFindingSection } from "./render-human-findings.js";
+import {
+  FINDING_SECTIONS,
+  findingsExceedHumanLimits,
+  findingsHaveHiddenDetail,
+  humanFindings,
+  renderFindingSection,
+} from "./render-human-findings.js";
 import type { HumanCheckRenderOptions, HumanRenderContext } from "./render-human-types.js";
 import type { CheckReport } from "./report.js";
-import type { ReportApp } from "./report-shapes.js";
+import type { ReportApp, ReportFinding } from "./report-shapes.js";
 import { safe } from "./safe-text.js";
 import { createStyle, type Style } from "./style.js";
 import type { CliBranding } from "./types.js";
@@ -39,37 +45,27 @@ export function renderHumanCheckReport(
   renderRecommendation(report, branding, output, context);
 
   const checks = new Map(options.checks.map((check) => [check.id, check]));
-  renderFindingSection(
-    "Available fixes",
-    report.findings.filter((finding) => finding.fixability !== "manual"),
-    checks,
-    output,
-    context,
-  );
-  renderFindingSection(
-    "Manual attention",
-    report.findings.filter(
-      (finding) => finding.fixability === "manual" && finding.severity !== "info",
-    ),
-    checks,
-    output,
-    context,
-  );
-  renderFindingSection(
-    "Suggestions",
-    report.findings.filter(
-      (finding) => finding.fixability === "manual" && finding.severity === "info",
-    ),
-    checks,
-    output,
-    context,
-  );
+  const shown = humanFindings(report.findings);
+  for (const section of FINDING_SECTIONS) {
+    renderFindingSection(
+      section.title,
+      shown.filter(section.match),
+      report.findings.filter(section.match).length,
+      checks,
+      output,
+      context,
+    );
+  }
+  const hidden = report.findings.length - shown.length;
+  if (hidden > 0) {
+    output.write(`\n… and ${String(hidden)} more ${pluralize(hidden, "finding")} not shown\n`);
+  }
 
   if (options.verbose) {
     renderInventory(report, branding, output, context);
   }
-  renderMore(report, branding, output, context, checks);
-  output.write(`\n${verdictStyle(report, context.style)(resultLine(report))}\n`);
+  renderMore(report, branding, output, context, shown, checks);
+  output.write(`\n${resultLine(report, context.style)}\n`);
 }
 
 /**
@@ -83,16 +79,22 @@ function renderMore(
   branding: CliBranding,
   output: Writable,
   context: HumanRenderContext,
+  shown: readonly ReportFinding[],
   checks: ReadonlyMap<string, Check>,
 ): void {
   const lines: string[] = [];
   if (report.findings.length > 0) {
     lines.push(`Explain any check: ${branding.command} check --explain <id>`);
   }
-  if (!context.options.verbose && hasHiddenDetail(report, checks)) {
+  // Only what `--verbose` will actually reach counts: detail on a finding the ceiling already
+  // dropped is not something the flag can show, so offering it there would be a dead end.
+  if (!context.options.verbose && hasHiddenDetail(report, shown, checks)) {
     lines.push(
-      `Show every occurrence, location, passed check, and application: ${branding.command} check --verbose`,
+      `Expand occurrences and locations; add passed checks and applications: ${branding.command} check --verbose`,
     );
+  }
+  if (findingsExceedHumanLimits(report.findings)) {
+    lines.push(`Show every finding without human output limits: ${branding.command} check --json`);
   }
   if (branding.docsUrl !== undefined) {
     lines.push(`Docs: ${branding.docsUrl}`);
@@ -263,21 +265,27 @@ function humanVerdict(report: CheckReport): string {
   }
 }
 
-function resultLine(report: CheckReport): string {
-  return `Result: ${humanVerdict(report)} (exit ${String(report.summary.exitCode)})`;
+function resultLine(report: CheckReport, style: Style): string {
+  const decorateVerdict = verdictStyle(report, style);
+  const decorateExit = report.summary.exitCode === 0 ? style.green : decorateVerdict;
+  return `${decorateVerdict(`Result: ${humanVerdict(report)}`)} (${decorateExit(`exit ${String(report.summary.exitCode)}`)})`;
 }
 
 function verdictStyle(report: CheckReport, style: Style): (text: string) => string {
   if (report.status === "clean") {
     return style.green;
   }
-  return report.status === "warning" || report.status === "empty" ? style.yellow : style.red;
+  return report.status === "operational-error" ? style.red : style.yellow;
 }
 
-function hasHiddenDetail(report: CheckReport, checks: ReadonlyMap<string, Check>): boolean {
+function hasHiddenDetail(
+  report: CheckReport,
+  shown: readonly ReportFinding[],
+  checks: ReadonlyMap<string, Check>,
+): boolean {
   return (
     report.passedChecks.length > 0 ||
     report.apps.length > 0 ||
-    findingsHaveHiddenDetail(report.findings, checks)
+    findingsHaveHiddenDetail(shown, checks)
   );
 }

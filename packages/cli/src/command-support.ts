@@ -1,7 +1,7 @@
 import { delimiter, isAbsolute } from "node:path";
 import type { Readable, Writable } from "node:stream";
 
-// Deep import on purpose: see the note in run.ts.
+// Deep import on purpose: see the note in run.boundary.ts.
 import { Option } from "clipanion/lib/advanced/index.js";
 
 import type { TelemetryCommand } from "@tryaura/aura-sdk";
@@ -29,6 +29,12 @@ export function writeOptionRejection(
 ): CliExitCode {
   context.stderr.write(`${context.branding.displayName}: ${rejection}\n`);
   return 2;
+}
+
+/** Writes the one-line operational failure a run reports when it cannot finish its own work. */
+export function writeRunFailure(error: unknown, branding: CliBranding, stderr: Writable): void {
+  const message = error instanceof Error ? error.message : String(error);
+  stderr.write(`${branding.displayName}: ${message}\n`);
 }
 
 /**

@@ -1,6 +1,14 @@
 import { AuraManifestError } from "../manifest/error.js";
 import { assertAuraManifestWritable } from "../manifest/write.js";
-import { applyPreparedOperation, type UndoStep } from "./apply.js";
+import { errorMessage } from "../values.js";
+import {
+  appliedEffectCount,
+  rollbackAppliedSteps,
+  type RollbackOutcome,
+  type UndoStep,
+} from "./apply-rollback.js";
+import { applyPreparedOperation } from "./apply.js";
+import { NODE_MUTATION_FILE_SYSTEM, type MutationFileSystem } from "./filesystem.js";
 import { withJournalLock } from "./journal-lock.js";
 import type { JournalHandle } from "./journal-read.js";
 import { ensureBackupRoot, setJournalStatus, stageJournal } from "./journal.js";
@@ -37,12 +45,6 @@ export interface PreparedFixPlan {
   readonly [PREPARED_STATE]: PreparedPlanState;
   /** What applying the plan would do. */
   readonly preview: FixPlanPreview;
-}
-
-interface RollbackOutcome {
-  readonly failures: readonly string[];
-  /** Operations still applied once rollback stopped. */
-  readonly remaining: number;
 }
 
 /** Validates and renders a plan without mutating the filesystem. */
@@ -84,10 +86,14 @@ export function preparedPreviewIndexes(prepared: PreparedFixPlan): readonly (num
  * Refuses a plan with any blocked operation rather than applying it in part. If an operation fails
  * partway through, the operations already applied are rolled back and the failure is reported as a
  * {@link FixPlanApplyError} describing what is on disk.
+ *
+ * `filesystem` is the mutation seam, and exists so a test can fail a chosen call and assert on what
+ * this function does about it. Production callers leave it alone.
  */
 export async function applyFixPlan(
   prepared: PreparedFixPlan,
   options: FixPlanApplyOptions,
+  filesystem: MutationFileSystem = NODE_MUTATION_FILE_SYSTEM,
 ): Promise<FixPlanExecutionResult> {
   const plan = prepared[PREPARED_STATE];
 
@@ -98,7 +104,7 @@ export async function applyFixPlan(
     throw blockedPlanError(prepared.preview);
   }
 
-  return applyOperations(plan, prepared.preview, options);
+  return applyOperations(plan, prepared.preview, options, filesystem);
 }
 
 /** Restates a manifest problem as the fix-plan failure a caller is already catching. */
@@ -120,36 +126,42 @@ function assertManifestWritable(plan: PreparedPlanState): void {
 /** Validates, previews, and optionally applies a plan through the kernel's single write path. */
 export async function executeFixPlan(
   options: FixPlanExecutionOptions,
+  filesystem: MutationFileSystem = NODE_MUTATION_FILE_SYSTEM,
 ): Promise<FixPlanExecutionResult> {
   const prepared = await prepareFixPlan(options);
   if (options.dryRun === true) {
     return Object.freeze({ appliedOperationCount: 0, dryRun: true, preview: prepared.preview });
   }
 
-  return applyFixPlan(prepared, options);
+  return applyFixPlan(prepared, options, filesystem);
 }
 
 async function applyOperations(
   plan: PreparedPlanState,
   preview: FixPlanPreview,
   options: FixPlanApplyOptions,
+  filesystem: MutationFileSystem,
 ): Promise<FixPlanExecutionResult> {
   const operations = plan.operations.filter(isApplicable);
   if (operations.length === 0) {
     return Object.freeze({ appliedOperationCount: 0, dryRun: false, preview });
   }
 
-  const root = await ensureBackupRoot(plan.model.homeDir);
-  const targetRoot = await ensureBackupRoot(options.stateHomeDir ?? plan.model.homeDir);
   // Target locks use a machine-wide namespace, while the journal lock belongs to this plan's home.
-  // Taking both prevents a run with a different --home from racing the same filesystem paths.
+  // Taking both prevents a run with a different --home from racing the same filesystem paths. The
+  // two roots are the same directory unless a caller separated them, so it is prepared once.
+  const root = await ensureBackupRoot(plan.model.homeDir);
+  const targetRoot =
+    options.stateHomeDir === undefined || options.stateHomeDir === plan.model.homeDir
+      ? root
+      : await ensureBackupRoot(options.stateHomeDir);
   const targets = targetPaths(
     operations.flatMap((operation) => operation.preview.paths),
     plan.policy.caseInsensitive,
   );
   return withJournalLock(root, options.now, async () =>
     withTargetLocks(targets, targetRoot, options.now, async () =>
-      applyJournaled(plan, operations, preview, options.now),
+      applyJournaled(plan, operations, preview, options.now, filesystem),
     ),
   );
 }
@@ -159,21 +171,23 @@ async function applyJournaled(
   operations: readonly ApplicableOperation[],
   preview: FixPlanPreview,
   now: () => Date,
+  filesystem: MutationFileSystem,
 ): Promise<FixPlanExecutionResult> {
   const applied: UndoStep[] = [];
   const journal = await stageJournal(plan, operations, now);
 
   for (const operation of operations) {
     try {
-      applied.push(await applyPreparedOperation(operation, plan));
+      await applyPreparedOperation(operation, plan, (step) => applied.push(step), filesystem);
     } catch (error) {
-      const outcome = await rollback(applied);
+      const attempted = appliedEffectCount(applied);
+      const outcome = await rollbackAppliedSteps(applied);
       if (outcome.remaining === 0) {
         await markAborted(journal);
       }
       throw new FixPlanApplyError(
         asFixPlanError(error, operation),
-        rollbackStatus(applied.length, outcome),
+        rollbackStatus(attempted, outcome),
         outcome.remaining,
         outcome.failures,
       );
@@ -183,7 +197,8 @@ async function applyJournaled(
   try {
     await setJournalStatus(journal, "applied");
   } catch (error) {
-    const outcome = await rollback(applied);
+    const attempted = appliedEffectCount(applied);
+    const outcome = await rollbackAppliedSteps(applied);
     if (outcome.remaining === 0) {
       await markAborted(journal);
     }
@@ -192,14 +207,14 @@ async function applyJournaled(
         ? error
         : new FixPlanError(
             "backup-error",
-            `could not finalize fix-plan backup: ${messageOf(error)}`,
+            `could not finalize fix-plan backup: ${errorMessage(error)}`,
             {
               cause: error,
             },
           );
     throw new FixPlanApplyError(
       failure,
-      rollbackStatus(applied.length, outcome),
+      rollbackStatus(attempted, outcome),
       outcome.remaining,
       outcome.failures,
     );
@@ -221,32 +236,6 @@ async function markAborted(journal: JournalHandle): Promise<void> {
   }
 }
 
-/**
- * Unwinds applied operations in reverse.
- *
- * Stops at the first step it cannot undo. Continuing past one would unwind operations whose effects
- * the failed step still depends on, turning a recoverable partial application into a worse one.
- */
-async function rollback(applied: readonly UndoStep[]): Promise<RollbackOutcome> {
-  for (let position = applied.length - 1; position >= 0; position -= 1) {
-    const step = applied[position];
-    if (step === undefined) {
-      continue;
-    }
-
-    try {
-      await step.undo();
-    } catch (error) {
-      return {
-        failures: Object.freeze([`operation ${step.index}: ${messageOf(error)}`]),
-        remaining: position + 1,
-      };
-    }
-  }
-
-  return { failures: Object.freeze([]), remaining: 0 };
-}
-
 function rollbackStatus(attempted: number, outcome: RollbackOutcome): FixPlanRollbackStatus {
   if (attempted === 0) {
     return "not-required";
@@ -262,11 +251,7 @@ function asFixPlanError(error: unknown, prepared: ApplicableOperation): FixPlanE
   return operationError(
     "filesystem-error",
     prepared.preview.index,
-    `could not apply ${prepared.type} operation: ${messageOf(error)}`,
+    `could not apply ${prepared.type} operation: ${errorMessage(error)}`,
     { cause: error, path: prepared.preview.paths[0] },
   );
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

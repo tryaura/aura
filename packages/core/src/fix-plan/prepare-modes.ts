@@ -1,9 +1,12 @@
+import type { Buffer } from "node:buffer";
+
 import type { FileMode, WriteFileOperation } from "@tryaura/aura-sdk";
 
 import { AURA_MANIFEST_FILE_MODE, resolveAuraManifestPath } from "../manifest/protocol.js";
 import { comparablePath } from "./claims.js";
 import { DEFAULT_FILE_MODE } from "./limits.js";
 import type { PreparedWriteOperation } from "./prepared.js";
+import { isCapturedFile } from "./state.js";
 
 /** Resolves the mode core enforces on a path, or undefined when the path is not core's to hold. */
 export type EnforcedModes = (path: string) => FileMode | undefined;
@@ -39,4 +42,12 @@ export function resolveWriteMode(
   }
 
   return before.kind === "file" ? before.mode : (operation.mode ?? DEFAULT_FILE_MODE);
+}
+
+/** Whether a prepared write must replace bytes rather than only correct an enforced mode. */
+export function writeContentsChanged(
+  before: PreparedWriteOperation["before"],
+  content: Buffer,
+): boolean {
+  return !isCapturedFile(before) || !before.content.equals(content);
 }

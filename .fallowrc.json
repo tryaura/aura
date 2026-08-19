@@ -10,7 +10,8 @@
     "packages/*/tsdown*.config.ts",
     "examples/acme-distribution/build.mjs",
     "examples/acme-distribution/smoke.mjs",
-    "examples/acme-distribution/src/main.ts",
+    "examples/acme-distribution/src/main.boundary.ts",
+    "scripts/toolchain-docs.test.mjs",
     "scripts/verify-workflows.test.mjs"
   ],
   "ignoreDependencies": [

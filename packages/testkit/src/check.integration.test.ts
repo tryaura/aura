@@ -43,7 +43,7 @@ describe("seeded check integration", () => {
         .toMatchInlineSnapshot(`
           {
             "diffs": [],
-            "exitCode": 1,
+            "exitCode": 0,
             "findings": [
               {
                 "checkId": "fixture/CONFIG",
@@ -70,7 +70,7 @@ describe("seeded check integration", () => {
         },
         diagnostics: 0,
         errors: 0,
-        exitCode: 1,
+        exitCode: 0,
         informational: 0,
         passed: 0,
         warnings: 1,

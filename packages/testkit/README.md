@@ -114,7 +114,8 @@ await using cursorSeed = await createCursorSeed({
   needs to prove a check ran: a check that threw reports no findings and is explained only by
   `report.diagnostics`.
 - `findings` — shorthand for `report.findings`.
-- `exitCode` — `0`, `1`, or `2`.
+- `exitCode` — `0` for a completed check, `2` for usage/state conflicts, or `3` for operational
+  failures. Inspect report status or severity counts to assert finding health.
 - `diffs` — every change under the fake HOME and workspace, as unified patches whose first line is
   the entry's permission bits. Permission-only changes, empty directories, and binary files are all
   visible. The seeded `PATH` directory is not diffed; use `seed.invocations` for what a shim did.

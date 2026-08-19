@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { captureFilesystem, diffFilesystem } from "./filesystem.js";
-import { createSeedBuilder } from "./seed.js";
+import { createSeedBuilder } from "./seed.boundary.js";
 
 const IDENTITY = (value: string): string => value;
 

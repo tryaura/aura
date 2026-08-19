@@ -115,19 +115,21 @@ The bundled checks cover:
 
 ### Check flags
 
-| Flag             | Purpose                                                                                          |
-| ---------------- | ------------------------------------------------------------------------------------------------ |
-| `--only`         | Select a check ID, category, or canonical application ID. Repeat to union selectors.             |
-| `--json`         | Emit JSON on a stream separate from prompts and progress. Also applies to `--explain`.           |
-| `--json-version` | Select the JSON contract version; version `1` is supported and remains the default.              |
-| `--detail`       | Include diagnostic detail and fix diffs. May contain file contents.                              |
-| `--explain`      | Explain a check by ID without scanning adapters or repository state.                             |
-| `--fix`          | Preview automatic fixes and apply them after one confirmation.                                   |
-| `--interactive`  | With `--fix`, choose guided remediations before the combined preview. Requires terminal prompts. |
-| `--dry-run`      | With `--fix`, prepare and preview the same plan without confirming or writing.                   |
-| `--yes`          | With `--fix`, apply automatic fixes without confirmation.                                        |
-| `--home`         | Override the home directory. Must be absolute.                                                   |
-| `--path`         | Override the executable search path. Must list absolute directories.                             |
+| Flag             | Purpose                                                                                            |
+| ---------------- | -------------------------------------------------------------------------------------------------- |
+| `--only`         | Select a check ID, category, or canonical application ID. Repeat to union selectors.               |
+| `--json`         | Emit untruncated JSON on a stream separate from prompts and progress. Also applies to `--explain`. |
+| `--json-version` | Select the JSON contract version; version `1` is supported and remains the default.                |
+| `--detail`       | Include diagnostic detail and fix diffs. May contain file contents.                                |
+| `--verbose`      | Expand human output within its 100-finding and 100-location safety ceilings.                       |
+| `--no-color`     | Disable terminal colors. This global flag is accepted before or after a command.                   |
+| `--explain`      | Explain a check by ID without scanning adapters or repository state.                               |
+| `--fix`          | Preview automatic fixes and apply them after one confirmation.                                     |
+| `--interactive`  | With `--fix`, choose guided remediations before the combined preview. Requires terminal prompts.   |
+| `--dry-run`      | With `--fix`, prepare and preview the same plan without confirming or writing.                     |
+| `--yes`          | With `--fix`, apply automatic fixes without confirmation.                                          |
+| `--home`         | Override the home directory. Must be absolute.                                                     |
+| `--path`         | Override the executable search path. Must list absolute directories.                               |
 
 The versioned JSON contract and published schema are documented in the
 [check JSON reference](https://tryaura.sh/docs/reference/check-json/).
@@ -137,14 +139,15 @@ IDs. Categories are the local ID prefix, such as `ENV` in `ENV-003`. `claude` an
 are aliases for the canonical `claude-code` adapter ID. Repeated selectors are ORed within the
 check and application dimensions, then those dimensions are intersected.
 
-Check exit codes are stable enough to gate CI on:
+Check exit codes describe whether the command completed, independently of finding severity:
 
-| Code | Meaning                                                                                       |
-| ---- | --------------------------------------------------------------------------------------------- |
-| `0`  | Clean, or informational findings only.                                                        |
-| `1`  | Warning findings.                                                                             |
-| `2`  | Error findings, invalid usage or selectors, filesystem conflicts, or an empty check registry. |
-| `3`  | Adapter, check, plugin, registry, command, or fix preparation/application failures.           |
+| Code | Meaning                                                                                          |
+| ---- | ------------------------------------------------------------------------------------------------ |
+| `0`  | The check completed and reported its findings, including warning or error findings.              |
+| `2`  | Invalid usage or selectors, filesystem or fix conflicts, unavailable confirmation, or no checks. |
+| `3`  | Adapter, check, plugin, registry, command, or fix preparation/application failures.              |
+
+Use the report status or severity counts, rather than the process exit code, to gate CI on findings.
 
 ## How a scan works
 
