@@ -54,6 +54,9 @@ export async function listFixPlanBackups(
 export async function undoFixPlan(options: FixPlanUndoOptions): Promise<FixPlanUndoResult> {
   const root = await openBackupRoot(options.model.homeDir);
   if (root === undefined) {
+    if (options.backupId !== undefined) {
+      throw new FixPlanError("backup-error", `no undo journal entry named ${options.backupId}`);
+    }
     return Object.freeze({ status: "nothing-to-undo" });
   }
 

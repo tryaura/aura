@@ -1,5 +1,5 @@
 import type { ShimResponse, TestSeed } from "../types.js";
-import { createSeedBuilder } from "../seed.js";
+import { createSeedBuilder } from "../seed.boundary.js";
 
 /** One version inside the adapter's supported range and one past its ceiling. */
 export type ClaudeCodeFixtureVersion = "2.1.233" | "3.0.0";

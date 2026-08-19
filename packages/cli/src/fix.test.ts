@@ -102,8 +102,33 @@ describe("runFixes guided remediation", () => {
     );
 
     expect(outcome.fixes).toEqual([]);
+    // Not "no executable fixes are available": the user just chose one, and it is made of steps.
+    expect(output.text).toContain("Nothing to write");
     expect(output.text).toContain("Steps to take yourself:");
     expect(output.text).toContain("Edit the application setting.");
+  });
+
+  it("does not ask about a finding that downgraded itself to manual", async () => {
+    // The report renders these under manual attention, so a wizard question about one offers
+    // exactly what the report said Aura cannot do — and leaves the finding for the next run.
+    const guided = guidedCheck({
+      guidedFixes: () => [
+        { id: "manual", label: "Do it myself", plan: writePlan("guided.md", "guided") },
+      ],
+    });
+    const wizard = scriptedWizard([]);
+
+    const outcome = await runFixes(
+      request({
+        checks: [guided],
+        findings: [{ ...finding(guided, "guided"), fixability: "manual" }],
+        interactive: true,
+        wizard,
+      }),
+    );
+
+    expect(wizard.questions).toEqual([]);
+    expect(outcome.fixes).toEqual([]);
   });
 
   it("supports Skip, abort, and the legacy suggested resolution", async () => {

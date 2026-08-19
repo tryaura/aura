@@ -2,15 +2,14 @@ import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import process from "node:process";
-import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 import { createSeedBuilder, runBinaryCheck } from "@tryaura/aura-testkit";
 import { describe, expect, it } from "vitest";
 
 import packageManifest from "../package.json" with { type: "json" };
+import { BINARY_PATH, runCompiled, type BinaryRun, type SeedPaths } from "./binary-test-support.js";
 
-const BINARY_PATH = fileURLToPath(new URL("../dist/aura", import.meta.url));
 const BUN_VERSION_FILE = new URL("../../../.bun-version", import.meta.url);
 const execFileAsync = promisify(execFile);
 
@@ -156,13 +155,13 @@ describe("compiled Aura distribution", () => {
         },
         diagnostics: 0,
         errors: 1,
-        exitCode: 2,
+        exitCode: 0,
         informational: 0,
         passed: 23,
         warnings: 0,
       },
     });
-    expect(result.exitCode).toBe(2);
+    expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe("");
     expect(result.diffs).toEqual([]);
   });
@@ -194,7 +193,7 @@ describe("compiled Aura distribution", () => {
       ["ENV-004", "claude-permission-mode:plan"],
       ["ENV-004", "codex-project-trust:unknown"],
     ]);
-    expect(result.exitCode).toBe(2);
+    expect(result.exitCode).toBe(0);
     await expect(seed.invocations("claude")).resolves.toEqual([["--version"], ["auth", "status"]]);
     await expect(seed.invocations("codex")).resolves.toEqual([["--version"], ["login", "status"]]);
   });
@@ -256,43 +255,7 @@ describe("compiled Aura distribution", () => {
   });
 });
 
-/** Just enough of a built seed to run the binary inside it. */
-interface SeedPaths {
-  readonly homeDir: string;
-  readonly pathDir: string;
-  readonly workspaceDir: string;
-}
-
-interface BinaryRun {
-  readonly exitCode: number;
-  readonly stderr: string;
-  readonly stdout: string;
-}
-
 /** Runs `setup --yes`, keeping the output of a run that ends on a blocked plan rather than throwing. */
 async function runSetupYes(seed: SeedPaths): Promise<BinaryRun> {
-  try {
-    const result = await execFileAsync(BINARY_PATH, ["setup", "--yes"], {
-      cwd: seed.workspaceDir,
-      encoding: "utf8",
-      env: { HOME: seed.homeDir, NO_COLOR: "1", PATH: seed.pathDir },
-    });
-    return { exitCode: 0, stderr: result.stderr, stdout: result.stdout };
-  } catch (error) {
-    return failedRun(error);
-  }
-}
-
-/** `execFile` rejects a non-zero exit with the completed run's output attached to the error. */
-function failedRun(error: unknown): BinaryRun {
-  const run: Readonly<Record<string, unknown>> = error instanceof Error ? { ...error } : {};
-  return {
-    exitCode: typeof run["code"] === "number" ? run["code"] : 1,
-    stderr: outputText(run["stderr"]),
-    stdout: outputText(run["stdout"]),
-  };
-}
-
-function outputText(value: unknown): string {
-  return typeof value === "string" ? value : "";
+  return runCompiled(seed, ["setup", "--yes"], { NO_COLOR: "1" });
 }

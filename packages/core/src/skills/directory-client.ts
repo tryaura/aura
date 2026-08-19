@@ -7,10 +7,10 @@ import type {
 } from "@tryaura/aura-sdk";
 
 import type { ScanDiagnostic } from "../workspace/diagnostics.js";
-import { isAllowedHttpUrl } from "../http.js";
+import { isAllowedHttpUrl } from "../http.boundary.js";
 import { createLimiter } from "../workspace/concurrency.js";
 import { failedResolution, partitionResolutions } from "../workspace/resolution.js";
-import { treeHash } from "../workspace/skills.js";
+import { treeHash } from "../workspace/skill-tree-walk.js";
 import { listAgenticSkills, resolveAgenticSkills } from "./agenticskills-client.js";
 import { parseDirectoryIndex } from "./index-schema.js";
 import {

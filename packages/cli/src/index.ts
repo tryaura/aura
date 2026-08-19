@@ -1,4 +1,4 @@
-export { runCli } from "./run.js";
+export { runCli } from "./run.boundary.js";
 export { createHttpTelemetrySink } from "./http-telemetry-sink.js";
 export type {
   HttpTelemetryDeliveryFailure,

@@ -259,9 +259,16 @@ Write the scope, not the outcome: Aura adds the outcome itself, and only for an 
 `detect` returned `installed: false`. One that threw is reported with no scope at all, beside a
 diagnostic naming the failure, because it never established where the application was not.
 
-`SkillSourceDriver.resolve` takes every requested id at once and returns a `ReadonlyMap`, so resolving a
-listing costs one round trip instead of one per skill. Ids that cannot be resolved are omitted
-rather than throwing.
+`SkillSourceDriver` is lazy: Aura calls it only after interactive setup reaches Skills. `list` runs
+once per setup run, and `resolve` receives every selected id for that driver at once. Each listing
+and pack supplies a credential-free `originUrl`; each resolved `SkillPack` points at an absolute
+local `file:` directory the driver materialized. Aura reads that directory through its bounded
+reader, validates portable paths, and requires a root `SKILL.md`. Omit ids that cannot be resolved.
+Do not put command output, environment values, credentials, or raw errors in returned metadata.
+
+`AuraPlugin.disabledSkillSources` is an exact denylist of `plugin:`, `directory:`, and `driver:`
+source IDs. Present sources are removed from the distribution; absent IDs are ignored so one plugin
+can be composed with optional defaults.
 
 Fixes return data only. `FixPlan.operations` is a closed union of write, remove, move, and symlink
 operations. Aura core owns diff previews, dry runs, backups, execution, and undo.

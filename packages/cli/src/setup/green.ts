@@ -33,6 +33,7 @@ export function endOnGreen(
     checkDiagnostics: run.diagnostics,
     checks,
     findings: run.findings,
+    findingsAffectExitCode: true,
     scanDiagnostics: scan.diagnostics,
     skipped: scan.skipped,
     withDetail: request.withDetail,

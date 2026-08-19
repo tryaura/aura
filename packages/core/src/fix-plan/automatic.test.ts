@@ -51,15 +51,19 @@ describe("prepareAutomaticFixes", () => {
       operations: [],
       summary: "Nothing automatic.",
     }));
+    // Neither an operation nor a step: a check that reported a finding and then asked for nothing
+    // about it. Kept as a candidate it becomes a fix the report offers and no run ever performs.
+    const inert = createCheck("alpha/INERT", () => ({ operations: [], summary: "Converged." }));
 
     const fixes = await prepareAutomaticFixes({
-      checks: [guided],
-      findings: runChecks([guided], fixture.model).findings,
+      checks: [guided, inert],
+      findings: runChecks([guided, inert], fixture.model).findings,
       model: fixture.model,
     });
 
     expect(fixes.prepared).toBeUndefined();
     expect(fixes.manualSteps).toEqual(["Restart the application."]);
+    expect(fixes.candidates.map((candidate) => candidate.checkId)).toEqual(["alpha/GUIDED"]);
   });
 
   it("leaves guided remediation for the interactive client", async () => {
@@ -202,9 +206,9 @@ describe("prepareAutomaticFixes", () => {
 
   it("refuses to coalesce same-path writes whose spellings differ only by case", async () => {
     const fixture = await createFixture();
-    // `detectCaseInsensitive` answers "insensitive" whenever it cannot decide, so a case-sensitive
-    // volume can still reach this policy. Coalescing under it would merge two genuinely distinct
-    // files into one write and never write the second spelling at all.
+    // `PathPolicy.caseInsensitive` widens whenever `detectCaseSensitivity` cannot decide, so a
+    // case-sensitive volume can still reach this policy. Coalescing under it would merge two
+    // genuinely distinct files into one write and never write the second spelling at all.
     const policy = { ...(await createPathPolicy(fixture.model, undefined)), caseInsensitive: true };
     const plan: FixPlan = {
       operations: [

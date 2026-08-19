@@ -1,6 +1,6 @@
 import type { HttpPostRequest, HttpPostResult } from "@tryaura/aura-sdk";
 
-import { clampHttpTimeout, failureReason, vetHttpUrl } from "./http.js";
+import { clampHttpTimeout, failureReason, vetHttpUrl } from "./http.boundary.js";
 
 /**
  * Creates a bounded, TLS-only JSON POST that never rejects.

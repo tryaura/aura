@@ -116,9 +116,10 @@ The current distribution includes these environment, instruction, and managed-co
 | `MGD-002` | Newer unpinned managed snippet and skill revisions are available. |
 | `MGD-003` | A detected application has not been managed or ignored.           |
 
-MGD-002 and MGD-003 findings are informational. They remain green and always preserve exit status
-`0` when no warning or error finding is present. Use `aura check --fix --interactive` to review an
-MGD-002 update or removal plan; MGD-003 points to `aura setup` and never starts a nested command.
+MGD-002 and MGD-003 findings are informational and remain green. Every completed check exits with
+exit status `0`, including checks with warning or error findings; use report status or severity
+counts to gate automation on findings. Use `aura check --fix --interactive` to review an MGD-002
+update or removal plan; MGD-003 points to `aura setup` and never starts a nested command.
 
 To read why a check exists without scanning applications or repository state, use:
 

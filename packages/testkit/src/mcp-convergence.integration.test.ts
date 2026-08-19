@@ -12,7 +12,7 @@ import { codexShimResponses } from "./fixtures/codex.js";
 import { cursorShimResponses } from "./fixtures/cursor.js";
 import { guidedCheck, officialScan, type ScannableSeed } from "./official-scan.js";
 import { runCheck } from "./runner.js";
-import { createSeedBuilder } from "./seed.js";
+import { createSeedBuilder } from "./seed.boundary.js";
 
 const DISTRO = {
   branding: { command: "aura", displayName: "Aura" },

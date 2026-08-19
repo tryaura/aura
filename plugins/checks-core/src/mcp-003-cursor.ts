@@ -3,11 +3,9 @@ import {
   readCursorMcpRuntimeStates,
   readCursorMcpStateUnavailable,
 } from "@tryaura/adapter-cursor";
-import type { AppModel, DetectedFinding, Finding, GuidedFixChoice } from "@tryaura/aura-sdk";
+import type { AppModel, DetectedFinding } from "@tryaura/aura-sdk";
 
 import { CURSOR_STATE_ACTIONS, type ActionableCursorState } from "./mcp-003-cursor-actions.js";
-
-const CHECK_ID = "MCP-003";
 
 /**
  * Cursor runtime-state findings that are not superseded by a concrete transport failure.
@@ -47,33 +45,6 @@ export function cursorMcpStateFindings(
   });
 }
 
-/** Zero-operation guided action for one Cursor-owned runtime-state finding. */
-export function cursorMcpStateChoice(finding: Finding): GuidedFixChoice | undefined {
-  if (
-    finding.checkId !== CHECK_ID ||
-    finding.metadata?.["appId"] !== CURSOR_ADAPTER_ID ||
-    finding.metadata?.["kind"] !== "cursor-state"
-  ) {
-    return undefined;
-  }
-  const name = finding.metadata["serverName"];
-  const state = finding.metadata["state"];
-  if (typeof name !== "string" || !isActionableState(state)) {
-    return undefined;
-  }
-
-  const action = CURSOR_STATE_ACTIONS[state];
-  return {
-    id: action.choiceId,
-    label: action.choiceLabel,
-    plan: {
-      manualSteps: [action.guidance(name), "Run `aura check` again."],
-      operations: [],
-      summary: action.summary(name),
-    },
-  };
-}
-
 /** Stable identity for the name-level state Cursor reports. */
 export function mcpServerNameKey(appId: string, name: string): string {
   return `${appId}\0${name}`;
@@ -87,6 +58,10 @@ function cursorStateFinding(
   const action = CURSOR_STATE_ACTIONS[state];
   return {
     details: action.guidance(name),
+    // Approval and enablement live in Cursor's own settings, which Aura never writes. Offering
+    // this as a fix asked a question whose only answer was a sentence the finding already carries,
+    // and the run then reported the same state again, unchanged.
+    fixability: "manual",
     id: `${app.adapterId}:${name}:cursor-${state}`,
     message: action.message(name, app.displayName),
     metadata: {
@@ -113,6 +88,7 @@ function cursorStateFinding(
 function unknownStateFinding(app: AppModel, name: string): DetectedFinding {
   return {
     details: `Run \`cursor-agent mcp list\` to see what ${app.displayName} reports for server ${name}, and check whether server ${name} is approved and enabled in its MCP settings.`,
+    fixability: "manual",
     id: `${app.adapterId}:${name}:cursor-unknown`,
     message: `MCP server ${name}'s state in ${app.displayName} could not be understood.`,
     metadata: {
@@ -129,6 +105,7 @@ function unavailableFinding(app: AppModel, reason: "timeout" | "failed"): Detect
   const cause = reason === "timeout" ? "did not finish in time" : "exited unsuccessfully";
   return {
     details: `Run \`cursor-agent mcp list\` to see why, then re-run \`aura check\`. Approval and enablement of ${app.displayName}'s MCP servers were not checked; every other MCP check still ran.`,
+    fixability: "manual",
     id: `${app.adapterId}:cursor-state-unavailable`,
     message: `${app.displayName}'s MCP server states were not read because \`cursor-agent mcp list\` ${cause}.`,
     metadata: {
@@ -138,8 +115,4 @@ function unavailableFinding(app: AppModel, reason: "timeout" | "failed"): Detect
     },
     severity: "info",
   };
-}
-
-function isActionableState(value: unknown): value is ActionableCursorState {
-  return value === "needs-approval" || value === "disabled" || value === "error";
 }

@@ -2,7 +2,7 @@ import { createServer, type Server } from "node:http";
 
 import { describe, expect, it } from "vitest";
 
-import { createHttpPost } from "./http-post.js";
+import { createHttpPost } from "./http-post.boundary.js";
 
 const httpPost = createHttpPost();
 

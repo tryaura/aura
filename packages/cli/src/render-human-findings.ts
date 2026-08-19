@@ -13,12 +13,37 @@ import type { Style } from "./style.js";
 /**
  * What a concise group prints before it summarizes the rest.
  *
- * A group exists to state one remediation once, not to hide which files need it: the members are
- * always named, because a count alone cannot tell a user which credential leaked or which file to
- * open. Only the tail beyond these caps waits for `--verbose`.
+ * A group exists to state one remediation once, not to hide which files need it: members selected
+ * within the report's human-output budget are named because a count alone cannot tell a user which
+ * credential leaked or which file to open. Only the concise tail waits for `--verbose`.
  */
 const CONCISE_OCCURRENCES = 3;
 const CONCISE_LOCATIONS = 2;
+const MAX_HUMAN_FINDINGS = 100;
+const MAX_HUMAN_LOCATIONS = 100;
+/** Highest severity first; findings of equal severity keep the order their plugins reported. */
+const SEVERITY_ORDER = ["error", "warn", "info"] as const satisfies readonly Severity[];
+
+/**
+ * The remediation sections, in the order a reader should act on them.
+ *
+ * The three matchers are exhaustive over any finding, so no severity or fixability can fall
+ * between them and go unreported.
+ */
+export const FINDING_SECTIONS: readonly {
+  readonly match: (finding: ReportFinding) => boolean;
+  readonly title: string;
+}[] = [
+  { match: (finding) => finding.fixability !== "manual", title: "Available fixes" },
+  {
+    match: (finding) => finding.fixability === "manual" && finding.severity !== "info",
+    title: "Manual attention",
+  },
+  {
+    match: (finding) => finding.fixability === "manual" && finding.severity === "info",
+    title: "Suggestions",
+  },
+];
 
 interface FindingGroup {
   readonly description?: string | undefined;
@@ -26,9 +51,17 @@ interface FindingGroup {
   readonly title?: string | undefined;
 }
 
+/**
+ * One remediation section, counting both what it shows and what the run actually found.
+ *
+ * The two numbers only diverge once the ceiling truncates, and there they have to appear together:
+ * the recommended next step speaks for every finding in the run, so a heading that quoted only the
+ * shown count would read as a contradiction of the command directly above it.
+ */
 export function renderFindingSection(
   title: string,
   findings: readonly ReportFinding[],
+  total: number,
   checks: ReadonlyMap<string, Check>,
   output: Writable,
   context: HumanRenderContext,
@@ -36,7 +69,9 @@ export function renderFindingSection(
   if (findings.length === 0) {
     return;
   }
-  output.write(`\n${title} (${String(findings.length)})\n`);
+  const count =
+    total > findings.length ? `${String(findings.length)} of ${String(total)}` : String(total);
+  output.write(`\n${title} (${count})\n`);
   for (const group of findingGroups(findings, checks)) {
     renderFindingGroup(group, output, context);
   }
@@ -55,13 +90,36 @@ export function findingsHaveHiddenDetail(
   );
 }
 
+/**
+ * The findings human output renders: severity-first, bounded by the report's own safety ceiling.
+ *
+ * Bucketing rather than sorting keeps the selection linear in the number of findings, which is the
+ * case the ceiling exists for — a report large enough to need truncating is the last one that
+ * should pay to order the part nobody will read.
+ */
+export function humanFindings(findings: readonly ReportFinding[]): readonly ReportFinding[] {
+  return findingsBySeverity(findings).slice(0, MAX_HUMAN_FINDINGS);
+}
+
+/** Whether the ceilings dropped detail that no flag on the human report can bring back. */
+export function findingsExceedHumanLimits(findings: readonly ReportFinding[]): boolean {
+  return (
+    findings.length > MAX_HUMAN_FINDINGS ||
+    findings.some((finding) => (finding.locations?.length ?? 0) > MAX_HUMAN_LOCATIONS)
+  );
+}
+
+function findingsBySeverity(findings: readonly ReportFinding[]): readonly ReportFinding[] {
+  return SEVERITY_ORDER.flatMap((severity) =>
+    findings.filter((finding) => finding.severity === severity),
+  );
+}
+
 function findingGroups(
   findings: readonly ReportFinding[],
   checks: ReadonlyMap<string, Check>,
 ): readonly FindingGroup[] {
-  const ordered = [...findings].sort(
-    (left, right) => severityRank(left.severity) - severityRank(right.severity),
-  );
+  const ordered = findingsBySeverity(findings);
   const groups = new Map<string, FindingGroup>();
   for (const [index, finding] of ordered.entries()) {
     const presentation = checks.get(finding.checkId)?.findingGroup;
@@ -147,7 +205,8 @@ function renderFindingBody(
     output.write(`${indent}${safeFindingText(finding.details)}\n`);
   }
   const locations = finding.locations ?? [];
-  const shown = context.options.verbose ? locations : locations.slice(0, CONCISE_LOCATIONS);
+  const limit = context.options.verbose ? MAX_HUMAN_LOCATIONS : CONCISE_LOCATIONS;
+  const shown = locations.slice(0, limit);
   for (const location of shown) {
     output.write(`${indent}${locationText(location, context.options)}\n`);
   }

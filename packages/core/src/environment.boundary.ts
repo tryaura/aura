@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import type { Environment, EnvironmentPlatform } from "@tryaura/aura-sdk";
 
 import { createExec } from "./exec.js";
-import { createHttpGet } from "./http.js";
+import { createHttpGet } from "./http.boundary.js";
 
 type EnvironmentVariables = Readonly<Record<string, string | undefined>>;
 

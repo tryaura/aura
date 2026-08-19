@@ -1,5 +1,5 @@
-export { createEnvironment } from "./environment.js";
-export type { EnvironmentBootOptions } from "./environment.js";
+export { createEnvironment } from "./environment.boundary.js";
+export type { EnvironmentBootOptions } from "./environment.boundary.js";
 export { createLimiter } from "./workspace/concurrency.js";
 export { canonicalAppId } from "./app-id.js";
 export { runChecks } from "./checks.js";
@@ -130,11 +130,12 @@ export {
 } from "./workspace/mcp-secret-plan.js";
 export type { ScanDiagnostic, ScanPhase } from "./workspace/diagnostics.js";
 export { createFileReader, MAX_FILE_BYTES } from "./workspace/reader.js";
-export { createHttpGet, vetHttpUrl } from "./http.js";
-export { createHttpPost } from "./http-post.js";
+export { createHttpGet, vetHttpUrl } from "./http.boundary.js";
+export { createHttpPost } from "./http-post.boundary.js";
 export { listDirectorySkills, resolveDirectorySkills } from "./skills/directory-client.js";
-export type { DirectorySkillListingResult } from "./skills/directory-client.js";
 export { collectSkillDirectorySources, isSkillSourceAllowed } from "./skills/sources.js";
+export { listDriverSkills, resolveDriverSkills } from "./skills/driver-client.js";
+export type { DriverSkillListingResult } from "./skills/driver-client.js";
 export { AURA_TEAM_PRESET_PATH } from "./preset/protocol.js";
 export {
   effectiveCheckConfiguration,

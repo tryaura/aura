@@ -134,7 +134,7 @@ function installOption(
     };
   }
   return {
-    description: entry?.sourceUrl ?? entry?.sourceName ?? "",
+    description: pack.originUrl ?? entry?.sourceUrl ?? entry?.sourceName ?? "",
     label: `${CHANGE_VERBS[change]} ${localId} ${pack.version}`,
     preview: pack.files.find((file) => file.path === "SKILL.md")?.content,
     value: "install",

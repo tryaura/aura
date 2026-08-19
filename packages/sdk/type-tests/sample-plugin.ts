@@ -77,6 +77,7 @@ const skillSource: SkillSourceDriver = {
         description: skill.description,
         id: skill.id,
         name: skill.name,
+        originUrl: "https://skills.example.com/example/review",
         version: skill.version,
       },
     ];
@@ -84,7 +85,11 @@ const skillSource: SkillSourceDriver = {
   name: "Example source",
   async resolve(environment, skillIds) {
     await environment.exec({ args: ["get", ...skillIds], command: "example-skills" });
-    return new Map(skillIds.filter((id) => id === skill.id).map((id) => [id, skill]));
+    return new Map(
+      skillIds
+        .filter((id) => id === skill.id)
+        .map((id) => [id, { ...skill, originUrl: "https://skills.example.com/example/review" }]),
+    );
   },
 };
 
@@ -237,6 +242,7 @@ export const samplePlugin = definePlugin({
   adapters: [adapter],
   apiVersion: 1,
   checks: [check],
+  disabledSkillSources: ["directory:optional-default"],
   id: "example",
   mcpCatalog: [mcpServer],
   name: "Example",

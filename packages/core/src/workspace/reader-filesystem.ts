@@ -211,27 +211,33 @@ async function readRegularFile(
         ...(isUtf8(content) ? {} : { utf8Valid: false }),
       };
     }
+    const prefix = await readPrefix(path, Math.min(maxBytes, stats.size));
     return {
       ...metadata,
-      content: await readPrefix(path, Math.min(maxBytes, stats.size)),
+      content: prefix.toString("utf8"),
       exists: true,
       isDirectory: false,
+      // A truncated read ends mid-sequence by construction, so only a complete one can answer the
+      // question. Callers that bound a read they expect to be whole — a fetched skill file, whose
+      // size is checked against the same bound — need the same encoding verdict as an unbounded
+      // read, and silently accepting U+FFFD in their place is what this reports instead.
+      ...(stats.size > maxBytes || isUtf8(prefix) ? {} : { utf8Valid: false }),
     };
   } catch (error) {
     return { ...metadata, exists: true, isDirectory: false, problem: toProblem(error) };
   }
 }
 
-async function readPrefix(path: string, maxBytes: number): Promise<string> {
+async function readPrefix(path: string, maxBytes: number): Promise<Buffer> {
   if (maxBytes === 0) {
-    return "";
+    return Buffer.alloc(0);
   }
   // An embedded filesystem cannot serve the positional reads below, so the prefix is sliced out of
   // a whole read. Peak memory is the asset's size rather than `maxBytes`, which is acceptable only
   // because an embedded asset is already resident in the executable that is running.
   if (isEmbeddedAssetPath(path)) {
     const buffer = await readFile(path);
-    return buffer.subarray(0, maxBytes).toString("utf8");
+    return buffer.subarray(0, maxBytes);
   }
   const file = await open(path, "r");
   try {
@@ -244,7 +250,7 @@ async function readPrefix(path: string, maxBytes: number): Promise<string> {
       }
       offset += result.bytesRead;
     }
-    return buffer.subarray(0, offset).toString("utf8");
+    return buffer.subarray(0, offset);
   } finally {
     await file.close();
   }

@@ -43,6 +43,8 @@ export interface PreparedNoopOperation extends PreparedBase {
 
 export interface PreparedWriteOperation extends PreparedBase {
   readonly before: CapturedFileState | MissingPathState | SymlinkPathState;
+  /** Whether applying this operation must replace bytes rather than only enforce the mode. */
+  readonly contentsChanged: boolean;
   /**
    * The mode the file will actually have, decided while the preview was rendered.
    *
@@ -125,7 +127,7 @@ export function createPreview(
 }
 
 export function noop(operation: ValidatedOperation): PreparedNoopOperation {
-  return { preview: createPreview(operation, "noop", ""), type: "noop" };
+  return { preview: createPreview(operation, "noop", "Already satisfied.\n"), type: "noop" };
 }
 
 export function conflict(operation: ValidatedOperation, reason: string): PreparedConflictOperation {

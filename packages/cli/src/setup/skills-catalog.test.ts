@@ -1,6 +1,11 @@
-import type { DirectorySkillSource, HttpGetRequest, HttpGetResult } from "@tryaura/aura-sdk";
+import type {
+  DirectorySkillSource,
+  HttpGetRequest,
+  HttpGetResult,
+  SkillSourceDriver,
+} from "@tryaura/aura-sdk";
 import { createWorkspaceModel } from "@tryaura/aura-sdk/testing";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createEnvironment } from "@tryaura/core";
 
@@ -22,6 +27,7 @@ function catalog(
       manifest: { exists: false, path: "/home/dev/agents/aura.json", status: "missing" },
       sharedInstructions: { exists: false, path: "/home/dev/agents/AGENTS.md" },
     }),
+    interactive: true,
     preset: undefined,
     presetNotes: [],
     registryDirectories: sources,
@@ -29,6 +35,41 @@ function catalog(
 }
 
 describe("createSkillCatalog", () => {
+  it("lists allowed drivers lazily once and never lists them for non-interactive setup", async () => {
+    const allowed = driver("acme/allowed");
+    const blocked = driver("acme/blocked");
+    const inputs = {
+      environment: createEnvironment({ cwd: "/workspace", homeDir: "/home/dev" }),
+      model: createWorkspaceModel({
+        manifest: { exists: false, path: "/home/dev/agents/aura.json", status: "missing" },
+        sharedInstructions: { exists: false, path: "/home/dev/agents/AGENTS.md" },
+      }),
+      preset: {
+        allowedSkillSources: ["driver:acme/allowed" as const],
+        schemaVersion: 1 as const,
+      },
+      presetNotes: [],
+      registryDirectories: [],
+      registryDrivers: [allowed, blocked],
+    };
+    const interactive = createSkillCatalog({ ...inputs, interactive: true });
+
+    expect(allowed.list).not.toHaveBeenCalled();
+    await interactive.load();
+    await interactive.load();
+
+    expect(allowed.list).toHaveBeenCalledTimes(1);
+    expect(blocked.list).not.toHaveBeenCalled();
+    expect((await interactive.load()).entries[0]).toMatchObject({
+      id: "review",
+      sourceId: "driver:acme/allowed",
+    });
+
+    const nonInteractive = createSkillCatalog({ ...inputs, interactive: false });
+    await nonInteractive.load();
+    expect(allowed.list).toHaveBeenCalledTimes(1);
+  });
+
   it("does not read or send a private token before its source is approved", async () => {
     const requests: HttpGetRequest[] = [];
     const source: DirectorySkillSource = {
@@ -100,3 +141,21 @@ describe("createSkillCatalog", () => {
     expect(memoizedUpdates).toEqual([]);
   });
 });
+
+function driver(id: string): SkillSourceDriver & { readonly list: ReturnType<typeof vi.fn> } {
+  return {
+    description: "Fixture driver.",
+    id,
+    list: vi.fn().mockResolvedValue([
+      {
+        description: "Reviews changes.",
+        id: "review",
+        name: "Review",
+        originUrl: "https://skills.example.com/review",
+        version: "1.0.0",
+      },
+    ]),
+    name: id,
+    resolve: vi.fn().mockResolvedValue(new Map()),
+  };
+}

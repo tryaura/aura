@@ -20,5 +20,5 @@
       "source": "plugin:acme"
     }
   ],
-  "allowedSkillSources": ["plugin:acme"]
+  "allowedSkillSources": ["plugin:acme", "driver:acme/engineering-skills"]
 }

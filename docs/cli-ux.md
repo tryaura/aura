@@ -14,15 +14,22 @@ implementation together.
 2. **Every screen answers "what do I do next".** Screens cross-link along the real workflow: root
    help points at `setup` first, setup's footer points at `check`, check's everyday rows surface
    `--fix`. An unknown command redirects to the command list instead of dumping a parser trace.
-3. **Plumbing is demoted, never hidden.** Flags that exist for tests and CI (`--home`, `--path`)
-   sit last under "Advanced". They stay documented — honesty over minimalism — but they never
-   compete with the everyday path.
+3. **Plumbing is demoted, never hidden.** Flags that exist for tests and CI (`--home`, `--no-color`,
+   `--path`) sit last under "Advanced". They stay documented — honesty over minimalism — but they
+   never compete with the everyday path. `--no-color` is consumed before any command parses, so it
+   is the one Advanced row the root screen carries too; `--home` and `--path` belong to the
+   scanning commands and appear only on theirs.
 4. **Glyphs carry state; color only reinforces it.** Output must disambiguate on a monochrome
    terminal (`▶` active, `✔` done, `☐` pending). Color and bold/inverse/dim are enhancements,
-   never the only carrier of meaning. `NO_COLOR` disables color entirely; injected (non-TTY)
-   streams get zero escape sequences, so captured output is byte-stable.
+   never the only carrier of meaning. `--no-color` and `NO_COLOR` disable color entirely;
+   `FORCE_COLOR=0` disables it, while a positive `FORCE_COLOR` enables it explicitly. Automatic
+   color is off in CI, for `TERM=dumb`, and whenever the process's stdout is not a TTY. Injected
+   streams get zero escape sequences whatever the surrounding process sets, so captured output is
+   byte-stable; an embedder that wants color asks for it with `colorDepth`.
 5. **One machine-readable seam.** `--json` emits exactly one parseable document on stdout;
    everything else the run produces moves to stderr. Human output never leaks into the document.
+   A reader closing the pipe early is normal use, not a failure: the run keeps the exit code it
+   earned rather than reporting the truncation as success.
 6. **Branding is injected.** Screens render from `CliBranding` (`command`, `displayName`,
    `version`, `description`, `docsUrl`) so every distribution gets correct help for free. Parts a
    distribution does not define are dropped, not placeholder-filled.
@@ -31,15 +38,15 @@ implementation together.
 
 Rendered by `packages/cli/src/help.ts`; exact layouts pinned in `help.test.ts`.
 
-- `aura` / `aura --help` / `aura -h` — root screen: Get started → Everyday use → Help, then a
-  `Docs:` footer when branding defines one. The Help section lists `aura <command> --help`, and an
-  `aura --version` row exactly when branding carries a version (which is also when the flag is
-  registered at all).
+- `aura` / `aura --help` / `aura -h` — root screen: Get started → Everyday use → Help → Advanced,
+  then a `Docs:` footer when branding defines one. The Help section lists `aura <command> --help`,
+  and an `aura --version` row exactly when branding carries a version (which is also when the flag
+  is registered at all). Advanced carries `--no-color` alone.
 - `aura check --help` — Everyday use, Narrow it down, Reporting, Configuration, Fixing behavior,
   Scripting, Advanced, then the exit-code footer. "Narrow it down" scopes what runs; "Reporting"
   (`--verbose`, `--detail`) controls how much the run says about it.
 - `aura setup --help` — Everyday use, Options (including every registered `--add` kind),
-  Advanced, then a footer pointing at `check`.
+  Advanced, then footers pointing at `check` and documenting setup exit codes.
 - `aura undo --help` — Everyday use, Options, Advanced, then the restore exit-code footer.
 - `aura <typo>` — `aura: unknown command '<typo>'`, the command list, and a pointer to `--help`.
   Exit code 2. A bad _flag_ on a real command keeps clipanion's own message, which names the
@@ -68,8 +75,18 @@ without a group remain individual, so an older plugin never loses its message. C
 below the human copy as secondary metadata rather than leading a line, and the closing More section
 carries the `--explain <id>` that turns one into a full explanation.
 
-`--verbose` lifts the caps and adds every occurrence, location, metadata table, passed check, and
-application. It does not restore a severity-first ledger. Indentation carries the
+Human output has a hard ceiling of 100 findings total, selected errors first, then warnings, then
+suggestions while preserving plugin order within a severity. It names any omitted tail, and a
+truncated section heading carries both numbers (`Suggestions (98 of 100)`) so it never contradicts
+the fix count in the recommended next step, which always speaks for the whole run. Each shown
+finding likewise has a hard ceiling of 100 locations, and one location line is bounded in length
+the same way a finding's message is. Whenever either ceiling truncates, the More section points at
+`--json`, which remains untruncated — no report offers `--verbose` for detail the ceiling has
+already dropped.
+
+`--verbose` lifts the concise three-occurrence and two-location caps up to those safety ceilings and
+adds metadata tables, passed checks, and applications. It does not restore a severity-first ledger.
+Indentation carries the
 hierarchy: group heading at two spaces, its shared description and check ids at four, each
 occurrence at four, and that occurrence's own detail and locations at six. Project paths render
 relative to the project root (the invocation directory outside a repository), home paths use `~/`,
@@ -88,8 +105,10 @@ be incomplete.
 
 ## Exit codes
 
-`0` clean/info · `1` warnings · `2` errors or usage/state conflicts · `3` operational failures.
-Every command returns one of these; `runCli` normalizes anything else to 2.
+For `check`: `0` completed check, regardless of finding severity · `2` usage/state conflicts or no
+checks · `3` operational failures. Finding health remains visible through the report status and
+severity counts. Setup and undo also use `1` for incomplete user-driven flows. `runCli` normalizes
+any other code to 2.
 
 ## Glyph vocabulary
 
@@ -292,7 +311,24 @@ continue.`): proceeding without it would silently widen whatever the file was wr
 
 ### Skills step
 
-A picker over every allowed skill source, then one Review form per selected directory skill.
+A picker over every allowed skill source, then one Review form per selected remote skill.
+
+- Plugin drivers are lazy and use `driver:<namespaced-id>`. Aura never calls them during a
+  workspace scan, `check`, `setup --yes`, or the post-setup rescan. Interactive setup lists a driver
+  only when Skills opens, once per run; back navigation reuses the listing. Resolution batches all
+  selected IDs for one driver and memoizes each success or failure.
+- A driver is the one source kind that runs code, and it is not gated behind the private-source
+  approval question. That question exists to authorize sending a **credential** to a host, which a
+  driver never does; a driver is build-time code the distribution compiled in, already trusted to
+  the same degree as the binary running it. What the user is owed is therefore visibility rather
+  than a veto: the driver is named on its loading row while it runs, and the origin it declares for
+  each skill is attributed to it at the review.
+- Every driver call is bounded. The protocol has no cancellation, so the bound is on Aura's wait,
+  not on the driver's work: a `list` or `resolve` that has not returned within 30 seconds is treated
+  as unavailable and the step continues. The abandoned call cannot hold the process open.
+- A skill source removed by a plugin's `disabledSkillSources` is reported as a first-visit note
+  naming the plugin that removed it, because a row that is simply absent is indistinguishable from
+  one that broke. A denylist entry naming a source this distribution never had says nothing.
 
 - Before the picker opens, directory indexes load inside the wizard instead of leaving an empty
   terminal gap. The normal top-level flow row stays visible with Skills active, and the body shows
@@ -313,10 +349,12 @@ A picker over every allowed skill source, then one Review form per selected dire
   for result navigation, and `esc` clears an active search before it can cancel the form. While the
   query has focus the hint line names those bindings instead of the standing ones:
   `type to filter · ↑/↓ move · ↵ results · esc clear search`.
-- A remote skill's Review row names the host that serves its bytes, not the directory that
-  advertised it: a catalog indexing content elsewhere reports that origin
+- A remote skill's Review row names the source, version, and origin of its bytes, not the directory
+  that advertised it: a catalog indexing content elsewhere reports that origin
   (`https://github.com/<owner>/<repo>/tree/<ref>/<dir>`), because approving a skill is approving
-  the host it comes from.
+  the host it comes from. For a directory that origin is where the bytes were fetched from. A
+  driver instead hands Aura a local directory, so its origin is the one the driver **declares** for
+  the content — a claim attributed to the driver, not a host Aura observed serving it.
 - The picker prompt ends with a support matrix for the applications selected in the Apps step, in
   adapter order (`Apps: ✓ Claude Code · ✓ Codex · — Cursor`). It is stated once above the rows
   rather than per row, because it describes the run and not any one skill. An adapter's declared
@@ -348,6 +386,10 @@ A picker over every allowed skill source, then one Review form per selected dire
   the preset as resolved — `npm:@acme/preset@1.2.0` or an HTTPS URL — and a policy supplied by
   the repository's own file is named `repository preset ".aura/preset.json"`, so a policy is
   never presented as coming from somewhere it did not.
+- A driver listing or resolution failure leaves every manifest-recorded selection checked and
+  unavailable. One failed source or skill does not hide other entries. Diagnostics use validated
+  IDs and generic reasons only; raw errors, environment values, rejected paths, and file contents
+  appear nowhere outside the explicit `p` review preview.
 
 ### MCP step
 

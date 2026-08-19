@@ -281,7 +281,7 @@ export function operationError(
 function rollbackSummary(rollback: FixPlanRollbackStatus, appliedOperationCount: number): string {
   switch (rollback) {
     case "complete": {
-      return "earlier operations were rolled back";
+      return "filesystem changes were rolled back";
     }
     case "failed": {
       return `rollback failed; ${appliedOperationCount} ${pluralize(appliedOperationCount, "operation")} ${pluralize(appliedOperationCount, "remains", "remain")} applied`;

@@ -35,3 +35,13 @@ export const MAX_SKILL_FILE_BYTES = 1_000_000;
 
 /** The most files one fetched skill may carry. */
 export const MAX_SKILL_FILES = 200;
+
+/**
+ * How long Aura waits for one skill-source driver call before giving up on it.
+ *
+ * A driver is plugin code that may shell out or reach the network, and the protocol gives Aura no
+ * way to cancel it — so this bounds the wait, not the work. Without it a driver that never settles
+ * strands the Skills step with no way out but killing the process. Generous next to the HTTP
+ * ceiling because a driver may legitimately be running a package manager or a clone.
+ */
+export const MAX_SKILL_DRIVER_CALL_MS = 30_000;

@@ -11,9 +11,10 @@ import {
 } from "./capture.js";
 import { mergeWriteContents } from "./merge-writes.js";
 import type { ValidatedOperation } from "./path-policy.js";
-import { resolveWriteMode, type EnforcedModes } from "./prepare-modes.js";
+import { resolveWriteMode, writeContentsChanged, type EnforcedModes } from "./prepare-modes.js";
 import { conflict, createPreview, noop, type PreparedOperation } from "./prepared.js";
 import { isCapturedFile } from "./state.js";
+import { sourceProblemRefusal, type SourceProblemIndex } from "./source-problems.js";
 import { unmetPrecondition, writeRejection } from "./write-validation.js";
 import { renderRedactedWriteDiff } from "./write-redaction.js";
 
@@ -24,6 +25,8 @@ export async function prepareWriteGroup(
   group: readonly ValidatedOperation[],
   budget: RetentionBudget,
   enforcedMode: EnforcedModes,
+  sourceProblems: SourceProblemIndex,
+  caseInsensitive: boolean,
 ): Promise<PreparedOperation> {
   const leader = group[0];
   if (leader === undefined || leader.operation.type !== "write") {
@@ -32,6 +35,14 @@ export async function prepareWriteGroup(
   const writes = group.flatMap((candidate) =>
     candidate.operation.type === "write" ? [candidate.operation] : [],
   );
+  // Ahead of every other check, and in the same position as in `prepareOperation`, so that whether
+  // a write happened to be coalesced cannot change which conflict a user is shown. An unsafe scan
+  // read is also the more actionable of the two: it makes the size and mode checks meaningless.
+  const unsafeSource = sourceProblemRefusal(leader, sourceProblems, caseInsensitive);
+  if (unsafeSource !== undefined) {
+    return conflict(leader, unsafeSource);
+  }
+
   const rejected = writeGroupRejection(writes);
   if (rejected !== undefined) {
     return conflict(leader, rejected);
@@ -82,6 +93,7 @@ export async function prepareWriteGroup(
   spendBudget(budget, before);
   return {
     before,
+    contentsChanged: writeContentsChanged(before, mergedContent),
     mode,
     operation,
     preview: createPreview(
@@ -124,8 +136,8 @@ function mergeContents(
   writes: readonly WriteFileOperation[],
 ): ReturnType<typeof mergeWriteContents> {
   if (isCapturedFile(before)) {
-    const base = before.content.toString("utf8");
-    if (!Buffer.from(base, "utf8").equals(before.content)) {
+    const base = decodeUtf8(before.content);
+    if (base === undefined) {
       return {
         reason: "same-path writes cannot merge a file that is not valid UTF-8",
         status: "conflict",
@@ -144,4 +156,18 @@ function mergeContents(
         reason: "same-path writes create or replace a non-file with different contents",
         status: "conflict",
       };
+}
+
+/**
+ * Decodes captured bytes, or reports that they are not UTF-8.
+ *
+ * Strict rather than lossy, and in one pass: re-encoding the decoded string to compare it back
+ * against the original would allocate a second copy of a file that may be megabytes.
+ */
+function decodeUtf8(content: Buffer): string | undefined {
+  try {
+    return new TextDecoder("utf8", { fatal: true }).decode(content);
+  } catch {
+    return undefined;
+  }
 }
