@@ -1,0 +1,150 @@
+---
+import "../styles/aura-demo.css";
+
+const transcript = [
+  { step: 0, text: "$ aura check", tone: "command" },
+  { step: 1, text: "" },
+  { step: 1, text: "Scanning Claude Code, Codex, and Cursor...", tone: "muted" },
+  { step: 2, text: "" },
+  { step: 2, text: "Aura check -- action required", tone: "strong" },
+  { step: 2, text: "1 error | 1 warning | 12 checks passed | 3 apps detected", tone: "muted" },
+  { step: 2, text: "" },
+  { step: 2, text: "[x] Cursor is not using the shared project instructions." },
+  { step: 2, text: "    .cursor/rules/aura.mdc                         automatic", tone: "muted" },
+  { step: 2, text: "[!] Codex has one instruction that differs from the shared source." },
+  { step: 2, text: "    AGENTS.md:18                                  guided", tone: "muted" },
+  { step: 2, text: "" },
+  { step: 2, text: "-> Recommended: aura check --fix --interactive", tone: "accent" },
+  { step: 3, text: "" },
+  { step: 3, text: "$ aura setup", tone: "command" },
+  { step: 3, text: "" },
+  { step: 3, text: "[* Applications ]---[ Instructions ]---[ MCP ]---[ Submit ]", tone: "accent" },
+  { step: 3, text: "" },
+  { step: 3, text: "Which applications should Aura manage?", tone: "strong" },
+  { step: 3, text: "  [x] Claude Code" },
+  { step: 3, text: "  [x] Codex" },
+  { step: 3, text: "  [x] Cursor" },
+  { step: 4, text: "" },
+  { step: 4, text: "[= Applications ]---[* Instructions ]---[ MCP ]---[ Submit ]", tone: "accent" },
+  { step: 4, text: "" },
+  { step: 4, text: "How should project instructions be shared?", tone: "strong" },
+  { step: 4, text: "  (*) Create one shared source and link every app" },
+  { step: 4, text: "  ( ) Leave project instructions as they are", tone: "muted" },
+  { step: 5, text: "" },
+  { step: 5, text: "[= Applications ]---[= Instructions ]---[* MCP ]---[ Submit ]", tone: "accent" },
+  { step: 5, text: "" },
+  { step: 5, text: "Which MCP servers should every managed app get?", tone: "strong" },
+  { step: 5, text: "  [x] Context7" },
+  { step: 5, text: "  [x] Playwright" },
+  { step: 5, text: "  [ ] GitHub", tone: "muted" },
+  { step: 6, text: "" },
+  { step: 6, text: "[= Applications ]---[= Instructions ]---[= MCP ]---[* Submit ]", tone: "accent" },
+  { step: 6, text: "" },
+  { step: 6, text: "Plan: align 3 applications", tone: "strong" },
+  { step: 6, text: "  write          agents/AGENTS.md" },
+  { step: 6, text: "  link x3        app instruction files" },
+  { step: 6, text: "  configure x2   MCP servers in 3 apps" },
+  { step: 6, text: "" },
+  { step: 6, text: "One atomic plan | backup included | undo available", tone: "muted" },
+  { step: 7, text: "" },
+  { step: 7, text: "Apply this plan? yes" },
+  { step: 7, text: "" },
+  { step: 7, text: "[ok] Wrote shared instructions" },
+  { step: 7, text: "[ok] Linked Claude Code, Codex, and Cursor" },
+  { step: 7, text: "[ok] Configured Context7 and Playwright" },
+  { step: 8, text: "" },
+  { step: 8, text: "Running aura check again...", tone: "muted" },
+  { step: 9, text: "" },
+  { step: 9, text: "Aura check -- all clear", tone: "strong" },
+  { step: 9, text: "14 checks passed | 3 applications in sync | exit 0", tone: "accent" },
+];
+---
+
+<section class="product-demo" id="demo" aria-labelledby="demo-title">
+  <div class="demo-heading">
+    <p class="demo-eyebrow">See Aura at work</p>
+    <h2 id="demo-title">From drift to green, in one run.</h2>
+    <p>
+      Aura checks every coding agent, builds one reviewable setup plan, and verifies the result
+      before it finishes.
+    </p>
+  </div>
+
+  <figure class="ascii-demo" aria-labelledby="ascii-caption">
+    <figcaption id="ascii-caption" class="sr-only">
+      An autoplaying text example of Aura finding two configuration issues, guiding setup, applying
+      a plan, and verifying that all checks pass.
+    </figcaption>
+
+    <div class="ascii-meta">
+      <span>~/acme/storefront</span>
+      <button type="button" data-transcript-control>[ pause ]</button>
+    </div>
+    <pre class="ascii-viewport" aria-hidden="true" data-transcript-viewport><code>{transcript.map((line) => <span class:list={["ascii-line", line.tone]} data-transcript-step={line.step}>{line.text || " "}</span>)}</code></pre>
+  </figure>
+</section>
+
+<script>
+  const viewport = document.querySelector<HTMLElement>("[data-transcript-viewport]");
+  const control = document.querySelector<HTMLButtonElement>("[data-transcript-control]");
+  const lines = [...document.querySelectorAll<HTMLElement>("[data-transcript-step]")];
+  const lastStep = 9;
+  let currentStep = 0;
+  let timer: ReturnType<typeof globalThis.setTimeout> | undefined;
+  let paused = false;
+  let replayOnly = globalThis.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  const renderFrame = (): void => {
+    for (const line of lines) {
+      line.classList.toggle("is-visible", Number(line.dataset["transcriptStep"]) <= currentStep);
+    }
+    if (viewport !== null) {
+      viewport.scrollTo({ behavior: replayOnly ? "auto" : "smooth", top: viewport.scrollHeight });
+    }
+  };
+
+  const advance = (): void => {
+    currentStep = currentStep === lastStep ? 0 : currentStep + 1;
+    renderFrame();
+    schedule();
+  };
+
+  const schedule = (): void => {
+    if (timer !== undefined) {
+      globalThis.clearTimeout(timer);
+    }
+    timer = globalThis.setTimeout(advance, currentStep === lastStep ? 4_000 : 1_650);
+  };
+
+  control?.addEventListener("click", () => {
+    if (replayOnly) {
+      replayOnly = false;
+      currentStep = 0;
+      control.textContent = "[ pause ]";
+      renderFrame();
+      schedule();
+      return;
+    }
+
+    paused = !paused;
+    control.textContent = paused ? "[ resume ]" : "[ pause ]";
+    if (paused) {
+      if (timer !== undefined) {
+        globalThis.clearTimeout(timer);
+        timer = undefined;
+      }
+      return;
+    }
+    schedule();
+  });
+
+  if (replayOnly) {
+    currentStep = lastStep;
+    if (control !== null) {
+      control.textContent = "[ replay ]";
+    }
+  } else {
+    schedule();
+  }
+  renderFrame();
+</script>
