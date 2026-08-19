@@ -22,6 +22,16 @@ describe("INS-002", () => {
     expect(sharedInstructionLinksCheck.detect(workspace([application], "# Shared\n"))).toEqual([]);
   });
 
+  it("leaves a missing shared target to the checks that own target validity", () => {
+    const application = app({
+      instructionFiles: [linkedDocument("/home/dev/.codex/AGENTS.md", false)],
+      link: { entryPath: "/home/dev/.codex/AGENTS.md", kind: "symlink", scope: "global" },
+      source: { exists: true, pathKind: "symlink", symlinkTarget: SHARED_PATH },
+    });
+
+    expect(sharedInstructionLinksCheck.detect(workspace([application], undefined))).toEqual([]);
+  });
+
   it.each([
     {
       document: importedDocument("/repo/CLAUDE.md", "project"),
@@ -49,7 +59,12 @@ describe("INS-002", () => {
       link: { entryPath: "/home/dev/.codex/AGENTS.md", kind: "symlink", scope: "global" },
     });
     const broken = app({
-      instructionFiles: [linkedDocument("/home/dev/.codex/AGENTS.md", false)],
+      instructionFiles: [
+        {
+          ...linkedDocument("/home/dev/.codex/AGENTS.md", false),
+          links: [{ kind: "symlink", targetPath: "/wrong/AGENTS.md", valid: false }],
+        },
+      ],
       link: { entryPath: "/home/dev/.codex/AGENTS.md", kind: "symlink", scope: "global" },
       source: { exists: true, pathKind: "symlink", symlinkTarget: "/wrong/AGENTS.md" },
     });
