@@ -31,10 +31,10 @@ Both are environment variables:
 | Variable           | Default        | Purpose                                       |
 | ------------------ | -------------- | --------------------------------------------- |
 | `AURA_INSTALL_DIR` | `~/.aura/bin`  | Where the binary is written.                  |
-| `AURA_VERSION`     | latest release | Install a specific tag, for example `v0.2.0`. |
+| `AURA_VERSION`     | latest release | Install a specific tag, for example `v0.1.1`. |
 
 ```sh
-AURA_INSTALL_DIR=/usr/local/bin AURA_VERSION=v0.2.0 curl -fsSL https://tryaura.sh/install | sh
+AURA_INSTALL_DIR=/usr/local/bin AURA_VERSION=v0.1.1 curl -fsSL https://tryaura.sh/install | sh
 ```
 
 ## npm
@@ -72,6 +72,48 @@ export PATH="$HOME/.aura/bin:$PATH"
 ```
 
 The install script prints the exact line to add for your shell.
+
+## Supported applications
+
+<!-- supported-apps:begin -->
+
+Paths beginning with `~` are user-level configuration; paths beginning with `.` are read
+relative to the directory where Aura runs. A path is read only when the application it belongs
+to is detected, and a missing one is never an error.
+
+| Adapter ID    | Application | Supported versions   |
+| ------------- | ----------- | -------------------- |
+| `claude-code` | Claude Code | `>=2.1.0 <3.0.0`     |
+| `codex`       | Codex       | `>=0.146.0 <0.148.0` |
+| `cursor`      | Cursor      | `>=0.45.0 <4.0.0`    |
+
+### Paths read
+
+| Application | Path                            | Read for                      |
+| ----------- | ------------------------------- | ----------------------------- |
+| Claude Code | `~/.claude/CLAUDE.md`           | Instructions                  |
+| Claude Code | `./CLAUDE.md`                   | Instructions                  |
+| Claude Code | `~/.claude.json`                | MCP servers                   |
+| Claude Code | `./.mcp.json`                   | MCP servers                   |
+| Claude Code | `~/.claude/settings.json`       | Settings                      |
+| Claude Code | `./.claude/settings.local.json` | Settings                      |
+| Claude Code | `./.claude/settings.json`       | Settings                      |
+| Claude Code | `~/.claude/skills`              | Skills                        |
+| Claude Code | `./.claude/skills`              | Skills                        |
+| Codex       | `~/.codex/AGENTS.override.md`   | Instructions                  |
+| Codex       | `~/.codex/AGENTS.md`            | Instructions                  |
+| Codex       | `~/.codex/config.toml`          | MCP servers                   |
+| Codex       | `~/.codex/skills`               | Skills                        |
+| Codex       | `./AGENTS.override.md`          | Instructions                  |
+| Codex       | `./AGENTS.md`                   | Candidate, read when selected |
+| Cursor      | `./.cursor/rules`               | Instructions                  |
+| Cursor      | `./.cursorrules`                | Instructions                  |
+| Cursor      | `./AGENTS.md`                   | Instructions                  |
+| Cursor      | `./.cursor/rules/aura.mdc`      | Instructions                  |
+| Cursor      | `~/.cursor/mcp.json`            | MCP servers                   |
+| Cursor      | `./.cursor/mcp.json`            | MCP servers                   |
+
+<!-- supported-apps:end -->
 
 ## Local-tarball walkthrough
 

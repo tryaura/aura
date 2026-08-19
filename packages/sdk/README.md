@@ -24,9 +24,14 @@ Create plugins with `definePlugin`. A plugin declares an `id`, a `name`, a `vers
   [team preset format](https://tryaura.sh/docs/reference/team-preset/).
 
 Aura v1 accepts only plugins with `apiVersion: 1`. The registry validates versions, IDs, and
-collisions before use. Most contribution IDs are namespaced under the plugin's own ID, so plugin
-`acme` contributes `acme/rules`. Bundled skill IDs are source-local kebab-case names such as
-`review`; their full identity is `(plugin:acme, review)`.
+collisions before use. Checks, snippets, MCP catalog entries, presets, and skill-source drivers are
+normally namespaced under the plugin's own ID, so plugin `acme` contributes `acme/rules`. Adapter
+IDs are global application identities, and skill-directory IDs are global source identities;
+neither uses the plugin prefix. Bundled skill IDs are source-local kebab-case names such as
+`review`; their full identity is `(plugin:acme, review)`. A distribution may grant one of its own
+plugins the right to contribute unprefixed check IDs by naming it in the registry's
+`bareCheckIdPlugins` option; private plugins should remain namespaced. The
+[plugin reference](https://tryaura.sh/docs/reference/plugins/) covers each rule.
 
 ## Trust model
 

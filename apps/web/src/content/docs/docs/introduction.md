@@ -28,7 +28,9 @@ make a network request.
 
 Everything above ships as plugins built on [`@tryaura/aura-sdk`](https://github.com/tryaura/aura/tree/main/packages/sdk).
 Adapters, checks, snippets, skills, MCP catalog entries, and presets are all contribution slots on
-a plugin, and every contribution ID is namespaced under the plugin's own ID.
+a plugin. Most contribution IDs are namespaced under the plugin's own ID; adapters and skill
+directories are global identities, while bundled skill IDs are local to their source. The
+[plugin reference](/docs/reference/plugins/) describes each exception.
 
 :::caution[Plugins are not sandboxed]
 A plugin runs with the full privileges of the Aura process. `Adapter.detect` and skill sources

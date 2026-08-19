@@ -95,6 +95,14 @@ export type {
 } from "./plugin-registry.js";
 export { SUPPORTED_PLUGIN_API_VERSION } from "./plugin-validation.js";
 export type { ContributionKind, PluginCandidate } from "./plugin-validation.js";
+/**
+ * Exposed so tooling outside a scan can ask an adapter what it reads without restating the rules.
+ *
+ * @public
+ */
+export { discoverAdapterFiles } from "./workspace/discovery.js";
+/** @public */
+export type { AdapterFileDiscovery, DiscoveryOptions } from "./workspace/discovery.js";
 export { buildWorkspaceModel } from "./workspace/build.js";
 export type { SkippedApp, WorkspaceScan, WorkspaceScanOptions } from "./workspace/build.js";
 export { createMcpUrlRequester } from "./workspace/mcp-url-request.js";
