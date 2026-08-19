@@ -96,7 +96,7 @@ describe("action-first human check output", () => {
 
     expect(capture.stdout.text).toContain("Acme Doctor check — action required");
     expect(capture.stdout.text).toContain("▶ Recommended next step");
-    expect(capture.stdout.text).toContain("acme check --fix --interactive");
+    expect(capture.stdout.text).toContain("acme check --fix");
     expect(capture.stdout.text).toContain("2 available fixes: 1 automatic · 1 guided");
     expect(capture.stdout.text).toContain("Complete the related fixture setup (2)");
     expect(capture.stdout.text).toContain("Checks: fixture-group/FIRST, fixture-group/SECOND");
@@ -113,7 +113,7 @@ describe("action-first human check output", () => {
         Repository preset .aura/preset.json is present but not trusted on this machine, so it was not applied. Run acme setup to review and trust it.
 
       ▶ Recommended next step
-        acme check --fix --interactive
+        acme check --fix
         Review 2 available fixes: 1 automatic · 1 guided.
         Aura previews every change before writing and checks your setup again afterward.
 

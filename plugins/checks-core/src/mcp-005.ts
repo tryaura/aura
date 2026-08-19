@@ -13,7 +13,7 @@ import { appFor, isPlacedAt, MCP_005_ID, scopeTarget, sourceFile } from "./mcp-0
 
 const EXPLAIN = `The Aura manifest distinguishes personal MCP servers from team servers. Personal servers belong in global configuration; putting one in repository configuration can publish it to teammates through source control. Team servers belong in project configuration; keeping one only in personal configuration means teammates do not receive it and their setup drifts. Placement is judged by the file an entry is written in, not by the scope label alone, because an application can keep both kinds in one document.
 
-Re-run with \`--fix --interactive\` to move an Aura-owned entry through the same manifest convergence and undo machinery as other MCP fixes. Aura never removes a name outside its ownership ledger automatically.`;
+Re-run with \`--fix\` to move an Aura-owned entry through the same manifest convergence and undo machinery as other MCP fixes. Aura never removes a name outside its ownership ledger automatically.`;
 
 export const mcp005 = defineCheck({
   defaultSeverity: "warn",

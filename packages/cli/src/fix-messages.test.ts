@@ -20,7 +20,6 @@ describe("runFixes report messages", () => {
       request({
         checks: [automatic, guided],
         findings: [finding(automatic, "auto"), finding(guided, "guided")],
-        interactive: true,
         wizard: scriptedWizard(["aborted"]),
       }),
     );

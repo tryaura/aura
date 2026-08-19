@@ -1,6 +1,4 @@
-import type { Readable, Writable } from "node:stream";
-
-import { isTerminal, rejectInvalidPathOptions } from "./command-support.js";
+import { rejectInvalidPathOptions } from "./command-support.js";
 import { explainOptionRejection, fixOptionRejection } from "./check-options.js";
 import { safe } from "./safe-text.js";
 
@@ -17,8 +15,6 @@ export interface CheckOptionValues {
   readonly online: boolean;
   readonly only: readonly string[];
   readonly pathValue: string | undefined;
-  readonly stdin: Readable;
-  readonly stdout: Writable;
   readonly verbose: boolean;
   readonly yes: boolean;
 }
@@ -65,8 +61,6 @@ function rejectInvalidFixOptions(options: CheckOptionValues): string | undefined
     dryRun: options.dryRun,
     fix: options.fix,
     interactive: options.interactive,
-    stdinTerminal: isTerminal(options.stdin),
-    stdoutTerminal: isTerminal(options.stdout),
     yes: options.yes,
   });
 }

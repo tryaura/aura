@@ -112,7 +112,7 @@ export function request(overrides: Partial<FixRequest> = {}): FixRequest {
     dryRun: false,
     environment: environment(),
     findings: [],
-    interactive: false,
+    guidedChoices: true,
     model: model(),
     stateHomeDir: FIXTURE_ROOT,
     stderr: new TextOutput(),
