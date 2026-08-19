@@ -10,9 +10,47 @@ import { createSeedBuilder, runBinaryCheck } from "@tryaura/aura-testkit";
 const BINARY_PATH = fileURLToPath(new URL("dist/acmedev", import.meta.url));
 const execFileAsync = promisify(execFile);
 
+/**
+ * The desired state a previous interactive run would have left behind.
+ *
+ * The platform preset requires the `acme/source-control` catalog entry, and a non-interactive run
+ * never first-configures one of those on a repository's say-so — it re-applies what the manifest
+ * already records. Seeding that record is what lets `setup --dry-run` below exercise the converged
+ * path instead of stopping on the requirement.
+ */
+function manifest() {
+  return (
+    JSON.stringify(
+      {
+        apps: { "acme-agent": { managed: true } },
+        mcpServers: [
+          {
+            apps: ["acme-agent"],
+            catalogId: "acme/source-control",
+            name: "acme-source-control",
+            scope: "global",
+            transport: {
+              headers: { Authorization: "Bearer ${ACME_SOURCE_TOKEN}" },
+              type: "http",
+              url: "https://mcp.acme.example/source-control",
+            },
+          },
+        ],
+        ownership: { "acme-agent": { files: [], mcpServerNames: ["acme-source-control"] } },
+        schemaVersion: 1,
+        skills: [],
+        snippets: [],
+      },
+      undefined,
+      2,
+    ) + "\n"
+  );
+}
+
 const seed = await createSeedBuilder()
   .homeFile(".acme-agent/AGENTS.md", "# Acme instructions\n")
   .homeFile(".acme-agent/mcp.json", '{"mcpServers":{}}\n')
+  .homeFile("agents/aura.json", manifest())
   .shim("acme-agent", [{ args: ["--version"], stdout: "acme-agent 1.2.3\n" }])
   .build();
 
