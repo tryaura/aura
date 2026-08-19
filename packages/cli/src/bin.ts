@@ -2,7 +2,7 @@
 import packageManifest from "../package.json" with { type: "json" };
 
 import { OFFICIAL_PLUGINS, OFFICIAL_REGISTRY_OPTIONS } from "./plugins.js";
-import { runCli } from "./run.js";
+import { runCli } from "./run.boundary.js";
 
 await runCli({
   branding: {

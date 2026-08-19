@@ -7,7 +7,7 @@ import {
   type DetectedFinding,
 } from "@tryaura/aura-sdk";
 
-import { runCli } from "./run.js";
+import { runCli } from "./run.boundary.js";
 import { appsPlugin, createCapture, distro, findingPlugin, throwingPlugin } from "./testing.js";
 
 /** Two checks sharing one group, optionally with extra members and a manual second finding. */

@@ -1,4 +1,4 @@
-// Deep import on purpose: see the note in run.ts.
+// Deep import on purpose: see the note in run.boundary.ts.
 import { Command } from "clipanion/lib/advanced/index.js";
 
 import type { AuraCliContext } from "./commands.js";

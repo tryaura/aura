@@ -9,7 +9,7 @@ import { gzipSync } from "node:zlib";
 import type { HttpGetRequest } from "@tryaura/aura-sdk";
 import { describe, expect, it } from "vitest";
 
-import { createEnvironment } from "../environment.js";
+import { createEnvironment } from "../environment.boundary.js";
 import { createMemoryReader } from "../workspace/testing.js";
 import { loadTeamPreset } from "./load.js";
 

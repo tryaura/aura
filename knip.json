@@ -8,7 +8,7 @@
   },
   "workspaces": {
     "examples/*": {
-      "entry": ["src/main.ts"]
+      "entry": ["src/main.boundary.ts"]
     },
     "distros/*": {
       "entry": ["src/**/*.test.ts", "src/**/*.smoke.ts"],
