@@ -38,8 +38,8 @@ export interface TestSeed {
    * Every invocation of one seeded shim, in the order it happened.
    *
    * Records invocations no response matched too, which is what turns "the shim answered `exit 2`"
-   * into "the adapter asked for arguments no response declares". Empty for a command that was never
-   * run, or was never seeded.
+   * into "the adapter asked for arguments no response declares". Empty when the seeded command was
+   * never run. Asking for a command that was not seeded throws and names the known shims.
    */
   readonly invocations: (command: string) => Promise<readonly (readonly string[])[]>;
 }

@@ -1,5 +1,5 @@
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { platform, tmpdir } from "node:os";
 import { dirname, isAbsolute, join, normalize, relative, sep } from "node:path";
 
 import { hashRepoPreset, MAX_TRUSTED_REPO_PRESETS } from "@tryaura/core";
@@ -57,6 +57,8 @@ class SeedBuilder implements TestSeedBuilder {
   }
 
   async build(): Promise<TestSeed> {
+    assertSupportedPlatform(platform());
+
     // Canonicalized on purpose. `mkdtemp` hands back the uncanonicalized name — `/var/…` on macOS,
     // where the real path is `/private/var/…` — and any tool the run shells out to that resolves a
     // path reports the other spelling, which then survives normalization and lands a machine-local
@@ -101,8 +103,13 @@ class SeedBuilder implements TestSeedBuilder {
     return Object.freeze({
       cleanup,
       homeDir,
-      invocations: (command: string) =>
-        commands.has(command) ? readInvocations(logDir, command) : Promise.resolve([]),
+      invocations: async (command: string) => {
+        if (!commands.has(command)) {
+          const known = [...commands].sort().join(", ") || "(none)";
+          throw new Error(`Unknown shim command: ${command}. Known shims: ${known}.`);
+        }
+        return readInvocations(logDir, command);
+      },
       pathDir,
       workspaceDir,
       [Symbol.asyncDispose]: cleanup,
@@ -194,6 +201,12 @@ function parseTrustedRepoPresets(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function assertSupportedPlatform(platform: NodeJS.Platform): void {
+  if (platform === "win32") {
+    throw new Error("Aura testkit requires a POSIX shell and cannot build seeds on Windows.");
+  }
 }
 
 function addFile(

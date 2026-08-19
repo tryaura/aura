@@ -8,6 +8,7 @@ import { parseAuraManifest } from "@tryaura/core";
 import { describe, expect, it } from "vitest";
 
 import { ANY_ARGUMENT, createSeedBuilder } from "./index.js";
+import { assertSupportedPlatform } from "./seed.js";
 
 describe("createSeedBuilder", () => {
   it("materializes nested files and exact executable shim responses", async () => {
@@ -67,6 +68,7 @@ describe("createSeedBuilder", () => {
       .shim("fixture-agent", [{ args: ["--version"], stdout: "fixture 1.2.3\n" }])
       .build();
 
+    await expect(seed.invocations("fixture-agent")).resolves.toEqual([]);
     await runShim(seed.pathDir, ["--version"]);
     await runShim(seed.pathDir, ["config", "", "two\nlines"]);
     await runShim(seed.pathDir, []);
@@ -76,7 +78,15 @@ describe("createSeedBuilder", () => {
       ["config", "", "two\nlines"],
       [],
     ]);
-    await expect(seed.invocations("never-seeded")).resolves.toEqual([]);
+    await expect(seed.invocations("never-seeded")).rejects.toThrow(
+      "Unknown shim command: never-seeded. Known shims: fixture-agent.",
+    );
+  });
+
+  it("fails fast when seed shims cannot run on the host platform", () => {
+    expect(() => assertSupportedPlatform("win32")).toThrow(
+      "Aura testkit requires a POSIX shell and cannot build seeds on Windows.",
+    );
   });
 
   it("rejects invalid and duplicate fixture declarations", () => {
