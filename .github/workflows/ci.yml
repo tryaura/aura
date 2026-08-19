@@ -15,11 +15,13 @@ permissions:
   contents: read
 
 jobs:
-  # Only a packaging change can regress this, so pull requests skip it. Merge-queue entries and
-  # pushes to main still run it, and release.yml re-runs it before any tag is built.
+  # Runs on pull requests too. This used to be skipped there on the reasoning that only a packaging
+  # change could regress it, but the example distribution is exercised end to end here: #76 added a
+  # preset requiring an MCP catalog entry, which made a non-interactive `setup --dry-run` stop on
+  # the unmet requirement, and the break reached main green because this was the job that would
+  # have caught it. Anything the example's smoke run covers can regress it, not just packaging.
   packages:
     name: Release packages
-    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
