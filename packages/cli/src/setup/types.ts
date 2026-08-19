@@ -33,9 +33,11 @@ interface BaselineSelections {
  * What the wizard settled on for one scope.
  *
  * `blocked` is not `keep`: it means Aura could not read the target safely, so the scope is left out
- * of link planning entirely rather than wired to a file Aura refused to touch.
+ * of link planning entirely rather than wired to a file Aura refused to touch. `skip` leaves the
+ * scope out the same way, but because the user asked for it — the difference matters only to what
+ * the wizard says, never to what the planner does with either.
  */
-type InstructionTargetAction = "blocked" | "consolidate" | "keep" | "template";
+type InstructionTargetAction = "blocked" | "consolidate" | "keep" | "skip" | "template";
 
 export interface InstructionScopeSelection {
   readonly action: InstructionTargetAction;

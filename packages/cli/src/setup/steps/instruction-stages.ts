@@ -1,3 +1,5 @@
+import { basename } from "node:path";
+
 import type { Scope } from "@tryaura/aura-sdk";
 
 import {
@@ -6,7 +8,7 @@ import {
   type InstructionSource,
 } from "../instructions.js";
 import type { ChainStage } from "../wizard-chain.js";
-import { selectedValues, type WizardOption } from "../wizard-types.js";
+import { selectedValues, type WizardAnswer, type WizardOption } from "../wizard-types.js";
 import {
   duplicateQuestions,
   parseDuplicateWinners,
@@ -15,6 +17,7 @@ import {
 
 export const TEMPLATE_VALUE = "template";
 export const CONSOLIDATE_VALUE = "consolidate";
+export const SKIP_VALUE = "skip";
 
 /** What the chain has gathered for one scope so far; every field appears once its form resolves. */
 export interface ScopeDraft {
@@ -37,9 +40,13 @@ export interface ScopeInput {
 
 export function scopeStages(input: ScopeInput): readonly ChainStage<ChainState>[] {
   const options = actionOptions(input);
-  // The least invasive offered answer, which is what option order already encodes. Doubles as the
-  // fallback, so a missing answer can never be an action that was not on the menu — "keep" is
-  // absent when there is no target to keep, and choosing it would wire apps to nothing.
+  const offered = new Set(options.map((option) => option.value));
+  // The least invasive offered answer that still configures the scope, which is what option order
+  // encodes up to the opt-out. Doubles as the fallback, so a missing answer can never be an action
+  // that was not on the menu — "keep" is absent when there is no target to keep, and choosing it
+  // would wire apps to nothing. The opt-out sits outside that ordering deliberately: it is the
+  // least invasive answer of all, and first place is also what `--yes` accepts, so putting it there
+  // would make every non-interactive run silently decline the scope.
   const fallback = options[0]?.value ?? TEMPLATE_VALUE;
   const actionId = `${input.scope}-instruction-action`;
   const sourcesId = `${input.scope}-instruction-sources`;
@@ -56,7 +63,7 @@ export function scopeStages(input: ScopeInput): readonly ChainStage<ChainState>[
       isApplicable: () => !input.blocked,
       label: input.scope === "global" ? "Global" : "Project",
       apply: (state, answers) =>
-        update(state, { action: selectedValues(answers[actionId])[0] ?? fallback }),
+        update(state, { action: settled(answers[actionId], offered, fallback) }),
       questions: (state) =>
         input.blocked
           ? undefined
@@ -167,7 +174,32 @@ export function scopeStages(input: ScopeInput): readonly ChainStage<ChainState>[
   ];
 }
 
-/** Ordered least invasive first, which is what the action stage proposes and `--yes` accepts. */
+/**
+ * An answer this menu never offered is not an answer.
+ *
+ * The opt-out exists on one scope and `keep` only where there is a target to keep, so a value
+ * arriving from anywhere but these options — a scripted run, a hand-built draft — could otherwise
+ * decline a scope the wizard deliberately gave no way to decline. Falls back for the same reason
+ * the fallback exists at all, and mirrors how the chain re-seeds only values still on offer.
+ */
+function settled(
+  answer: WizardAnswer | undefined,
+  offered: ReadonlySet<string>,
+  fallback: string,
+): string {
+  const value = selectedValues(answer)[0];
+  return value !== undefined && offered.has(value) ? value : fallback;
+}
+
+/**
+ * Ordered least invasive first, which is what the action stage proposes and `--yes` accepts, with
+ * the opt-out last.
+ *
+ * The opt-out is offered on the project scope only. Declining the global scope would leave INS-001
+ * and INS-002 firing at error severity, so setup could not end on green — an answer the wizard
+ * offers should not be one the closing checklist then fails the run over. The project tier has no
+ * error-severity counterpart, so a declined project scope still ends green.
+ */
 function actionOptions(input: ScopeInput): readonly WizardOption[] {
   const options: WizardOption[] = [];
   if ((input.targetContentValue?.trim().length ?? 0) > 0) {
@@ -189,5 +221,18 @@ function actionOptions(input: ScopeInput): readonly WizardOption[] {
     label: "Use starter template",
     value: TEMPLATE_VALUE,
   });
+  if (input.scope === "project") {
+    options.push({
+      // Declining is not undoing: an earlier run's target and the link pointing at it survive this
+      // answer untouched, and a converged summary saying "nothing to do" would be the only thing
+      // the user ever heard about them.
+      description:
+        (input.targetContentValue?.trim().length ?? 0) > 0
+          ? `Aura writes nothing here and adds no project-level link; ${basename(input.targetPath)} and anything already linking to it stay as they are.`
+          : "Aura writes nothing here and adds no project-level link.",
+      label: "Skip project instructions",
+      value: SKIP_VALUE,
+    });
+  }
   return options;
 }

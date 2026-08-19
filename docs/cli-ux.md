@@ -107,6 +107,18 @@ When the active step runs a sequence of internal forms (a chain step like Instru
 - Both instruction scopes flow through one sub-row; the `Global` / `Project` action tabs double
   as scope section markers, so repeated stage names read unambiguously left to right:
   `✔ Global │ ✔ Sources │ ✔ Archive │ ▶ Project ☐ │ Sources ☐`.
+- The Project action offers a final `Skip project instructions` option that the Global action does
+  not: declining the global scope would leave the shared-source and application-link checks failing,
+  so setup could not end on green. A declined scope contributes only its action tab — no Sources,
+  Duplicates, or Archive tabs follow it, by the same honest-map rule:
+  `✔ Global │ ✔ Sources │ ✔ Archive │ ▶ Project ☐`.
+- Declining is not undoing, and the option says so where it matters: when the project target already
+  has content, the option's description names the file and states that it, and anything linking to
+  it, stay as they are. Otherwise the only thing a skip-only run would say about an earlier run's
+  target and link is that everything had already converged.
+- The same reasoning binds the answers a scope can settle on, not just the ones it is shown: an
+  action that was not on that scope's menu falls back to the proposed one, and a Global scope whose
+  Sources form ends up empty is a blocker rather than a silent decline through the back door.
 - The Skills step is the second chain precedent: its Review stage exists only while a directory
   skill is selected or a recorded skill's source revision moved, one review question per skill —
   `└ ✔ Skills │ ▶ Review claude-md ☐ │ Review commit-style ☐`.
