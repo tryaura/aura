@@ -5,6 +5,8 @@ import { SETUP_ABORTED, SETUP_BACK } from "../types.js";
 import { createScriptedWizardIo } from "../wizard-scripted.js";
 import {
   fakeCatalog,
+  BUNDLED_IDENTITY,
+  bundledPack,
   HASH_1,
   HASH_2,
   PRIVATE_SOURCE,
@@ -26,6 +28,79 @@ describe("skillsStep", () => {
     expect(scripted.notes).toContain(
       "No skills are available from the installed plugins or directories.",
     );
+  });
+
+  it("labels and preselects a fresh preset skill", async () => {
+    const pack = bundledPack(HASH_1);
+    const catalog = fakeCatalog({
+      entries: [
+        {
+          description: pack.description,
+          id: pack.id,
+          identity: BUNDLED_IDENTITY,
+          name: pack.name,
+          remote: false,
+          sourceId: pack.source.id,
+          sourceName: pack.source.name,
+          version: pack.version,
+        },
+      ],
+    });
+    const scripted = io([]);
+
+    const outcome = await skillsStep.gather(
+      context(catalog, [], {
+        availableSkills: [pack],
+        manifestMissing: true,
+        presetSkills: [{ id: "review", source: "plugin:official" }],
+      }),
+      scripted,
+    );
+
+    expect(scripted.asked[0]?.[0]?.initial).toEqual([BUNDLED_IDENTITY]);
+    expect(scripted.asked[0]?.[0]?.options[0]?.label).toBe("Review (from preset)");
+    expect(outcome).toMatchObject({
+      skills: { selected: [{ id: "review", source: "plugin:official" }] },
+    });
+  });
+
+  it("records an accepted bundled update but keeps it by default", async () => {
+    const previous: AuraManifestSkill = {
+      id: "review",
+      pinned: false,
+      source: "plugin:official",
+      treeHash: HASH_1,
+      version: "1.0.0",
+    };
+    const pack = bundledPack(HASH_2, "2.0.0");
+    const catalog = fakeCatalog({
+      entries: [
+        {
+          description: pack.description,
+          id: pack.id,
+          identity: BUNDLED_IDENTITY,
+          name: pack.name,
+          remote: false,
+          sourceId: pack.source.id,
+          sourceName: pack.source.name,
+          version: pack.version,
+        },
+      ],
+    });
+    const stepContext = context(catalog, [previous], { availableSkills: [pack] });
+
+    const kept = await skillsStep.gather(stepContext, io([]));
+    const updated = await skillsStep.gather(
+      stepContext,
+      io([{}, { [`review:${BUNDLED_IDENTITY}`]: { kind: "options", values: ["install"] } }]),
+    );
+
+    expect(kept).toMatchObject({ skills: { selected: [{ id: "review" }] } });
+    if (typeof kept === "symbol") {
+      throw new Error("expected selections");
+    }
+    expect(kept.skills?.updates).toBeUndefined();
+    expect(updated).toMatchObject({ skills: { updates: [BUNDLED_IDENTITY] } });
   });
 
   it("requires an explicit install through the review before a directory skill lands", async () => {

@@ -199,6 +199,130 @@ describe("runSetup", () => {
     await expect(snapshot(fixture.homeDir)).resolves.toEqual(before);
   });
 
+  it("onboards an explicit bundled preset and converges with its exact sticky reference", async () => {
+    const fixture = await createFixture();
+    const content = join(fixture.homeDir, "preset-plugin");
+    const skill = join(content, "skills", "review");
+    await mkdir(skill, { recursive: true });
+    await writeFile(join(content, "rules.md"), "Use reviewed changes.\n", "utf8");
+    await writeFile(
+      join(content, "mcp.json"),
+      JSON.stringify({
+        credentialEnv: [],
+        description: "Fixture documentation.",
+        docsUrl: "https://example.test/docs",
+        id: "fixture/docs",
+        name: "Fixture docs",
+        schemaVersion: 1,
+        serverName: "fixture-docs",
+        supportedApps: ["codex"],
+        transportTemplate: { command: "fixture-docs-mcp", type: "stdio" },
+      }),
+      "utf8",
+    );
+    await writeFile(
+      join(content, "preset.json"),
+      JSON.stringify({
+        checks: { severity: { "fixture-info/INFO": "warn" } },
+        name: "Fixture onboarding",
+        requiredMcpServers: ["fixture/docs"],
+        schemaVersion: 1,
+        skills: [{ id: "review", source: "plugin:fixture" }],
+        snippets: ["fixture/rules"],
+      }),
+      "utf8",
+    );
+    await writeFile(join(skill, "SKILL.md"), "---\nname: review\n---\n# Review\n", "utf8");
+    const installedCodex = {
+      ...firstAdapter(codexPlugin.adapters),
+      detect: () => Promise.resolve({ installed: true, version: "0.147.0" }),
+    };
+    const registry = createPluginRegistry([
+      findingPlugin("info", []),
+      definePlugin({
+        adapters: [installedCodex],
+        apiVersion: 1,
+        id: "fixture",
+        mcpCatalog: [
+          {
+            description: "Fixture documentation.",
+            id: "fixture/docs",
+            kind: "mcp-server",
+            name: "Fixture docs",
+            source: { type: "file", url: pathToFileURL(join(content, "mcp.json")).href },
+            version: "1.0.0",
+          },
+        ],
+        name: "Fixture onboarding",
+        presets: [
+          {
+            description: "Fixture onboarding preset.",
+            id: "fixture/onboarding",
+            kind: "preset",
+            name: "Fixture onboarding",
+            source: { type: "file", url: pathToFileURL(join(content, "preset.json")).href },
+            version: "1.0.0",
+          },
+        ],
+        skills: [
+          {
+            description: "Review changes.",
+            id: "review",
+            kind: "skill-pack",
+            name: "Review",
+            source: { type: "directory", url: pathToFileURL(skill).href },
+            version: "1.0.0",
+          },
+        ],
+        snippets: [
+          {
+            category: "workflow",
+            description: "Use reviewed changes.",
+            id: "fixture/rules",
+            kind: "snippet",
+            name: "Fixture rules",
+            source: { type: "file", url: pathToFileURL(join(content, "rules.md")).href },
+            version: "1.0.0",
+          },
+        ],
+        version: "1.0.0",
+      }),
+    ]);
+
+    const firstExit = await runSetup(
+      fixture.request(
+        {},
+        {
+          cliReference: "plugin:fixture/onboarding",
+          interactive: true,
+          registry,
+        },
+      ),
+    );
+
+    expect(firstExit, `${fixture.stdout()}\n${fixture.stderr()}`).toBe(0);
+    const manifestPath = join(fixture.homeDir, "agents", "aura.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    expect(manifest).toMatchObject({
+      apps: { codex: { managed: true } },
+      mcpServers: [{ catalogId: "fixture/docs", name: "fixture-docs" }],
+      preset: "plugin:fixture/onboarding",
+      skills: [{ id: "review", source: "plugin:fixture", version: "1.0.0" }],
+      snippets: [{ id: "fixture/rules", version: "1.0.0" }],
+    });
+    expect(manifest.checks).toBeUndefined();
+    expect(fixture.stdout()).toContain(
+      "Effective check policy from preset Fixture onboarding (not copied into your manifest):",
+    );
+    expect(fixture.stdout()).toContain("fixture-info/INFO: severity warn");
+
+    const before = await snapshot(fixture.homeDir);
+    const secondExit = await runSetup(fixture.request({}, { interactive: true, registry }));
+    expect(secondExit).toBe(0);
+    expect(fixture.stdout()).toContain("Nothing to change.");
+    await expect(snapshot(fixture.homeDir)).resolves.toEqual(before);
+  });
+
   it("leaves the filesystem untouched when the wizard is aborted at any step", async () => {
     const steps: readonly SetupStep[] = [stubStep("first"), stubStep("second")];
 

@@ -12,6 +12,7 @@ import type {
 } from "@tryaura/aura-sdk";
 
 import { directorySourceProblem } from "./skills/directory-config.js";
+import { contentVersionProblem } from "./plugin-validation-version.js";
 import { skillIdProblem } from "./skills/path-guards.js";
 
 import {
@@ -168,7 +169,23 @@ function collectCandidate(
   collectSkillDirectories(state, plugin, collected.skillDirectories);
   collectSkills(state, plugin, collected.skills);
   collectNamespaced(state, "skill-source", plugin.skillSources, plugin, collected.skillSources);
-  collectNamespaced(state, "snippet", plugin.snippets, plugin, collected.snippets);
+  collectSnippets(state, plugin, collected.snippets);
+}
+
+/** Snippets are managed content, so their revision has to be comparable before one is installed. */
+function collectSnippets(state: RegistryState, plugin: AuraPlugin, collected: Snippet[]): void {
+  const claimed: Snippet[] = [];
+  collectNamespaced(state, "snippet", plugin.snippets, plugin, claimed);
+  for (const snippet of claimed) {
+    const problem = contentVersionProblem(snippet.version);
+    if (problem === undefined) {
+      collected.push(snippet);
+    } else {
+      state.violations.push(
+        `Plugin "${plugin.name}" (${plugin.id}) snippet "${snippet.id}" ${problem}.`,
+      );
+    }
+  }
 }
 
 /**
@@ -209,6 +226,13 @@ function collectSkills(
       state.violations.push(
         `Plugin "${plugin.name}" (${plugin.id}) contributes skill-pack ID "${skill.id}"; ` +
           "expected a kebab-case local skill ID of at most 64 characters.",
+      );
+      continue;
+    }
+    const versionProblem = contentVersionProblem(skill.version);
+    if (versionProblem !== undefined) {
+      state.violations.push(
+        `Plugin "${plugin.name}" (${plugin.id}) skill "${skill.id}" ${versionProblem}.`,
       );
       continue;
     }

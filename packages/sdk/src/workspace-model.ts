@@ -46,6 +46,8 @@ export interface WorkspaceModel {
   readonly projectRoot?: string | undefined;
   /** Preset-required MCP selections projected into desired state without persisting them. */
   readonly requiredMcpServers?: readonly RequiredMcpServer[] | undefined;
+  /** Preset MCP requirements deliberately omitted through recorded manifest overrides. */
+  readonly overriddenRequiredMcpServers?: readonly OverriddenRequiredMcpServer[] | undefined;
   /** Repository state captured once by core, when the workspace is inside a repository. */
   readonly repository?: RepositoryModel | undefined;
   /** Canonical `~/agents/AGENTS.md` source read independently of any application adapter. */
@@ -65,6 +67,12 @@ export interface WorkspaceModel {
 
 /** One virtual desired MCP entry and the preset/configuration layer that requires it. */
 export interface RequiredMcpServer extends AuraManifestMcpServer {
+  readonly catalogId: string;
+  readonly requiredBy: string;
+}
+
+/** One preset requirement intentionally omitted from desired state. */
+export interface OverriddenRequiredMcpServer {
   readonly catalogId: string;
   readonly requiredBy: string;
 }

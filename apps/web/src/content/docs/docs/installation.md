@@ -100,7 +100,7 @@ From a repository, run:
 aura check
 ```
 
-The current distribution ships thirteen checks:
+The current distribution includes these environment, instruction, and managed-content checks:
 
 | ID        | What it verifies                                                  |
 | --------- | ----------------------------------------------------------------- |
@@ -117,6 +117,12 @@ The current distribution ships thirteen checks:
 | `INS-007` | Instruction context stays within a practical budget.              |
 | `INS-008` | Instruction guidance respects global and project precedence.      |
 | `MGD-001` | Aura-managed instruction blocks have not changed by hand.         |
+| `MGD-002` | Newer unpinned managed snippet and skill revisions are available. |
+| `MGD-003` | A detected application has not been managed or ignored.           |
+
+MGD-002 and MGD-003 findings are informational. They remain green and always preserve exit status
+`0` when no warning or error finding is present. Use `aura check --fix --interactive` to review an
+MGD-002 update or removal plan; MGD-003 points to `aura setup` and never starts a nested command.
 
 To read why a check exists without scanning applications or repository state, use:
 

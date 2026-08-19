@@ -41,6 +41,7 @@ describe("Aura manifest protocol", () => {
         thresholds: { "INS-007": { approxTokens: 12_000 } },
       },
       future: { enabled: true },
+      ignoredApps: ["windsurf"],
       mcpServers: [
         {
           apps: ["codex"],
@@ -62,6 +63,10 @@ describe("Aura manifest protocol", () => {
           generation: 7,
           mcpServerNames: ["github"],
         },
+      },
+      overrides: {
+        futurePolicy: "review",
+        requiredMcpServers: ["official/docs"],
       },
       preset: "plugin:official/platform",
       schemaVersion: 1,
@@ -95,6 +100,49 @@ describe("Aura manifest protocol", () => {
     const serialized = serializeAuraManifest(state.value, PATH);
     expect(serialized.endsWith("\n")).toBe(true);
     expect(JSON.parse(serialized)).toEqual(source);
+  });
+
+  it("accepts old manifests without ignored apps or overrides", () => {
+    const state = parseAuraManifest(
+      JSON.stringify({
+        apps: {},
+        mcpServers: [],
+        ownership: {},
+        schemaVersion: 1,
+        skills: [],
+        snippets: [],
+      }),
+      PATH,
+    );
+
+    expect(state.status).toBe("ready");
+    if (state.status !== "ready") {
+      throw new Error("expected a ready manifest");
+    }
+    expect(state.value.ignoredApps).toBeUndefined();
+    expect(state.value.overrides).toBeUndefined();
+  });
+
+  it("bounds the optional ID lists", () => {
+    const state = parseAuraManifest(
+      JSON.stringify({
+        apps: {},
+        ignoredApps: Array.from({ length: 257 }, (_, index) => `app-${String(index)}`),
+        mcpServers: [],
+        ownership: {},
+        schemaVersion: 1,
+        skills: [],
+        snippets: [],
+      }),
+      PATH,
+    );
+
+    expect(state.status).toBe("read-only");
+    if (state.status !== "read-only") {
+      throw new Error("expected a read-only manifest");
+    }
+    expect(state.problem).toMatchObject({ jsonPath: "$.ignoredApps", kind: "invalid-schema" });
+    expect(state.problem.message).toContain("at most 256");
   });
 
   it("preserves other apps and extension fields through add, disable, and remove edits", () => {
@@ -248,6 +296,88 @@ describe("Aura manifest protocol", () => {
       },
       '$.ownership["odd.app"].files[0]',
       "must be a string",
+    ],
+    [
+      {
+        apps: {},
+        ignoredApps: ["Codex"],
+        mcpServers: [],
+        ownership: {},
+        schemaVersion: 1,
+        skills: [],
+        snippets: [],
+      },
+      "$.ignoredApps[0]",
+      "must be a valid id",
+    ],
+    [
+      {
+        apps: {},
+        ignoredApps: ["codex", "codex"],
+        mcpServers: [],
+        ownership: {},
+        schemaVersion: 1,
+        skills: [],
+        snippets: [],
+      },
+      "$.ignoredApps[1]",
+      "must not duplicate",
+    ],
+    [
+      {
+        apps: {},
+        mcpServers: [],
+        overrides: { requiredMcpServers: ["not-namespaced"] },
+        ownership: {},
+        schemaVersion: 1,
+        skills: [],
+        snippets: [],
+      },
+      "$.overrides.requiredMcpServers[0]",
+      "must be a valid id",
+    ],
+    [
+      {
+        apps: {},
+        mcpServers: [],
+        overrides: { requiredMcpServers: ["official/docs", "official/docs"] },
+        ownership: {},
+        schemaVersion: 1,
+        skills: [],
+        snippets: [],
+      },
+      "$.overrides.requiredMcpServers[1]",
+      "must not duplicate",
+    ],
+    [
+      // Setup rebuilds `overrides` on every run, so its forward-compatibility window would
+      // otherwise double as unbounded manifest storage rewritten verbatim forever.
+      {
+        apps: {},
+        mcpServers: [],
+        overrides: Object.fromEntries(
+          Array.from({ length: 33 }, (_unused, index) => [`futureKey${String(index)}`, true]),
+        ),
+        ownership: {},
+        schemaVersion: 1,
+        skills: [],
+        snippets: [],
+      },
+      "$.overrides",
+      "must contain at most 32 keys",
+    ],
+    [
+      {
+        apps: {},
+        mcpServers: [],
+        overrides: { "not a key": true },
+        ownership: {},
+        schemaVersion: 1,
+        skills: [],
+        snippets: [],
+      },
+      "$.overrides.not a key",
+      "must be a camelCase override name",
     ],
   ])("reports the precise path for invalid known fields", (value, jsonPath, reason) => {
     const state = parseAuraManifest(JSON.stringify(value), PATH);

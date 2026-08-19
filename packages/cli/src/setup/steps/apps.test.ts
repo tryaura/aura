@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- the application picker matrix keeps persistence cases together. */
 import { describe, expect, it } from "vitest";
 
 import type { AdapterSupportStatus, AuraManifestState } from "@tryaura/aura-sdk";
@@ -61,6 +62,26 @@ describe("appsStep", () => {
     expect(outcome).toEqual({ apps: { managed: [] } });
   });
 
+  it("keeps an ignored detected application unchecked and clears the ignore when selected", async () => {
+    const catalog = [detected({ adapterId: "app", displayName: "App", version: "1.0.0" })];
+    const manifest = manifestWith([]);
+    if (manifest.status !== "ready") {
+      throw new Error("expected a ready manifest");
+    }
+    const ignoredManifest: AuraManifestState = {
+      ...manifest,
+      value: { ...manifest.value, ignoredApps: ["app"] },
+    };
+    const harness = createHarness({
+      forms: [{ apps: { kind: "options", values: ["app"] } }],
+    });
+
+    const outcome = await appsStep.gather(context(catalog, ignoredManifest), harness.io);
+
+    expect(question(harness).initial).toEqual([]);
+    expect(outcome).toEqual({ apps: { managed: ["app"] } });
+  });
+
   it("flags an unsupported version but leaves the application pre-checked", async () => {
     const catalog = [
       detected({
@@ -117,7 +138,7 @@ describe("appsStep", () => {
     const outcome = await appsStep.gather(context(catalog), harness.io);
 
     expect(harness.asked).toHaveLength(2);
-    expect(outcome).toEqual({ apps: { managed: [] } });
+    expect(outcome).toEqual({ apps: { ignored: ["app"], managed: [] } });
   });
 
   it("aborts from the empty-selection confirmation", async () => {

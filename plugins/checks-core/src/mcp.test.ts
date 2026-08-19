@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- the MCP parity matrix shares one desired-state fixture. */
 import type {
   AuraManifest,
   AuraManifestMcpServer,
@@ -40,6 +41,26 @@ describe("MCP-001 and MCP-002", () => {
       id: "missing:claude-code:docs",
       metadata: { requiredBy: "Acme platform" },
     });
+  });
+
+  it("reports an explicit preset override as informational without creating a desired target", () => {
+    const base = workspaceFor({ convergence: readyConvergence(), desired: [], servers: [] });
+    const workspace: WorkspaceModel = {
+      ...base,
+      overriddenRequiredMcpServers: [{ catalogId: "official/docs", requiredBy: "Acme platform" }],
+    };
+
+    expect(runChecks([mcp001], workspace).findings).toEqual([
+      expect.objectContaining({
+        id: "override:official/docs",
+        metadata: {
+          catalogId: "official/docs",
+          kind: "preset-override",
+          requiredBy: "Acme platform",
+        },
+        severity: "info",
+      }),
+    ]);
   });
 
   it("reports and fixes a missing manifest server", () => {

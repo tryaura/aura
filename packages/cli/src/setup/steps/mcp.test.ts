@@ -52,6 +52,40 @@ describe("mcpStep", () => {
     });
   });
 
+  it("preserves a recorded required-server override without prompting again", async () => {
+    const github = definition("official/github", "GitHub", "github");
+    const io = createScriptedWizardIo({ confirmations: ["aborted"] });
+
+    const result = await mcpStep.gather(
+      context([github], ["official/github"], {
+        overriddenRequiredIds: ["official/github"],
+      }),
+      io,
+    );
+
+    expect(result).toEqual({
+      mcp: { overriddenRequiredIds: ["official/github"], servers: [] },
+    });
+  });
+
+  it("clears a recorded override when the required server is selected", async () => {
+    const github = definition("official/github", "GitHub", "github");
+    const io = createScriptedWizardIo({
+      forms: [answer("mcp-servers", ["catalog:official/github"]), {}],
+    });
+
+    const result = await mcpStep.gather(
+      context([github], ["official/github"], {
+        overriddenRequiredIds: ["official/github"],
+      }),
+      io,
+    );
+
+    expect(result).toMatchObject({
+      mcp: { overriddenRequiredIds: [], servers: [{ catalogId: "official/github" }] },
+    });
+  });
+
   it("captures multiple custom transports without ever echoing rejected credential bytes", async () => {
     const credential = "sk-live-secret-value";
     const forms: WizardAnswers[] = [

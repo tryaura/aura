@@ -75,10 +75,12 @@ async function gatherApprovedSkills(
 
   const inputs: SkillStageInputs = {
     approvedPrivateSourceIds,
+    availableSkills: context.model.availableSkills ?? [],
     catalog: context.skillCatalog,
     listing,
     managedApps: managedSkillApps(context),
     manifestSkills,
+    presetSkills: context.preset?.skills ?? [],
   };
   const opening = openingSelection(context, inputs, manifestSkills);
   noteHeldBack(inputs, io, opening.heldBack);
@@ -91,7 +93,7 @@ async function gatherApprovedSkills(
   }
 
   const skills = await finalizeSkills(result, inputs, manifestSkills);
-  return completedSelections(context, approval, skills, manifestSkills);
+  return completedSelections(context, approval, skills, manifestSkills, result.decisions);
 }
 
 /**
@@ -133,7 +135,12 @@ function completedSelections(
   approval: readonly string[],
   skills: FinalizedSkills,
   manifestSkills: readonly AuraManifestSkill[],
+  decisions: Readonly<Record<string, string>>,
 ) {
+  const recorded = new Set(manifestSkills.map((skill) => skillIdentity(skill.source, skill.id)));
+  const updates = Object.entries(decisions)
+    .filter(([identity, decision]) => decision === "install" && recorded.has(identity))
+    .map(([identity]) => identity);
   if (skills.selected.length === 0 && manifestSkills.length === 0) {
     // Nothing chosen and nothing recorded: drop the stale slice so an unsupported new install
     // cannot carry forward after the Apps answer changes. This run's private-source approvals are
@@ -142,11 +149,16 @@ function completedSelections(
     const { skills: _staleSkills, ...selections } = context.selections;
     return approval.length === 0
       ? selections
-      : { ...selections, skills: { approvedPrivateSourceIds: approval, selected: [] } };
+      : {
+          ...selections,
+          skills: { approvedPrivateSourceIds: approval, selected: [] },
+        };
   }
+  const selection = updates.length === 0 ? skills : { ...skills, updates };
   return {
     ...context.selections,
-    skills: approval.length === 0 ? skills : { ...skills, approvedPrivateSourceIds: approval },
+    skills:
+      approval.length === 0 ? selection : { ...selection, approvedPrivateSourceIds: approval },
   };
 }
 
@@ -226,9 +238,19 @@ function openingSelection(
   manifestSkills: readonly AuraManifestSkill[],
 ): { readonly heldBack: readonly string[]; readonly state: SkillsChainState } {
   const recorded = new Set(manifestSkills.map((skill) => skillIdentity(skill.source, skill.id)));
-  const previous = context.selections.skills?.selected.map((skill) =>
-    skillIdentity(skill.source, skill.id),
-  ) ?? [...recorded];
+  const previous =
+    context.selections.skills?.selected.map((skill) => skillIdentity(skill.source, skill.id)) ??
+    (context.manifest.status === "ready"
+      ? [...recorded]
+      : inputs.presetSkills.map((skill) => skillIdentity(skill.source, skill.id)));
   const opening = initialSkillSelection(previous, recorded, inputs.managedApps);
-  return { heldBack: opening.heldBack, state: { decisions: {}, selected: opening.selected } };
+  return {
+    heldBack: opening.heldBack,
+    state: {
+      decisions: Object.fromEntries(
+        (context.selections.skills?.updates ?? []).map((identity) => [identity, "install"]),
+      ),
+      selected: opening.selected,
+    },
+  };
 }

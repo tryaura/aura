@@ -1,7 +1,6 @@
-import { parse as parseSemver } from "semver";
-
 import type { Adapter, AuraPlugin } from "@tryaura/aura-sdk";
 
+import { canonicalSemver } from "./plugin-validation-version.js";
 import { sharedLinkViolations } from "./workspace/shared-links.js";
 
 /** The plugin contract supported by this Aura core build. */
@@ -271,23 +270,6 @@ export function formatViolations(violations: readonly string[]): string {
       : `Aura cannot build the plugin registry (${violations.length} problems):`;
 
   return [heading, ...violations.map((violation) => `  - ${violation}`)].join("\n");
-}
-
-/**
- * A version's canonical rendering, or `undefined` when it is not semver at all.
- *
- * Parsing alone is too weak for an identity field: `semver` also accepts a leading `v` and
- * surrounding whitespace, so a version declared as "v1.0.0" or "1.0.0\n" would pass and then be
- * carried around raw. Requiring the declaration to equal its canonical form refuses those while
- * still accepting "1.2.3-rc.1+build.5" as written — build metadata has to be rebuilt by hand
- * because `valid()` drops it.
- */
-function canonicalSemver(version: string): string | undefined {
-  const parsed = parseSemver(version);
-  if (parsed === null) {
-    return undefined;
-  }
-  return parsed.build.length === 0 ? parsed.version : `${parsed.version}+${parsed.build.join(".")}`;
 }
 
 function formatPlugin(plugin: PluginIdentity): string {

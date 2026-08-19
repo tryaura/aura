@@ -79,13 +79,63 @@ describe("MCP setup planner", () => {
       servers: [],
     });
 
-    expect(planSetupMcp(context, createEmptyAuraManifest()).blockers).toEqual([]);
+    const planned = planSetupMcp(context, createEmptyAuraManifest());
+
+    expect(planned.blockers).toEqual([]);
+    expect(planned.manifest.overrides).toEqual({
+      requiredMcpServers: ["official/github"],
+    });
+  });
+
+  it("keeps a recorded override when the preset did not resolve this run", () => {
+    // Offline, or a cache miss: this run cannot see what the preset requires, so rebuilding the
+    // override list from an empty requirement set would erase a confirmed deviation.
+    const context = setupContext({
+      preset: false,
+      requiredIds: new Set<string>(),
+      servers: [],
+    });
+    const manifest = {
+      ...createEmptyAuraManifest(),
+      overrides: { requiredMcpServers: ["official/github"] },
+    };
+
+    const planned = planSetupMcp(context, manifest);
+
+    expect(planned.manifest.overrides).toEqual({ requiredMcpServers: ["official/github"] });
+  });
+
+  it("clears stale required-server overrides while preserving extension fields", () => {
+    const context = setupContext({
+      overriddenRequiredIds: [],
+      requiredIds: new Set(["official/github"]),
+      servers: [
+        {
+          apps: [],
+          catalogId: "official/github",
+          name: "github",
+          scope: "global",
+          transport: { command: "github-mcp", type: "stdio" },
+        },
+      ],
+    });
+    const manifest = {
+      ...createEmptyAuraManifest(),
+      overrides: { futurePolicy: true, requiredMcpServers: ["official/github"] },
+    };
+
+    const planned = planSetupMcp(context, manifest);
+
+    expect(planned.blockers).toEqual([]);
+    expect(planned.manifest.overrides).toEqual({ futurePolicy: true });
   });
 });
 
 interface SetupContextOptions {
   readonly interactive?: boolean | undefined;
   readonly overriddenRequiredIds?: readonly string[] | undefined;
+  /** Whether this run resolved the preset; only such a run knows what it requires. */
+  readonly preset?: boolean | undefined;
   readonly requiredIds: ReadonlySet<string>;
   readonly servers: readonly AuraManifestMcpServer[];
 }
@@ -113,6 +163,18 @@ function setupContext(options: SetupContextOptions): SetupStepContext {
       requiredIds: options.requiredIds,
     },
     model,
+    ...(options.preset === false
+      ? {}
+      : {
+          preset: {
+            checkSummary: [],
+            explicit: false,
+            name: "acme",
+            reference: "plugin:acme/preset",
+            skills: [],
+            snippets: [],
+          },
+        }),
     selections: {
       mcp: {
         overriddenRequiredIds: options.overriddenRequiredIds,

@@ -121,6 +121,14 @@ describe("compiled Aura distribution", () => {
           title: "Aura-managed instruction blocks have not changed by hand",
         },
         {
+          id: "MGD-002",
+          title: "Managed snippets and skills are at their reviewed source revisions",
+        },
+        {
+          id: "MGD-003",
+          title: "Detected applications have an explicit Aura management decision",
+        },
+        {
           id: "MCP-001",
           title: "Managed applications have the manifest's MCP servers",
         },
@@ -143,14 +151,14 @@ describe("compiled Aura distribution", () => {
           ENV: { errors: 0, informational: 0, passed: 4, warnings: 0 },
           INS: { errors: 1, informational: 0, passed: 7, warnings: 0 },
           MCP: { errors: 0, informational: 0, passed: 5, warnings: 0 },
-          MGD: { errors: 0, informational: 0, passed: 1, warnings: 0 },
+          MGD: { errors: 0, informational: 0, passed: 3, warnings: 0 },
           SKL: { errors: 0, informational: 0, passed: 4, warnings: 0 },
         },
         diagnostics: 0,
         errors: 1,
         exitCode: 2,
         informational: 0,
-        passed: 21,
+        passed: 23,
         warnings: 0,
       },
     });

@@ -244,6 +244,50 @@ describe("skill setup planner", () => {
   });
 });
 
+describe("an unreviewed skill revision", () => {
+  const held = {
+    apps: [app("claude-code", "/home/dev/.claude/skills")],
+    availableSkills: [pack("plugin:fixture", HASH_2)],
+    previous: [manifestSkill("plugin:fixture", HASH_1)],
+    selections: [{ id: "review", source: "plugin:fixture" as const }],
+  };
+
+  it("keeps the recorded revision and says so, without touching the tree", () => {
+    const result = planSkills(context({ ...held, sharedSkills: [shared(HASH_1)] }));
+
+    expect(result.manifestSkills).toEqual([manifestSkill("plugin:fixture", HASH_1)]);
+    expect(result.operations.some((operation) => operation.type === "write")).toBe(false);
+    expect(result.notices).toEqual([
+      {
+        kind: "held",
+        message: "review stays at 1.0.0; 1.0.0 is available. Run setup interactively to review it.",
+      },
+    ]);
+  });
+
+  it("names the declined revision when the recorded tree is missing, not a pin or a fetch failure", () => {
+    // Masking the available pack as `undefined` reported this as "Reinstall pinned skill … its
+    // recorded source tree is unavailable": wrong on both counts, and it named no way forward.
+    const result = planSkills(context({ ...held, sharedSkills: [] }));
+
+    expect(result.manualSteps).toEqual([
+      'Skill "review" stays at version 1.0.0, but its files are missing from ' +
+        `${SHARED_ROOT}/review. Re-run setup and accept version 1.0.0, or reinstall the recorded ` +
+        "revision from its source.",
+    ]);
+  });
+
+  it("applies the revision once the review accepted it", () => {
+    const result = planSkills(
+      context({ ...held, sharedSkills: [shared(HASH_1)], updates: ["plugin:fixture\u0000review"] }),
+    );
+
+    expect(result.manifestSkills).toEqual([manifestSkill("plugin:fixture", HASH_2)]);
+    expect(result.notices).toEqual([]);
+    expect(result.operations.some((operation) => operation.type === "write")).toBe(true);
+  });
+});
+
 interface ContextOptions {
   readonly allowedSourceIds?: readonly string[];
   readonly apps?: readonly AppModel[];
@@ -252,6 +296,8 @@ interface ContextOptions {
   readonly resolved?: readonly ResolvedSkillPack[];
   readonly selections: readonly SkillSelection[] | undefined;
   readonly sharedSkills?: readonly SharedSkillState[];
+  /** Identities whose newer source revision this run reviewed and accepted. */
+  readonly updates?: readonly string[];
 }
 
 function context(options: ContextOptions): SetupStepContext {
@@ -279,7 +325,6 @@ function context(options: ContextOptions): SetupStepContext {
     sharedInstructions: { exists: false, path: "/home/dev/agents/AGENTS.md" },
     sharedSkills: options.sharedSkills ?? [],
   });
-  const base = emptySkillCatalog();
   return {
     appCatalog: [],
     interactive: false,
@@ -287,26 +332,35 @@ function context(options: ContextOptions): SetupStepContext {
     manifest,
     mcpCatalog: emptyMcpCatalog(),
     model,
-    selections:
-      options.selections === undefined
-        ? {}
-        : {
-            skills: {
-              ...(options.resolved === undefined ? {} : { resolved: options.resolved }),
-              selected: options.selections,
-            },
-          },
-    skillCatalog: {
-      ...base,
-      policy:
-        options.allowedSourceIds === undefined
-          ? base.policy
-          : {
-              allowedSourceIds: new Set(options.allowedSourceIds),
-              presetName: ".aura/preset.json",
-            },
-    },
+    selections: selections(options),
+    skillCatalog: catalog(options.allowedSourceIds),
     snippetCatalog: emptySnippetCatalog(),
+  };
+}
+
+function selections(options: ContextOptions): SetupStepContext["selections"] {
+  if (options.selections === undefined) {
+    return {};
+  }
+  return {
+    skills: {
+      ...(options.resolved === undefined ? {} : { resolved: options.resolved }),
+      selected: options.selections,
+      ...(options.updates === undefined ? {} : { updates: options.updates }),
+    },
+  };
+}
+
+function catalog(
+  allowedSourceIds: readonly string[] | undefined,
+): SetupStepContext["skillCatalog"] {
+  const base = emptySkillCatalog();
+  if (allowedSourceIds === undefined) {
+    return base;
+  }
+  return {
+    ...base,
+    policy: { allowedSourceIds: new Set(allowedSourceIds), presetName: ".aura/preset.json" },
   };
 }
 
