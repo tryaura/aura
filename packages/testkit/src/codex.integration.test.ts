@@ -4,7 +4,13 @@ import codexPlugin from "@tryaura/adapter-codex";
 import { buildWorkspaceModel, createEnvironment } from "@tryaura/core";
 import { describe, expect, it } from "vitest";
 
-import { CODEX_NESTED_PACKAGE, createCodexSeed, type CodexFixtureVersion } from "./index.js";
+import {
+  CODEX_NESTED_PACKAGE,
+  codexShimResponses,
+  createCodexSeed,
+  createSeedBuilder,
+  type CodexFixtureVersion,
+} from "./index.js";
 
 describe("Codex versioned fixtures", () => {
   it.each([
@@ -101,6 +107,44 @@ describe("Codex versioned fixtures", () => {
         ["--version"],
         ["login", "status"],
       ]);
+    },
+  );
+
+  it.each(["0.146.0", "0.147.0"] satisfies readonly CodexFixtureVersion[])(
+    "accepts primary-checkout trust for a linked worktree on Codex %s",
+    async (version) => {
+      await using seed = await createSeedBuilder()
+        .homeFile("repos/main/.git/placeholder", "")
+        .homeFile(".codex/config.toml", ({ homeDir }) => {
+          const mainWorktreeRoot = join(homeDir, "repos/main");
+          return `[projects.${JSON.stringify(mainWorktreeRoot)}]\ntrust_level = "trusted"\n`;
+        })
+        .workspaceFile(".git", ({ homeDir }) => {
+          const worktreeGitDirectory = join(homeDir, "repos/main/.git/worktrees/feature");
+          return `gitdir: ${worktreeGitDirectory}\n`;
+        })
+        .shim("codex", codexShimResponses({ authenticated: true, version }))
+        .build();
+      const adapter = codexPlugin.adapters?.[0];
+      if (adapter === undefined) {
+        throw new Error("Codex plugin did not contribute its adapter.");
+      }
+
+      const scan = await buildWorkspaceModel({
+        adapters: [adapter],
+        environment: createEnvironment({
+          cwd: seed.workspaceDir,
+          environmentVariables: {},
+          homeDir: seed.homeDir,
+          path: seed.pathDir,
+          platform: "linux",
+        }),
+      });
+
+      const mainWorktreeRoot = join(seed.homeDir, "repos/main");
+      expect(scan.diagnostics).toEqual([]);
+      expect(scan.model.gitMainWorktreeRoot).toBe(mainWorktreeRoot);
+      expect(scan.model.apps[0]?.metadata).toEqual({ projectTrust: "trusted" });
     },
   );
 

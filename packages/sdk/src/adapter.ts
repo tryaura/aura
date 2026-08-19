@@ -169,6 +169,13 @@ export interface AdapterParseInput {
   readonly detection: AdapterDetection;
   /** Every source file core discovered, keyed by its stable spec id. */
   readonly files: AdapterFileMap;
+  /**
+   * Root of the primary Git checkout associated with the current project.
+   *
+   * Equal to `projectRoot` for a normal checkout and different for a linked worktree. Undefined
+   * when the project is not a Git repository or its worktree metadata could not be resolved.
+   */
+  readonly gitMainWorktreeRoot?: string | undefined;
   /** The current user's home directory. */
   readonly homeDir: string;
   /** Repository root containing {@link AdapterParseInput.cwd}, when one was found. */

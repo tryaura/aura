@@ -30,6 +30,13 @@ export interface WorkspaceModel {
   readonly apps: readonly AppModel[];
   /** Directory Aura was invoked from. */
   readonly cwd: string;
+  /**
+   * Root of the primary Git checkout associated with this workspace.
+   *
+   * Equal to `projectRoot` for a normal checkout and different for a linked worktree. Undefined
+   * when Git worktree metadata could not be resolved.
+   */
+  readonly gitMainWorktreeRoot?: string | undefined;
   /** The current user's home directory. */
   readonly homeDir: string;
   /** Instruction documents across every application. */

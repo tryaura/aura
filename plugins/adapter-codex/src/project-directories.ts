@@ -9,12 +9,10 @@ export interface ProjectLookup {
 }
 
 /**
- * Every directory of the current project Codex consults, from `cwd` outward to the repository root.
+ * Every directory Codex searches for project instructions, from `cwd` to the repository root.
  *
- * Two features need exactly this list. Codex keys `[projects."..."]` by the directory it was
- * launched in, which is frequently a subdirectory of the repository rather than its root, and it
- * reads one `AGENTS.md` per directory from the root down to `cwd`. Both are the same walk read in
- * opposite directions, so they share it rather than each keeping a copy.
+ * Codex reads one `AGENTS.md` per directory from the root down to `cwd`. Project trust deliberately
+ * does not share this walk: Codex checks only the exact cwd and the primary Git checkout for trust.
  *
  * Without a repository root there is nothing to walk to: every ancestor of the working directory is
  * a different project as far as Codex is concerned, so only `cwd` is considered. The same answer

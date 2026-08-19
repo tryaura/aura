@@ -18,7 +18,7 @@ const RESTRICTIVE_MODES = new Set(["plan", "dontAsk"]);
 
 const EXPLAIN = `Claude Code can appear unable to work when its effective default permission mode is plan or dontAsk. Codex skips project-scoped configuration when a project is untrusted, so Aura also reports projects that are not explicitly trusted.
 
-Claude Code: edit the settings file named by the finding and choose default or acceptEdits as appropriate. Codex: edit ~/.codex/config.toml and add a \`[projects."<project-root>"]\` section with \`trust_level = "trusted"\` after reviewing the repository.`;
+Claude Code: edit the settings file named by the finding and choose default or acceptEdits as appropriate. Codex: after reviewing the repository, edit ~/.codex/config.toml and trust the exact working directory or the primary Git checkout. Codex resolves linked worktrees back to that primary checkout.`;
 
 export const env004 = defineCheck({
   defaultSeverity: "warn",
@@ -82,7 +82,7 @@ function codexFindings(app: AppModel): readonly DetectedFinding[] {
       details:
         trust === "untrusted"
           ? "Codex explicitly marks this project untrusted and skips its project-scoped configuration."
-          : "Codex has no trusted entry for this project or any directory inside it, so project-scoped configuration may be unavailable until trust is confirmed.",
+          : "Codex has no trusted entry for this working directory or its primary Git checkout, so project-scoped configuration may be unavailable until trust is confirmed.",
       id: `codex-project-trust:${trust}`,
       ...(path === undefined ? {} : { locations: [{ path }] }),
       message:
@@ -115,11 +115,12 @@ function guidedFix(finding: Finding, model: WorkspaceModel): FixPlan | undefined
     };
   }
   if (appId === CODEX_ADAPTER_ID && model.projectRoot !== undefined) {
+    const trustRoot = model.gitMainWorktreeRoot ?? model.cwd;
     return {
       manualSteps: [
         // A section header rather than a dotted key: a bare `projects."…".trust_level = …` appended
         // to the file lands inside whichever table is open above it, and Codex never sees it.
-        `After reviewing the repository, add [projects.${JSON.stringify(model.projectRoot)}] with trust_level = "trusted" in ~/.codex/config.toml.`,
+        `After reviewing the repository, add [projects.${JSON.stringify(trustRoot)}] with trust_level = "trusted" in ~/.codex/config.toml.`,
         "Restart Codex in the project and run `aura check` again.",
       ],
       operations: [],

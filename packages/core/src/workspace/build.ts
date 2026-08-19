@@ -18,7 +18,7 @@ import type { ScanDiagnostic } from "./diagnostics.js";
 import { createDocumentResolver } from "./documents.js";
 import { resolveMcpCatalog } from "./mcp-catalog.js";
 import { createMcpProber, type McpProber, type McpProbeSettings } from "./mcp-probes.js";
-import { findProjectRoot } from "./project-root.js";
+import { findGitMainWorktreeRoot, findProjectRoot } from "./project-root.js";
 import { createCachingReader, createFileReader, type FileReader } from "./reader.js";
 import { scanRepository } from "./repository.js";
 import { sharedInstructionsPath, toSharedInstructions } from "./shared-links.js";
@@ -97,9 +97,13 @@ export async function buildWorkspaceModel(options: WorkspaceScanOptions): Promis
   const reader = createCachingReader(options.reader ?? createFileReader());
   const environment = await canonicalizeEnvironmentPaths(options.environment, reader);
   const projectRoot = findProjectRoot(environment.cwd, reader);
+  const gitMainWorktreeRoot = projectRoot.then((root) =>
+    root === undefined ? undefined : findGitMainWorktreeRoot(root, reader),
+  );
   const context: ScanContext = {
     documents: createDocumentResolver(reader),
     environment,
+    gitMainWorktreeRoot,
     projectBoundary: resolveProjectBoundary(projectRoot, environment.cwd, reader),
     projectRoot,
     probeMcpServers:
@@ -126,6 +130,7 @@ export async function buildWorkspaceModel(options: WorkspaceScanOptions): Promis
   const sharedSkillsPending = scanSharedSkills(environment, reader);
   const scans = await scansPending;
   const root = await projectRoot;
+  const mainWorktreeRoot = await gitMainWorktreeRoot;
   const repository = await repositoryPending;
   const sharedContents = await sharedContentsPending;
   const manifestContents = await manifestContentsPending;
@@ -161,6 +166,7 @@ export async function buildWorkspaceModel(options: WorkspaceScanOptions): Promis
       availableSnippets: resolvedSnippets.values,
       apps,
       cwd: environment.cwd,
+      ...(mainWorktreeRoot === undefined ? {} : { gitMainWorktreeRoot: mainWorktreeRoot }),
       homeDir: environment.homeDir,
       instructionFiles: apps.flatMap((app) => app.instructionFiles),
       manifest,
