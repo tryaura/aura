@@ -76,7 +76,7 @@ describe("scopeStages", () => {
     });
 
     expect(state.project.action).toBe(SKIP_VALUE);
-    // No Sources, Duplicates, or Archive form follows the declined scope — the sub-row maps what
+    // No Sources, Duplicates, or Files form follows the declined scope — the sub-row maps what
     // exists, so tabs the answer removed must not be left standing in it.
     expect(asks.map((ask) => ask.ids)).toEqual([
       ["global-instruction-action"],
@@ -99,7 +99,7 @@ describe("scopeStages", () => {
 
     // The row `docs/cli-ux.md` pins for a declined scope, rendered from the chain that produces it.
     expect(renderWizardFrame(frame, 0).split("\n")[1]).toBe(
-      " └ ✔ Global │ ✔ Sources │ ✔ Archive │ ▶ Project ☐",
+      " └ ✔ Global │ ✔ Sources │ ✔ Files │ ▶ Project ☐",
     );
   });
 
@@ -114,6 +114,28 @@ describe("scopeStages", () => {
       ["project-instruction-action"],
       ["project-instruction-sources"],
       ["project-archive-originals"],
+    ]);
+
+    const files = asks[2]?.questions[0];
+    if (files?.kind !== "select") {
+      throw new Error("Expected the global files form.");
+    }
+    expect(files.prompt).toBe(
+      "After Aura copies the selected instructions to AGENTS.md, where should they stay?",
+    );
+    expect(files.options).toEqual([
+      {
+        description:
+          "Keep the existing instructions in the selected files. Aura will also copy them to AGENTS.md.",
+        label: "Keep instructions in both places",
+        value: "keep",
+      },
+      {
+        description:
+          "Back up the selected files, then replace them with links to AGENTS.md or delete them if no link is needed.",
+        label: "Keep instructions only in AGENTS.md",
+        value: "archive",
+      },
     ]);
   });
 });

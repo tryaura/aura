@@ -177,9 +177,10 @@ describe("Codex global model", () => {
     ['[projects."/repo"]\ntrust_level = "trusted"\n', "trusted"],
     ['[projects."/repo"]\ntrust_level = "untrusted"\n', "untrusted"],
     ['[projects."/somewhere-else"]\ntrust_level = "trusted"\n', "unknown"],
-    // Codex keys by the directory it was launched in, which is routinely inside the repository.
+    // The exact launch directory takes priority over the primary Git checkout.
     ['[projects."/repo/packages/app"]\ntrust_level = "trusted"\n', "trusted"],
-    ['[projects."/repo/packages"]\ntrust_level = "untrusted"\n', "untrusted"],
+    // Intermediate directories are not trust identities in Codex.
+    ['[projects."/repo/packages"]\ntrust_level = "untrusted"\n', "unknown"],
     // A trailing separator is the same directory.
     ['[projects."/repo/"]\ntrust_level = "trusted"\n', "trusted"],
     // Above the repository root is a different project, so it is not consulted.
@@ -190,6 +191,7 @@ describe("Codex global model", () => {
       cwd: "/repo/packages/app",
       detection: { installed: true },
       files: new Map([[config.spec.id, config]]),
+      gitMainWorktreeRoot: "/repo",
       homeDir: "/home/dev",
       projectRoot: "/repo",
     });
@@ -197,7 +199,7 @@ describe("Codex global model", () => {
     expect(snapshot.metadata).toEqual({ projectTrust: expected });
   });
 
-  it("prefers the narrowest recorded directory when several are trusted differently", () => {
+  it("prefers the exact cwd over the primary checkout", () => {
     const config = sourceFile(
       "codex.mcp.global",
       "mcp",
@@ -210,6 +212,7 @@ describe("Codex global model", () => {
         cwd: "/repo/packages/app",
         detection: { installed: true },
         files: new Map([[config.spec.id, config]]),
+        gitMainWorktreeRoot: "/repo",
         homeDir: "/home/dev",
         projectRoot: "/repo",
       }).metadata,

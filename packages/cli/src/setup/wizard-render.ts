@@ -251,12 +251,16 @@ function renderHint(
   if (searching) {
     return " type to filter · ↑/↓ move · ↵ results · esc clear search";
   }
-  const toggle = question.kind === "multiselect" ? " · space toggle" : "";
+  // Space only marks the row, so ↵ is what commits and moves on — a select names the two apart
+  // rather than calling both "select".
+  const multi = question.kind === "multiselect";
+  const mark = multi ? " · space toggle" : " · space select";
+  const commit = multi ? "↵ select" : "↵ confirm";
   const preview = question.options.some((option) => option.preview !== undefined)
     ? " · p preview"
     : "";
   const search = question.search === undefined ? "" : " · / search";
-  return ` ↑/↓ move${toggle}${preview}${search} · ←/→ steps · ↵ select · esc cancel`;
+  return ` ↑/↓ move${mark}${preview}${search} · ←/→ steps · ${commit} · esc cancel`;
 }
 
 /**

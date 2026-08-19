@@ -191,7 +191,18 @@ describe("ENV-004", () => {
     expect(plan?.operations).toEqual([]);
     expect(plan?.manualSteps?.[0]).toContain('[projects."/repo"]');
     expect(plan?.manualSteps?.[0]).toContain('trust_level = "trusted"');
-    expect(env004.explain).toContain('[projects."<project-root>"]');
+    expect(env004.explain).toContain("primary Git checkout");
+  });
+
+  it("guides linked worktrees to trust the primary checkout", () => {
+    const codex = app({ adapterId: "codex", metadata: { projectTrust: "unknown" } });
+    const workspace = {
+      ...projectModel(gitignore(""), { apps: [codex] }),
+      gitMainWorktreeRoot: "/repos/main",
+    };
+    const finding = requireFinding(env004.detect(workspace)[0], "ENV-004", "project", "warn");
+
+    expect(env004.fix(finding, workspace)?.manualSteps?.[0]).toContain('[projects."/repos/main"]');
   });
 
   it("does not inspect project settings outside a repository", () => {
