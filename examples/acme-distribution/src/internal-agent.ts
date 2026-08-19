@@ -92,10 +92,6 @@ export const acmeAgentAdapter = defineAdapter({
   detectionScope: "the acme-agent CLI on PATH",
   displayName: "Acme Agent",
   files(input) {
-    if (!input.detection.installed) {
-      return [];
-    }
-
     return [
       {
         id: INSTRUCTIONS_ID,

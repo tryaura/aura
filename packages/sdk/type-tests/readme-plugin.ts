@@ -27,11 +27,7 @@ const adapter = defineAdapter({
   },
   detectionScope: "the acme-agent CLI on PATH",
   displayName: "Acme Agent",
-  files({ detection, environment }) {
-    if (!detection.installed) {
-      return [];
-    }
-
+  files({ environment }) {
     return [
       {
         id: "acme.instructions.global",

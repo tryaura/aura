@@ -7,6 +7,8 @@ import {
   DEFAULT_EXEC_TIMEOUT_MS,
   type DirectoryContentSource,
   type FileContentSource,
+  type InstalledSkill,
+  type McpTransport,
   type McpServerDef,
   type Preset,
   type SkillPack,
@@ -55,6 +57,12 @@ const mcpServer: McpServerDef = {
   version: "1.0.0",
 };
 
+const httpMcpTransport: McpTransport = {
+  headerEnvironmentVariables: ["EXAMPLE_HTTP_TOKEN"],
+  type: "http",
+  url: "https://mcp.example.com/api",
+};
+
 const preset: Preset = {
   description: "Selects all example contributions.",
   id: "example/default",
@@ -93,6 +101,21 @@ const skillSource: SkillSourceDriver = {
   },
 };
 
+function sampleInstalledSkills(entries: readonly string[] | undefined): readonly InstalledSkill[] {
+  return (entries ?? [])
+    .filter((id) => id === skill.id)
+    .map((id) => ({
+      appId: "example-agent",
+      id,
+      invocationName: "example-review",
+      name: skill.name,
+      path: "/tmp/example-review",
+      scope: "global",
+      sourceId: skillSource.id,
+      version: skill.version,
+    }));
+}
+
 const adapter = defineAdapter({
   async detect(environment) {
     const result = await environment.exec({
@@ -110,11 +133,7 @@ const adapter = defineAdapter({
     };
   },
   displayName: "Example Agent",
-  files({ detection, environment }) {
-    if (!detection.installed) {
-      return [];
-    }
-
+  files({ environment }) {
     return [
       {
         id: "example.instructions.global",
@@ -174,19 +193,15 @@ const adapter = defineAdapter({
             type: "stdio",
           },
         },
-      ],
-      skills: [
         {
           appId: "example-agent",
-          id: skill.id,
-          invocationName: "example-review",
-          name: skill.name,
-          path: "/tmp/example-review",
-          scope: "global",
-          sourceId: skillSource.id,
-          version: skill.version,
+          name: "example-http",
+          scope: "project",
+          sourceId: "example.mcp.project",
+          transport: httpMcpTransport,
         },
       ],
+      skills: sampleInstalledSkills(input.files.get("example.skills.global")?.entries),
     };
   },
   supportedRange: ">=1.0.0 <2.0.0",

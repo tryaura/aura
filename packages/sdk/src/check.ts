@@ -1,5 +1,7 @@
 import type { JsonObject, Scope, Severity } from "./common.js";
 import type { FixPlan } from "./fix.js";
+// eslint-disable-next-line no-unused-vars -- Imported so TSDoc links resolve to the public symbol.
+import type { AuraPlugin } from "./plugin.js";
 import type { WorkspaceModel } from "./workspace-model.js";
 
 /** Data-only runtime settings handed to one check. */
@@ -113,7 +115,7 @@ export interface DetectedFinding {
    */
   readonly fixability?: "manual" | undefined;
   /**
-   * Stable identifier for this occurrence, unique across runs.
+   * Stable across runs and unique within a run.
    *
    * Derive it from what the finding is about — a path, an app id — never from array position, so
    * that suppressions survive unrelated changes.

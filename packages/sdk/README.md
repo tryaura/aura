@@ -75,6 +75,8 @@ Two things need care from the plugin author:
 ## Example plugin
 
 This example is compiled as a type test in `type-tests/readme-plugin.ts`.
+`Adapter.files` runs only after `detect` returns `installed: true`; see its
+[lifecycle contract](./src/adapter.ts).
 
 ```ts
 import {
@@ -104,11 +106,7 @@ const adapter = defineAdapter({
   },
   detectionScope: "the acme-agent CLI on PATH",
   displayName: "Acme Agent",
-  files({ detection, environment }) {
-    if (!detection.installed) {
-      return [];
-    }
-
+  files({ environment }) {
     return [
       {
         id: "acme.instructions.global",
