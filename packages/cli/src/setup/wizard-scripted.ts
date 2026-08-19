@@ -53,6 +53,7 @@ export function createScriptedWizardIo(script: ScriptedWizardScript = {}): Scrip
       return Promise.resolve(Object.freeze(answers));
     },
     confirm: async () => Promise.resolve(confirmations.shift() ?? "accepted"),
+    load: async (_request, task) => task(() => undefined),
     note: (text) => {
       notes.push(text);
       script.output?.write(`${safe(text)}\n`);

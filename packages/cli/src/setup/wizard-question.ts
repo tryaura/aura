@@ -8,6 +8,10 @@ export interface QuestionState {
   /** Whether the recorded answer is the free-text draft rather than the selection. */
   answeredWithText: boolean;
   readonly question: WizardQuestion;
+  /** Whether printable keys are currently editing this question's search query. */
+  searching: boolean;
+  /** The live local filter for a searchable question. */
+  searchText: string;
   readonly selected: Set<string>;
   text: string;
 }
@@ -17,6 +21,8 @@ export function createQuestionState(question: WizardQuestion): QuestionState {
     answered: false,
     answeredWithText: false,
     question,
+    searching: false,
+    searchText: "",
     selected: new Set(question.initial ?? []),
     text: question.initialText ?? "",
   };
@@ -33,13 +39,14 @@ export function initialCursorRow(state: QuestionState | undefined): number {
   if (state === undefined) {
     return 0;
   }
+  const options = visibleOptions(state);
   if (state.question.freeText === true && state.selected.size === 0 && state.text !== "") {
-    return state.question.options.length;
+    return options.length;
   }
   if (state.question.kind !== "select") {
     return 0;
   }
-  const index = state.question.options.findIndex((option) => state.selected.has(option.value));
+  const index = options.findIndex((option) => state.selected.has(option.value));
   return index < 0 ? 0 : index;
 }
 
@@ -66,8 +73,12 @@ export function editFreeText(keypress: Keypress, state: QuestionState): boolean 
  * A disabled option can be cleared but never selected. Refusing both directions would strand any
  * selection that was seeded before the option became unavailable, with no way to give it up.
  */
-export function toggleRow(state: QuestionState, row: number): boolean {
-  const option = state.question.options[row];
+export function toggleRow(
+  state: QuestionState,
+  row: number,
+  options: readonly WizardQuestion["options"][number][] = state.question.options,
+): boolean {
+  const option = options[row];
   if (option === undefined || state.question.kind !== "multiselect") {
     return false;
   }
@@ -79,14 +90,18 @@ export function toggleRow(state: QuestionState, row: number): boolean {
 }
 
 /** Answers the question with the row the cursor is on: free text, or a select's chosen option. */
-export function answerActive(state: QuestionState, row: number): void {
-  if (state.question.freeText === true && row === state.question.options.length) {
+export function answerActive(
+  state: QuestionState,
+  row: number,
+  options: readonly WizardQuestion["options"][number][] = state.question.options,
+): void {
+  if (state.question.freeText === true && row === options.length) {
     state.answered = state.text !== "";
     state.answeredWithText = state.answered;
     return;
   }
   if (state.question.kind === "select") {
-    const option = state.question.options[row];
+    const option = options[row];
     if (option === undefined || option.disabled === true) {
       return;
     }
@@ -113,12 +128,44 @@ export function collectAnswers(states: readonly QuestionState[]): WizardAnswers 
 }
 
 export function toView(state: QuestionState): WizardQuestionView {
+  const options = visibleOptions(state);
   return {
+    allOptions: state.question.options,
     answered: state.answered,
-    question: state.question,
+    question: options === state.question.options ? state.question : { ...state.question, options },
+    searching: state.searching,
+    searchText: state.searchText,
     selected: state.answeredWithText ? new Set() : state.selected,
     text: state.text,
   };
+}
+
+/** Options currently on screen: a small first page, or every row matching the live query. */
+export function visibleOptions(state: QuestionState): readonly WizardQuestion["options"][number][] {
+  const search = state.question.search;
+  if (search === undefined) {
+    return state.question.options;
+  }
+  const query = state.searchText.trim().toLocaleLowerCase();
+  if (query !== "") {
+    const terms = query.split(/\s+/u);
+    return state.question.options.filter((option) => {
+      const haystack = [option.label, option.description, option.group, option.value]
+        .filter((value) => value !== undefined)
+        .join(" ")
+        .toLocaleLowerCase();
+      return terms.every((term) => haystack.includes(term));
+    });
+  }
+
+  const initial = state.question.options.slice(0, search.initialLimit);
+  const visibleValues = new Set(initial.map((option) => option.value));
+  return [
+    ...initial,
+    ...state.question.options.filter(
+      (option) => state.selected.has(option.value) && !visibleValues.has(option.value),
+    ),
+  ];
 }
 
 function toggle(selected: Set<string>, value: string): void {

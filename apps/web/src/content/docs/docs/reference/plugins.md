@@ -17,10 +17,15 @@ Every slot is optional.
 | `checks`                       | Synchronously inspect the `WorkspaceModel` and optionally return a `FixPlan`.                           |
 | `snippets`                     | Reference Markdown files.                                                                               |
 | `skills`                       | Reference skill directories.                                                                            |
-| `skillDirectories`             | Remote directories served through Aura's standard bounded HTTP protocol.                                |
+| `skillDirectories`             | Remote directories served through Aura's bounded HTTP client or a built-in provider adapter.            |
 | `skillSources`                 | Build-time drivers that list and resolve non-standard external skills.                                  |
 | [`mcpCatalog`](./mcp-catalog/) | Reference JSON MCP catalog entries.                                                                     |
 | [`presets`](./team-preset/)    | Reference JSON preset definitions.                                                                      |
+
+Public `skillDirectories` use Aura's `index.json` and `skills/<id>` protocol by default. A
+distribution may set `protocol: "agenticskills"` on a registered public directory to translate
+AgenticSkills' metadata feed and exact GitHub skill directories into the same bounded, reviewed
+install flow. Team presets remain data-only and use the native protocol.
 
 ## Namespacing
 

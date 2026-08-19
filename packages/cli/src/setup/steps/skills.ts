@@ -66,7 +66,14 @@ async function gatherApprovedSkills(
   approval: readonly string[],
 ) {
   const approvedPrivateSourceIds = new Set(approval);
-  const listing = await context.skillCatalog.load(approvedPrivateSourceIds);
+  const pendingSources = context.skillCatalog.pendingSources(approvedPrivateSourceIds);
+  const listing = await io.load(
+    {
+      items: pendingSources.map((source) => ({ id: source.id, label: source.name })),
+      prompt: "Loading skill sources…",
+    },
+    (update) => context.skillCatalog.load(approvedPrivateSourceIds, update),
+  );
   const manifestSkills = recordedSkills(context);
   emitNotes(context, io, listing, manifestSkills);
   if (isEmptyCatalog(listing, manifestSkills)) {

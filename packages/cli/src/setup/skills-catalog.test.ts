@@ -47,11 +47,14 @@ describe("createSkillCatalog", () => {
       { ACME_SKILLS_TOKEN: "secret" },
     );
 
+    expect(skills.pendingSources()).toEqual([]);
     const unapproved = await skills.load();
     expect(requests).toEqual([]);
     expect(unapproved.unavailableSources[0]?.hint).toContain("connection not approved");
 
-    await skills.load(new Set([source.id]));
+    const approved = new Set([source.id]);
+    expect(skills.pendingSources(approved)).toEqual([{ id: source.id, name: source.name }]);
+    await skills.load(approved);
     expect(requests[0]?.headers).toEqual({ Authorization: "Bearer secret" });
   });
 
@@ -74,10 +77,26 @@ describe("createSkillCatalog", () => {
         });
       });
     });
+    const updates: string[] = [];
 
-    await skills.load();
+    expect(skills.pendingSources()).toEqual(
+      sources.map((source) => ({ id: source.id, name: source.name })),
+    );
+
+    await skills.load(undefined, (id, status) => {
+      updates.push(`${id}:${status}`);
+    });
 
     expect(maximum).toBeGreaterThan(1);
     expect(maximum).toBeLessThanOrEqual(4);
+    expect(updates.filter((update) => update.endsWith(":active"))).toHaveLength(12);
+    expect(updates.filter((update) => update.endsWith(":complete"))).toHaveLength(12);
+    expect(skills.pendingSources()).toEqual([]);
+
+    const memoizedUpdates: string[] = [];
+    await skills.load(undefined, (id, status) => {
+      memoizedUpdates.push(`${id}:${status}`);
+    });
+    expect(memoizedUpdates).toEqual([]);
   });
 });
