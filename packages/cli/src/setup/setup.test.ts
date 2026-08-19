@@ -27,6 +27,7 @@ import {
   BRANDING,
   capturingTelemetry,
   findingPlugin,
+  fixtureAdapter,
   noopTelemetry,
 } from "../testing.js";
 import { runSetup, type SetupRequest } from "./setup.js";
@@ -524,11 +525,28 @@ describe("runSetup", () => {
       await writeFile(join(homeDir, "agents", "aura.json"), "{ not json", "utf8");
     });
     const before = await snapshot(fixture.homeDir);
+    let adapterScans = 0;
+    const registry = createPluginRegistry([
+      findingPlugin("info", []),
+      definePlugin({
+        adapters: [
+          fixtureAdapter(() => {
+            adapterScans += 1;
+            return { installed: false };
+          }),
+        ],
+        apiVersion: 1,
+        id: "scan-sentinel",
+        name: "Scan sentinel",
+        version: "1.0.0",
+      }),
+    ]);
 
-    const exitCode = await runSetup(fixture.request({ forms: [{}] }));
+    const exitCode = await runSetup(fixture.request({ forms: [{}] }, { registry }));
 
     expect(exitCode).toBe(2);
     expect(fixture.stderr()).toContain("not valid JSON");
+    expect(adapterScans).toBe(0);
     await expect(snapshot(fixture.homeDir)).resolves.toEqual(before);
   });
 

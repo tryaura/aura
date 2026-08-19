@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -228,7 +228,9 @@ describe("repository preset layer", () => {
 });
 
 async function workspaceWithRepoPreset(content: string): Promise<string> {
-  const cwd = await mkdtemp(join(tmpdir(), "aura-repo-layer-"));
+  // Canonical, because a recorded trust key is canonical: on macOS the raw handle names /var and
+  // the recorded key names /private/var, and the two would never compare equal.
+  const cwd = await realpath(await mkdtemp(join(tmpdir(), "aura-repo-layer-")));
   await mkdir(join(cwd, ".aura"));
   await writeFile(join(cwd, ".aura", "preset.json"), content, "utf8");
   return cwd;

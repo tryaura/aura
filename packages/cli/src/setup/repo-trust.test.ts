@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -6,7 +6,7 @@ import type { AuraManifestState } from "@tryaura/aura-sdk";
 import { createEmptyAuraManifest, createEnvironment, hashRepoPreset } from "@tryaura/core";
 import { describe, expect, it } from "vitest";
 
-import { establishRepoPresetTrust, withTrustedRepoPreset } from "./repo-trust.js";
+import { establishRepoPresetTrust } from "./repo-trust.js";
 import { createScriptedWizardIo, type ScriptedWizardScript } from "./wizard-scripted.js";
 import type { WizardConfirmation, WizardIo } from "./wizard-types.js";
 
@@ -35,7 +35,12 @@ describe("establishRepoPresetTrust", () => {
   it("shows every security-relevant capability before asking for trust", async () => {
     const preset = JSON.stringify({
       allowedSkillSources: ["directory:acme"],
-      checks: { severity: { "runtime/CHECK": "error" } },
+      checks: {
+        disabled: ["runtime/DISABLED"],
+        enabled: ["runtime/ENABLED"],
+        severity: { "runtime/CHECK": "error" },
+        thresholds: { "runtime/OTHER": { approxTokens: 12_000 } },
+      },
       requiredMcpServers: ["official/github"],
       schemaVersion: 1,
       skillDirectories: [
@@ -60,7 +65,9 @@ describe("establishRepoPresetTrust", () => {
     });
 
     const preview = harness.io.notes[1] ?? "";
-    expect(preview).toContain('Checks: {"severity":{"runtime/CHECK":"error"}}');
+    expect(preview).toContain(
+      'Checks: runtime/CHECK: severity error; runtime/DISABLED: disabled; runtime/ENABLED: enabled; runtime/OTHER: thresholds {"approxTokens":12000}',
+    );
     expect(preview).toContain("Required MCP servers: official/github");
     expect(preview).toContain("Allowed skill sources: directory:acme");
     expect(preview).toContain(
@@ -136,7 +143,7 @@ describe("establishRepoPresetTrust", () => {
   });
 
   it("resolves without prompting when no repository preset exists", async () => {
-    const cwd = await mkdtemp(join(tmpdir(), "aura-setup-trust-"));
+    const cwd = await realpath(await mkdtemp(join(tmpdir(), "aura-setup-trust-")));
     const harness = createHarness();
 
     const outcome = await establishRepoPresetTrust({
@@ -151,49 +158,8 @@ describe("establishRepoPresetTrust", () => {
   });
 });
 
-describe("withTrustedRepoPreset", () => {
-  it("upserts by path and keeps other acceptances", () => {
-    const manifest = {
-      ...createEmptyAuraManifest(),
-      trustedRepoPresets: [
-        { hash: "a".repeat(64), path: "/one/.aura/preset.json" },
-        { hash: "b".repeat(64), path: "/two/.aura/preset.json" },
-      ],
-    };
-
-    const next = withTrustedRepoPreset(manifest, {
-      hash: "c".repeat(64),
-      path: "/one/.aura/preset.json",
-    });
-
-    expect(next.trustedRepoPresets).toEqual([
-      { hash: "b".repeat(64), path: "/two/.aura/preset.json" },
-      { hash: "c".repeat(64), path: "/one/.aura/preset.json" },
-    ]);
-  });
-
-  it("drops the oldest acceptance instead of exceeding the schema bound", () => {
-    const manifest = {
-      ...createEmptyAuraManifest(),
-      trustedRepoPresets: Array.from({ length: 64 }, (_unused, index) => ({
-        hash: "a".repeat(64),
-        path: `/repo-${String(index)}/.aura/preset.json`,
-      })),
-    };
-
-    const next = withTrustedRepoPreset(manifest, {
-      hash: "b".repeat(64),
-      path: "/new/.aura/preset.json",
-    });
-
-    expect(next.trustedRepoPresets).toHaveLength(64);
-    expect(next.trustedRepoPresets?.[0]?.path).toBe("/repo-1/.aura/preset.json");
-    expect(next.trustedRepoPresets?.at(-1)?.path).toBe("/new/.aura/preset.json");
-  });
-});
-
 async function workspaceWithRepoPreset(content: string): Promise<string> {
-  const cwd = await mkdtemp(join(tmpdir(), "aura-setup-trust-"));
+  const cwd = await realpath(await mkdtemp(join(tmpdir(), "aura-setup-trust-")));
   await mkdir(join(cwd, ".aura"));
   await writeFile(join(cwd, ".aura", "preset.json"), content, "utf8");
   return cwd;

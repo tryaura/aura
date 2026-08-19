@@ -284,20 +284,39 @@ below the user's manifest — and it arrives by cloning, not by anything the use
 applies only after the user trusts it for that repository.
 
 - Interactive `setup` asks once, before the wizard opens, after one note naming the preset and a
-  validated capability summary. The summary lists check policy, required MCP servers, allowed skill
-  sources, selected skills and snippets, and every skill-directory URL (plus its token variable), so
-  repository-controlled network endpoints are visible before consent. The opening note is
+  validated capability summary. The summary lists required MCP servers, allowed skill sources,
+  selected skills and snippets, and every skill-directory URL (plus its token variable), so
+  repository-controlled network endpoints are visible before consent. Check policy spells out each
+  enabled or disabled check, severity, and threshold before the prompt, for example
+  `Checks: SEC-001: disabled; TOK-001: thresholds {"approxTokens":12000}`. The effective values also
+  print in the plan summary's read-only policy group once the layer applies. The opening note is
   `This repository provides the preset "<name>" at .aura/preset.json.` The prompt is
   `Trust the repository preset at .aura/preset.json? Its settings apply to every Aura run in this
-repository until the file changes.` Accepting applies the layer for the run and records the
-  acceptance — the preset's absolute path and a hash of its contents — in the manifest when the
-  plan is applied; a declined or aborted plan records nothing. Declining leaves the layer
-  unapplied and unrecorded, so the next interactive setup asks again. Aborting ends the run with
-  `Left everything as it was.` and exit 1.
-- Trust binds to exact contents. A file that changes after acceptance is untrusted again, and the
-  next interactive setup re-asks as a change, never as a first sighting
-  (`The repository preset at .aura/preset.json changed since you trusted it. Trust the new
-contents?`).
+repository until the file changes.` Inside a linked worktree the prompt is preceded by one more
+  note: `This directory is a linked worktree, so trusting these contents also applies them in every
+other worktree of the same checkout.` Accepting applies the layer for the run and records the
+  acceptance — the preset's absolute path, the repository's primary Git checkout when the run is
+  inside a linked worktree, and a hash of its contents — in the manifest immediately, before the
+  wizard opens. Only the prompt decides: declining or aborting it records nothing, and the next
+  interactive setup asks again. Aborting ends the run with `Left everything as it was.` and exit 1.
+- Consent outlives the run that gave it. Because the acceptance is written before the wizard, a run
+  the user then backs out of, declines, or blocks still keeps it — asking a security question again
+  because someone changed their mind about an unrelated step is how a person learns to accept
+  without reading. A run that recorded trust and applied nothing else closes with `Recorded your
+trust of .aura/preset.json. Left everything else as it was.` instead. `--dry-run` records nothing
+  and says so: `Dry run: the acceptance of .aura/preset.json was not recorded, so the next run asks
+again.` The record is written through the fix-plan kernel like every other file, so it makes its
+  own backup: a run that records trust and then applies a plan produces two, and `undo` reverses
+  them newest first — the plan, then the trust.
+- Trust binds to exact contents, and to the repository rather than the directory. A file that
+  changes after acceptance is untrusted again, and the next interactive setup re-asks as a change,
+  never as a first sighting (`The repository preset at .aura/preset.json changed since you trusted
+it. Trust the new contents?`) — that wording is keyed to the file in front of the user, so a
+  sibling worktree carrying different contents is a first sighting, not a change. A linked worktree
+  holding contents already accepted for its checkout applies them without asking, since anyone who
+  can write the file in one worktree can write it in all of them. Each distinct set of contents a
+  repository's user accepted keeps its own entry, so reverting the file to an earlier accepted
+  revision does not re-ask.
 - Non-interactive runs never accept: `--yes` answers confirmations for the user, and the first
   application of a repository's file is exactly the decision it must not answer. `setup --yes`
   resolves without the layer and the plan summary carries the held notice (below). Human `check`

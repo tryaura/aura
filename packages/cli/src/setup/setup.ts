@@ -20,7 +20,6 @@ import { buildAppCatalog } from "./catalog.js";
 import { createSetupCatalogs } from "./catalogs.js";
 import { endOnGreen, gatherFindings } from "./green.js";
 import { presetCheckSummary } from "./preset-policy.js";
-import { setupRepoPresetContext } from "./repo-trust.js";
 import { createSnippetCatalog } from "./snippets.js";
 import { SETUP_STEPS } from "./steps/index.js";
 import { type GatherStart } from "./gather.js";
@@ -64,9 +63,11 @@ export interface SetupRequest {
  * The `setup` flow: scan, gather selections, plan, confirm once, apply, end on green.
  *
  * Steps never write and the plan applies through the fix-plan kernel after one confirmation, so
- * backing out anywhere before that leaves the filesystem untouched by construction. A machine that
- * already matches the desired state produces an empty operation plan and skips both confirmation
- * and the journal — the fifth run is the first run.
+ * backing out anywhere before that leaves the filesystem as the run found it — with one exception:
+ * an accepted repository preset trust is recorded during boot, because consent the user has already
+ * given should not be discarded by a change of mind about the wizard. The closing line names it
+ * when that happened. A machine that already matches the desired state produces an empty operation
+ * plan and skips both confirmation and the journal — the fifth run is the first run.
  */
 export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
   const { branding, environment, io, stdout } = request;
@@ -126,7 +127,7 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
     registry: request.registry,
   });
   const preset = setupPresetContext(request, configured.config, configured.preset);
-  const repoPreset = setupRepoPresetContext(configured, booted.acceptedRepoPresetHash);
+  const repoPreset = booted.repoPreset;
 
   const stepContext = {
     appCatalog: buildAppCatalog(request.registry.adapters, model, scan.skipped),

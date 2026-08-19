@@ -84,10 +84,13 @@ overrides still win.
 
 Because the file arrives by cloning rather than by anything the user selected, it applies only
 after a first-use trust decision. Interactive `aura setup` asks once per repository, and
-acceptance — the preset's absolute path plus a hash of its exact contents — is recorded in
-`~/agents/aura.json` under `trustedRepoPresets` when the plan is applied. A file that changes
-after acceptance is untrusted again until the new contents are reviewed; declining records
-nothing and the next interactive setup asks again. Non-interactive runs never accept: `check`
+acceptance — the preset's absolute path, the repository's primary Git checkout when the run is
+inside a linked worktree, plus a hash of its exact contents — is recorded in `~/agents/aura.json`
+under `trustedRepoPresets` immediately, before the wizard opens, so backing out of a later step
+does not discard it. A file that changes after acceptance is untrusted again until the new contents
+are reviewed; declining records nothing and the next interactive setup asks again. Trust binds to
+the repository, so every linked worktree of one checkout shares a decision made for the same
+contents. Non-interactive runs never accept: `check`
 resolves without the layer and prints one configuration note naming `setup`, and `setup --yes`
 holds the layer and says so in the plan summary. An unreadable or invalid repository preset fails
 the run closed rather than silently widening whatever the file was written to lock down.

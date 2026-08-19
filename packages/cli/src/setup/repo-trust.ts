@@ -45,7 +45,7 @@ export async function establishRepoPresetTrust(options: {
     return { kind: "resolved" };
   }
   const manifest = options.manifest.status === "ready" ? options.manifest.value : undefined;
-  if (isRepoPresetTrusted(manifest, repo.path, repo.hash) || !options.interactive) {
+  if (isRepoPresetTrusted(manifest, repo, repo.hash) || !options.interactive) {
     return { kind: "resolved" };
   }
 
@@ -58,6 +58,13 @@ export async function establishRepoPresetTrust(options: {
   if (repo.preset !== undefined) {
     options.io.note(repoPresetTrustPreview(repo.preset));
   }
+  if (repo.mainWorktreePath !== undefined) {
+    options.io.note(
+      "This directory is a linked worktree, so trusting these contents also applies them in every other worktree of the same checkout.",
+    );
+  }
+  // Keyed on this file alone: "changed since you trusted it" is only true of the file the user is
+  // looking at, and a sibling worktree carrying different contents is a first sighting.
   const changed = (manifest?.trustedRepoPresets ?? []).some((entry) => entry.path === repo.path);
   const confirmation = await options.io.confirm(
     changed
@@ -91,12 +98,22 @@ function repoPresetTrustPreview(preset: AuraTeamPreset): string {
   ].join("\n");
 }
 
+/** The exact check settings the repository preset asks the user to trust. */
 function checksPreview(checks: AuraTeamPreset["checks"]): string | undefined {
   if (checks === undefined) {
     return undefined;
   }
-  const value = JSON.stringify(checks) ?? "{}";
-  return `Checks: ${safe(value)}`;
+  const settings = [
+    ...(checks.disabled ?? []).map((id) => `${safe(id)}: disabled`),
+    ...(checks.enabled ?? []).map((id) => `${safe(id)}: enabled`),
+    ...Object.entries(checks.severity ?? {}).map(
+      ([id, severity]) => `${safe(id)}: severity ${safe(severity)}`,
+    ),
+    ...Object.entries(checks.thresholds ?? {}).map(
+      ([id, thresholds]) => `${safe(id)}: thresholds ${safe(JSON.stringify(thresholds))}`,
+    ),
+  ].sort();
+  return `Checks: ${settings.length === 0 ? "(none)" : settings.join("; ")}`;
 }
 
 function directoryPreview(source: NonNullable<AuraTeamPreset["skillDirectories"]>[number]): string {
@@ -112,34 +129,50 @@ function listValues(values: readonly string[]): string {
   return values.length === 0 ? "(none)" : values.map(safe).join(", ");
 }
 
+/**
+ * Whether this run's prompt accepted exactly the contents the resolved layer applied.
+ *
+ * The two reads of the file — the prompt's and configuration resolution's — are independent, so a
+ * write that lands between them leaves the layer held. Recording trust for a layer that did not
+ * apply would claim consent for settings this run never used.
+ */
+export function acceptedRepoPreset(
+  configured: Extract<RuntimeConfigResult, { status: "ready" }>,
+  acceptedHash: string | undefined,
+): boolean {
+  const repo = configured.repoPreset;
+  return repo !== undefined && repo.status === "applied" && repo.hash === acceptedHash;
+}
+
 /** The repository-preset slice steps and the planner read, absent when no file exists. */
 export function setupRepoPresetContext(
   configured: Extract<RuntimeConfigResult, { status: "ready" }>,
   acceptedHash: string | undefined,
+  recorded: boolean,
 ): SetupRepoPresetContext | undefined {
   const repo = configured.repoPreset;
   if (repo === undefined) {
     return undefined;
   }
   return Object.freeze({
-    // Accepted only when the applied layer still holds exactly what the prompt showed; an already
-    // recorded trust resolves without a prompt and needs no new manifest entry.
-    accepted: repo.status === "applied" && repo.hash === acceptedHash,
+    accepted: acceptedRepoPreset(configured, acceptedHash),
     checkSummary:
       repo.status === "applied" ? presetCheckSummary(configured.config, "repo") : Object.freeze([]),
     hash: repo.hash,
+    ...(repo.mainWorktreePath === undefined ? {} : { mainWorktreePath: repo.mainWorktreePath }),
     path: repo.path,
+    recorded,
     status: repo.status,
   });
 }
 
-/** Records one accepted repository preset, replacing any earlier acceptance for the same path. */
+/** Records one accepted repository preset while retaining earlier accepted contents. */
 export function withTrustedRepoPreset(
   manifest: AuraManifest,
   record: AuraManifestTrustedRepoPreset,
 ): AuraManifest {
   const previous = (manifest.trustedRepoPresets ?? []).filter(
-    (entry) => entry.path !== record.path,
+    (entry) => entry.path !== record.path || entry.hash !== record.hash,
   );
   // Newest last; dropping from the front keeps the list within what the schema accepts.
   const entries = [...previous, record].slice(-MAX_TRUSTED_REPO_PRESETS);

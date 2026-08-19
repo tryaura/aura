@@ -42,6 +42,8 @@ export interface RuntimeConfigInput {
 /** How this run treated the repository's `.aura/preset.json`, absent when no file exists. */
 interface RuntimeRepoPreset {
   readonly hash: string;
+  /** Same path in the primary Git checkout, present only inside a linked worktree. */
+  readonly mainWorktreePath?: string | undefined;
   readonly path: string;
   readonly status: "applied" | "held";
 }
@@ -92,8 +94,7 @@ export async function resolveRuntimeConfig(
   const repoTrusted =
     repo.status === "ready" &&
     repo.hash !== undefined &&
-    (repo.hash === input.acceptedRepoPresetHash ||
-      isRepoPresetTrusted(manifest, repo.path, repo.hash));
+    (repo.hash === input.acceptedRepoPresetHash || isRepoPresetTrusted(manifest, repo, repo.hash));
   const resolved = resolveEffectiveConfig({
     checks: input.registry.checks,
     cli: input.cliLayer,
@@ -145,6 +146,9 @@ export async function resolveRuntimeConfig(
       ? {
           repoPreset: {
             hash: repo.hash,
+            ...(repo.mainWorktreePath === undefined
+              ? {}
+              : { mainWorktreePath: repo.mainWorktreePath }),
             path: repo.path,
             status: repoTrusted ? "applied" : "held",
           },
