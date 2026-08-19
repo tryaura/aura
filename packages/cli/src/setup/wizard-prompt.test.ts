@@ -89,6 +89,48 @@ function createSession(): Session {
 }
 
 describe("interactive wizard", () => {
+  it("keeps the flow header and per-item loader visible during asynchronous work", async () => {
+    const session = createSession();
+    const io = createInteractiveWizardIo({
+      colorDepth: 0,
+      stdin: session.stdin,
+      stdout: session.stdout,
+    });
+    const gate = Promise.withResolvers<void>();
+    const statuses: string[] = [];
+
+    const loading = io.load(
+      {
+        items: [
+          { id: "agenticskills", label: "AgenticSkills" },
+          { id: "team", label: "Team skills" },
+        ],
+        prompt: "Loading skill sources…",
+      },
+      async (update) => {
+        update("agenticskills", "active");
+        statuses.push("active");
+        await gate.promise;
+        update("agenticskills", "complete");
+        statuses.push("complete");
+        return 42;
+      },
+      {
+        completed: [{ label: "Snippets" }],
+        step: { label: "Skills" },
+        upcoming: [{ label: "MCP" }],
+      },
+    );
+
+    expect(session.output()).toContain("✔ Snippets │ ▶ Skills ☐ │ MCP ☐ │ Submit");
+    expect(session.output()).toContain("AgenticSkills");
+    expect(session.output()).toContain("Team skills");
+    gate.resolve();
+
+    await expect(loading).resolves.toBe(42);
+    expect(statuses).toEqual(["active", "complete"]);
+  });
+
   it("answers a select question with enter and submits", async () => {
     const session = createSession();
     const io = createInteractiveWizardIo({
@@ -122,6 +164,80 @@ describe("interactive wizard", () => {
 
     await expect(form).resolves.toEqual({
       mcp: { kind: "options", values: ["acme", "context7"] },
+    });
+  });
+
+  it("shows a small first page and every matching row while searching", async () => {
+    const session = createSession();
+    const io = createInteractiveWizardIo({
+      colorDepth: 0,
+      stdin: session.stdin,
+      stdout: session.stdout,
+    });
+    const options = Array.from({ length: 12 }, (_, index) => ({
+      label: `Match ${String(index + 1)}`,
+      value: `match-${String(index + 1)}`,
+    }));
+    const form = io.ask([
+      {
+        id: "skills",
+        kind: "multiselect",
+        label: "Skills",
+        options,
+        prompt: "Choose skills",
+        search: { initialLimit: 10, placeholder: "Search all 12 skills" },
+      },
+    ]);
+
+    expect(session.output()).toContain("10. ☐ Match 10");
+    expect(session.output()).not.toContain("11. ☐ Match 11");
+    expect(session.output()).toContain("/ Search all 12 skills");
+
+    session.press("/", { sequence: "/" });
+    session.type("match");
+    session.press("return");
+    expect(session.output()).toContain("/ Search: match · 12 matches");
+    expect(session.output()).toContain("12. ☐ Match 12");
+
+    for (let index = 0; index < 10; index += 1) {
+      session.press("down");
+    }
+    session.press("space", { sequence: " " });
+    session.press("return");
+
+    await expect(form).resolves.toEqual({
+      skills: { kind: "options", values: ["match-11"] },
+    });
+  });
+
+  it("keeps an initial selection visible beyond a searchable question's first page", async () => {
+    const session = createSession();
+    const io = createInteractiveWizardIo({
+      colorDepth: 0,
+      stdin: session.stdin,
+      stdout: session.stdout,
+    });
+    const options = Array.from({ length: 12 }, (_, index) => ({
+      label: `Skill ${String(index + 1)}`,
+      value: `skill-${String(index + 1)}`,
+    }));
+    const form = io.ask([
+      {
+        id: "skills",
+        initial: ["skill-12"],
+        kind: "multiselect",
+        label: "Skills",
+        options,
+        prompt: "Choose skills",
+        search: { initialLimit: 10, placeholder: "Search all 12 skills" },
+      },
+    ]);
+
+    expect(session.output()).toContain("11. ☑ Skill 12");
+    session.press("return");
+
+    await expect(form).resolves.toEqual({
+      skills: { kind: "options", values: ["skill-12"] },
     });
   });
 

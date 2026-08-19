@@ -45,6 +45,13 @@ export interface WizardQuestion {
   readonly options: readonly WizardOption[];
   /** Full question shown above the options. */
   readonly prompt: string;
+  /** Enables an in-place `/` search, with only this many options shown before a query is entered. */
+  readonly search?:
+    | {
+        readonly initialLimit: number;
+        readonly placeholder: string;
+      }
+    | undefined;
 }
 
 export type WizardAnswer =
@@ -61,6 +68,22 @@ export type WizardAnswers = Readonly<Record<string, WizardAnswer>>;
 export type WizardFormResult = WizardAnswers | "aborted" | "back";
 
 export type WizardConfirmation = "accepted" | "aborted" | "back" | "declined";
+
+/** One independently loaded resource shown in a wizard loading frame. */
+export interface WizardLoadItem {
+  readonly id: string;
+  readonly label: string;
+}
+
+export interface WizardLoadRequest {
+  readonly items: readonly WizardLoadItem[];
+  readonly prompt: string;
+}
+
+export type WizardLoadStatus = "active" | "complete";
+
+/** Updates one loading row without exposing terminal rendering to the task doing the work. */
+export type WizardLoadUpdate = (id: string, status: WizardLoadStatus) => void;
 
 /** One surrounding-flow step shown in the tab bar around the live form. */
 export interface WizardFlowStep {
@@ -114,6 +137,12 @@ export interface WizardIo {
   ) => Promise<WizardFormResult>;
   /** Asks for one final go-ahead. */
   readonly confirm: (prompt: string, flow?: WizardFlowContext) => Promise<WizardConfirmation>;
+  /** Keeps the flow frame visible while an asynchronous task reports item-level progress. */
+  readonly load: <T>(
+    request: WizardLoadRequest,
+    task: (update: WizardLoadUpdate) => Promise<T>,
+    flow?: WizardFlowContext,
+  ) => Promise<T>;
   /** Shows one line of progress or context outside any form. */
   readonly note: (text: string) => void;
 }

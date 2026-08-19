@@ -360,6 +360,26 @@ describe("runSetup", () => {
     ]);
   });
 
+  it("threads a step's flow position into asynchronous loading frames", async () => {
+    const fixture = await createFixture();
+    const steps: readonly SetupStep[] = [stubStep("first"), loadingStep("second")];
+    const flows: (WizardFlowContext | undefined)[] = [];
+    const base = createScriptedWizardIo();
+    const io: WizardIo = {
+      ...base,
+      load: async (request, task, flow) => {
+        flows.push(flow);
+        return base.load(request, task, flow);
+      },
+    };
+
+    await runSetup(fixture.request({}, { io, steps }));
+
+    expect(flows).toEqual([
+      { completed: [{ label: "first" }], step: { label: "second" }, upcoming: [] },
+    ]);
+  });
+
   it("re-runs the previous step when a form backs out, keeping its selections", async () => {
     const fixture = await createFixture();
     const steps: readonly SetupStep[] = [stubStep("first"), stubStep("second")];
@@ -638,6 +658,23 @@ function stubStep(id: string): SetupStep {
       if (result === "back") {
         return SETUP_BACK;
       }
+      return context.selections;
+    },
+    id,
+    title: id,
+  };
+}
+
+function loadingStep(id: string): SetupStep {
+  return {
+    gather: async (context, io) => {
+      await io.load(
+        { items: [{ id: "source", label: "Source" }], prompt: "Loading source…" },
+        async (update) => {
+          update("source", "active");
+          update("source", "complete");
+        },
+      );
       return context.selections;
     },
     id,

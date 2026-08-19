@@ -9,6 +9,9 @@ import { foldDecisions, selectedValues } from "../wizard-types.js";
 import { pickerOptions, pickerPrompt } from "./skill-picker.js";
 import { movedFrom, REVIEW_PREFIX, reviewQuestion } from "./skill-review.js";
 
+/** Enough rows to browse quickly without turning the first picker frame into a catalog dump. */
+const INITIAL_SKILL_ROWS = 10;
+
 /** What the skills chain carries between its picker and review forms. */
 export interface SkillsChainState {
   /** Review answers by identity: `"install"` or `"skip"`. */
@@ -100,6 +103,17 @@ function pickerStage(inputs: SkillStageInputs): ChainStage<SkillsChainState> {
           label: "Skills",
           options,
           prompt: pickerPrompt(inputs),
+          // Counted over every row the query reaches, not just the installable ones: search also
+          // matches the preserved, blocked, and unavailable rows, and a smaller number here would
+          // promise less than `/` delivers.
+          ...(options.length > INITIAL_SKILL_ROWS
+            ? {
+                search: {
+                  initialLimit: INITIAL_SKILL_ROWS,
+                  placeholder: `Search all ${String(options.length)} skills`,
+                },
+              }
+            : {}),
         },
       ];
     },

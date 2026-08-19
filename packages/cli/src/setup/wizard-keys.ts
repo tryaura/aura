@@ -15,17 +15,21 @@ export function tabDelta(keypress: Keypress): number | undefined {
   return undefined;
 }
 
-export function rowCount(question: WizardQuestion): number {
-  return question.options.length + (question.freeText === true ? 1 : 0);
+export function rowCount(question: WizardQuestion, optionCount = question.options.length): number {
+  return optionCount + (question.freeText === true ? 1 : 0);
 }
 
 /** The row a typed digit addresses, counting the free-text row as the last one. */
-export function digitRow(keypress: Keypress, question: WizardQuestion): number | undefined {
+export function digitRow(
+  keypress: Keypress,
+  question: WizardQuestion,
+  optionCount = question.options.length,
+): number | undefined {
   if (keypress.sequence === undefined || !/^[1-9]$/u.test(keypress.sequence)) {
     return undefined;
   }
   const row = Number(keypress.sequence) - 1;
-  return row < rowCount(question) ? row : undefined;
+  return row < rowCount(question, optionCount) ? row : undefined;
 }
 
 export function printable(keypress: Keypress): string | undefined {

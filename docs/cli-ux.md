@@ -208,10 +208,29 @@ whole frame with a scrollable overlay:
 
 A picker over every allowed skill source, then one Review form per selected directory skill.
 
+- Before the picker opens, directory indexes load inside the wizard instead of leaving an empty
+  terminal gap. The normal top-level flow row stays visible with Skills active, and the body shows
+  one status row per approved asynchronous source: pending `☐`, an animated spinner while its
+  request is active, then `✔`. The existing four-request concurrency limit still applies. A
+  memoized listing skips this frame entirely when navigating back through the flow. The frame holds
+  the terminal the way a form does — raw mode, cursor hidden — so keys struck while waiting are
+  discarded rather than echoed into the animation or replayed into the picker behind it.
 - The picker groups rows by source (`option.group`); a source that cannot be listed renders one
-  disabled row with the reason in place (`agenticskills.io — unavailable (set ACME_SKILLS_TOKEN)`),
-  and a manifest entry whose source is gone or disallowed renders disabled as
-  `<id> (preserved)` / `<id> (blocked)` — clearing it is how the skill is removed.
+  disabled row with the reason in place (`Acme Skills — unavailable (set ACME_SKILLS_TOKEN)`),
+  ahead of the installable rows so the initial row window can never hide it, and a manifest entry
+  whose source is gone or disallowed renders disabled as `<id> (preserved)` / `<id> (blocked)` —
+  clearing it is how the skill is removed.
+- A picker with more than ten rows initially renders only its first ten, plus any preselected rows
+  outside that window so an installed or preset choice never disappears. Its `/` action, labelled
+  `Search all <n> skills`, filters locally across names, ids, descriptions, and sources; while a
+  query is active every matching row is rendered, with no ten-row cap. `↵` leaves search editing
+  for result navigation, and `esc` clears an active search before it can cancel the form. While the
+  query has focus the hint line names those bindings instead of the standing ones:
+  `type to filter · ↑/↓ move · ↵ results · esc clear search`.
+- A remote skill's Review row names the host that serves its bytes, not the directory that
+  advertised it: a catalog indexing content elsewhere reports that origin
+  (`https://github.com/<owner>/<repo>/tree/<ref>/<dir>`), because approving a skill is approving
+  the host it comes from.
 - The picker prompt ends with a support matrix for the applications selected in the Apps step, in
   adapter order (`Apps: ✓ Claude Code · ✓ Codex · — Cursor`). It is stated once above the rows
   rather than per row, because it describes the run and not any one skill. An adapter's declared
