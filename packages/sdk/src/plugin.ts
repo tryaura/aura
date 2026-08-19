@@ -9,6 +9,8 @@ import type {
   SkillSourceDriver,
   Snippet,
 } from "./content.js";
+// eslint-disable-next-line no-unused-vars -- Imported so TSDoc links resolve to the public symbol.
+import type { FixPlan } from "./fix.js";
 
 /**
  * Everything a plugin contributes to an Aura distribution.

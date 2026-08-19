@@ -1,3 +1,9 @@
+// eslint-disable-next-line no-unused-vars -- Imported so TSDoc links resolve to the public symbols.
+import type { Adapter, AdapterDetection } from "./adapter.js";
+// eslint-disable-next-line no-unused-vars -- Imported so TSDoc links resolve to the public symbol.
+import type { Check } from "./check.js";
+// eslint-disable-next-line no-unused-vars -- Imported so TSDoc links resolve to the public symbol.
+import type { SkillSourceDriver } from "./content.js";
 import type { HttpGetRequest, HttpGetResult } from "./http.js";
 
 /** Operating systems Aura runs on. */

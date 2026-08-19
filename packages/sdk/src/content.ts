@@ -1,4 +1,8 @@
 import type { Environment } from "./environment.js";
+// eslint-disable-next-line no-unused-vars -- Imported so TSDoc links resolve to the public symbol.
+import type { AuraPlugin } from "./plugin.js";
+// eslint-disable-next-line no-unused-vars -- Imported so TSDoc links resolve to the public symbol.
+import type { pluginContentUrl } from "./plugin-content.js";
 
 /**
  * A single file bundled with a plugin.
