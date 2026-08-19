@@ -17,7 +17,7 @@ export const managedContentUpdateCheck = defineCheck({
   defaultSeverity: "info",
   detect: detectManagedContentUpdates,
   explain:
-    "Aura records the exact version and content hash of each managed snippet and skill. When an installed plugin offers a different revision, Aura reports it and waits for a reviewed change instead of silently replacing managed content. A revision that is not newer — a rollback, or one this build cannot order — is reported too, because Aura keeps the recorded revision either way and an unreported hold would look like nothing to do. Pinned selections remain quiet until they are unpinned.\n\nRun `aura check --fix --interactive` to review bundled revisions and vanished snippets. Locally edited content must be resolved first; directory-sourced skill updates stay in `aura setup`, where network and credential approval are explicit.",
+    "Aura records the exact version and content hash of each managed snippet and skill. When an installed plugin offers a different revision, Aura reports it and waits for a reviewed change instead of silently replacing managed content. A revision that is not newer — a rollback, or one this build cannot order — is reported too, because Aura keeps the recorded revision either way and an unreported hold would look like nothing to do. Pinned selections remain quiet until they are unpinned.\n\nRun `aura check --fix` to review bundled revisions and vanished snippets. Locally edited content must be resolved first; directory-sourced skill updates stay in `aura setup`, where network and credential approval are explicit.",
   fix: () => undefined,
   fixability: "guided",
   guidedFixes: managedContentUpdateChoices,

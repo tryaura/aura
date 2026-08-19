@@ -11,7 +11,7 @@ export const managedBlockHashCheck = defineCheck({
   detect: detectManagedBlockDrift,
   explain: `Aura hashes each managed snippet so hand edits cannot be overwritten silently. A mismatch means the installed text no longer matches the registered version, so a later setup run must not guess which side should win.
 
-Re-run the check with \`--fix --interactive\` and choose Keep yours to adopt the edit, Restore to return to registered content, or Merge to review both versions and reconcile them manually. Every executable choice is previewed and backed up before Aura writes.`,
+Re-run the check with \`--fix\` and choose Keep yours to adopt the edit, Restore to return to registered content, or Merge to review both versions and reconcile them manually. Every executable choice is previewed and backed up before Aura writes.`,
   fix: () => undefined,
   fixability: "guided",
   guidedFixes: guidedFixes,
@@ -51,7 +51,7 @@ function findingsForDocument(
     })
     .map((snippet) => ({
       details:
-        "Run `aura check --fix --interactive` and choose Keep yours, Restore, or Merge before running setup again.",
+        "Run `aura check --fix` and choose Keep yours, Restore, or Merge before running setup again.",
       id: `${document.sourceId}:${snippet.id}`,
       locations: [{ line: snippet.startLine, path: document.path }],
       message: `Managed snippet ${snippet.id} in ${displayInstructionPath(document.path, model)} was edited by hand.`,
@@ -70,7 +70,7 @@ function unterminatedFenceFinding(
 ): DetectedFinding {
   return {
     details:
-      "Close the Markdown fence, then run `aura check --fix --interactive` again. Aura will not reconcile this document while its markers are hidden.",
+      "Close the Markdown fence, then run `aura check --fix` again. Aura will not reconcile this document while its markers are hidden.",
     id: `${document.sourceId}:unterminated-fence`,
     locations: [{ ...(line === undefined ? {} : { line }), path: document.path }],
     message: `An unclosed Markdown fence hides Aura-managed markers in ${displayInstructionPath(document.path, model)}.`,

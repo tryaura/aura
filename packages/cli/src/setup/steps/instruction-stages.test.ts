@@ -76,12 +76,11 @@ describe("scopeStages", () => {
     });
 
     expect(state.project.action).toBe(SKIP_VALUE);
-    // No Sources, Duplicates, or Archive form follows the declined scope — the sub-row maps what
-    // exists, so tabs the answer removed must not be left standing in it.
+    // No Sources or Duplicates form follows the declined scope — the sub-row maps what exists, so
+    // tabs the answer removed must not be left standing in it.
     expect(asks.map((ask) => ask.ids)).toEqual([
       ["global-instruction-action"],
       ["global-instruction-sources"],
-      ["global-archive-originals"],
       ["project-instruction-action"],
     ]);
 
@@ -99,21 +98,31 @@ describe("scopeStages", () => {
 
     // The row `docs/cli-ux.md` pins for a declined scope, rendered from the chain that produces it.
     expect(renderWizardFrame(frame, 0).split("\n")[1]).toBe(
-      " └ ✔ Global │ ✔ Sources │ ✔ Archive │ ▶ Project ☐",
+      " └ ✔ Global │ ✔ Sources │ ▶ Project ☐",
     );
   });
 
-  it("keeps the scope's own tabs when it is configured rather than declined", async () => {
+  it("ends each configured scope after its sources when it has no duplicates to review", async () => {
     const { asks, state } = await runScopes({});
 
     expect(state.project.action).toBe("consolidate");
     expect(asks.map((ask) => ask.ids)).toEqual([
       ["global-instruction-action"],
       ["global-instruction-sources"],
-      ["global-archive-originals"],
       ["project-instruction-action"],
       ["project-instruction-sources"],
-      ["project-archive-originals"],
     ]);
+  });
+
+  it("says on the action menu that combining moves the files it merges", async () => {
+    const { asks } = await runScopes({});
+
+    const action = asks[0]?.questions[0];
+    if (action?.kind !== "select") {
+      throw new Error("Expected the global action form.");
+    }
+    expect(action.options.find((option) => option.value === "consolidate")?.description).toBe(
+      "Move instructions from the files you select into this AGENTS.md file. Aura backs up the originals for undo.",
+    );
   });
 });

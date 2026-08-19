@@ -1,4 +1,3 @@
-import { Buffer } from "node:buffer";
 import { relative, resolve } from "node:path";
 
 import {
@@ -9,16 +8,15 @@ import {
   type WorkspaceModel,
 } from "@tryaura/aura-sdk";
 import { projectSharedInstructionsPath } from "@tryaura/core";
-
-import type { InstructionScopeSelection } from "./types.js";
+import { pluralize } from "@tryaura/core/pluralize";
 
 /**
  * One instruction file the wizard may consolidate.
  *
- * Carries no derived size or line count: the inventory is built once per step and again per plan,
- * and measuring every instruction file on a machine twice to fill in a description the planner
- * never reads is work for nothing. {@link describeInstructionSource} measures the few that are
- * actually shown.
+ * Carries no derived line count: the inventory is built once per step and again per plan, and
+ * measuring every instruction file on a machine twice to fill in a description the planner never
+ * reads is work for nothing. {@link describeInstructionSource} measures the few that are actually
+ * shown.
  */
 export interface InstructionSource {
   readonly content: string;
@@ -26,7 +24,7 @@ export interface InstructionSource {
   readonly scope: Scope;
 }
 
-interface DuplicateMember {
+export interface DuplicateMember {
   readonly endLine: number;
   readonly id: string;
   readonly path: string;
@@ -86,8 +84,7 @@ export function instructionInventory(model: WorkspaceModel): readonly Instructio
 /** How much text one source carries, measured only for the sources a form actually shows. */
 export function describeInstructionSource(source: InstructionSource): string {
   const lineCount = [...splitSourceLines(source.content)].length;
-  const size = Buffer.byteLength(source.content, "utf8");
-  return `${String(lineCount)} lines, ${String(size)} bytes`;
+  return `${String(lineCount)} ${pluralize(lineCount, "line")}`;
 }
 
 export function instructionTargetSource(
@@ -158,59 +155,6 @@ export function duplicateClusters(findings: readonly Finding[]): readonly Duplic
     .sort((left, right) => left.id.localeCompare(right.id));
 }
 
-/**
- * Merges the selected sources into what the target should contain.
- *
- * Convergent by construction, because setup's contract is that the fifth run is the first run. The
- * existing target is carried through verbatim as the base rather than nested under a provenance
- * heading of its own, and a source whose heading is already in that base is left out: without both,
- * keeping the originals in place means every re-run appends the same guidance one level deeper.
- */
-export function composeConsolidatedInstructions(
-  sources: readonly InstructionSource[],
-  selection: InstructionScopeSelection,
-  clusters: readonly DuplicateCluster[],
-  model: WorkspaceModel,
-  existingTarget?: InstructionSource,
-): string {
-  const selected = new Set(selection.selectedSources.map((path) => resolve(path)));
-  const removals = loserRanges(selection, clusters);
-  const base = existingTarget?.content ?? "";
-  const sections = sources
-    .filter((source) => selected.has(resolve(source.path)))
-    .sort((left, right) => left.path.localeCompare(right.path))
-    .map((source) => ({
-      heading: provenanceHeading(source.path, selection.scope, model),
-      text: removeRanges(source.content, removals.get(resolve(source.path)) ?? []),
-    }))
-    // A source can lose every paragraph to copies kept elsewhere; a heading with nothing under it
-    // would say the file contributed something it did not.
-    .filter((section) => section.text.trim().length > 0)
-    // Matched with its line ending, so a merged `~/a.md.bak` cannot pass for a merged `~/a.md`.
-    .filter((section) => !base.includes(`${section.heading}\n`))
-    .map((section) => `${section.heading}\n\n${section.text}`);
-
-  const body = [...(base.length === 0 ? [] : [base]), ...sections].join("\n\n---\n\n");
-  return body.endsWith("\n") ? body : `${body}\n`;
-}
-
-/**
- * Names where a merged block came from, without carrying the machine into the file.
- *
- * A project target is committed, so an absolute path there would publish the developer's username
- * and resolve to nothing on anyone else's checkout. The home tilde does the same job for a global
- * target, which is at least private but no more portable.
- */
-function provenanceHeading(path: string, scope: Scope, model: WorkspaceModel): string {
-  const root = scope === "global" ? model.homeDir : (model.projectRoot ?? model.cwd);
-  const child = relative(root, path);
-  const inside = child.length > 0 && !child.split(/[\\/]/u).includes("..");
-  const label = inside
-    ? `${scope === "global" ? "~/" : ""}${child.replaceAll("\\", "/")}`
-    : resolve(path);
-  return `# Instructions from ${label}`;
-}
-
 export function archiveRelativePath(
   path: string,
   scope: Scope,
@@ -222,47 +166,6 @@ export function archiveRelativePath(
     return undefined;
   }
   return `${scope === "global" ? "home" : "project"}/${child.replaceAll("\\", "/")}`;
-}
-
-function loserRanges(
-  selection: InstructionScopeSelection,
-  clusters: readonly DuplicateCluster[],
-): ReadonlyMap<string, readonly DuplicateMember[]> {
-  const selected = new Set(selection.selectedSources.map((path) => resolve(path)));
-  const byPath = new Map<string, DuplicateMember[]>();
-  for (const cluster of clusters) {
-    const members = cluster.members.filter((member) => selected.has(resolve(member.path)));
-    if (members.length < 2) {
-      continue;
-    }
-    const winner = selection.duplicateWinners[cluster.id] ?? members[0]?.id;
-    for (const member of members) {
-      if (member.id === winner) {
-        continue;
-      }
-      const path = resolve(member.path);
-      const ranges = byPath.get(path) ?? [];
-      ranges.push(member);
-      byPath.set(path, ranges);
-    }
-  }
-  return byPath;
-}
-
-function removeRanges(content: string, ranges: readonly DuplicateMember[]): string {
-  if (ranges.length === 0) {
-    return content;
-  }
-  const removed = new Set<number>();
-  for (const range of ranges) {
-    for (let line = range.startLine; line <= range.endLine; line += 1) {
-      removed.add(line);
-    }
-  }
-  return [...splitSourceLines(content)]
-    .filter((line) => !removed.has(line.number))
-    .map((line) => `${line.text}${line.ending}`)
-    .join("");
 }
 
 function parseMember(value: unknown): readonly DuplicateMember[] {

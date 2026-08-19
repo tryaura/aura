@@ -72,8 +72,7 @@ describe("help screens", () => {
           --no-cache                    Bypass remote preset cache reads and writes
 
         Fixing behavior
-          --interactive                 With --fix, walk through guided remediation choices
-          --yes                         Apply without asking; required when stdin is not a terminal
+          --yes                         Apply automatic fixes without asking; required when stdin is not a terminal
 
         Scripting
           --json                        Emit JSON instead of human output
@@ -114,6 +113,8 @@ describe("help screens", () => {
           --home <dir>                  Override the home directory
           --no-color                    Disable terminal colors
           --path <dir>                  Override the executable search path
+
+        Consolidating moves the instruction files you select; 'acme undo' restores them
 
         After setup, run 'acme check' to verify the machine converged
 

@@ -10,7 +10,7 @@ import {
 
 const EXPLAIN = `Inline credentials in MCP configuration can leak through source control, logs, diagnostics, and copied configuration. Aura identifies credential-bearing fields without retaining their values, prefixes, or lengths.
 
-Re-run with \`--fix --interactive\` to replace every behavior-preserving sighting in the same source file with an environment reference. Copy the current values directly from the named file before applying the rewrite; Aura never displays or stores those values outside the protected undo payload, which stays owner-only under \`~/agents/.backups\` until twenty later fixes have pushed it out of the journal. Then rotate each credential at its issuer: moving a value behind an environment reference stops it leaking again, not from wherever it has already reached.`;
+Re-run with \`--fix\` to replace every behavior-preserving sighting in the same source file with an environment reference. Copy the current values directly from the named file before applying the rewrite; Aura never displays or stores those values outside the protected undo payload, which stays owner-only under \`~/agents/.backups\` until twenty later fixes have pushed it out of the journal. Then rotate each credential at its issuer: moving a value behind an environment reference stops it leaking again, not from wherever it has already reached.`;
 
 export const mcp004 = defineCheck({
   defaultSeverity: "error",

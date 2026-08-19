@@ -511,22 +511,22 @@ describe("interactive wizard", () => {
     const form = io.ask(
       [
         {
-          id: "archive",
-          initial: ["archive"],
+          id: "mode",
+          initial: ["second"],
           kind: "select",
-          label: "Archive",
+          label: "Mode",
           options: [
-            { label: "Keep originals in place", value: "keep" },
-            { label: "Archive originals", value: "archive" },
+            { label: "First option", value: "first" },
+            { label: "Second option", value: "second" },
           ],
-          prompt: "What should Aura do with the originals?",
+          prompt: "Which mode should Aura use?",
         },
       ],
       { completed: [{ label: "Global" }], upcoming: [{ label: "Snippets" }] },
     );
     session.press("right");
 
-    await expect(form).resolves.toEqual({ archive: { kind: "options", values: ["archive"] } });
+    await expect(form).resolves.toEqual({ mode: { kind: "options", values: ["second"] } });
   });
 
   it("keeps → inert on the flow's last form", async () => {

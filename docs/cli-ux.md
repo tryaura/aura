@@ -98,10 +98,25 @@ same file two ways. `--verbose` works with scans and fixes but not with `--json`
 The summary line above the sections reports what was inspected, not a verdict: it takes a green `✓`
 only when at least one check passed, and a plain `·` when the run inspected nothing.
 
-When guided fixes exist, the report recommends `aura check --fix --interactive`, which includes
-automatic fixes in the same reviewed plan. With automatic fixes alone it recommends
-`aura check --fix`. An operationally incomplete scan recommends neither because its findings may
-be incomplete.
+The report recommends `aura check --fix` for every fixable finding, automatic and guided alike, and
+names the split ("Review 5 available fixes: 5 guided") so the user knows whether the run will ask
+them anything. An operationally incomplete scan recommends neither because its findings may be
+incomplete.
+
+`--fix` asks the guided questions itself; there is no second flag to reach them. What separates a
+run that asks from one that does not is capability, not intent: `--yes` forbids questions, `--json`
+promises one machine-readable document a machine cannot answer, and a shell with no terminal on
+both stdin and the prompt stream cannot ask at all. Only `--yes` authorizes automatic fixes without
+a confirmation prompt; another run that cannot ask previews any automatic plan and reports that
+confirmation is unavailable. When no automatic plan exists, the run prints what it left instead of
+the fixless message — "Left 5 guided findings alone: this run cannot ask for the choices they need.
+Run `aura check --fix` in a terminal, without `--yes` or `--json`." Reporting those as unavailable
+would deny the findings the report lists directly below.
+
+One question per plan, not per finding: a check may answer several findings with the same plan — a
+whole-file credential rewrite covers every credential in that file — and the wizard asks about each
+distinct plan once. The fix report then carries one entry per plan, and the re-scan after applying
+is what says which findings remain.
 
 ## Exit codes
 
@@ -150,7 +165,7 @@ When the active step runs a sequence of internal forms (a chain step like Instru
 **sub-row** prefixed with `└` maps that step's internal progress around the live form:
 
 ```
- └ ✔ Global │ ▶ Sources ☐ │ Duplicates ☐ │ Archive ☐
+ └ ✔ Global │ ▶ Sources ☐ │ Duplicates ☐
 ```
 
 - The live form's questions appear individually (`▶ Duplicate 2 ☐`); a completed or upcoming
@@ -162,12 +177,12 @@ When the active step runs a sequence of internal forms (a chain step like Instru
   remembered answer will re-seed it.
 - Both instruction scopes flow through one sub-row; the `Global` / `Project` action tabs double
   as scope section markers, so repeated stage names read unambiguously left to right:
-  `✔ Global │ ✔ Sources │ ✔ Archive │ ▶ Project ☐ │ Sources ☐`.
+  `✔ Global │ ✔ Sources │ ▶ Project ☐ │ Sources ☐`.
 - The Project action offers a final `Skip project instructions` option that the Global action does
   not: declining the global scope would leave the shared-source and application-link checks failing,
-  so setup could not end on green. A declined scope contributes only its action tab — no Sources,
-  Duplicates, or Archive tabs follow it, by the same honest-map rule:
-  `✔ Global │ ✔ Sources │ ✔ Archive │ ▶ Project ☐`.
+  so setup could not end on green. A declined scope contributes only its action tab — no Sources or
+  Duplicates tabs follow it, by the same honest-map rule:
+  `✔ Global │ ✔ Sources │ ▶ Project ☐`.
 - Declining is not undoing, and the option says so where it matters: when the project target already
   has content, the option's description names the file and states that it, and anything linking to
   it, stay as they are. Otherwise the only thing a skip-only run would say about an earlier run's
@@ -175,6 +190,16 @@ When the active step runs a sequence of internal forms (a chain step like Instru
 - The same reasoning binds the answers a scope can settle on, not just the ones it is shown: an
   action that was not on that scope's menu falls back to the proposed one, and a Global scope whose
   Sources form ends up empty is a blocker rather than a silent decline through the back door.
+- **Consolidating is a migration, not a copy**, and every surface that offers it says so: the
+  option's description, and a footer line on `setup --help`. The sources it merges are backed up
+  and taken off disk in the same plan, and `undo` restores them. `Keep existing shared file` leads
+  the menu wherever there is a target to keep, so this is what `--yes` takes only on a machine that
+  has no shared file yet — the run that has nothing to overwrite, and the one whose plan summary
+  lists every move before applying it.
+- A source the merge could not place is the exception: its provenance heading is already in the
+  target, so nothing new was appended, and the file has changed since. Archiving it would delete
+  the only copy of what it now says, so it stays where it is and the run names it under _Steps to
+  take yourself_ until someone resolves the divergence.
 - The Skills step is the second chain precedent: its Review stage exists only while a directory
   skill is selected or a recorded skill's source revision moved, one review question per skill —
   `└ ✔ Skills │ ▶ Review claude-md ☐ │ Review commit-style ☐`.
@@ -206,9 +231,11 @@ Tab states, in either row:
   it stands and advances_, so a backed-into flow retraces forward without re-answering. → never
   reaches Submit: it stops on the flow's last form, and on the Submit confirmation it is inert.
   Submit is an action, not a step, so getting there is always an explicit ↵. A step re-entered
-  backward opens on its **last** form (← from Snippets lands on Archive, not Global), a step with
-  nothing to ask passes ← straight through, and the final confirmation backs out into the last
-  step the same way. Informational banners print only on a step's first visit.
+  backward opens on its **last applicable** form — the last one that step actually asked, which for
+  Instructions is Project Duplicates when a duplicate review applies, otherwise Project Sources,
+  otherwise the Global action — a step with nothing to ask passes ← straight through, and the final
+  confirmation backs out into the last step the same way. Informational banners print only on a
+  step's first visit.
 - Re-entering a completed form shows its current answers and allows changing them: a select marks
   its standing answer with `●` and opens with the cursor on it, a multiselect keeps its `☑`
   checks, a free-text draft is re-seeded. → never re-answers — it commits the form exactly as it
@@ -512,4 +539,4 @@ old row count and the painted frame recounted at the new width, so a shrink leav
 rows behind.
 
 One refinement remains open: a _multi-question_ form reopened via back lands on its first
-question tab (← from Archive opens the duplicates form on Duplicate 1, not Duplicate 4).
+question tab (backing into duplicates opens Duplicate 1, not Duplicate 4).

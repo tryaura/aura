@@ -37,7 +37,7 @@ export const instructionLinkIntegrityCheck = defineCheck({
   detect: detectLinkProblems,
   explain: `Instruction imports must point to files the application can load without cycles or excessive nesting. Broken or unsupported chains silently discard guidance and can leave an agent running with only part of the intended instructions.
 
-Re-run the check with \`--fix --interactive\` to review the affected source and target paths. Create or correct missing targets, remove one edge from cycles, and flatten chains that exceed the named application's supported depth.`,
+Re-run the check with \`--fix\` to review the affected source and target paths. Create or correct missing targets, remove one edge from cycles, and flatten chains that exceed the named application's supported depth.`,
   fix: guidedFix,
   fixability: "guided",
   id: "INS-006",

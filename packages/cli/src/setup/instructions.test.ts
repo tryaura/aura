@@ -4,8 +4,8 @@ import { parseAuraManifest } from "@tryaura/core";
 import type { InstructionDocument, Scope, WorkspaceModel } from "@tryaura/aura-sdk";
 import { createWorkspaceModel } from "@tryaura/aura-sdk/testing";
 
+import { composeConsolidatedInstructions, unmergedSources } from "./instruction-merge.js";
 import {
-  composeConsolidatedInstructions,
   describeInstructionSource,
   instructionInventory,
   instructionTargets,
@@ -15,7 +15,7 @@ import {
 import type { InstructionScopeSelection } from "./types.js";
 
 describe("instruction inventory", () => {
-  it("canonicalizes adapter documents and reports scope, lines, and UTF-8 bytes", () => {
+  it("canonicalizes adapter documents and reports scope and line count", () => {
     const global = document("/home/dev/.claude/CLAUDE.md", "global", "é\nnext", "claude");
     const project = document("/repo/project/CURSOR.md", "project", "project\n", "cursor");
     const model = workspaceModel([
@@ -34,7 +34,8 @@ describe("instruction inventory", () => {
       { content: "é\nnext", path: global.path, scope: "global" },
       { content: "project\n", path: project.path, scope: "project" },
     ]);
-    expect(describeInstructionSource(source(global.path, "é\nnext"))).toBe("2 lines, 7 bytes");
+    expect(describeInstructionSource(source(global.path, "é\nnext"))).toBe("2 lines");
+    expect(describeInstructionSource(source(global.path, "only"))).toBe("1 line");
   });
 });
 
@@ -124,10 +125,10 @@ describe("instruction composition", () => {
     expect(output).not.toContain("~/b.md");
   });
 
-  it("converges when the originals stay in place and setup runs again", () => {
+  it("does not append sources whose provenance headings already exist", () => {
     const first = source("/home/dev/a.md", "A\n");
     const second = source("/home/dev/b.md", "B\n");
-    const chosen = { ...selection([first.path, second.path]), archiveOriginals: false };
+    const chosen = selection([first.path, second.path]);
     const model = workspaceModel([]);
     const target = "/home/dev/agents/AGENTS.md";
 
@@ -165,6 +166,57 @@ describe("instruction composition", () => {
   });
 });
 
+describe("unmerged sources", () => {
+  const target = "/home/dev/agents/AGENTS.md";
+
+  it("reports a source edited since the merge that already carries its heading", () => {
+    const merged = source("/home/dev/a.md", "A\n");
+    const chosen = selection([merged.path]);
+    const model = workspaceModel([]);
+    const base = composeConsolidatedInstructions([merged], chosen, [], model);
+    const edited = source(merged.path, "A\n\nBrand new.\n");
+
+    expect(unmergedSources([edited], chosen, [], model, existingTarget(base))).toEqual([
+      merged.path,
+    ]);
+  });
+
+  it("reports nothing for a source restored unchanged, which the target still holds", () => {
+    const merged = source("/home/dev/a.md", "A\n");
+    const chosen = selection([merged.path]);
+    const model = workspaceModel([]);
+    const base = composeConsolidatedInstructions([merged], chosen, [], model);
+
+    expect(unmergedSources([merged], chosen, [], model, existingTarget(base))).toEqual([]);
+  });
+
+  it("reports nothing for a source whose every paragraph the target keeps under the winner", () => {
+    const shared = "Always run the full verification suite before merging.\n";
+    const first = source("/home/dev/a.md", shared);
+    const second = source("/home/dev/b.md", shared);
+    const cluster: DuplicateCluster = {
+      id: "duplicate",
+      identical: true,
+      members: [
+        { endLine: 1, id: `${first.path}:1:1`, path: first.path, startLine: 1 },
+        { endLine: 1, id: `${second.path}:1:1`, path: second.path, startLine: 1 },
+      ],
+      similarity: 100,
+    };
+    const chosen = selection([first.path, second.path], { duplicate: `${first.path}:1:1` });
+    const model = workspaceModel([]);
+    const base = composeConsolidatedInstructions([first, second], chosen, [cluster], model);
+
+    expect(
+      unmergedSources([first, second], chosen, [cluster], model, existingTarget(base)),
+    ).toEqual([]);
+  });
+
+  function existingTarget(content: string): InstructionSource {
+    return { content, path: target, scope: "global" };
+  }
+});
+
 function document(
   path: string,
   scope: Scope,
@@ -184,7 +236,6 @@ function selection(
 ): InstructionScopeSelection {
   return {
     action: "consolidate",
-    archiveOriginals: true,
     duplicateWinners,
     scope: "global",
     selectedSources,

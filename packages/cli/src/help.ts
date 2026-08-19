@@ -99,8 +99,10 @@ export function renderCheckHelp(branding: CliBranding): string {
       },
       {
         rows: [
-          { term: "--interactive", text: "With --fix, walk through guided remediation choices" },
-          { term: "--yes", text: "Apply without asking; required when stdin is not a terminal" },
+          {
+            term: "--yes",
+            text: "Apply automatic fixes without asking; required when stdin is not a terminal",
+          },
         ],
         title: "Fixing behavior",
       },
@@ -156,6 +158,9 @@ export function renderSetupHelp(branding: CliBranding, addKinds: readonly string
       { rows: advancedRows(), title: "Advanced" },
     ],
     [
+      // --yes takes the proposed default, and on a machine with no shared file yet that default is
+      // to consolidate: the screen has to say that files move before someone finds out afterwards.
+      `Consolidating moves the instruction files you select; '${bin} undo' restores them`,
       `After setup, run '${bin} check' to verify the machine converged`,
       "Exit codes: 0 applied/converged/dry-run/declined · 1 aborted or warnings · 2 conflicts/errors/invalid usage · 3 operational failures",
     ],
