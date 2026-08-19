@@ -57,6 +57,12 @@ export function checkRunEvent(
   };
 }
 
+/** Selects the check flags a telemetry event may carry from a wider command object. */
+export function checkRunFlags(source: TelemetryCheckFlags): TelemetryCheckFlags {
+  const { dryRun, fix, interactive, json, online, verbose } = source;
+  return { dryRun, fix, interactive, json, online, verbose };
+}
+
 /** Draft of the {@link FixRunEvent} emitted when a check run carried `--fix`. */
 export function fixRunEvent(
   fixes: readonly ReportFix[],

@@ -54,8 +54,11 @@ describe("help screens", () => {
         Narrow it down
           --only <filter>               Run one check ID, category, or application; repeatable
           --explain <id>                Explain one check without scanning
-          --detail                      Include the failing plugin's own error text
           --online                      Probe remote MCP URLs with bounded network requests
+
+        Reporting
+          --verbose                     Show every occurrence, location, passed check, and application
+          --detail                      Include the failing plugin's own error text
 
         Configuration
           --preset <ref>                Use a plugin:, npm:, HTTPS, or local preset

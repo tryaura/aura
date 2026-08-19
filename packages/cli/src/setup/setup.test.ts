@@ -111,7 +111,7 @@ describe("runSetup", () => {
     );
     const manifestMode = (await stat(join(fixture.homeDir, "agents", "aura.json"))).mode & 0o777;
     expect(manifestMode).toBe(0o600);
-    expect(fixture.stdout()).toContain("Passed (1)");
+    expect(fixture.stdout()).toContain("✓ 1 check passed");
     expect(fixture.stdout()).toContain("backup");
   });
 

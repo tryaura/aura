@@ -76,10 +76,19 @@ export function renderCheckHelp(branding: CliBranding): string {
             text: "Run one check ID, category, or application; repeatable",
           },
           { term: "--explain <id>", text: "Explain one check without scanning" },
-          { term: "--detail", text: "Include the failing plugin's own error text" },
           { term: "--online", text: "Probe remote MCP URLs with bounded network requests" },
         ],
         title: "Narrow it down",
+      },
+      {
+        rows: [
+          {
+            term: "--verbose",
+            text: "Show every occurrence, location, passed check, and application",
+          },
+          { term: "--detail", text: "Include the failing plugin's own error text" },
+        ],
+        title: "Reporting",
       },
       {
         rows: configurationRows(),
