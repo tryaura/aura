@@ -68,7 +68,7 @@ export function collectAutomaticFixCandidates(
 
     try {
       const plan = check.fix(finding, options.model);
-      if (plan !== undefined) {
+      if (plan !== undefined && !isInertPlan(plan)) {
         candidates.push({ checkId: check.id, findingId: finding.id, plan });
       }
     } catch (error) {
@@ -84,6 +84,18 @@ export function collectAutomaticFixCandidates(
     candidates: Object.freeze(candidates),
     diagnostics: Object.freeze(diagnostics),
   });
+}
+
+/**
+ * Whether a plan would neither change a file nor ask the user for anything.
+ *
+ * A check that returns one has concluded the finding needs no work, which contradicts having
+ * reported the finding. Counting it as a candidate is what turns that contradiction into a run
+ * that promises a fix, writes nothing, and reports the same finding again — so it is dropped here
+ * and the report speaks only for plans that do something.
+ */
+function isInertPlan(plan: FixPlan): boolean {
+  return plan.operations.length === 0 && (plan.manualSteps?.length ?? 0) === 0;
 }
 
 /** Builds and merges automatic plans for callers that do not need per-finding selection. */

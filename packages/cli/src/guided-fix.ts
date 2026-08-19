@@ -16,7 +16,10 @@ export async function gatherGuidedFixes(
 
   for (const [index, finding] of request.findings.entries()) {
     const check = checks.get(finding.checkId);
-    if (check?.fixability !== "guided") {
+    // A finding may downgrade its check's fixability, and the report already renders it under
+    // manual attention when it does. Asking about it here would offer in the wizard exactly what
+    // the report said could not be offered.
+    if (check?.fixability !== "guided" || finding.fixability === "manual") {
       continue;
     }
 
