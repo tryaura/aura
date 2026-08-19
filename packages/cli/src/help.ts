@@ -40,7 +40,7 @@ export function renderRootHelp(branding: CliBranding): string {
       {
         rows: [
           { term: `${bin} <command> --help`, text: "Full flag reference for a command" },
-          // The version command only registers when branding carries a version (run.ts), so the
+          // The version command only registers when branding carries a version (run.boundary.ts), so the
           // row appears exactly when the flag exists.
           ...(branding.version === undefined
             ? []

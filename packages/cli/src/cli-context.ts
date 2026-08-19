@@ -1,6 +1,6 @@
 import type { Writable } from "node:stream";
 
-// Deep import on purpose: see the note in run.ts.
+// Deep import on purpose: see the note in run.boundary.ts.
 import type { BaseContext } from "clipanion/lib/advanced/index.js";
 
 import type { AuraConfigurationLayer, Environment } from "@tryaura/aura-sdk";

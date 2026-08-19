@@ -8,7 +8,7 @@ import { parseAuraManifest } from "@tryaura/core";
 import { describe, expect, it } from "vitest";
 
 import { ANY_ARGUMENT, createSeedBuilder } from "./index.js";
-import { assertSupportedPlatform } from "./seed.js";
+import { assertSupportedPlatform } from "./seed.boundary.js";
 
 describe("createSeedBuilder", () => {
   it("materializes nested files and exact executable shim responses", async () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { runCli } from "./run.js";
+import { runCli } from "./run.boundary.js";
 import { createCapture, distro, findingPlugin } from "./testing.js";
 
 describe("check output styling", () => {

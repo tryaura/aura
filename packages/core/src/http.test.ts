@@ -3,7 +3,7 @@ import type { AddressInfo } from "node:net";
 
 import { describe, expect, it } from "vitest";
 
-import { createHttpGet } from "./http.js";
+import { createHttpGet } from "./http.boundary.js";
 
 const httpGet = createHttpGet();
 
