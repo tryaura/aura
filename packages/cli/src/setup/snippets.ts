@@ -1,4 +1,5 @@
-import { open } from "node:fs/promises";
+import { open, readFile, stat } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 
 import type { AuraManifestState, Snippet } from "@tryaura/aura-sdk";
 
@@ -125,20 +126,31 @@ async function resolveSnippet(snippet: Snippet): Promise<SnippetCatalogEntry> {
   }
 }
 
-/** Measures the open file rather than the path, so the size cannot change between the two calls. */
 async function readBoundedSource(source: URL): Promise<string> {
+  const path = fileURLToPath(source);
+  if (path.startsWith("/$bunfs/")) {
+    const { size } = await stat(path);
+    rejectLargeSnippet(size);
+    return readFile(path, "utf8");
+  }
+
   const handle = await open(source, "r");
   try {
     const { size } = await handle.stat();
-    if (size > MAX_SNIPPET_BYTES) {
-      throw new Error(
-        `Source is ${String(Math.ceil(size / 1024))} KiB; snippets are limited to ${String(MAX_SNIPPET_BYTES / 1024)} KiB.`,
-      );
-    }
+    rejectLargeSnippet(size);
     return await handle.readFile("utf8");
   } finally {
     await handle.close();
   }
+}
+
+function rejectLargeSnippet(size: number): void {
+  if (size <= MAX_SNIPPET_BYTES) {
+    return;
+  }
+  throw new Error(
+    `Source is ${String(Math.ceil(size / 1024))} KiB; snippets are limited to ${String(MAX_SNIPPET_BYTES / 1024)} KiB.`,
+  );
 }
 
 function errorMessage(error: unknown): string {
