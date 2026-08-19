@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import process from "node:process";
 
+import { parseAuraManifest } from "@tryaura/core";
 import { describe, expect, it } from "vitest";
 
 import { ANY_ARGUMENT, createSeedBuilder } from "./index.js";
@@ -107,6 +108,43 @@ describe("createSeedBuilder", () => {
 
     await expect(realpathOf(seed.homeDir)).resolves.toBe(seed.homeDir);
     await expect(realpathOf(seed.workspaceDir)).resolves.toBe(seed.workspaceDir);
+  });
+
+  it("adds workspace trust without discarding existing trust records", async () => {
+    const previous = {
+      acceptedBy: "future-testkit",
+      hash: "a".repeat(64),
+      path: "/previous/.aura/preset.json",
+    };
+    const manifest = JSON.stringify({
+      apps: {},
+      mcpServers: [],
+      ownership: {},
+      schemaVersion: 1,
+      skills: [],
+      snippets: [],
+      trustedRepoPresets: [previous],
+    });
+    await using seed = await createSeedBuilder()
+      .homeFile("agents/aura.json", manifest)
+      .workspaceFile(".aura/preset.json", '{"schemaVersion":1}\n')
+      .trustWorkspacePreset()
+      .build();
+
+    const path = join(seed.homeDir, "agents", "aura.json");
+    const state = parseAuraManifest(await readFile(path, "utf8"), path);
+
+    expect(state.status).toBe("ready");
+    if (state.status !== "ready") {
+      return;
+    }
+    expect(state.value.trustedRepoPresets).toEqual([
+      previous,
+      {
+        hash: expect.stringMatching(/^[0-9a-f]{64}$/u),
+        path: join(seed.workspaceDir, ".aura", "preset.json"),
+      },
+    ]);
   });
 
   it("cleans up idempotently", async () => {

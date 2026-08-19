@@ -6,7 +6,7 @@ description: Runtime team preset schema, references, loading, and layered resolu
 A team preset is a versioned JSON document that configures checks and shared content without
 executing preset-supplied code. Aura resolves configuration once at boot in this order:
 
-`distribution defaults → selected preset → ~/agents/aura.json → command-line flags`
+`distribution defaults → selected preset → repository preset → ~/agents/aura.json → command-line flags`
 
 Later layers win for check activation, severity, and each check's complete threshold object.
 Required MCP servers and skill directories are additive. Manifest content selections replace
@@ -46,8 +46,9 @@ not reset to preset defaults.
 
 ## Selecting and loading a preset
 
-Aura chooses the first available reference in this order: `--preset`, the manifest's `preset`, an
-implicit repository `.aura/preset.json`, then the distribution's default preset. Supported forms
+Aura chooses the first available reference in this order: `--preset`, the manifest's `preset`,
+then the distribution's default preset. The repository's `.aura/preset.json` is never selected as
+the team preset — it is its own configuration layer, described below. Supported reference forms
 are:
 
 - `plugin:<preset-id>` for JSON bundled by a registered plugin;
@@ -73,6 +74,23 @@ and writes.
 Fetching a remote reference is network access, so `check` performs it only with `--online`; without
 it, an `npm:` or `https:` preset resolves from cache and otherwise fails with a note naming the
 flag. `setup` already contacts skill directories to build its pickers and always resolves remotely.
+
+## Repository preset layer
+
+A repository may commit `.aura/preset.json` beside the code it governs. It uses the same schema
+as a team preset and applies as its own configuration layer above whichever preset is selected
+and below the user's manifest, so a repo can tighten or extend team policy while the user's own
+overrides still win.
+
+Because the file arrives by cloning rather than by anything the user selected, it applies only
+after a first-use trust decision. Interactive `aura setup` asks once per repository, and
+acceptance — the preset's absolute path plus a hash of its exact contents — is recorded in
+`~/agents/aura.json` under `trustedRepoPresets` when the plan is applied. A file that changes
+after acceptance is untrusted again until the new contents are reviewed; declining records
+nothing and the next interactive setup asks again. Non-interactive runs never accept: `check`
+resolves without the layer and prints one configuration note naming `setup`, and `setup --yes`
+holds the layer and says so in the plan summary. An unreadable or invalid repository preset fails
+the run closed rather than silently widening whatever the file was written to lock down.
 
 The setup summary shows effective preset check settings as read-only policy, under a heading that
 names the preset once. It does not copy them into `manifest.checks`: only an explicit manifest or
