@@ -136,7 +136,7 @@ export function scopeStages(input: ScopeInput): readonly ChainStage<ChainState>[
     },
     {
       isApplicable: consolidating,
-      label: "Archive",
+      label: "Files",
       apply: (state, answers) =>
         update(state, {
           archiveOriginals: selectedValues(answers[archiveId]).includes("archive"),
@@ -151,22 +151,20 @@ export function scopeStages(input: ScopeInput): readonly ChainStage<ChainState>[
                 // the user wrote by hand.
                 initial: [draft(state).archiveOriginals === true ? "archive" : "keep"],
                 kind: "select",
-                label: "Archive",
+                label: "Files",
                 options: [
                   {
-                    description:
-                      "Leave every original source in place after creating the shared file.",
-                    label: "Keep originals in place",
+                    description: `Keep the existing instructions in the selected files. Aura will also copy them to ${basename(input.targetPath)}.`,
+                    label: "Keep instructions in both places",
                     value: "keep",
                   },
                   {
-                    description:
-                      "Preserve exact originals in Aura's undo journal, then replace or remove them.",
-                    label: "Archive originals",
+                    description: `Back up the selected files, then replace them with links to ${basename(input.targetPath)} or delete them if no link is needed.`,
+                    label: `Keep instructions only in ${basename(input.targetPath)}`,
                     value: "archive",
                   },
                 ],
-                prompt: "What should Aura do with the selected originals after consolidation?",
+                prompt: `After Aura copies the selected instructions to ${basename(input.targetPath)}, where should they stay?`,
               },
             ]
           : undefined,
@@ -211,13 +209,13 @@ function actionOptions(input: ScopeInput): readonly WizardOption[] {
   }
   if (input.sources.length > 0) {
     options.push({
-      description: "Merge selected sources with provenance and optional archival.",
-      label: "Consolidate found instructions",
+      description: `Copy instructions from the files you select into this ${basename(input.targetPath)} file.`,
+      label: "Combine found instructions",
       value: CONSOLIDATE_VALUE,
     });
   }
   options.push({
-    description: "Start with Aura's minimal official instruction template.",
+    description: `Create this ${basename(input.targetPath)} file with Aura's basic instructions.`,
     label: "Use starter template",
     value: TEMPLATE_VALUE,
   });

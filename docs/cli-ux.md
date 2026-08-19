@@ -150,7 +150,7 @@ When the active step runs a sequence of internal forms (a chain step like Instru
 **sub-row** prefixed with `└` maps that step's internal progress around the live form:
 
 ```
- └ ✔ Global │ ▶ Sources ☐ │ Duplicates ☐ │ Archive ☐
+ └ ✔ Global │ ▶ Sources ☐ │ Duplicates ☐ │ Files ☐
 ```
 
 - The live form's questions appear individually (`▶ Duplicate 2 ☐`); a completed or upcoming
@@ -162,12 +162,12 @@ When the active step runs a sequence of internal forms (a chain step like Instru
   remembered answer will re-seed it.
 - Both instruction scopes flow through one sub-row; the `Global` / `Project` action tabs double
   as scope section markers, so repeated stage names read unambiguously left to right:
-  `✔ Global │ ✔ Sources │ ✔ Archive │ ▶ Project ☐ │ Sources ☐`.
+  `✔ Global │ ✔ Sources │ ✔ Files │ ▶ Project ☐ │ Sources ☐`.
 - The Project action offers a final `Skip project instructions` option that the Global action does
   not: declining the global scope would leave the shared-source and application-link checks failing,
   so setup could not end on green. A declined scope contributes only its action tab — no Sources,
-  Duplicates, or Archive tabs follow it, by the same honest-map rule:
-  `✔ Global │ ✔ Sources │ ✔ Archive │ ▶ Project ☐`.
+  Duplicates, or Files tabs follow it, by the same honest-map rule:
+  `✔ Global │ ✔ Sources │ ✔ Files │ ▶ Project ☐`.
 - Declining is not undoing, and the option says so where it matters: when the project target already
   has content, the option's description names the file and states that it, and anything linking to
   it, stay as they are. Otherwise the only thing a skip-only run would say about an earlier run's
@@ -206,7 +206,7 @@ Tab states, in either row:
   it stands and advances_, so a backed-into flow retraces forward without re-answering. → never
   reaches Submit: it stops on the flow's last form, and on the Submit confirmation it is inert.
   Submit is an action, not a step, so getting there is always an explicit ↵. A step re-entered
-  backward opens on its **last** form (← from Snippets lands on Archive, not Global), a step with
+  backward opens on its **last** form (← from Snippets lands on Files, not Global), a step with
   nothing to ask passes ← straight through, and the final confirmation backs out into the last
   step the same way. Informational banners print only on a step's first visit.
 - Re-entering a completed form shows its current answers and allows changing them: a select marks
@@ -493,4 +493,4 @@ old row count and the painted frame recounted at the new width, so a shrink leav
 rows behind.
 
 One refinement remains open: a _multi-question_ form reopened via back lands on its first
-question tab (← from Archive opens the duplicates form on Duplicate 1, not Duplicate 4).
+question tab (← from Files opens the duplicates form on Duplicate 1, not Duplicate 4).
