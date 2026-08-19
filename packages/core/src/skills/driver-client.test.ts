@@ -11,7 +11,7 @@ import type {
 } from "@tryaura/aura-sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createEnvironment } from "../environment.js";
+import { createEnvironment } from "../environment.boundary.js";
 import type { FileReader } from "../workspace/reader.js";
 import { MAX_SKILL_DRIVER_CALL_MS, MAX_SKILL_FILE_BYTES } from "./limits.js";
 import { listDriverSkills, resolveDriverSkills } from "./driver-client.js";

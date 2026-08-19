@@ -7,7 +7,7 @@ import type {
   ResolvedSkillPack,
 } from "@tryaura/aura-sdk";
 
-import { isAllowedHttpUrl } from "../http.js";
+import { isAllowedHttpUrl } from "../http.boundary.js";
 import { contentVersionProblem } from "../plugin-validation-version.js";
 import { createCachingReader, createFileReader, type FileReader } from "../workspace/reader.js";
 import { resolveDriverSkillPack } from "../workspace/skills.js";
