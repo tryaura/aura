@@ -103,5 +103,8 @@ export function pickerOptions(inputs: SkillStageInputs): readonly WizardOption[]
       value: skillIdentity(skill.source, skill.id),
     }));
 
-  return [...entryRows, ...manifestRows, ...presetRows, ...sourceRows];
+  // Unavailable sources lead. They are the only rows nothing preselects, so behind the picker's
+  // initial row window they would be the one class of row that can fall off the first frame
+  // entirely — and a source being down is exactly what has to be visible without searching for it.
+  return [...sourceRows, ...entryRows, ...manifestRows, ...presetRows];
 }

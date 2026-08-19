@@ -234,6 +234,7 @@ function createHarness(script: ScriptedWizardScript = {}): Harness {
         confirmPrompts.push(prompt);
         return scripted.confirm(prompt);
       },
+      load: scripted.load,
       note: scripted.note,
       notes: scripted.notes,
     },

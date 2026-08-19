@@ -59,6 +59,15 @@ export interface SkillListing {
   readonly id: string;
   /** Human-readable name. */
   readonly name: string;
+  /**
+   * Where this skill's bytes actually come from, when that is not the directory's own URL.
+   *
+   * A directory that indexes content hosted elsewhere — a metadata feed pointing at GitHub — must
+   * name the real origin here. It is what the review step shows at the moment the user grants
+   * trust, so approving a skill is approving the host that serves it rather than the catalog that
+   * advertised it.
+   */
+  readonly originUrl?: string | undefined;
   /** Semver version of the skill. */
   readonly version: string;
 }
@@ -124,11 +133,13 @@ export interface BundledSkillSource {
   readonly name: string;
 }
 
-/** A public directory speaking Aura's standard skill-directory protocol. */
+/** A public directory using Aura's native protocol or a named built-in provider adapter. */
 export interface StandardDirectorySkillSource {
   readonly id: Extract<SkillSourceId, `directory:${string}`>;
   readonly kind: "directory";
   readonly name: string;
+  /** Omit for Aura's native protocol; registered providers may select a built-in adapter. */
+  readonly protocol?: "agenticskills" | undefined;
   readonly url: string;
 }
 

@@ -34,7 +34,7 @@ describe("official snippets", () => {
     ).toEqual(EXPECTED_SNIPPETS);
   });
 
-  it("registers the official skill directory with an https URL and no token", () => {
+  it("registers AgenticSkills through its provider adapter", () => {
     const registry = createPluginRegistry([officialContent]);
 
     expect(registry.skillDirectories).toEqual([
@@ -42,6 +42,7 @@ describe("official snippets", () => {
         id: "directory:agenticskills",
         kind: "directory",
         name: "agenticskills.io",
+        protocol: "agenticskills",
         url: "https://agenticskills.io",
       },
     ]);

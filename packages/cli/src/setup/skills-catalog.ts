@@ -10,14 +10,18 @@ import type {
 import {
   AURA_TEAM_PRESET_PATH,
   collectSkillDirectorySources,
+  createLimiter,
   isSkillSourceAllowed,
   listDirectorySkills,
-  resolveDirectorySkills,
   type DirectorySkillListingResult,
 } from "@tryaura/core";
 
+import { resolveSkillSelections } from "./skill-catalog-resolution.js";
 import { skillIdentity } from "./skill-planner-paths.js";
 import type { SkillSelection } from "./types.js";
+
+/** How many skill directories the picker lists at once; each is one loading row on screen. */
+const MAX_CONCURRENT_SOURCE_LISTINGS = 4;
 
 /** The allowlist in force, in the shape the planner can enforce synchronously. */
 export interface SkillSourcePolicy {
@@ -71,6 +75,15 @@ export interface SkillResolution {
   readonly resolved: ReadonlyMap<string, ResolvedSkillPack>;
 }
 
+/** One remote source whose listing request has not been memoized for this approval set. */
+export interface PendingSkillSource {
+  readonly id: SkillSourceId;
+  readonly name: string;
+}
+
+type SkillSourceLoadStatus = "active" | "complete";
+type SkillSourceLoadUpdate = (id: string, status: SkillSourceLoadStatus) => void;
+
 /**
  * The skills the run can install, resolved on demand.
  *
@@ -79,7 +92,14 @@ export interface SkillResolution {
  * re-planning never refetch.
  */
 export interface SkillCatalog {
-  readonly load: (approvedPrivateSourceIds?: ReadonlySet<string>) => Promise<SkillCatalogListing>;
+  readonly load: (
+    approvedPrivateSourceIds?: ReadonlySet<string>,
+    update?: SkillSourceLoadUpdate,
+  ) => Promise<SkillCatalogListing>;
+  /** Sources that would perform network I/O if `load` were called with this approval set now. */
+  readonly pendingSources: (
+    approvedPrivateSourceIds?: ReadonlySet<string>,
+  ) => readonly PendingSkillSource[];
   readonly policy: SkillSourcePolicy;
   /** Private sources that require an explicit connection decision before any credential is read. */
   readonly privateSources: readonly PrivateDirectorySkillSource[];
@@ -107,8 +127,8 @@ export function createSkillCatalog(inputs: SkillCatalogInputs): SkillCatalog {
   const pending = new Map<string, Promise<SkillCatalogListing>>();
 
   return {
-    load: (approvedPrivateSourceIds = new Set()) => {
-      const key = [...approvedPrivateSourceIds].sort().join("\0");
+    load: (approvedPrivateSourceIds = new Set(), update) => {
+      const key = approvalKey(approvedPrivateSourceIds);
       const existing = pending.get(key);
       if (existing !== undefined) {
         return existing;
@@ -125,9 +145,21 @@ export function createSkillCatalog(inputs: SkillCatalogInputs): SkillCatalog {
         approved,
         [...inputs.presetNotes, ...collected.diagnostics.map((diagnostic) => diagnostic.message)],
         unapproved,
+        update,
       );
       pending.set(key, listing);
       return listing;
+    },
+    pendingSources: (approvedPrivateSourceIds = new Set()) => {
+      if (pending.has(approvalKey(approvedPrivateSourceIds))) {
+        return [];
+      }
+      return collected.sources
+        .filter(
+          (source) =>
+            source.kind !== "private-directory" || approvedPrivateSourceIds.has(source.id),
+        )
+        .map((source) => ({ id: source.id, name: source.name }));
     },
     policy: {
       ...(inputs.preset?.allowedSkillSources === undefined
@@ -141,7 +173,7 @@ export function createSkillCatalog(inputs: SkillCatalogInputs): SkillCatalog {
       ),
     ),
     resolve: (selections, approvedPrivateSourceIds = new Set()) =>
-      resolveSelections(
+      resolveSkillSelections(
         inputs.environment,
         collected.sources.filter(
           (source) =>
@@ -159,6 +191,7 @@ async function loadListing(
   sources: readonly DirectorySkillSource[],
   baseNotes: readonly string[],
   unapproved: readonly PrivateDirectorySkillSource[],
+  update: SkillSourceLoadUpdate | undefined,
 ): Promise<SkillCatalogListing> {
   const entries: SkillCatalogEntry[] = [];
   const notes = [...baseNotes];
@@ -185,13 +218,25 @@ async function loadListing(
     });
   }
 
+  const limit = createLimiter(MAX_CONCURRENT_SOURCE_LISTINGS);
   const listings: readonly {
     readonly result: DirectorySkillListingResult;
     readonly source: DirectorySkillSource;
-  }[] = await mapWithConcurrency(sources, 4, async (source) => ({
-    result: await listDirectorySkills(inputs.environment, source),
-    source,
-  }));
+  }[] = await Promise.all(
+    sources.map((source) =>
+      limit(async () => {
+        update?.(source.id, "active");
+        try {
+          return {
+            result: await listDirectorySkills(inputs.environment, source),
+            source,
+          };
+        } finally {
+          update?.(source.id, "complete");
+        }
+      }),
+    ),
+  );
   for (const { result, source } of listings) {
     notes.push(...result.diagnostics.map((diagnostic) => diagnostic.message));
     if (result.status.kind === "unavailable") {
@@ -207,7 +252,9 @@ async function loadListing(
         remote: true,
         sourceId: source.id,
         sourceName: source.name,
-        sourceUrl: source.url,
+        // The host that serves the bytes, not the catalog that advertised them: a directory that
+        // indexes content elsewhere names the real origin, and that is what the review shows.
+        sourceUrl: listing.originUrl ?? source.url,
         version: listing.version,
       });
     }
@@ -220,81 +267,6 @@ async function loadListing(
   };
 }
 
-/** Fetches what is not already memoized, one directory request batch per source. */
-async function resolveSelections(
-  environment: Environment,
-  sources: readonly DirectorySkillSource[],
-  selections: readonly SkillSelection[],
-  packs: Map<string, ResolvedSkillPack>,
-  failures: Map<string, string>,
-): Promise<SkillResolution> {
-  const bySource = new Map<string, string[]>();
-  const unavailable = new Map<string, string>();
-  for (const selection of selections) {
-    const identity = skillIdentity(selection.source, selection.id);
-    if (packs.has(identity) || failures.has(identity)) {
-      continue;
-    }
-    const ids = bySource.get(selection.source) ?? [];
-    ids.push(selection.id);
-    bySource.set(selection.source, ids);
-  }
-
-  await mapWithConcurrency([...bySource.entries()], 4, async ([sourceId, ids]) => {
-    const source = sources.find((candidate) => candidate.id === sourceId);
-    if (source === undefined) {
-      for (const id of ids) {
-        unavailable.set(skillIdentity(sourceId, id), "its source is not available in this run");
-      }
-      return;
-    }
-    const result = await resolveDirectorySkills(environment, source, ids);
-    for (const skill of result.skills) {
-      packs.set(skillIdentity(sourceId, skill.id), skill);
-    }
-    for (const id of ids) {
-      const identity = skillIdentity(sourceId, id);
-      if (!packs.has(identity)) {
-        failures.set(identity, resolutionFailure(result.diagnostics, id));
-      }
-    }
-  });
-
-  return { problems: new Map([...failures, ...unavailable]), resolved: new Map(packs) };
-}
-
-/** Maps in input order while keeping only a small, fixed number of tasks in flight. */
-async function mapWithConcurrency<T, U>(
-  values: readonly T[],
-  concurrency: number,
-  map: (value: T) => Promise<U>,
-): Promise<U[]> {
-  const entries = values.entries();
-  const workers = Array.from(
-    { length: Math.min(concurrency, values.length) },
-    async (): Promise<{ readonly index: number; readonly value: U }[]> => {
-      const completed: { readonly index: number; readonly value: U }[] = [];
-      for (;;) {
-        const next = entries.next();
-        if (next.done) {
-          return completed;
-        }
-        completed.push({ index: next.value[0], value: await map(next.value[1]) });
-      }
-    },
-  );
-  return (await Promise.all(workers))
-    .flat()
-    .sort((left, right) => left.index - right.index)
-    .map((entry) => entry.value);
-}
-
-function resolutionFailure(
-  diagnostics: readonly { readonly message: string }[],
-  id: string,
-): string {
-  return (
-    diagnostics.find((diagnostic) => diagnostic.message.includes(`"${id}"`))?.message ??
-    "could not be fetched from its directory"
-  );
+function approvalKey(approvedPrivateSourceIds: ReadonlySet<string>): string {
+  return [...approvedPrivateSourceIds].sort().join("\0");
 }
