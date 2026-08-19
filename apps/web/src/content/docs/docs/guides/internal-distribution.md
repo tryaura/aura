@@ -18,6 +18,7 @@ layout:
 acmedev/
 ├── content/
 │   ├── mcp/source-control.json
+│   ├── skills/acme-review/SKILL.md
 │   ├── skills/acme-release/SKILL.md
 │   ├── skills/acme-release/references/checklist.md
 │   └── snippets/engineering.md
@@ -200,6 +201,53 @@ skill directories.
 A skill is a whole directory, so auxiliary files go beside `SKILL.md` and travel with it — the
 example adds `references/checklist.md`. Aura resolves the tree recursively, in a compiled binary
 as well as from source.
+
+### Add a non-standard skill source
+
+Use `skillSources` when an internal registry needs code to list or fetch skills. Driver IDs are
+namespaced and become `driver:acme/engineering-skills` in presets and manifests. `list` supplies
+metadata and a credential-free origin URL; `resolve` receives all selected IDs together and returns
+packs pointing at local directories the driver materialized:
+
+```ts
+const review = {
+  description: "Review an Acme change before it lands.",
+  id: "acme-review",
+  kind: "skill-pack" as const,
+  name: "Acme review",
+  originUrl: "https://engineering.acme.example/skills/acme-review",
+  source: { type: "directory" as const, url: contentUrl("skills/acme-review/") },
+  version: "1.0.0",
+};
+
+const engineeringSkills = {
+  description: "Skills published by Acme engineering.",
+  id: "acme/engineering-skills",
+  async list() {
+    const { kind, source, ...listing } = review;
+    return [listing];
+  },
+  name: "Acme engineering skills",
+  async resolve(_environment, ids: readonly string[]) {
+    return new Map(ids.flatMap((id) => (id === review.id ? [[id, review]] : [])));
+  },
+};
+```
+
+Aura calls drivers only from interactive Skills setup, caches each listing for the run, safely
+reads returned directories, and shows the source, origin, version, and `SKILL.md` before install.
+Never put environment values, command output, file contents, or caught errors in driver metadata.
+Add `skillSources: [engineeringSkills]` to the plugin and allow
+`driver:acme/engineering-skills` in the team preset.
+
+An internal plugin can remove optional distribution defaults with an exact denylist:
+
+```ts
+disabledSkillSources: ["directory:agenticskills"];
+```
+
+Missing targets are ignored. Existing manifest selections are preserved as unavailable rather than
+being silently removed.
 
 ## 4. Add an MCP catalog entry
 

@@ -35,7 +35,11 @@ export interface PathContents {
   readonly size?: number | undefined;
   /** Raw target of the final path entry when it is a symbolic link. */
   readonly symlinkTarget?: string | undefined;
-  /** Present only when an unbounded regular-file read did not decode as strict UTF-8. */
+  /**
+   * Present only when a regular-file read that captured the whole file did not decode as strict
+   * UTF-8. A read truncated by {@link FileReadOptions.maxBytes} ends mid-sequence by construction
+   * and so leaves this absent rather than reporting a break it caused itself.
+   */
   readonly utf8Valid?: false | undefined;
 }
 

@@ -56,6 +56,8 @@ export type {
   BundledSkillSource,
   DirectoryContentSource,
   DirectorySkillSource,
+  DriverSkillListing,
+  DriverSkillPack,
   DriverSkillSource,
   FileContentSource,
   McpServerDef,

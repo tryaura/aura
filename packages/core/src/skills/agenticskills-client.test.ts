@@ -1,7 +1,7 @@
 import type { DirectorySkillSource, HttpGetRequest, HttpGetResult } from "@tryaura/aura-sdk";
 import { describe, expect, it } from "vitest";
 
-import { treeHash } from "../workspace/skills.js";
+import { treeHash } from "../workspace/skill-tree-walk.js";
 import {
   okDirectoryResponse as ok,
   scriptedDirectoryEnvironment as scripted,

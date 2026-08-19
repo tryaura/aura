@@ -115,6 +115,7 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
   const catalogs = createSetupCatalogs({
     config: configured.config,
     environment,
+    interactive: request.interactive,
     model: effectiveModel,
     preset: configured.preset,
     presetNotes: [

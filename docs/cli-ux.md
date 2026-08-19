@@ -311,7 +311,24 @@ continue.`): proceeding without it would silently widen whatever the file was wr
 
 ### Skills step
 
-A picker over every allowed skill source, then one Review form per selected directory skill.
+A picker over every allowed skill source, then one Review form per selected remote skill.
+
+- Plugin drivers are lazy and use `driver:<namespaced-id>`. Aura never calls them during a
+  workspace scan, `check`, `setup --yes`, or the post-setup rescan. Interactive setup lists a driver
+  only when Skills opens, once per run; back navigation reuses the listing. Resolution batches all
+  selected IDs for one driver and memoizes each success or failure.
+- A driver is the one source kind that runs code, and it is not gated behind the private-source
+  approval question. That question exists to authorize sending a **credential** to a host, which a
+  driver never does; a driver is build-time code the distribution compiled in, already trusted to
+  the same degree as the binary running it. What the user is owed is therefore visibility rather
+  than a veto: the driver is named on its loading row while it runs, and the origin it declares for
+  each skill is attributed to it at the review.
+- Every driver call is bounded. The protocol has no cancellation, so the bound is on Aura's wait,
+  not on the driver's work: a `list` or `resolve` that has not returned within 30 seconds is treated
+  as unavailable and the step continues. The abandoned call cannot hold the process open.
+- A skill source removed by a plugin's `disabledSkillSources` is reported as a first-visit note
+  naming the plugin that removed it, because a row that is simply absent is indistinguishable from
+  one that broke. A denylist entry naming a source this distribution never had says nothing.
 
 - Before the picker opens, directory indexes load inside the wizard instead of leaving an empty
   terminal gap. The normal top-level flow row stays visible with Skills active, and the body shows
@@ -332,10 +349,12 @@ A picker over every allowed skill source, then one Review form per selected dire
   for result navigation, and `esc` clears an active search before it can cancel the form. While the
   query has focus the hint line names those bindings instead of the standing ones:
   `type to filter · ↑/↓ move · ↵ results · esc clear search`.
-- A remote skill's Review row names the host that serves its bytes, not the directory that
-  advertised it: a catalog indexing content elsewhere reports that origin
+- A remote skill's Review row names the source, version, and origin of its bytes, not the directory
+  that advertised it: a catalog indexing content elsewhere reports that origin
   (`https://github.com/<owner>/<repo>/tree/<ref>/<dir>`), because approving a skill is approving
-  the host it comes from.
+  the host it comes from. For a directory that origin is where the bytes were fetched from. A
+  driver instead hands Aura a local directory, so its origin is the one the driver **declares** for
+  the content — a claim attributed to the driver, not a host Aura observed serving it.
 - The picker prompt ends with a support matrix for the applications selected in the Apps step, in
   adapter order (`Apps: ✓ Claude Code · ✓ Codex · — Cursor`). It is stated once above the rows
   rather than per row, because it describes the run and not any one skill. An adapter's declared
@@ -367,6 +386,10 @@ A picker over every allowed skill source, then one Review form per selected dire
   the preset as resolved — `npm:@acme/preset@1.2.0` or an HTTPS URL — and a policy supplied by
   the repository's own file is named `repository preset ".aura/preset.json"`, so a policy is
   never presented as coming from somewhere it did not.
+- A driver listing or resolution failure leaves every manifest-recorded selection checked and
+  unavailable. One failed source or skill does not hide other entries. Diagnostics use validated
+  IDs and generic reasons only; raw errors, environment values, rejected paths, and file contents
+  appear nowhere outside the explicit `p` review preview.
 
 ### MCP step
 

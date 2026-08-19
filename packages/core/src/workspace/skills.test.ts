@@ -10,7 +10,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { RegisteredSkillPack } from "../plugin-registry.js";
 import { createFileReader } from "./reader.js";
 import { createMemoryReader, DIRECTORY } from "./testing.js";
-import { resolveBundledSkills, scanSharedSkills, treeHash } from "./skills.js";
+import { treeHash } from "./skill-tree-walk.js";
+import { resolveBundledSkills, scanSharedSkills } from "./skills.js";
 
 const temporaryDirectories: string[] = [];
 

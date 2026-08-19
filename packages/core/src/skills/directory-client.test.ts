@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createTestEnvironment } from "../workspace/testing.js";
-import { treeHash } from "../workspace/skills.js";
+import { treeHash } from "../workspace/skill-tree-walk.js";
 import { listDirectorySkills, resolveDirectorySkills } from "./directory-client.js";
 import {
   LISTING,

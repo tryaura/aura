@@ -5,6 +5,7 @@ import type {
   McpServerDef,
   Preset,
   SkillPack,
+  SkillSourceId,
   SkillSourceDriver,
   Snippet,
 } from "./content.js";
@@ -32,6 +33,8 @@ export interface AuraPlugin {
   readonly apiVersion: 1;
   /** Rules this plugin evaluates against the workspace. */
   readonly checks?: readonly Check[] | undefined;
+  /** Exact source IDs this plugin removes from the distribution when they are present. */
+  readonly disabledSkillSources?: readonly SkillSourceId[] | undefined;
   /**
    * Stable plugin identifier, unique across a distribution.
    *
@@ -55,7 +58,7 @@ export interface AuraPlugin {
   readonly skillDirectories?: readonly DirectorySkillSource[] | undefined;
   /** Skill directories bundled with this plugin. */
   readonly skills?: readonly SkillPack[] | undefined;
-  /** Drivers that discover skills outside this plugin's package. */
+  /** Lazy interactive-setup drivers that discover skills outside this plugin's package. */
   readonly skillSources?: readonly SkillSourceDriver[] | undefined;
   /** Markdown fragments this plugin offers for installation. */
   readonly snippets?: readonly Snippet[] | undefined;

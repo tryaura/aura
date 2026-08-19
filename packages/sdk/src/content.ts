@@ -72,12 +72,30 @@ export interface SkillListing {
   readonly version: string;
 }
 
+/** A driver listing whose final content origin can be reviewed before installation. */
+export interface DriverSkillListing extends SkillListing {
+  /**
+   * Credential-free absolute URL naming where this skill's content comes from.
+   *
+   * A claim, not something Aura observed: the bytes arrive from the local directory the driver
+   * resolves, so nothing here is verified beyond the URL being well-formed, credential-free, and
+   * free of a query or fragment. It is shown at the review attributed to the driver, so give the
+   * address a reader could audit the content at rather than one that merely looks reassuring.
+   */
+  readonly originUrl: string;
+}
+
 /** A skill directory a user can install. */
 export interface SkillPack extends SkillListing {
   /** Discriminant. */
   readonly kind: "skill-pack";
   /** The skill directory. */
   readonly source: DirectoryContentSource;
+}
+
+/** A driver-resolved directory whose final content origin can be reviewed before installation. */
+export interface DriverSkillPack extends SkillPack {
+  readonly originUrl: string;
 }
 
 /** An MCP server definition a user can install. */
@@ -99,8 +117,12 @@ export interface Preset extends ContentContribution {
 /**
  * A driver that discovers skills somewhere other than the plugin's own package.
  *
- * Both methods may use {@link Environment.exec}, so they run at build time rather than during a
- * check run.
+ * Both methods may use {@link Environment.exec}. Aura calls them only from interactive Skills
+ * setup, never during a workspace scan or check run.
+ *
+ * Aura stops waiting on either method after 30 seconds and treats the source as unavailable. The
+ * protocol has no cancellation, so the call itself keeps running — work that may take longer than
+ * that belongs in a cache the driver consults, not in a call Aura is expected to block on.
  */
 export interface SkillSourceDriver {
   /** One sentence describing where the skills come from. */
@@ -108,7 +130,7 @@ export interface SkillSourceDriver {
   /** Stable identifier, namespaced by the owning {@link AuraPlugin.id}. */
   readonly id: string;
   /** Advertises everything available, without fetching contents. */
-  readonly list: (environment: Environment) => Promise<readonly SkillListing[]>;
+  readonly list: (environment: Environment) => Promise<readonly DriverSkillListing[]>;
   /** Human-readable name. */
   readonly name: string;
   /**
@@ -120,7 +142,7 @@ export interface SkillSourceDriver {
   readonly resolve: (
     environment: Environment,
     skillIds: readonly string[],
-  ) => Promise<ReadonlyMap<string, SkillPack>>;
+  ) => Promise<ReadonlyMap<string, DriverSkillPack>>;
 }
 
 /** Stable provenance carried by resolved packs and manifest selections. */
@@ -155,7 +177,7 @@ export interface PrivateDirectorySkillSource {
   readonly url: string;
 }
 
-/** A build-time driver for a non-standard skill directory protocol. */
+/** An interactive-setup driver for a non-standard skill directory protocol. */
 export interface DriverSkillSource {
   readonly driver: SkillSourceDriver;
   readonly id: Extract<SkillSourceId, `driver:${string}`>;

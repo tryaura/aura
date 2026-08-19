@@ -6,7 +6,7 @@ import type {
 } from "@tryaura/aura-sdk";
 
 import { createLimiter } from "../workspace/concurrency.js";
-import { treeHash } from "../workspace/skills.js";
+import { treeHash } from "../workspace/skill-tree-walk.js";
 import { agenticRequestFailure, getAgenticResource } from "./agenticskills-http.js";
 import { listRemoteFiles, type RemoteFile } from "./agenticskills-tree.js";
 import { type AgenticCatalogEntry, type GitHubLocation } from "./agenticskills-types.js";

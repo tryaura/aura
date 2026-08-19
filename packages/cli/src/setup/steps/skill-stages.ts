@@ -37,7 +37,7 @@ export function skillStages(inputs: SkillStageInputs): readonly ChainStage<Skill
 
 /** A remote identity's install needs a fetch, and therefore the review boundary. */
 export function isRemoteIdentity(identity: string): boolean {
-  return identity.startsWith("directory:");
+  return identity.startsWith("directory:") || identity.startsWith("driver:");
 }
 
 /** The typed selection behind each offered identity: catalog entries plus manifest rows. */

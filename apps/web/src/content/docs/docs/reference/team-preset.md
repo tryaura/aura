@@ -127,6 +127,9 @@ whose version cannot be compared.
   Optional unavailable content remains selected so setup can explain the problem.
 - `allowedSkillSources` is exhaustive when present. It accepts up to 256 `plugin:`, `directory:`,
   or `driver:` source IDs.
+- Driver sources use `driver:<plugin-id>/<driver-id>`. Disallowed drivers are filtered before their
+  listing method can run. Plugin-level `disabledSkillSources` is applied first, so the effective
+  catalog is the intersection of registered sources, plugin denylisting, and this allowlist.
 - `skillDirectories` accepts up to 32 definitions. IDs begin with `directory:`. URLs must be
   credential-free HTTPS endpoints; literal loopback HTTP is allowed for development. `tokenEnv`
   names the uppercase environment variable containing a private directory token, never the token.
