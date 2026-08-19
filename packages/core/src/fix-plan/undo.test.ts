@@ -225,20 +225,30 @@ describe("durable fix-plan undo", () => {
     });
   });
 
-  it("rolls restored paths forward when directory cleanup fails", async () => {
+  it("keeps a successful restore when optional directory cleanup finds user content", async () => {
     const fixture = await createFixture();
     const directory = join(fixture.workspace, "generated");
     const path = join(directory, "config.md");
     await executeFixPlan({ model: fixture.model, now, plan: writeFixPlan(path, "generated\n") });
     await writeFile(join(directory, "user.md"), "user content\n", "utf8");
 
-    await expect(undoFixPlan({ model: fixture.model, now })).rejects.toMatchObject({
-      code: "filesystem-error",
-      rollback: "complete",
-      rollbackFailures: [],
+    await expect(undoFixPlan({ model: fixture.model, now })).resolves.toMatchObject({
+      restoredOperationCount: 1,
+      status: "undone",
     });
-    await expect(readFile(path, "utf8")).resolves.toBe("generated\n");
+    await expect(lstat(path)).rejects.toHaveProperty("code", "ENOENT");
     await expect(readFile(join(directory, "user.md"), "utf8")).resolves.toBe("user content\n");
+  });
+
+  it("rejects a named backup when no journal store exists", async () => {
+    const fixture = await createFixture();
+
+    await expect(
+      undoFixPlan({ backupId: "missing-backup", model: fixture.model, now }),
+    ).rejects.toMatchObject({
+      code: "backup-error",
+      message: "no undo journal entry named missing-backup",
+    });
   });
 
   it("recovers an applied plan whose journal still says pending", async () => {
@@ -305,6 +315,31 @@ describe("durable fix-plan undo", () => {
       code: "undo-conflict",
     });
     await expect(readFile(path, "utf8")).resolves.toBe("after\n");
+  });
+
+  it("honours case-insensitive directory roots during undo preflight", async () => {
+    const fixture = await createFixture();
+    const path = join(fixture.workspace, "config.md");
+    await writeFile(path, "before\n", "utf8");
+    const result = await executeFixPlan({
+      model: fixture.model,
+      now,
+      plan: writeFixPlan(path, "after\n"),
+    });
+    const manifest = backupManifestPath(fixture, result.backupId);
+    const contents = await readFile(manifest, "utf8");
+    const caseInsensitive = contents
+      .replace('"caseInsensitive": false', '"caseInsensitive": true')
+      .replace(
+        `"path": ${JSON.stringify(fixture.workspace)}`,
+        `"path": ${JSON.stringify(fixture.workspace.toUpperCase())}`,
+      );
+    await writeFile(manifest, caseInsensitive, "utf8");
+
+    await expect(undoFixPlan({ model: fixture.model, now })).resolves.toMatchObject({
+      status: "undone",
+    });
+    await expect(readFile(path, "utf8")).resolves.toBe("before\n");
   });
 
   it("exports the typed undo failure", () => {

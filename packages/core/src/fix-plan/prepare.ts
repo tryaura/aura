@@ -9,7 +9,12 @@ import { MAX_RETAINED_PLAN_BYTES } from "./limits.js";
 import { comparablePath } from "./claims.js";
 import { createPathPolicy, validatePlanPaths, type ValidatedOperation } from "./path-policy.js";
 import { prepareArchive } from "./prepare-archive.js";
-import { createEnforcedModes, resolveWriteMode, type EnforcedModes } from "./prepare-modes.js";
+import {
+  createEnforcedModes,
+  resolveWriteMode,
+  writeContentsChanged,
+  type EnforcedModes,
+} from "./prepare-modes.js";
 import { prepareRemove } from "./prepare-remove.js";
 import { prepareWriteGroup } from "./prepare-write-group.js";
 import {
@@ -20,6 +25,11 @@ import {
   type PreparedPlanState,
 } from "./prepared.js";
 import { inspectPath, isCapturedFile } from "./state.js";
+import {
+  sourceProblemIndex,
+  sourceProblemRefusal,
+  type SourceProblemIndex,
+} from "./source-problems.js";
 import type { FixPlanPreview, FixPlanPreviewOptions } from "./types.js";
 import { unmetPrecondition, writeRejection } from "./write-validation.js";
 import { renderRedactedWriteDiff } from "./write-redaction.js";
@@ -33,6 +43,7 @@ export async function prepareOperations(
   const budget: RetentionBudget = { remaining: MAX_RETAINED_PLAN_BYTES };
   const operations: PreparedOperation[] = [];
   const enforcedMode = createEnforcedModes(options.model.homeDir, policy.caseInsensitive);
+  const sourceProblems = sourceProblemIndex(options.model, policy.caseInsensitive);
   const readOnly = manifestConflict(options.model);
   const removeClaims = new Map<string, number>();
   for (const operation of validated) {
@@ -74,9 +85,16 @@ export async function prepareOperations(
               budget,
               enforcedMode,
               removeClaims,
+              sourceProblems,
               policy.caseInsensitive,
             )
-          : await prepareWriteGroup([operation, ...group], budget, enforcedMode)
+          : await prepareWriteGroup(
+              [operation, ...group],
+              budget,
+              enforcedMode,
+              sourceProblems,
+              policy.caseInsensitive,
+            )
         : conflict(operation, readOnly),
     );
   }
@@ -124,8 +142,13 @@ async function prepareOperation(
   budget: RetentionBudget,
   enforcedMode: EnforcedModes,
   removeClaims: ReadonlyMap<string, number>,
+  sourceProblems: SourceProblemIndex,
   caseInsensitive: boolean,
 ): Promise<PreparedOperation> {
+  const unsafeSource = sourceProblemRefusal(operation, sourceProblems, caseInsensitive);
+  if (unsafeSource !== undefined) {
+    return conflict(operation, unsafeSource);
+  }
   const blocked = await findUnwritablePath(operation);
   if (blocked !== undefined) {
     return conflict(operation, blocked);
@@ -184,6 +207,7 @@ async function prepareWrite(
   spendBudget(budget, before);
   return {
     before,
+    contentsChanged: writeContentsChanged(before, content),
     mode,
     operation,
     preview: createPreview(

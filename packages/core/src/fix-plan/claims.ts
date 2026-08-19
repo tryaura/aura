@@ -1,6 +1,6 @@
 import type { Stats } from "node:fs";
 import { lstat } from "node:fs/promises";
-import { basename, dirname, join, resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 
 import { operationError } from "./types.js";
 
@@ -78,39 +78,47 @@ export function comparablePath(path: string, caseInsensitive: boolean): string {
   return caseInsensitive ? path.toLowerCase() : path;
 }
 
+/** What a volume does with case, or `unknown` when the probe could not tell. */
+export type CaseSensitivity = "insensitive" | "sensitive" | "unknown";
+
 /**
- * Decides whether a volume distinguishes case, by looking for a directory under a flipped name.
+ * Decides whether a volume distinguishes case, by looking for a directory under a flipped spelling.
  *
  * The answer matters because on a case-insensitive volume `AGENTS.md` and `agents.md` are one file:
- * treating them as two would let one operation quietly undo another. When the probe cannot decide —
- * a name with no letters to flip, or a directory that is not there — it answers insensitive, which
- * only ever widens overlap detection. Widening is safe because it can only ever raise a conflict:
- * coalescing deliberately does not key off this answer, since merging two spellings that turned out
- * to be different files would drop one of them.
+ * treating them as two would let one operation quietly undo another. Every letter of the path is
+ * flipped rather than only its last component, so a directory named for a year still gets a real
+ * answer from the component above it.
+ *
+ * `unknown` is reported rather than guessed, because the two callers need opposite defaults: overlap
+ * detection widens under it and root matching narrows (see {@link PathPolicy.caseInsensitive} and
+ * {@link PathPolicy.rootsCaseInsensitive}). Collapsing both into one optimistic boolean is what
+ * would let an undecided probe grant a write instead of merely refusing one.
  */
-export async function detectCaseInsensitive(directory: string): Promise<boolean> {
-  const flipped = flipCase(basename(directory));
+export async function detectCaseSensitivity(directory: string): Promise<CaseSensitivity> {
+  const flipped = flipCase(directory);
   if (flipped === undefined) {
-    return true;
+    return "unknown";
   }
 
   let original: Stats;
   try {
     original = await lstat(directory);
   } catch {
-    return true;
+    return "unknown";
   }
 
   if (original.ino === 0) {
-    return true;
+    return "unknown";
   }
 
   try {
-    const candidate = await lstat(join(dirname(directory), flipped));
-    return original.ino === candidate.ino && original.dev === candidate.dev;
+    const candidate = await lstat(flipped);
+    return original.ino === candidate.ino && original.dev === candidate.dev
+      ? "insensitive"
+      : "sensitive";
   } catch {
-    // The flipped name resolves to nothing, so the volume kept the two apart.
-    return false;
+    // The flipped spelling resolves to nothing, so the volume kept the two apart.
+    return "sensitive";
   }
 }
 

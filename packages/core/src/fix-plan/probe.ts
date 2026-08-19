@@ -32,12 +32,12 @@ type PathKind = "directory" | "missing" | "other" | "symlink";
 export async function runProbes(
   probes: readonly AncestorProbe[],
   roots: readonly AllowedRoot[],
-  caseInsensitive: boolean,
+  rootsCaseInsensitive: boolean,
 ): Promise<void> {
   const cache = new Map<string, Promise<PathKind>>();
   const failures = await mapWithConcurrency(probes, PROBE_CONCURRENCY, async (probe) => {
     try {
-      await probeAncestors(probe, roots, caseInsensitive, cache);
+      await probeAncestors(probe, roots, rootsCaseInsensitive, cache);
       return undefined;
     } catch (error) {
       return error;
@@ -55,11 +55,11 @@ export async function runProbes(
 async function probeAncestors(
   probe: AncestorProbe,
   roots: readonly AllowedRoot[],
-  caseInsensitive: boolean,
+  rootsCaseInsensitive: boolean,
   cache: Map<string, Promise<PathKind>>,
 ): Promise<void> {
   const resolvedPath = resolve(probe.path);
-  const root = matchRoot(resolvedPath, roots, caseInsensitive);
+  const root = matchRoot(resolvedPath, roots, rootsCaseInsensitive);
   if (root === undefined) {
     return;
   }
