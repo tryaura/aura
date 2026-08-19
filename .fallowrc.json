@@ -10,7 +10,8 @@
     "packages/*/tsdown*.config.ts",
     "examples/acme-distribution/build.mjs",
     "examples/acme-distribution/smoke.mjs",
-    "examples/acme-distribution/src/main.ts"
+    "examples/acme-distribution/src/main.ts",
+    "scripts/verify-workflows.test.mjs"
   ],
   "ignoreDependencies": [
     "@arethetypeswrong/core",

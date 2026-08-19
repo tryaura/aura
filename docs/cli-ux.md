@@ -241,6 +241,43 @@ whole frame with a scrollable overlay:
   directory skill carries the full fetched SKILL.md as its preview, so the whole prompt content is
   one `p` away at the decision point.
 
+### Repository preset trust
+
+A repository's `.aura/preset.json` is a configuration layer above the selected team preset and
+below the user's manifest — and it arrives by cloning, not by anything the user selected, so it
+applies only after the user trusts it for that repository.
+
+- Interactive `setup` asks once, before the wizard opens, after one note naming the preset and a
+  validated capability summary. The summary lists check policy, required MCP servers, allowed skill
+  sources, selected skills and snippets, and every skill-directory URL (plus its token variable), so
+  repository-controlled network endpoints are visible before consent. The opening note is
+  `This repository provides the preset "<name>" at .aura/preset.json.` The prompt is
+  `Trust the repository preset at .aura/preset.json? Its settings apply to every Aura run in this
+repository until the file changes.` Accepting applies the layer for the run and records the
+  acceptance — the preset's absolute path and a hash of its contents — in the manifest when the
+  plan is applied; a declined or aborted plan records nothing. Declining leaves the layer
+  unapplied and unrecorded, so the next interactive setup asks again. Aborting ends the run with
+  `Left everything as it was.` and exit 1.
+- Trust binds to exact contents. A file that changes after acceptance is untrusted again, and the
+  next interactive setup re-asks as a change, never as a first sighting
+  (`The repository preset at .aura/preset.json changed since you trusted it. Trust the new
+contents?`).
+- Non-interactive runs never accept: `--yes` answers confirmations for the user, and the first
+  application of a repository's file is exactly the decision it must not answer. `setup --yes`
+  resolves without the layer and the plan summary carries the held notice (below). Human `check`
+  and `check --explain` output name the held policy. Their JSON documents expose the same state as
+  `configuration.repositoryPreset = { "path": ".aura/preset.json", "status": "held" }`. `check` prints
+  one `· Configuration` group line naming the fix (`Repository preset .aura/preset.json is present
+but not trusted on this machine, so it was not applied. Run <command> setup to review and trust
+it.`).
+- An unreadable or invalid repository preset fails the run closed with exit 2
+  (`Repository preset ".aura/preset.json" is not valid JSON. Fix or remove the file to
+continue.`): proceeding without it would silently widen whatever the file was written to lock
+  down.
+- Applied repo-layer check settings appear in the plan summary as their own read-only policy
+  group, mirroring the team preset's: values apply through configuration resolution and are never
+  copied into the manifest.
+
 ### Skills step
 
 A picker over every allowed skill source, then one Review form per selected directory skill.
@@ -273,12 +310,13 @@ A picker over every allowed skill source, then one Review form per selected dire
   an upgrade. **Skip is always the initial answer**, so `--yes` and exhausted scripts can only
   re-apply skills the manifest already records — a non-interactive run never first-installs remote
   prompt content, and never changes the revision of content it already manages.
-- Installs from a source the team preset's `allowedSkillSources` does not permit are refused at
-  planning time with a blocker naming the preset
+- Installs from a source the active `allowedSkillSources` does not permit are refused at
+  planning time with a blocker naming the policy source
   (`Skill "<id>" comes from <source>, which the team preset "<origin>" does not allow.`), which
   also covers `--add skill` and manifest entries whose source lost its permission. `<origin>` is
-  the preset as resolved — `npm:@acme/preset@1.2.0`, an HTTPS URL, or `.aura/preset.json` — never
-  the conventional path standing in for a policy that came from somewhere else.
+  the preset as resolved — `npm:@acme/preset@1.2.0` or an HTTPS URL — and a policy supplied by
+  the repository's own file is named `repository preset ".aura/preset.json"`, so a policy is
+  never presented as coming from somewhere it did not.
 
 ### MCP step
 
@@ -341,6 +379,8 @@ Hand edits Aura is replacing:
 Preserved content Aura does not own:
 Managed content kept at its recorded revision:
 Effective check policy from preset <name> (not copied into your manifest):
+Effective check policy from the repository preset .aura/preset.json (not copied into your manifest):
+Repository preset held (not trusted on this machine):
 ```
 
 - A group naming a shared source names it once, in the heading. Repeating "(from preset acme)" on

@@ -182,7 +182,7 @@ describe("readTeamPreset", () => {
     expect(state.preset).toBeUndefined();
     expect(state.diagnostics).toHaveLength(1);
     expect(state.diagnostics[0]?.message).toBe(
-      'Team preset ".aura/preset.json" is not valid JSON, so it is ignored.',
+      'Repository preset ".aura/preset.json" is not valid JSON.',
     );
     expect(JSON.stringify(state.diagnostics)).not.toContain("secret-token");
   });

@@ -82,6 +82,20 @@ export interface AuraManifestOverrides {
   readonly requiredMcpServers?: readonly string[] | undefined;
 }
 
+/**
+ * One repository preset the user accepted during interactive setup.
+ *
+ * Trust binds to exact contents: a `.aura/preset.json` that changes after acceptance is treated
+ * as untrusted again until the user reviews the new contents. Only acceptances are recorded —
+ * declining leaves no entry, so the next interactive setup asks again.
+ */
+export interface AuraManifestTrustedRepoPreset {
+  /** Hash of the canonicalized preset contents that were accepted. */
+  readonly hash: string;
+  /** Absolute path of the repository preset file. */
+  readonly path: string;
+}
+
 /** Version 1 of the distribution-independent `~/agents/aura.json` protocol. */
 export interface AuraManifestV1 {
   /** Application selections keyed by stable adapter id. */
@@ -103,6 +117,8 @@ export interface AuraManifestV1 {
   readonly skills: readonly AuraManifestSkill[];
   /** Managed snippet selections. */
   readonly snippets: readonly AuraManifestSnippet[];
+  /** Repository presets accepted for this user, keyed by absolute preset path. */
+  readonly trustedRepoPresets?: readonly AuraManifestTrustedRepoPreset[] | undefined;
 }
 
 /** The manifest shape understood by this SDK release. */

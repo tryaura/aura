@@ -32,8 +32,18 @@ export interface AuraConfigurationLayer {
  * because a distribution that restates a default has made a choice, and a value nobody chose must
  * stay distinguishable from one somebody did: a check that sets a severity per occurrence outranks
  * its own default but not a configured override.
+ *
+ * `repo` is the repository's `.aura/preset.json`, applied above the selected team preset and below
+ * the user manifest — and only after the user trusted that file for the repository, because it
+ * arrives by cloning rather than by anything the user selected.
  */
-export type AuraConfigurationLayerName = "cli" | "default" | "distro" | "manifest" | "preset";
+export type AuraConfigurationLayerName =
+  | "cli"
+  | "default"
+  | "distro"
+  | "manifest"
+  | "preset"
+  | "repo";
 
 /** Human- and machine-readable provenance for an effective value. */
 export interface AuraConfigurationProvenance {

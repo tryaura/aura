@@ -38,8 +38,8 @@ export interface TestSeed {
    * Every invocation of one seeded shim, in the order it happened.
    *
    * Records invocations no response matched too, which is what turns "the shim answered `exit 2`"
-   * into "the adapter asked for arguments no response declares". Empty for a command that was never
-   * run, or was never seeded.
+   * into "the adapter asked for arguments no response declares". Empty when the seeded command was
+   * never run. Asking for a command that was not seeded throws and names the known shims.
    */
   readonly invocations: (command: string) => Promise<readonly (readonly string[])[]>;
 }
@@ -64,6 +64,13 @@ export type SeedContent = string | ((roots: SeedRoots) => string);
 export interface TestSeedBuilder {
   homeFile(path: string, content: SeedContent): TestSeedBuilder;
   shim(command: string, responses: readonly ShimResponse[]): TestSeedBuilder;
+  /**
+   * Records the seeded workspace preset as trusted in the seed's `agents/aura.json`.
+   *
+   * A repository preset applies only after a person accepted it, and `--yes` runs never accept
+   * one; a seed that wants the preset in effect declares the acceptance that already happened.
+   */
+  trustWorkspacePreset(path?: string): TestSeedBuilder;
   workspaceFile(path: string, content: SeedContent): TestSeedBuilder;
   build(): Promise<TestSeed>;
 }

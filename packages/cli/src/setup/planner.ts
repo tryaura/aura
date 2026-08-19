@@ -13,7 +13,8 @@ import { withIgnoredAppSelections } from "./app-ignore.js";
 import { planInstructions } from "./instruction-planner.js";
 import { planManifestWrite } from "./manifest-write.js";
 import { planSetupMcp } from "./mcp-planner.js";
-import { presetPolicyNotices } from "./preset-policy.js";
+import { presetPolicyNotices, repoPresetNotices } from "./preset-policy.js";
+import { withTrustedRepoPreset } from "./repo-trust.js";
 import { planSnippets } from "./snippet-planner.js";
 import { planSkills } from "./skill-planner.js";
 import type { SetupSelections, SetupStepContext } from "./types.js";
@@ -39,7 +40,7 @@ export interface SetupNotice {
    * every line of it. The first notice of the kind that carries one wins.
    */
   readonly heading?: string | undefined;
-  readonly kind: "held" | "overwritten" | "policy" | "preserved";
+  readonly kind: "held" | "overwritten" | "policy" | "preserved" | "repo";
   readonly message: string;
 }
 
@@ -118,7 +119,12 @@ export function planSetup(context: SetupStepContext): SetupPlanOutcome {
   return Object.freeze({
     blockers: Object.freeze(blockers),
     manifest,
-    notices: [...snippetPlan.notices, ...skillPlan.notices, ...presetPolicyNotices(context)],
+    notices: [
+      ...snippetPlan.notices,
+      ...skillPlan.notices,
+      ...presetPolicyNotices(context),
+      ...repoPresetNotices(context),
+    ],
     plan: Object.freeze({
       manualSteps: Object.freeze([
         ...appManualSteps(context),
@@ -154,9 +160,14 @@ function desiredManifest(
         );
   const withSkills = { ...withApps, skills };
   const withSnippets = snippets === undefined ? withSkills : { ...withSkills, snippets };
-  return context.preset?.explicit === true
-    ? { ...withSnippets, preset: context.preset.reference }
-    : withSnippets;
+  const withPreset =
+    context.preset?.explicit === true
+      ? { ...withSnippets, preset: context.preset.reference }
+      : withSnippets;
+  const repo = context.repoPreset;
+  return repo?.accepted === true
+    ? withTrustedRepoPreset(withPreset, { hash: repo.hash, path: repo.path })
+    : withPreset;
 }
 
 function planSetupSnippets(

@@ -4,9 +4,11 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import process from "node:process";
 
+import { parseAuraManifest } from "@tryaura/core";
 import { describe, expect, it } from "vitest";
 
 import { ANY_ARGUMENT, createSeedBuilder } from "./index.js";
+import { assertSupportedPlatform } from "./seed.js";
 
 describe("createSeedBuilder", () => {
   it("materializes nested files and exact executable shim responses", async () => {
@@ -66,6 +68,7 @@ describe("createSeedBuilder", () => {
       .shim("fixture-agent", [{ args: ["--version"], stdout: "fixture 1.2.3\n" }])
       .build();
 
+    await expect(seed.invocations("fixture-agent")).resolves.toEqual([]);
     await runShim(seed.pathDir, ["--version"]);
     await runShim(seed.pathDir, ["config", "", "two\nlines"]);
     await runShim(seed.pathDir, []);
@@ -75,7 +78,15 @@ describe("createSeedBuilder", () => {
       ["config", "", "two\nlines"],
       [],
     ]);
-    await expect(seed.invocations("never-seeded")).resolves.toEqual([]);
+    await expect(seed.invocations("never-seeded")).rejects.toThrow(
+      "Unknown shim command: never-seeded. Known shims: fixture-agent.",
+    );
+  });
+
+  it("fails fast when seed shims cannot run on the host platform", () => {
+    expect(() => assertSupportedPlatform("win32")).toThrow(
+      "Aura testkit requires a POSIX shell and cannot build seeds on Windows.",
+    );
   });
 
   it("rejects invalid and duplicate fixture declarations", () => {
@@ -107,6 +118,43 @@ describe("createSeedBuilder", () => {
 
     await expect(realpathOf(seed.homeDir)).resolves.toBe(seed.homeDir);
     await expect(realpathOf(seed.workspaceDir)).resolves.toBe(seed.workspaceDir);
+  });
+
+  it("adds workspace trust without discarding existing trust records", async () => {
+    const previous = {
+      acceptedBy: "future-testkit",
+      hash: "a".repeat(64),
+      path: "/previous/.aura/preset.json",
+    };
+    const manifest = JSON.stringify({
+      apps: {},
+      mcpServers: [],
+      ownership: {},
+      schemaVersion: 1,
+      skills: [],
+      snippets: [],
+      trustedRepoPresets: [previous],
+    });
+    await using seed = await createSeedBuilder()
+      .homeFile("agents/aura.json", manifest)
+      .workspaceFile(".aura/preset.json", '{"schemaVersion":1}\n')
+      .trustWorkspacePreset()
+      .build();
+
+    const path = join(seed.homeDir, "agents", "aura.json");
+    const state = parseAuraManifest(await readFile(path, "utf8"), path);
+
+    expect(state.status).toBe("ready");
+    if (state.status !== "ready") {
+      return;
+    }
+    expect(state.value.trustedRepoPresets).toEqual([
+      previous,
+      {
+        hash: expect.stringMatching(/^[0-9a-f]{64}$/u),
+        path: join(seed.workspaceDir, ".aura", "preset.json"),
+      },
+    ]);
   });
 
   it("cleans up idempotently", async () => {

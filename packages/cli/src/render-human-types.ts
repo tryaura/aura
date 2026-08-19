@@ -7,6 +7,8 @@ export interface HumanCheckRenderOptions {
   /** The checks the run selected, so a finding can be traced back to its group presentation. */
   readonly checks: readonly Check[];
   readonly colorDepth: number;
+  /** Configuration state the run resolved but did not act on, such as a held repository preset. */
+  readonly notes: readonly string[];
   readonly roots: PathDisplayRoots;
   readonly verbose: boolean;
 }

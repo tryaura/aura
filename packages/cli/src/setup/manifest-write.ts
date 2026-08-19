@@ -61,6 +61,7 @@ function shouldWriteManifest(
     ? differsFromDisk(context.manifest, desired)
     : createManifest ||
         context.preset?.explicit === true ||
+        context.repoPreset?.accepted === true ||
         answersSomethingToRecord(context.selections, apps);
 }
 

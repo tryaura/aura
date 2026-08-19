@@ -94,6 +94,9 @@ describe("runCli", () => {
     expect(exitCode).toBe(0);
     expect(parseCheckReport(capture.stdout.text)).toEqual({
       apps: [],
+      configuration: {
+        repositoryPreset: { path: ".aura/preset.json", status: "held" },
+      },
       diagnostics: [],
       findings: [],
       kind: "check-report",

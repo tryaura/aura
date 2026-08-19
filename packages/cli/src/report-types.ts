@@ -64,6 +64,16 @@ export interface ReportDiagnostic {
   readonly phase: "check" | "detect" | "files" | "fix" | "parse" | "read" | "support";
 }
 
+export interface ReportRepositoryPreset {
+  readonly path: string;
+  readonly status: "applied" | "held";
+}
+
+/** Configuration state that affects how a check document should be interpreted. */
+export interface ReportConfiguration {
+  readonly repositoryPreset?: ReportRepositoryPreset | undefined;
+}
+
 export type ReportStatus = "clean" | "empty" | "error" | "operational-error" | "warning";
 
 export interface ReportFixOperation {
@@ -93,6 +103,7 @@ export interface ReportFix {
 
 export interface CheckReportV1 {
   readonly apps: readonly ReportApp[];
+  readonly configuration?: ReportConfiguration | undefined;
   readonly diagnostics: readonly ReportDiagnostic[];
   readonly findings: readonly ReportFinding[];
   readonly fixes?: readonly ReportFix[] | undefined;
@@ -106,6 +117,7 @@ export interface CheckReportV1 {
 export type CheckReport = CheckReportV1;
 
 export interface CheckExplanationV1 {
+  readonly configuration?: ReportConfiguration | undefined;
   readonly enabled: boolean;
   readonly explain: string;
   readonly fixability: Fixability;

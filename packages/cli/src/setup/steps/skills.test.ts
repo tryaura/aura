@@ -248,7 +248,7 @@ describe("skillsStep", () => {
     const row = scripted.asked[0]?.[0]?.options[0];
     expect(row?.label).toBe("review (blocked)");
     expect(row?.disabled).toBe(true);
-    expect(row?.description).toContain('team preset ".aura/preset.json"');
+    expect(row?.description).toContain('repository preset ".aura/preset.json"');
   });
 
   it("notes and disables a source that is unavailable without its token", async () => {

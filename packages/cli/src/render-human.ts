@@ -22,6 +22,10 @@ export function renderHumanCheckReport(
   output.write(`${branding.displayName} check — ${humanVerdict(report)}\n`);
   renderHeadline(report, output, context);
 
+  if (options.notes.length > 0) {
+    renderSection("·", "Configuration", options.notes.map(safe), output);
+  }
+
   if (report.status === "empty") {
     renderSection(
       "!",

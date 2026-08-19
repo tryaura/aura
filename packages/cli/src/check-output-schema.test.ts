@@ -24,6 +24,9 @@ describe("check-output-v1.schema.json", () => {
           support: { status: "supported", supportedRange: ">=1 <2", version: "1.2.3" },
         },
       ],
+      configuration: {
+        repositoryPreset: { path: ".aura/preset.json", status: "applied" },
+      },
       diagnostics: [
         {
           detail: "Parser detail",
@@ -137,6 +140,9 @@ describe("check-output-v1.schema.json", () => {
 
   it("validates the explanation envelope", () => {
     const explanation: CheckExplanation = {
+      configuration: {
+        repositoryPreset: { path: ".aura/preset.json", status: "held" },
+      },
       enabled: true,
       explain: "Why this matters.\n\nHow to inspect it.",
       fixability: "manual",

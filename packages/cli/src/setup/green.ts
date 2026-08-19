@@ -40,6 +40,7 @@ export function endOnGreen(
   renderHumanCheckReport(report, request.branding, request.stdout, {
     checks,
     colorDepth: request.colorDepth,
+    notes: [],
     roots: pathDisplayRoots(request.environment, scan.model.projectRoot),
     verbose: false,
   });
