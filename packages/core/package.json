@@ -20,6 +20,11 @@
       "types": "./src/pluralize.ts",
       "development": "./src/pluralize.ts",
       "default": "./dist/pluralize.js"
+    },
+    "./display-path": {
+      "types": "./src/display-path.ts",
+      "development": "./src/display-path.ts",
+      "default": "./dist/display-path.js"
     }
   },
   "scripts": {

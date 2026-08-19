@@ -46,7 +46,7 @@ describe("MCP-004 permanent sentinel audit", () => {
     ]) {
       expect(output).not.toContain(SENTINEL);
     }
-    expect(human.stdout).toContain("[MCP-004]");
+    expect(human.stdout).toContain("Check: MCP-004");
     expect(explain.stdout).toContain("Aura never displays or stores those values");
     expect(redirected.stderr).toContain("stdin and prompt output must both be terminals");
     expect(JSON.stringify(json.report)).not.toContain(SENTINEL);

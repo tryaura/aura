@@ -15,6 +15,11 @@ import { SHARED_INSTRUCTIONS_TEMPLATE } from "@tryaura/content-official";
 import { planSharedInstructionLink } from "@tryaura/core";
 
 const READY = "Aura can add the missing link with check --fix.";
+const SHARED_INSTRUCTION_GROUP = Object.freeze({
+  description: "Create the shared source and connect supported agent applications.",
+  id: "checks-core/shared-instructions",
+  title: "Complete the shared instruction setup",
+});
 
 export const sharedInstructionsCheck = defineCheck({
   defaultSeverity: "error",
@@ -46,6 +51,7 @@ export const sharedInstructionsCheck = defineCheck({
   explain: `A non-empty shared instruction source gives every configured agent application one canonical set of guidance. Without it, application-specific files become independent copies that drift as preferences change.
 
 Re-run the check with \`--fix\` to create the shared source from Aura's starter template. Review the generated ~/agents/AGENTS.md, add personal guidance there, and check again.`,
+  findingGroup: SHARED_INSTRUCTION_GROUP,
   fix(_finding, model): FixPlan | undefined {
     const shared = model.sharedInstructions;
     if (shared.problem !== undefined || (shared.content?.trim().length ?? 0) > 0) {
@@ -77,6 +83,7 @@ export const sharedInstructionLinksCheck = defineCheck({
   explain: `Each detected agent application must load the canonical shared instructions through a mechanism its adapter understands. A missing import, native copy, or symlink leaves that application working from different rules even when the shared source is correct.
 
 Re-run the check with \`--fix\` to add the adapter-supported link without replacing unrelated instructions. Inspect the preview first, apply it, then restart the affected application if it caches instruction files.`,
+  findingGroup: SHARED_INSTRUCTION_GROUP,
   fix(finding, model): FixPlan | undefined {
     const app = model.apps.find((candidate) => candidate.adapterId === findingAppId(finding));
     if (app === undefined) {

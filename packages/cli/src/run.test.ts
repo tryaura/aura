@@ -43,8 +43,8 @@ describe("runCli", () => {
     const exitCode = await runCli(distro([findingPlugin("info", [])]), capture.runtime);
 
     expect(exitCode).toBe(0);
-    expect(capture.stdout.text).toContain("✓ Passed (1)");
-    expect(capture.stdout.text).toContain("1 passed, 0 informational, 0 warnings, 0 errors");
+    expect(capture.stdout.text).toContain("✓ 1 check passed · 0 applications detected");
+    expect(capture.stdout.text).toContain("0 errors · 0 warnings · 0 suggestions");
   });
 
   it("performs remote MCP probes only with --online", async () => {
@@ -242,6 +242,16 @@ describe("runCli", () => {
     expect(missingJson.stderr.text).toContain("--json-version only means something with --json");
     expect(await runCli(distro(), unsupported.runtime)).toBe(2);
     expect(unsupported.stderr.text).toContain("Supported versions: 1");
+  });
+
+  it("rejects --verbose where no human scan report exists", async () => {
+    const json = createCapture(["check", "--verbose", "--json"]);
+    const explain = createCapture(["check", "--verbose", "--explain", "fixture/CHECK"]);
+
+    expect(await runCli(distro(), json.runtime)).toBe(2);
+    expect(json.stderr.text).toContain("--verbose cannot be combined with --json");
+    expect(await runCli(distro(), explain.runtime)).toBe(2);
+    expect(explain.stderr.text).toContain("--verbose cannot be combined with --explain");
   });
 
   it.each([["--dry-run"], ["--interactive"], ["--yes"]])(
@@ -505,14 +515,15 @@ describe("runCli", () => {
     expect(search.stderr.text).toContain("(empty)");
   });
 
-  it("groups findings and applies warning/error exit-code precedence", async () => {
+  it("classifies manual findings and applies warning/error exit-code precedence", async () => {
     const warning = createCapture(["check"]);
     const error = createCapture(["check"]);
 
     expect(await runCli(distro([findingPlugin("warn")]), warning.runtime)).toBe(1);
-    expect(warning.stdout.text).toContain("! Warnings (1)");
+    expect(warning.stdout.text).toContain("Manual attention (1)");
+    expect(warning.stdout.text).toContain("! warn finding");
     expect(await runCli(distro([findingPlugin("error")]), error.runtime)).toBe(2);
-    expect(error.stdout.text).toContain("✗ Errors (1)");
+    expect(error.stdout.text).toContain("✗ error finding");
   });
 
   it("lists the applications that were looked for and not found", async () => {
@@ -534,7 +545,7 @@ describe("runCli", () => {
       name: "Fixture",
       version: "1.0.0",
     });
-    const capture = createCapture(["check"]);
+    const capture = createCapture(["check", "--verbose"]);
 
     await runCli(distro([plugin]), capture.runtime);
 
@@ -563,7 +574,7 @@ describe("runCli", () => {
       name: "Fixture",
       version: "1.0.0",
     });
-    const capture = createCapture(["check"]);
+    const capture = createCapture(["check", "--verbose"]);
 
     await runCli(distro([plugin]), capture.runtime);
 
@@ -602,11 +613,12 @@ describe("runCli", () => {
     );
 
     expect(exitCode).toBe(3);
-    expect(capture.stdout.text).toContain("! Warnings (1)");
+    expect(capture.stdout.text).toContain("Manual attention (1)");
+    expect(capture.stdout.text).toContain("! warn finding");
     expect(capture.stdout.text).toContain("Run errors (1)");
     expect(capture.stdout.text).toContain("[throwing/CHECK:check]");
-    expect(capture.stdout.text).not.toContain("✓ Passed");
-    expect(capture.stdout.text).toContain("0 passed, 0 informational, 1 warning, 0 errors");
+    expect(capture.stdout.text).not.toContain("✓ Passed checks");
+    expect(capture.stdout.text).toContain("0 errors · 1 warning · 0 suggestions");
     expect(capture.stdout.text).not.toContain("secret source contents");
     expect(capture.stderr.text).toBe("");
   });

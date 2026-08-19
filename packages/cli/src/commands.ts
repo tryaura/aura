@@ -37,9 +37,11 @@ import { disabledOnlySelector, resolveCheckSelection } from "./check-selection-r
 import { fixPassDiagnostics } from "./check-fix-pass.js";
 import { runFixes } from "./fix.js";
 import { createCheckReport, type DiagnosticSource, type ReportFix } from "./report.js";
-import { renderHuman, renderJson, renderOperationalFailureJson } from "./render.js";
+import { renderJson, renderOperationalFailureJson } from "./render.js";
+import { renderHumanCheckReport } from "./render-human.js";
+import { pathDisplayRoots } from "./render-human-types.js";
 import { safe } from "./safe-text.js";
-import { checkRunEvent, elapsedMs, fixRunEvent } from "./telemetry-events.js";
+import { checkRunEvent, checkRunFlags, elapsedMs, fixRunEvent } from "./telemetry-events.js";
 import type { CliExitCode } from "./types.js";
 
 export type { AuraCliContext } from "./cli-context.js";
@@ -96,6 +98,9 @@ export class CheckCommand extends Command<AuraCliContext> {
   preset = presetOption();
   severity = severityOption();
   threshold = thresholdOption();
+  verbose = Option.Boolean("--verbose", false, {
+    description: "Show every occurrence, location, passed check, and application.",
+  });
   yes = Option.Boolean("--yes", false, {
     description: "Apply fixes without asking. Required when stdin is not a terminal.",
   });
@@ -116,6 +121,7 @@ export class CheckCommand extends Command<AuraCliContext> {
       pathValue: this.pathValue,
       stdin: this.context.stdin,
       stdout: this.context.stdout,
+      verbose: this.verbose,
       yes: this.yes,
     });
     if (rejection !== undefined) {
@@ -181,8 +187,7 @@ export class CheckCommand extends Command<AuraCliContext> {
     }
     const activeChecks = enabledChecks(selected.checks, configured.config);
 
-    // Held open across both scans of a `--fix` run, and closed once so pooled sockets do not keep
-    // the process alive after the report is written.
+    // Held across both scans, then closed once so pooled sockets do not keep the process alive.
     const requester = this.online ? createMcpUrlRequester(this.context.env) : undefined;
     try {
       const startedAt = environment.now();
@@ -249,17 +254,17 @@ export class CheckCommand extends Command<AuraCliContext> {
         renderJson(report, this.context.report);
       } else {
         const note = repoPresetNote(configured, this.context.branding);
-        renderHuman(
-          report,
-          this.context.branding,
-          this.context.stdout,
-          this.context.colorDepth,
-          note === undefined ? [] : [note],
-        );
+        renderHumanCheckReport(report, this.context.branding, this.context.stdout, {
+          checks: activeChecks,
+          colorDepth: this.context.colorDepth,
+          notes: note === undefined ? [] : [note],
+          roots: pathDisplayRoots(environment, model.projectRoot),
+          verbose: this.verbose,
+        });
       }
 
       this.context.telemetry.record(
-        checkRunEvent(report, this.runFlags(), elapsedMs(environment, startedAt)),
+        checkRunEvent(report, checkRunFlags(this), elapsedMs(environment, startedAt)),
       );
       if (fixes !== undefined) {
         this.context.telemetry.record(
@@ -283,11 +288,5 @@ export class CheckCommand extends Command<AuraCliContext> {
     } finally {
       await requester?.close();
     }
-  }
-
-  /** The check options a telemetry event carries, so a sink can segment scripted use. */
-  private runFlags() {
-    const { dryRun, fix, interactive, json, online } = this;
-    return { dryRun, fix, interactive, json, online };
   }
 }

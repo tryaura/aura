@@ -35,8 +35,9 @@ Rendered by `packages/cli/src/help.ts`; exact layouts pinned in `help.test.ts`.
   `Docs:` footer when branding defines one. The Help section lists `aura <command> --help`, and an
   `aura --version` row exactly when branding carries a version (which is also when the flag is
   registered at all).
-- `aura check --help` — Everyday use, Narrow it down, Fixing behavior, Scripting, Advanced, then
-  the exit-code footer.
+- `aura check --help` — Everyday use, Narrow it down, Reporting, Configuration, Fixing behavior,
+  Scripting, Advanced, then the exit-code footer. "Narrow it down" scopes what runs; "Reporting"
+  (`--verbose`, `--detail`) controls how much the run says about it.
 - `aura setup --help` — Everyday use, Options (including every registered `--add` kind),
   Advanced, then a footer pointing at `check`.
 - `aura undo --help` — Everyday use, Options, Advanced, then the restore exit-code footer.
@@ -48,6 +49,42 @@ Layout rules: terms align to one shared column across the whole screen; section 
 indented two spaces, rows four; no boxes, rules, or banner lines; no trailing periods on row
 descriptions. Clipanion's default help renderer is bypassed entirely (`runCli` intercepts the
 internal help command and unknown-command errors).
+
+## Check report
+
+Human check output is action-first. The concise default renders the human verdict and severity
+counts, the one command that can address the available fixes, then Available fixes, Manual
+attention, and Suggestions. Informational findings are suggestions, never manual work. Passed
+checks and detected applications collapse into one summary line.
+
+Checks may declare a plugin-namespaced `findingGroup` with an action-oriented title and
+description. Findings sharing that group render under one heading that states the remediation
+once — but a group summarizes the _fix_, never the _evidence_: every member is still named on its
+own line beneath it, with its own detail and locations, so no run reports a count where it could
+report a file. The concise default caps that list at three occurrences and two locations each and
+says how many more are waiting. A grouped heading always carries its member count, including at one member, so
+the halves of a group split across remediation sections stay recognizable as one problem. Checks
+without a group remain individual, so an older plugin never loses its message. Check IDs appear
+below the human copy as secondary metadata rather than leading a line, and the closing More section
+carries the `--explain <id>` that turns one into a full explanation.
+
+`--verbose` lifts the caps and adds every occurrence, location, metadata table, passed check, and
+application. It does not restore a severity-first ledger. Indentation carries the
+hierarchy: group heading at two spaces, its shared description and check ids at four, each
+occurrence at four, and that occurrence's own detail and locations at six. Project paths render
+relative to the project root (the invocation directory outside a repository), home paths use `~/`,
+and other paths remain absolute — one shared helper (`@tryaura/core/display-path`) serves both the
+CLI's location lines and the paths checks bake into their messages, so a report cannot name the
+same file two ways. `--verbose` works with scans and fixes but not with `--json` or `--explain`;
+`--detail` remains the separate gate for potentially sensitive plugin failure text.
+
+The summary line above the sections reports what was inspected, not a verdict: it takes a green `✓`
+only when at least one check passed, and a plain `·` when the run inspected nothing.
+
+When guided fixes exist, the report recommends `aura check --fix --interactive`, which includes
+automatic fixes in the same reviewed plan. With automatic fixes alone it recommends
+`aura check --fix`. An operationally incomplete scan recommends neither because its findings may
+be incomplete.
 
 ## Exit codes
 
