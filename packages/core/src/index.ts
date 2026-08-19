@@ -1,5 +1,6 @@
 export { createEnvironment } from "./environment.js";
 export type { EnvironmentBootOptions } from "./environment.js";
+export { createLimiter } from "./workspace/concurrency.js";
 export { canonicalAppId } from "./app-id.js";
 export { runChecks } from "./checks.js";
 /** @public */

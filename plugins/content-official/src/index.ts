@@ -45,6 +45,7 @@ export default definePlugin({
       id: "directory:agenticskills",
       kind: "directory",
       name: "agenticskills.io",
+      protocol: "agenticskills",
       url: "https://agenticskills.io",
     },
   ],
