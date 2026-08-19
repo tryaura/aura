@@ -12,7 +12,7 @@ import { pluralize } from "@tryaura/core/pluralize";
 import type { Check, Environment, Finding, WorkspaceModel } from "@tryaura/aura-sdk";
 
 import { confirmFixes } from "./fix-confirmation.js";
-import { reportFixes, reportUnpreparedFixes } from "./fix-report.js";
+import { fixlessMessage, reportFixes, reportUnpreparedFixes } from "./fix-report.js";
 import { gatherGuidedFixes, orderCandidates } from "./guided-fix.js";
 import { renderFixPreview, renderGuidedHint, renderManualSteps } from "./preview-render.js";
 import type { DiagnosticSource, ReportFix } from "./report.js";
@@ -120,9 +120,7 @@ export async function runFixes(request: FixRequest): Promise<FixOutcome> {
       automatic.diagnostics,
       fixDiagnostics,
       prepared.manualSteps,
-      request.findings.length === 0
-        ? "Nothing to fix.\n\n"
-        : "No executable fixes are available for the findings below.\n\n",
+      fixlessMessage(prepared.candidates.length, request.findings.length),
     );
   }
 
