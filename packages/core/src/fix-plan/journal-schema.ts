@@ -81,6 +81,12 @@ export type StoredOperation =
   | StoredWriteOperation;
 
 export interface JournalManifest {
+  /**
+   * Whether {@link JournalManifest.roots} may be matched against a path that differs only by case.
+   *
+   * Holds `PathPolicy.rootsCaseInsensitive`, the narrowing answer, because its only reader is the
+   * undo preflight's root check — which grants a restore rather than refusing one.
+   */
   readonly caseInsensitive: boolean;
   readonly createdAt: string;
   readonly homeDir: string;

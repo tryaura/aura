@@ -37,12 +37,10 @@ export async function restoreOperations(
     if (item === undefined || !item.shouldRestore) {
       continue;
     }
+    let step: AppliedUndo;
     try {
-      const step = await restoreOperation(entry, item.operation);
+      step = await restoreOperation(entry, item.operation);
       applied.push(step);
-      if (step.cleanup !== undefined) {
-        await step.cleanup();
-      }
     } catch (error) {
       const rollback = await rollForward(applied);
       const failure = new FixPlanError(
@@ -51,6 +49,12 @@ export async function restoreOperations(
         { cause: error, operationIndex: item.operation.index, path: primaryPath(item.operation) },
       );
       throw new FixPlanUndoError(failure, rollback.status, rollback.failures);
+    }
+    if (step.cleanup !== undefined) {
+      // Created parents are optional cleanup, not part of the restored file state. A concurrent
+      // user may have added content or removed them first; neither makes the successful restore a
+      // reason to put the plan back.
+      await step.cleanup().catch(() => undefined);
     }
   }
   return Object.freeze(applied);

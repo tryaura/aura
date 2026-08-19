@@ -202,9 +202,9 @@ describe("prepareAutomaticFixes", () => {
 
   it("refuses to coalesce same-path writes whose spellings differ only by case", async () => {
     const fixture = await createFixture();
-    // `detectCaseInsensitive` answers "insensitive" whenever it cannot decide, so a case-sensitive
-    // volume can still reach this policy. Coalescing under it would merge two genuinely distinct
-    // files into one write and never write the second spelling at all.
+    // `PathPolicy.caseInsensitive` widens whenever `detectCaseSensitivity` cannot decide, so a
+    // case-sensitive volume can still reach this policy. Coalescing under it would merge two
+    // genuinely distinct files into one write and never write the second spelling at all.
     const policy = { ...(await createPathPolicy(fixture.model, undefined)), caseInsensitive: true };
     const plan: FixPlan = {
       operations: [
