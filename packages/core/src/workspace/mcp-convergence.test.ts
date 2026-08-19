@@ -133,7 +133,7 @@ describe("manifest MCP convergence", () => {
 
   /*
    * `supports` only reads the locator's shape, so it can say yes to a field the writer then turns
-   * out to be unable to edit. Reporting that as fixable sends the user to `--fix --interactive`
+   * out to be unable to edit. Reporting that as fixable sends the user to `--fix`
    * for a guided choice that is never offered.
    */
   it("does not advertise a fix when the adapter declines to rewrite the file", async () => {

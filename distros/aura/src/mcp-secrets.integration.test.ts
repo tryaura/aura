@@ -30,7 +30,7 @@ describe("MCP-004 permanent sentinel audit", () => {
     const human = await run(seed, ["check"]);
     const detail = await run(seed, ["check", "--detail"]);
     const explain = await run(seed, ["check", "--explain", "MCP-004"]);
-    const redirected = await run(seed, ["check", "--fix", "--interactive"]);
+    const redirected = await run(seed, ["check", "--fix"]);
     const json = await runCheck({ distro: AURA_DISTRO, seed });
     for (const output of [
       human.stdout,
@@ -48,7 +48,10 @@ describe("MCP-004 permanent sentinel audit", () => {
     }
     expect(human.stdout).toContain("Check: MCP-004");
     expect(explain.stdout).toContain("Aura never displays or stores those values");
-    expect(redirected.stderr).toContain("stdin and prompt output must both be terminals");
+    // A shell with no terminal cannot answer the questions this rewrite is made of, so it says
+    // what it left rather than rewriting a credential nobody has copied out yet.
+    expect(redirected.stdout).toContain("guided findings alone");
+    expect(redirected.stdout).toContain("check --fix in a terminal");
     expect(JSON.stringify(json.report)).not.toContain(SENTINEL);
 
     const model = await scan(seed);

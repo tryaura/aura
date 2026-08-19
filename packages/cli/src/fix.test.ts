@@ -24,7 +24,7 @@ import {
 } from "./test-support/fix.js";
 
 describe("runFixes guided remediation", () => {
-  it("keeps plain --fix automatic-only", async () => {
+  it("leaves guided fixes alone when the run cannot ask", async () => {
     let guidedFixCalled = false;
     const guided = guidedCheck({
       fix: () => {
@@ -39,6 +39,47 @@ describe("runFixes guided remediation", () => {
 
     expect(guidedFixCalled).toBe(false);
     expect(outcome.fixes).toEqual([]);
+  });
+
+  it("leaves guided fixes alone under --yes and under --json", async () => {
+    const guided = guidedCheck({
+      guidedFixes: () => [
+        { id: "restore", label: "Restore registered content", plan: writePlan("guided.md", "g") },
+      ],
+    });
+    const scripted = () => scriptedWizard([answer("guided-0", "choice:0")], "accepted");
+    const findings = [finding(guided, "guided")];
+
+    const confirmed = await runFixes(
+      request({ checks: [guided], findings, wizard: scripted(), yes: true }),
+    );
+    const scripting = await runFixes(
+      request({ checks: [guided], findings, guidedChoices: false, wizard: scripted() }),
+    );
+
+    expect(confirmed.fixes).toEqual([]);
+    expect(scripting.fixes).toEqual([]);
+  });
+
+  it("asks once for a plan several findings share", async () => {
+    // MCP-004 rewrites a whole file, so every credential in it hands back one memoized plan.
+    const plan = writePlan("guided.md", "guided");
+    const guided = guidedCheck({
+      guidedFixes: () => [{ id: "replace", label: "Replace them", plan }],
+    });
+    const wizard = scriptedWizard([answer("guided-0", "choice:0")]);
+
+    const outcome = await runFixes(
+      request({
+        checks: [guided],
+        dryRun: true,
+        findings: [finding(guided, "first"), finding(guided, "second")],
+        wizard,
+      }),
+    );
+
+    expect(wizard.questions).toHaveLength(1);
+    expect(outcome.fixes.map((fix) => fix.findingId)).toEqual(["first"]);
   });
 
   it("merges selected named guided and automatic plans in original finding order", async () => {
@@ -60,7 +101,6 @@ describe("runFixes guided remediation", () => {
         checks: [automatic, guided],
         dryRun: true,
         findings: [finding(guided, "guided"), finding(automatic, "automatic")],
-        interactive: true,
         wizard,
       }),
     );
@@ -95,7 +135,6 @@ describe("runFixes guided remediation", () => {
       request({
         checks: [guided],
         findings: [finding(guided, "guided")],
-        interactive: true,
         stdout: output,
         wizard: scriptedWizard([answer("guided-0", "choice:0")]),
       }),
@@ -122,7 +161,6 @@ describe("runFixes guided remediation", () => {
       request({
         checks: [guided],
         findings: [{ ...finding(guided, "guided"), fixability: "manual" }],
-        interactive: true,
         wizard,
       }),
     );
@@ -138,7 +176,6 @@ describe("runFixes guided remediation", () => {
       request({
         checks: [guided],
         findings: [finding(guided, "guided")],
-        interactive: true,
         wizard: scriptedWizard([answer("guided-0", "skip")]),
       }),
     );
@@ -146,7 +183,6 @@ describe("runFixes guided remediation", () => {
       request({
         checks: [automatic, guided],
         findings: [finding(automatic, "automatic"), finding(guided, "guided")],
-        interactive: true,
         wizard: scriptedWizard(["aborted"]),
       }),
     );
@@ -156,7 +192,6 @@ describe("runFixes guided remediation", () => {
         checks: [guided],
         dryRun: true,
         findings: [finding(guided, "guided")],
-        interactive: true,
         wizard: legacyWizard,
       }),
     );
@@ -178,7 +213,6 @@ describe("runFixes guided remediation", () => {
       request({
         checks: [brokenChoices],
         findings: [finding(brokenChoices, "construction")],
-        interactive: true,
         wizard: scriptedWizard([]),
       }),
     );
@@ -199,7 +233,6 @@ describe("runFixes guided remediation", () => {
       request({
         checks: [brokenPreview],
         findings: [finding(brokenPreview, "preview")],
-        interactive: true,
         wizard: previewWizard,
       }),
     );
@@ -231,7 +264,6 @@ describe("runFixes guided remediation", () => {
           checks: [automatic, guided],
           environment: environment(root, () => new Date("2026-01-01T00:00:00.000Z")),
           findings: [finding(automatic, "automatic"), finding(guided, "guided")],
-          interactive: true,
           model: model(root),
           stateHomeDir: root,
           wizard,
@@ -415,24 +447,32 @@ describe("runFixes guided remediation", () => {
     expect(stderr.text).toContain("could not be undone");
   });
 
-  it("names --interactive when the only findings left are guided ones", async () => {
+  it("counts what it left when the only findings are guided ones it could not ask about", async () => {
     const guided = guidedCheck({ fix: () => writePlan("guided.md", "guided") });
     const stdout = new TextOutput();
 
-    await runFixes(request({ checks: [guided], findings: [finding(guided, "guided")], stdout }));
+    await runFixes(
+      request({
+        checks: [guided],
+        findings: [finding(guided, "first"), finding(guided, "second")],
+        stdout,
+      }),
+    );
 
-    expect(stdout.text).toContain("No executable fixes are available");
-    expect(stdout.text).toContain("check --fix --interactive");
+    // Naming them unavailable would deny the two findings the report prints directly below.
+    expect(stdout.text).not.toContain("No executable fixes are available");
+    expect(stdout.text).toContain("Left 2 guided findings alone");
+    expect(stdout.text).toContain("check --fix in a terminal");
   });
 
-  it("stays quiet about --interactive when nothing is guided", async () => {
+  it("says nothing about guided fixes when nothing is guided", async () => {
     const manual = automaticCheck();
     const stdout = new TextOutput();
 
     await runFixes(request({ checks: [manual], findings: [], stdout }));
 
     expect(stdout.text).toContain("Nothing to fix.");
-    expect(stdout.text).not.toContain("--interactive");
+    expect(stdout.text).not.toContain("guided");
   });
 });
 

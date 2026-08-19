@@ -137,7 +137,7 @@ function renderRecommendation(
   }
   const automatic = fixable.filter((finding) => finding.fixability === "auto").length;
   const guided = fixable.length - automatic;
-  const command = `${branding.command} check --fix${guided > 0 ? " --interactive" : ""}`;
+  const command = `${branding.command} check --fix`;
   const modes = [
     ...(automatic > 0 ? [`${String(automatic)} automatic`] : []),
     ...(guided > 0 ? [`${String(guided)} guided`] : []),

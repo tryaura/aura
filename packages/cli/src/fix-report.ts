@@ -1,7 +1,9 @@
 import type { prepareFixCandidates, FixCandidate, FixOperationPreview } from "@tryaura/core";
+import { pluralize } from "@tryaura/core/pluralize";
 import type { FileOperation } from "@tryaura/aura-sdk";
 
 import type { ReportFix } from "./report.js";
+import type { CliBranding } from "./types.js";
 
 /**
  * The physical preview operations one candidate contributed to a prepared plan.
@@ -68,14 +70,28 @@ export function reportFixes(
  * Candidates survive the preparation only when their plan does something, so candidates without a
  * single operation are plans made entirely of steps the user has to take. Reporting those as no
  * available fix contradicts the choice the user just made and hides the steps below it.
+ *
+ * `unasked` guided findings get no message at all here: {@link guidedNotice} is the whole sentence
+ * for that run, and "no executable fixes are available" would deny the findings it is about to name.
  */
-export function fixlessMessage(candidates: number, findings: number): string {
+export function fixlessMessage(candidates: number, findings: number, unasked: number): string {
   if (candidates > 0) {
     return "Nothing to write: what these fixes need is listed below.\n\n";
   }
-  return findings === 0
-    ? "Nothing to fix.\n\n"
-    : "No executable fixes are available for the findings below.\n\n";
+  if (findings === 0) {
+    return "Nothing to fix.\n\n";
+  }
+  return unasked > 0 ? "" : "No executable fixes are available for the findings below.\n\n";
+}
+
+/**
+ * Why a run that cannot ask questions left the guided fixes where they were.
+ *
+ * Every route to this sentence is one the user chose — `--yes`, `--json`, or a shell with no
+ * terminal — so it names them rather than describing the run's state back at them.
+ */
+export function guidedNotice(branding: CliBranding, unasked: number): string {
+  return `Left ${String(unasked)} guided ${pluralize(unasked, "finding", "findings")} alone: this run cannot ask for the choices they need. Run ${branding.command} check --fix in a terminal, without --yes or --json.\n\n`;
 }
 
 export function reportUnpreparedFixes(candidates: readonly FixCandidate[]): readonly ReportFix[] {

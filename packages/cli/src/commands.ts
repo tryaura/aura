@@ -35,6 +35,7 @@ import {
 } from "./config-options.js";
 import { disabledOnlySelector, resolveCheckSelection } from "./check-selection-resolve.js";
 import { fixPassDiagnostics } from "./check-fix-pass.js";
+import { runAsksGuided } from "./fix-confirmation.js";
 import { runFixes } from "./fix.js";
 import { createCheckReport, type DiagnosticSource, type ReportFix } from "./report.js";
 import { renderJson, renderOperationalFailureJson } from "./render.js";
@@ -61,9 +62,8 @@ export class CheckCommand extends Command<AuraCliContext> {
       ["Explain one check without scanning", "$0 check --explain ENV-001"],
       ["Explain one check as JSON", "$0 check --explain ENV-001 --json"],
       ["See what fixing would change, without writing", "$0 check --fix --dry-run"],
-      ["Apply fixes after confirming them", "$0 check --fix"],
-      ["Apply fixes without being asked", "$0 check --fix --yes"],
-      ["Choose guided resolutions", "$0 check --fix --interactive"],
+      ["Choose resolutions, then apply them", "$0 check --fix"],
+      ["Apply automatic fixes without being asked", "$0 check --fix --yes"],
     ],
   });
 
@@ -77,13 +77,14 @@ export class CheckCommand extends Command<AuraCliContext> {
   explain = Option.String("--explain", { description: "Explain a check without scanning." });
   enable = enableOption();
   fix = Option.Boolean("--fix", false, {
-    description: "Preview fixes and apply them after confirmation.",
+    description: "Choose any guided resolutions, preview, and apply after confirmation.",
   });
   home = homeOption();
   json = Option.Boolean("--json", false, { description: "Emit JSON instead of human output." });
   jsonVersion = Option.String("--json-version", {
     description: "Select the machine-readable contract version. Supported: 1.",
   });
+  legacyInteractive = Option.Boolean("--interactive", false, { hidden: true });
   only = Option.Array("--only", [], {
     description: "Run only a check ID, category, or application. Repeatable.",
   });
@@ -91,9 +92,6 @@ export class CheckCommand extends Command<AuraCliContext> {
     description: "Probe remote MCP URLs with bounded network requests.",
   });
   noCache = noCacheOption();
-  interactive = Option.Boolean("--interactive", false, {
-    description: "With --fix, walk through guided remediation choices.",
-  });
   pathValue = pathOption();
   preset = presetOption();
   severity = severityOption();
@@ -102,8 +100,18 @@ export class CheckCommand extends Command<AuraCliContext> {
     description: "Expand occurrences and locations; add passed checks and applications.",
   });
   yes = Option.Boolean("--yes", false, {
-    description: "Apply fixes without asking. Required when stdin is not a terminal.",
+    description: "Apply automatic fixes without asking. Required when stdin is not a terminal.",
   });
+
+  get interactive(): boolean {
+    return runAsksGuided({
+      fix: this.fix,
+      json: this.json,
+      stdin: this.context.stdin,
+      stdout: this.context.stdout,
+      yes: this.yes,
+    });
+  }
 
   // fallow-ignore-next-line complexity, unused-class-member -- coordinates the complete check and fix lifecycle.
   async execute(): Promise<CliExitCode> {
@@ -113,14 +121,12 @@ export class CheckCommand extends Command<AuraCliContext> {
       explaining: this.explain !== undefined,
       fix: this.fix,
       home: this.home,
-      interactive: this.interactive,
+      interactive: this.legacyInteractive,
       json: this.json,
       jsonVersion: this.jsonVersion,
       online: this.online,
       only: this.only,
       pathValue: this.pathValue,
-      stdin: this.context.stdin,
-      stdout: this.context.stdout,
       verbose: this.verbose,
       yes: this.yes,
     });
@@ -215,7 +221,9 @@ export class CheckCommand extends Command<AuraCliContext> {
           dryRun: this.dryRun,
           environment,
           findings: run.findings,
-          interactive: this.interactive,
+          // `--json` promises one machine-readable document, and a machine cannot answer a
+          // question; that run takes the automatic fixes and names what it left.
+          guidedChoices: !this.json,
           model,
           stderr: this.context.stderr,
           stdin: this.context.stdin,

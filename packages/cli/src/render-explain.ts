@@ -11,7 +11,7 @@ import type { CliBranding } from "./types.js";
 /** Describes the remediation mode and the command that can act on it. */
 const FIXABILITY_DESCRIPTIONS: Readonly<Record<string, string>> = Object.freeze({
   auto: "auto — apply with check --fix",
-  guided: "guided — walk through choices with check --fix --interactive",
+  guided: "guided — choose from the options check --fix puts to you",
   manual: "manual — follow the guidance below",
 });
 

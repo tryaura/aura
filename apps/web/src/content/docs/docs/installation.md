@@ -118,8 +118,8 @@ The current distribution includes these environment, instruction, and managed-co
 
 MGD-002 and MGD-003 findings are informational and remain green. Every completed check exits with
 exit status `0`, including checks with warning or error findings; use report status or severity
-counts to gate automation on findings. Use `aura check --fix --interactive` to review an MGD-002
-update or removal plan; MGD-003 points to `aura setup` and never starts a nested command.
+counts to gate automation on findings. Use `aura check --fix` to review an MGD-002 update or
+removal plan; MGD-003 points to `aura setup` and never starts a nested command.
 
 To read why a check exists without scanning applications or repository state, use:
 
@@ -131,8 +131,8 @@ Use `--json` for a machine-readable report, or with `--explain` for a machine-re
 `--detail` includes the underlying text for a scan diagnostic, and cannot be combined with
 `--explain`, which never scans.
 
-Checks that declare automatic fixes can also apply them. `aura check --fix` previews every
-automatic fix and applies the combined plan after one confirmation. `--fix --dry-run` prepares and
-previews the same plan without confirming or writing; `--fix --interactive` adds guided remediation
-choices before the combined preview; `--fix --yes` applies without confirmation. `--explain` states
+Checks that declare fixes can also apply them. `aura check --fix` walks the guided resolutions,
+previews the combined plan, and applies it after one confirmation. `--fix --dry-run` prepares and
+previews the same plan without confirming or writing; `--fix --yes` applies the automatic fixes
+without confirmation, and names the guided ones it left for a run that can ask. `--explain` states
 whether a given check can be fixed automatically.

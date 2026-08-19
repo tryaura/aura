@@ -98,10 +98,25 @@ same file two ways. `--verbose` works with scans and fixes but not with `--json`
 The summary line above the sections reports what was inspected, not a verdict: it takes a green `✓`
 only when at least one check passed, and a plain `·` when the run inspected nothing.
 
-When guided fixes exist, the report recommends `aura check --fix --interactive`, which includes
-automatic fixes in the same reviewed plan. With automatic fixes alone it recommends
-`aura check --fix`. An operationally incomplete scan recommends neither because its findings may
-be incomplete.
+The report recommends `aura check --fix` for every fixable finding, automatic and guided alike, and
+names the split ("Review 5 available fixes: 5 guided") so the user knows whether the run will ask
+them anything. An operationally incomplete scan recommends neither because its findings may be
+incomplete.
+
+`--fix` asks the guided questions itself; there is no second flag to reach them. What separates a
+run that asks from one that does not is capability, not intent: `--yes` forbids questions, `--json`
+promises one machine-readable document a machine cannot answer, and a shell with no terminal on
+both stdin and the prompt stream cannot ask at all. Only `--yes` authorizes automatic fixes without
+a confirmation prompt; another run that cannot ask previews any automatic plan and reports that
+confirmation is unavailable. When no automatic plan exists, the run prints what it left instead of
+the fixless message — "Left 5 guided findings alone: this run cannot ask for the choices they need.
+Run `aura check --fix` in a terminal, without `--yes` or `--json`." Reporting those as unavailable
+would deny the findings the report lists directly below.
+
+One question per plan, not per finding: a check may answer several findings with the same plan — a
+whole-file credential rewrite covers every credential in that file — and the wizard asks about each
+distinct plan once. The fix report then carries one entry per plan, and the re-scan after applying
+is what says which findings remain.
 
 ## Exit codes
 

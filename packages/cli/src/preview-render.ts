@@ -1,11 +1,9 @@
 import type { Writable } from "node:stream";
 
 import type { FixOperationPreview, PreparedFixPlan, prepareFixCandidates } from "@tryaura/core";
-import type { Check, Finding } from "@tryaura/aura-sdk";
 
 import { operationsForCandidate } from "./fix-report.js";
 import { safe, safeMultiline } from "./safe-text.js";
-import type { CliBranding } from "./types.js";
 
 /** A prepared plan that still knows which physical preview belongs to which candidate. */
 type AttributedFixPlan = Extract<
@@ -39,30 +37,6 @@ export function renderFixPreview(
     output.write("\nRe-run with --detail to see the full diff of every change.\n");
   }
   renderManualSteps(plan.manualSteps, output);
-}
-
-/**
- * Names `--interactive` when it is the thing that would have helped.
- *
- * `--fix` only builds plans for `auto` checks, so a workspace whose findings are all `guided`
- * otherwise reads as "nothing can be done" when in fact the next flag along does exactly what the
- * user asked for.
- */
-export function renderGuidedHint(
-  checks: readonly Check[],
-  findings: readonly Finding[],
-  branding: CliBranding,
-  output: Writable,
-): void {
-  const guided = new Set(
-    checks.filter((check) => check.fixability === "guided").map((check) => check.id),
-  );
-  if (!findings.some((finding) => guided.has(finding.checkId))) {
-    return;
-  }
-  output.write(
-    `Some of these findings offer guided resolutions. Run ${branding.command} check --fix --interactive to choose one.\n\n`,
-  );
 }
 
 /**
