@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { createPluginRegistry } from "@tryaura/core";
 
+import type { WizardAnswers } from "./wizard-types.js";
+
 import { findingPlugin } from "../testing.js";
 import { consolidationPlugin, projectConsolidationPlugin } from "./testing-plugins.js";
 import {
@@ -140,4 +142,126 @@ describe("instruction consolidation setup", () => {
     expect(shared).not.toContain(fixture.workspace);
     await expect(readFile(source, "utf8")).resolves.toContain("@./AGENTS.md");
   });
+
+  it("consolidates the global scope while a skipped project scope stays byte-identical", async () => {
+    const fixture = await createFixture();
+    const project = join(fixture.workspace, "CLAUDE.md");
+    const original = "# Project\n\nUse the repository verification command.\n";
+    await writeFile(project, original, "utf8");
+    await mkdir(join(fixture.homeDir, ".claude"), { recursive: true });
+    await writeFile(join(fixture.homeDir, ".claude", "CLAUDE.md"), "# Claude\n\nGlobal.\n", "utf8");
+    const registry = createPluginRegistry([consolidationPlugin(), projectConsolidationPlugin()], {
+      bareCheckIdPlugins: ["checks-core"],
+    });
+
+    await expect(runSetup(fixture.request(registry, skipProjectInstructions()))).resolves.toBe(0);
+
+    const shared = await readFile(join(fixture.homeDir, "agents", "AGENTS.md"), "utf8");
+    expect(shared).toContain("# Instructions from ~/.claude/CLAUDE.md");
+    // Declining the scope withholds the link as well as the target: a project CLAUDE.md carrying an
+    // `@./AGENTS.md` import would point at a file this run deliberately did not write.
+    await expect(readFile(project, "utf8")).resolves.toBe(original);
+    await expect(readFile(join(fixture.workspace, "AGENTS.md"), "utf8")).rejects.toHaveProperty(
+      "code",
+      "ENOENT",
+    );
+
+    const before = await snapshot(fixture.workspace);
+    await expect(runSetup(fixture.request(registry, skipProjectInstructions()))).resolves.toBe(0);
+    await expect(snapshot(fixture.workspace)).resolves.toEqual(before);
+  });
+
+  it("declines only the scope that consolidates nothing, leaving the run and its other scope intact", async () => {
+    const fixture = await createFixture();
+    const project = join(fixture.workspace, "CLAUDE.md");
+    await writeFile(project, "# Project\n\nUse the repository verification command.\n", "utf8");
+    await mkdir(join(fixture.homeDir, ".claude"), { recursive: true });
+    await writeFile(join(fixture.homeDir, ".claude", "CLAUDE.md"), "# Claude\n\nGlobal.\n", "utf8");
+    const registry = createPluginRegistry([consolidationPlugin(), projectConsolidationPlugin()], {
+      bareCheckIdPlugins: ["checks-core"],
+    });
+
+    // Consolidating an empty selection used to raise a blocker, which aborts the whole run with
+    // exit 2 and writes nothing anywhere — including the global scope the user did configure.
+    await expect(runSetup(fixture.request(registry, emptyProjectSelection()))).resolves.toBe(0);
+
+    await expect(readFile(join(fixture.homeDir, "agents", "AGENTS.md"), "utf8")).resolves.toContain(
+      "# Instructions from ~/.claude/CLAUDE.md",
+    );
+    // Named as work to do, not as a fact about the run: it renders under "Steps to take yourself".
+    expect(fixture.output()).toContain("select at least one project source to consolidate");
+    await expect(readFile(join(fixture.workspace, "AGENTS.md"), "utf8")).rejects.toHaveProperty(
+      "code",
+      "ENOENT",
+    );
+  });
+
+  it("blocks rather than quietly declining the global scope when it consolidates nothing", async () => {
+    const fixture = await createFixture();
+    await writeFile(join(fixture.workspace, "CLAUDE.md"), "# Project\n\nRules.\n", "utf8");
+    await mkdir(join(fixture.homeDir, ".claude"), { recursive: true });
+    await writeFile(join(fixture.homeDir, ".claude", "CLAUDE.md"), "# Claude\n\nGlobal.\n", "utf8");
+    const registry = createPluginRegistry([consolidationPlugin(), projectConsolidationPlugin()], {
+      bareCheckIdPlugins: ["checks-core"],
+    });
+
+    // The action menu withholds its opt-out from the global scope because INS-001 and INS-002 fail
+    // a run without a shared source. An empty selection must not be the way around that: applying
+    // the rest of the plan and ending red is worse than refusing the plan and saying why.
+    await expect(runSetup(fixture.request(registry, emptyGlobalSelection()))).resolves.toBe(2);
+
+    expect(fixture.output()).toContain("Select a source, or choose the starter template");
+    await expect(
+      readFile(join(fixture.homeDir, "agents", "AGENTS.md"), "utf8"),
+    ).rejects.toHaveProperty("code", "ENOENT");
+    await expect(readFile(join(fixture.workspace, "AGENTS.md"), "utf8")).rejects.toHaveProperty(
+      "code",
+      "ENOENT",
+    );
+  });
+
+  it("ignores an opt-out answered for a scope the menu never offered it on", async () => {
+    const fixture = await createFixture();
+    await mkdir(join(fixture.homeDir, ".claude"), { recursive: true });
+    await writeFile(join(fixture.homeDir, ".claude", "CLAUDE.md"), "# Claude\n\nGlobal.\n", "utf8");
+    const registry = createPluginRegistry([consolidationPlugin()], {
+      bareCheckIdPlugins: ["checks-core"],
+    });
+
+    await expect(runSetup(fixture.request(registry, skipGlobalInstructions()))).resolves.toBe(0);
+
+    // Falls back to the first offered action instead of declining a scope that cannot be declined.
+    await expect(readFile(join(fixture.homeDir, "agents", "AGENTS.md"), "utf8")).resolves.toContain(
+      "# Instructions from ~/.claude/CLAUDE.md",
+    );
+  });
 });
+
+/** Repeated per form the flow may open, as `archiveOriginals` documents. */
+function repeatedAnswers(answer: WizardAnswers): readonly WizardAnswers[] {
+  return Array.from({ length: 8 }, () => answer);
+}
+
+function skipProjectInstructions(): readonly WizardAnswers[] {
+  return repeatedAnswers({ "project-instruction-action": { kind: "options", values: ["skip"] } });
+}
+
+function skipGlobalInstructions(): readonly WizardAnswers[] {
+  return repeatedAnswers({ "global-instruction-action": { kind: "options", values: ["skip"] } });
+}
+
+/** Consolidate chosen for the project scope, then every source unchecked on the Sources form. */
+function emptyProjectSelection(): readonly WizardAnswers[] {
+  return repeatedAnswers({
+    "project-instruction-action": { kind: "options", values: ["consolidate"] },
+    "project-instruction-sources": { kind: "options", values: [] },
+  });
+}
+
+/** The same empty Sources form, on the scope that has no opt-out to fall back to. */
+function emptyGlobalSelection(): readonly WizardAnswers[] {
+  return repeatedAnswers({
+    "global-instruction-action": { kind: "options", values: ["consolidate"] },
+    "global-instruction-sources": { kind: "options", values: [] },
+  });
+}

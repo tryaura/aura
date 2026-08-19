@@ -1,5 +1,7 @@
 import { basename } from "node:path";
 
+import type { Scope } from "@tryaura/aura-sdk";
+
 import {
   describeInstructionSource,
   duplicateClusters,
@@ -21,6 +23,7 @@ import { relevantDuplicateClusters } from "./instruction-duplicates.js";
 import {
   CONSOLIDATE_VALUE,
   scopeStages,
+  SKIP_VALUE,
   TEMPLATE_VALUE,
   type ChainState,
   type ScopeDraft,
@@ -108,7 +111,7 @@ function scopeSelection(input: ScopeInput, draft: ScopeDraft): InstructionScopeS
     return inactiveSelection(input, "blocked");
   }
   if (draft.action !== CONSOLIDATE_VALUE) {
-    return inactiveSelection(input, draft.action === TEMPLATE_VALUE ? "template" : "keep");
+    return inactiveSelection(input, inactiveAction(draft.action, input.scope));
   }
   const selectedSources = draft.selectedSources ?? [];
   // Winners can outlive the sources whose duplicates they resolved; only those a still-relevant
@@ -129,9 +132,23 @@ function scopeSelection(input: ScopeInput, draft: ScopeDraft): InstructionScopeS
   };
 }
 
+/**
+ * Maps a settled non-consolidate answer, defaulting to the one that touches nothing it was given.
+ *
+ * The opt-out is honoured only where it was offered. Declining the global scope leaves INS-001 and
+ * INS-002 firing at error severity, so the action menu never offers it there; this mapping is the
+ * second half of that rule, keeping an action off the menu from becoming one the planner obeys.
+ */
+function inactiveAction(action: string | undefined, scope: Scope): "keep" | "skip" | "template" {
+  if (action === TEMPLATE_VALUE) {
+    return "template";
+  }
+  return action === SKIP_VALUE && scope === "project" ? "skip" : "keep";
+}
+
 function inactiveSelection(
   input: ScopeInput,
-  action: "blocked" | "keep" | "template",
+  action: "blocked" | "keep" | "skip" | "template",
 ): InstructionScopeSelection {
   return {
     action,

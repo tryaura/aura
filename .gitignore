@@ -18,3 +18,12 @@ coverage/
 # Astro generated types and Wrangler local state
 .astro/
 .wrangler/
+
+# aura:begin ENV-003
+# Managed by Aura. Personal agent state stays local; team configuration stays shareable.
+/.claude/settings.local.json
+/.claude/skills/
+!/AGENTS.md
+!/CLAUDE.md
+!/.mcp.json
+# aura:end ENV-003

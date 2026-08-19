@@ -55,25 +55,26 @@ export function planInstructions(context: SetupStepContext): InstructionPlan {
   const ownership = new Map<string, string[]>();
   const inventory = instructionInventory(context.model);
   const clusters = duplicateClusters(context.findings ?? []);
-  // A scope Aura refused to configure is dropped here rather than in each planner below: wiring
-  // every app to a target the wizard just said it could not read safely would contradict the note
-  // the user was given, and leave a machine full of links to a file Aura never wrote.
+  // A scope Aura will not configure is dropped here rather than in each planner below: wiring every
+  // app to a target the wizard just said it could not read safely — or that the user declined —
+  // would contradict what the user was told, and leave a machine full of links to a file Aura never
+  // wrote.
   const scopeSelections = [selections.global, selections.project].filter(
     (selection): selection is InstructionScopeSelection =>
-      selection !== undefined && selection.action !== "blocked",
+      selection !== undefined && selection.action !== "blocked" && selection.action !== "skip",
   );
 
+  // A scope can also decline itself: consolidating a selection that composes to nothing leaves no
+  // target to link to, and only the survivors are what `planLinks` may wire. Spelled as a loop
+  // because `planScope` plans as it answers; a `filter` would hide that behind a pure-looking read.
+  const linked: InstructionScopeSelection[] = [];
   for (const selection of scopeSelections) {
-    planScope(context, selection, inventory, clusters, state);
+    if (planScope(context, selection, inventory, clusters, state)) {
+      linked.push(selection);
+    }
   }
 
-  const linkOperations = planLinks(
-    context,
-    scopeSelections,
-    state.archived,
-    ownership,
-    state.manualSteps,
-  );
+  const linkOperations = planLinks(context, linked, state.archived, ownership, state.manualSteps);
   for (const [path, archive] of state.archived) {
     const linkIndex = linkOperations.findIndex(
       (operation) => resolve(primaryPath(operation)) === path,
@@ -90,13 +91,14 @@ export function planInstructions(context: SetupStepContext): InstructionPlan {
   return { ...state, ownership };
 }
 
+/** Plans one scope's target, returning whether it ended up with content apps may be linked to. */
 function planScope(
   context: SetupStepContext,
   selection: InstructionScopeSelection,
   inventory: ReturnType<typeof instructionInventory>,
   clusters: ReturnType<typeof duplicateClusters>,
   state: InstructionPlanState,
-): void {
+): boolean {
   const selected = new Set(selection.selectedSources.map((path) => resolve(path)));
   const chosen = inventory.filter(
     (source) => source.scope === selection.scope && selected.has(resolve(source.path)),
@@ -115,10 +117,10 @@ function planScope(
         type: "write",
       });
     }
-    return;
+    return true;
   }
   if (selection.action !== "consolidate") {
-    return;
+    return true;
   }
 
   const content = composeConsolidatedInstructions(
@@ -128,8 +130,31 @@ function planScope(
     context.model,
     existing,
   );
+  // Nothing selected, or nothing of it left to write. Declining this one scope is the whole of the
+  // response wherever the tier survives being declined: a blocker would abort the run and write
+  // nothing anywhere, including the other scope the user did configure.
+  //
+  // The global tier does not survive it. INS-001 and INS-002 fire at error severity against a
+  // missing shared source, which is why the action menu withholds its opt-out there — and an empty
+  // selection must not become the way around that, leaving a run that applies everything else and
+  // then fails its own closing checklist.
+  if (content.trim().length === 0) {
+    if (selection.scope === "global") {
+      state.blockers.push({
+        path: selection.targetPath,
+        reason:
+          "No selected instruction content is available to consolidate. Select a source, or choose the starter template.",
+      });
+      return false;
+    }
+    state.manualSteps.push(
+      `Configure ${selection.targetPath} on the next run: select at least one project source to consolidate, or choose the starter template. Aura wrote nothing there.`,
+    );
+    return false;
+  }
   planConsolidatedTarget(context, selection, existing, content, state);
   planOriginals(context, selection, chosen, state);
+  return true;
 }
 
 function planConsolidatedTarget(
@@ -139,12 +164,7 @@ function planConsolidatedTarget(
   content: string,
   state: InstructionPlanState,
 ): void {
-  if (content.trim().length === 0) {
-    state.blockers.push({
-      path: selection.targetPath,
-      reason: "No selected instruction content is available to consolidate.",
-    });
-  } else if (existing !== undefined && selection.archiveOriginals) {
+  if (existing !== undefined && selection.archiveOriginals) {
     const relativePath = archiveRelativePath(existing.path, selection.scope, context.model);
     if (relativePath === undefined) {
       state.blockers.push({ path: existing.path, reason: "The target has no safe archive path." });
