@@ -15,7 +15,7 @@ import {
 import type { InstructionScopeSelection } from "./types.js";
 
 describe("instruction inventory", () => {
-  it("canonicalizes adapter documents and reports scope, lines, and UTF-8 bytes", () => {
+  it("canonicalizes adapter documents and reports scope and line count", () => {
     const global = document("/home/dev/.claude/CLAUDE.md", "global", "é\nnext", "claude");
     const project = document("/repo/project/CURSOR.md", "project", "project\n", "cursor");
     const model = workspaceModel([
@@ -34,7 +34,8 @@ describe("instruction inventory", () => {
       { content: "é\nnext", path: global.path, scope: "global" },
       { content: "project\n", path: project.path, scope: "project" },
     ]);
-    expect(describeInstructionSource(source(global.path, "é\nnext"))).toBe("2 lines, 7 bytes");
+    expect(describeInstructionSource(source(global.path, "é\nnext"))).toBe("2 lines");
+    expect(describeInstructionSource(source(global.path, "only"))).toBe("1 line");
   });
 });
 

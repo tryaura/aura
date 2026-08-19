@@ -1,4 +1,3 @@
-import { Buffer } from "node:buffer";
 import { relative, resolve } from "node:path";
 
 import {
@@ -9,16 +8,17 @@ import {
   type WorkspaceModel,
 } from "@tryaura/aura-sdk";
 import { projectSharedInstructionsPath } from "@tryaura/core";
+import { pluralize } from "@tryaura/core/pluralize";
 
 import type { InstructionScopeSelection } from "./types.js";
 
 /**
  * One instruction file the wizard may consolidate.
  *
- * Carries no derived size or line count: the inventory is built once per step and again per plan,
- * and measuring every instruction file on a machine twice to fill in a description the planner
- * never reads is work for nothing. {@link describeInstructionSource} measures the few that are
- * actually shown.
+ * Carries no derived line count: the inventory is built once per step and again per plan, and
+ * measuring every instruction file on a machine twice to fill in a description the planner never
+ * reads is work for nothing. {@link describeInstructionSource} measures the few that are actually
+ * shown.
  */
 export interface InstructionSource {
   readonly content: string;
@@ -86,8 +86,7 @@ export function instructionInventory(model: WorkspaceModel): readonly Instructio
 /** How much text one source carries, measured only for the sources a form actually shows. */
 export function describeInstructionSource(source: InstructionSource): string {
   const lineCount = [...splitSourceLines(source.content)].length;
-  const size = Buffer.byteLength(source.content, "utf8");
-  return `${String(lineCount)} lines, ${String(size)} bytes`;
+  return `${String(lineCount)} ${pluralize(lineCount, "line")}`;
 }
 
 export function instructionTargetSource(
