@@ -1,6 +1,7 @@
 import type {
   AuraEffectiveConfig,
   AuraManifest,
+  OverriddenRequiredMcpServer,
   RequiredMcpServer,
   ResolvedMcpServerDef,
   WorkspaceModel,
@@ -35,9 +36,23 @@ export function applyRequiredMcpServers(
   const configured = new Set(
     manifest.mcpServers.map((server) => `${server.scope}\0${server.name}`),
   );
+  const configuredCatalogIds = new Set(
+    manifest.mcpServers.flatMap((server) =>
+      server.catalogId === undefined ? [] : [server.catalogId],
+    ),
+  );
   const diagnostics: ScanDiagnostic[] = [];
   const required: RequiredMcpServer[] = [];
+  const overridden: OverriddenRequiredMcpServer[] = [];
+  const overrideIds = new Set(manifest.overrides?.requiredMcpServers ?? []);
   for (const selection of config.requiredMcpServers) {
+    if (overrideIds.has(selection.value)) {
+      overridden.push({ catalogId: selection.value, requiredBy: selection.provenance.label });
+      continue;
+    }
+    if (configuredCatalogIds.has(selection.value)) {
+      continue;
+    }
     const catalog = model.availableMcpServers.find((candidate) => candidate.id === selection.value);
     if (catalog === undefined) {
       diagnostics.push(
@@ -45,7 +60,7 @@ export function applyRequiredMcpServers(
       );
       continue;
     }
-    const name = catalog.id.slice(catalog.id.lastIndexOf("/") + 1);
+    const name = catalog.manifest.serverName;
     if (configured.has(`global\0${name}`)) {
       diagnostics.push(
         note(
@@ -81,9 +96,15 @@ export function applyRequiredMcpServers(
   return {
     diagnostics: Object.freeze(diagnostics),
     model:
-      required.length === 0
+      required.length === 0 && overridden.length === 0
         ? model
-        : Object.freeze({ ...model, requiredMcpServers: Object.freeze(required) }),
+        : Object.freeze({
+            ...model,
+            ...(overridden.length === 0
+              ? {}
+              : { overriddenRequiredMcpServers: Object.freeze(overridden) }),
+            ...(required.length === 0 ? {} : { requiredMcpServers: Object.freeze(required) }),
+          }),
   };
 }
 

@@ -1,6 +1,6 @@
 {
   "name": "@tryaura/aura-cli",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "The composable Aura CLI runtime and official plugin distribution.",
   "keywords": [
     "agent",

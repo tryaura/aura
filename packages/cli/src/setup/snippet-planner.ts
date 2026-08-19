@@ -1,11 +1,13 @@
 import type { AuraManifestSnippet } from "@tryaura/aura-sdk";
 import {
   hashManagedSnippet,
+  managedContentRevisionStatus,
   readManagedBlock,
   reconcileParsedManagedBlock,
   type ManagedBlockNote,
   type ManagedBlockReadResult,
   type ManagedBlockWriteResult,
+  type ManagedContentRevisionStatus,
 } from "@tryaura/core";
 
 import type { SetupBlocker, SetupNotice } from "./planner.js";
@@ -48,8 +50,10 @@ export function planSnippets(context: SetupStepContext, source: string): Snippet
   });
   const unavailable = selectedEntries.filter((entry) => entry.status === "unavailable");
   const pinned = selection.selected.filter((id) => previousById.get(id)?.pinned === true);
+  const held = heldRevisions(selection.selected, catalog, previousById, new Set(selection.updates));
+  const heldIds = new Set(held.map((entry) => entry.id));
   const pinnedIds = new Set(pinned);
-  const preserved = [...unavailable.map((entry) => entry.id), ...pinned];
+  const preserved = [...unavailable.map((entry) => entry.id), ...pinned, ...heldIds];
   const parsed = readManagedBlock(source);
   const blockers = snippetBlockers(
     context.model.sharedInstructions.path,
@@ -59,7 +63,7 @@ export function planSnippets(context: SetupStepContext, source: string): Snippet
   );
 
   const desired = selectedEntries.flatMap((entry) =>
-    entry.status === "available" && !pinnedIds.has(entry.id)
+    entry.status === "available" && !pinnedIds.has(entry.id) && !heldIds.has(entry.id)
       ? [{ content: entry.content, id: entry.id }]
       : [],
   );
@@ -69,11 +73,19 @@ export function planSnippets(context: SetupStepContext, source: string): Snippet
     previousSnippetHashes: new Map(previous.map((entry) => [entry.id, entry.hash])),
   });
   collectReconcileBlockers(context.model.sharedInstructions.path, parsed, reconciled, blockers);
-  const manifestSnippets = desiredManifestSnippets(selection.selected, catalog, previousById);
-  const notices = reconciled.notes.flatMap((note): readonly SetupNotice[] => {
-    const kind = NOTICE_KINDS[note.code];
-    return kind === undefined ? [] : [{ kind, message: note.message }];
-  });
+  const manifestSnippets = desiredManifestSnippets(
+    selection.selected,
+    catalog,
+    previousById,
+    heldIds,
+  );
+  const notices = [
+    ...reconciled.notes.flatMap((note): readonly SetupNotice[] => {
+      const kind = NOTICE_KINDS[note.code];
+      return kind === undefined ? [] : [{ kind, message: note.message }];
+    }),
+    ...held.map(heldNotice),
+  ];
 
   return {
     blockers,
@@ -81,6 +93,75 @@ export function planSnippets(context: SetupStepContext, source: string): Snippet
     manifestSnippets,
     notices,
     updated: reconciled.status === "updated",
+  };
+}
+
+/** One selected snippet whose source revision this run is not applying. */
+interface HeldRevision {
+  readonly availableVersion: string;
+  readonly id: string;
+  readonly installedVersion: string;
+  readonly status: Exclude<ManagedContentRevisionStatus, "current">;
+}
+
+/**
+ * The selections whose source moved but whose recorded revision this run keeps.
+ *
+ * Uses the same comparison the review form asks with, so "the step never offered it" and "the plan
+ * never applied it" cannot drift apart: any revision the user was not asked about is held, and any
+ * revision held is one the user was asked about and declined.
+ */
+function heldRevisions(
+  selectedIds: readonly string[],
+  catalog: ReadonlyMap<string, SnippetCatalogEntry>,
+  previousById: ReadonlyMap<string, AuraManifestSnippet>,
+  accepted: ReadonlySet<string>,
+): readonly HeldRevision[] {
+  return selectedIds.flatMap((id): readonly HeldRevision[] => {
+    const installed = previousById.get(id);
+    const available = catalog.get(id);
+    if (
+      installed === undefined ||
+      installed.pinned === true ||
+      available?.status !== "available" ||
+      accepted.has(id)
+    ) {
+      return [];
+    }
+    const status = managedContentRevisionStatus(
+      installed.version,
+      installed.hash,
+      available.version,
+      hashManagedSnippet(available.content),
+    );
+    return status === "current"
+      ? []
+      : [
+          {
+            availableVersion: available.version,
+            id,
+            installedVersion: installed.version,
+            status,
+          },
+        ];
+  });
+}
+
+/**
+ * Says out loud that a snippet was left at its recorded revision.
+ *
+ * Holding content back is the safe default, but a run that holds silently is indistinguishable
+ * from one that had nothing to do — which is exactly the reading a `--yes` run would get wrong.
+ */
+function heldNotice(held: HeldRevision): SetupNotice {
+  return {
+    kind: "held",
+    message:
+      held.status === "update"
+        ? `${held.id} stays at ${held.installedVersion}; ${held.availableVersion} is available. ` +
+          "Run setup interactively to review it."
+        : `${held.id} stays at ${held.installedVersion}; the installed plugin offers ` +
+          `${held.availableVersion}, which is not newer.`,
   };
 }
 
@@ -142,10 +223,14 @@ function desiredManifestSnippets(
   selectedIds: readonly string[],
   catalog: ReadonlyMap<string, SnippetCatalogEntry>,
   previousById: ReadonlyMap<string, AuraManifestSnippet>,
+  heldUpdates: ReadonlySet<string>,
 ): readonly AuraManifestSnippet[] {
   return selectedIds.flatMap((id): readonly AuraManifestSnippet[] => {
     const preserved = previousById.get(id);
     if (preserved?.pinned === true) {
+      return [preserved];
+    }
+    if (heldUpdates.has(id) && preserved !== undefined) {
       return [preserved];
     }
     const entry = catalog.get(id);

@@ -1,51 +1,42 @@
-import { sortForDisplay } from "../display-order.js";
 import type { SnippetCatalogEntry } from "../snippets.js";
 import { SETUP_ABORTED, SETUP_BACK, type SetupStep, type SetupStepContext } from "../types.js";
-import { selectedValues, type WizardOption } from "../wizard-types.js";
+import { runFormChain } from "../wizard-chain.js";
+import {
+  acceptedUpdates,
+  snippetOptions,
+  snippetStages,
+  type SnippetsChainState,
+  type SnippetStageInputs,
+} from "./snippet-stages.js";
 
+/**
+ * The snippets step: a picker over every available snippet, then a review form per pending update.
+ *
+ * The two forms run as one chain so ← walks back from the review into the picker rather than out
+ * of the step: leaving would discard both the boxes just ticked and every review already answered.
+ * Every review defaults to keeping the installed version, which is what holds managed content at
+ * its recorded revision under `--yes`.
+ */
 export const snippetsStep: SetupStep = {
   addKind: "snippet",
   gather: async (context, io) => {
     const catalog = await context.snippetCatalog.load();
-    const previous = previousSnippetIds(context);
-    const options = snippetOptions(catalog, previous);
+    const inputs = stageInputs(context, catalog);
     if (context.revisited !== true) {
       emitUnavailableNotes(catalog, io.note);
     }
-    if (options.length === 0) {
-      if (context.enteredBackward === true) {
-        return SETUP_BACK;
-      }
-      if (context.revisited !== true) {
-        io.note("No snippets are available from the installed plugins.");
-      }
-      return { ...context.selections, snippets: { selected: [] } };
+    if (snippetOptions(inputs).length === 0) {
+      return emptyCatalogOutcome(context, io);
     }
 
-    const result = await io.ask([
-      {
-        id: "snippets",
-        // A re-entered step shows the answer this run already gave it, not its cold-start proposal.
-        initial:
-          context.selections.snippets?.selected ??
-          options.filter((option) => previous.has(option.value)).map((option) => option.value),
-        kind: "multiselect",
-        label: "Snippets",
-        options,
-        prompt: "Which snippets should Aura add to the shared instructions?",
-      },
-    ]);
-    if (result === "aborted") {
-      return SETUP_ABORTED;
+    const result = await runFormChain(snippetStages(inputs), openingState(context, inputs), io, {
+      entry: context.enteredBackward === true ? "end" : "start",
+      flow: context.flow,
+    });
+    if (result === SETUP_ABORTED || result === SETUP_BACK) {
+      return result;
     }
-    if (result === "back") {
-      return SETUP_BACK;
-    }
-    const selected = selectedSnippetIds(options, previous, selectedValues(result["snippets"]));
-    return {
-      ...context.selections,
-      snippets: { selected },
-    };
+    return completedSelections(context, result);
   },
   id: "snippets",
   prerequisites: [
@@ -59,6 +50,57 @@ export const snippetsStep: SetupStep = {
   ],
   title: "Snippets",
 };
+
+function stageInputs(
+  context: SetupStepContext,
+  catalog: readonly SnippetCatalogEntry[],
+): SnippetStageInputs {
+  const previous = previousSnippetIds(context);
+  const preset = new Set(context.preset?.snippets ?? []);
+  return {
+    catalog,
+    context,
+    preset,
+    previous,
+    // A fresh manifest opens on the preset's selections; an existing one is authoritative, so
+    // deliberate adjustments are never reset to preset defaults on a later run.
+    retained: context.manifest.status === "ready" ? previous : preset,
+  };
+}
+
+/** The chain's opening state: this run's answers if it already has some, else the retained set. */
+function openingState(context: SetupStepContext, inputs: SnippetStageInputs): SnippetsChainState {
+  const selected =
+    context.selections.snippets?.selected ??
+    snippetOptions(inputs)
+      .filter((option) => inputs.retained.has(option.value))
+      .map((option) => option.value);
+  return {
+    decisions: Object.fromEntries(
+      (context.selections.snippets?.updates ?? []).map((id) => [id, "update"]),
+    ),
+    selected,
+  };
+}
+
+function completedSelections(context: SetupStepContext, state: SnippetsChainState) {
+  const updates = acceptedUpdates(state);
+  return {
+    ...context.selections,
+    snippets:
+      updates.length === 0 ? { selected: state.selected } : { selected: state.selected, updates },
+  };
+}
+
+function emptyCatalogOutcome(context: SetupStepContext, io: Parameters<SetupStep["gather"]>[1]) {
+  if (context.enteredBackward === true) {
+    return SETUP_BACK;
+  }
+  if (context.revisited !== true) {
+    io.note("No snippets are available from the installed plugins.");
+  }
+  return { ...context.selections, snippets: { selected: [] } };
+}
 
 function previousSnippetIds(context: SetupStepContext): ReadonlySet<string> {
   return new Set(
@@ -77,47 +119,4 @@ function emitUnavailableNotes(
       note(`Snippet ${entry.id} is unavailable: ${entry.reason}`);
     }
   }
-}
-
-/**
- * Keeps what the user answered, in the order they were offered.
- *
- * An unavailable row cannot be checked, but one carried over from a previous run stays eligible so
- * clearing it is how a user drops a snippet whose plugin is gone. Re-adding it here instead would
- * make that selection permanent.
- */
-function selectedSnippetIds(
-  options: readonly WizardOption[],
-  previous: ReadonlySet<string>,
-  answered: readonly string[],
-): string[] {
-  const selectable = new Set(
-    options.filter((option) => option.disabled !== true).map((option) => option.value),
-  );
-  return answered.filter((id) => selectable.has(id) || previous.has(id));
-}
-
-function snippetOptions(
-  catalog: readonly SnippetCatalogEntry[],
-  previous: ReadonlySet<string>,
-): readonly WizardOption[] {
-  return sortForDisplay(catalog, (entry) => [entry.category, entry.name, entry.id]).map((entry) =>
-    entry.status === "available"
-      ? {
-          description: entry.description,
-          group: entry.category,
-          label: entry.name,
-          preview: entry.content,
-          value: entry.id,
-        }
-      : {
-          description: previous.has(entry.id)
-            ? `${entry.reason} Clear it to remove the snippet.`
-            : `${entry.description} ${entry.reason}`,
-          disabled: true,
-          group: entry.category,
-          label: previous.has(entry.id) ? `${entry.name} (preserved)` : entry.name,
-          value: entry.id,
-        },
-  );
 }

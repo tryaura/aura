@@ -6,13 +6,12 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createPluginRegistry } from "@tryaura/core";
 
 import { findingPlugin } from "../testing.js";
+import { consolidationPlugin, projectConsolidationPlugin } from "./testing-plugins.js";
 import {
   archiveOriginals,
   backupEntry,
   cleanupFixtures,
-  consolidationPlugin,
   createFixture,
-  projectConsolidationPlugin,
   snapshot,
 } from "./testing.js";
 import { runSetup } from "./setup.js";

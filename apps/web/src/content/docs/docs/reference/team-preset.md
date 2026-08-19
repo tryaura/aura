@@ -12,6 +12,13 @@ Later layers win for check activation, severity, and each check's complete thres
 Required MCP servers and skill directories are additive. Manifest content selections replace
 preset onboarding defaults. Every effective value records the layer that supplied it.
 
+Running `aura setup --preset <ref>` is an explicit onboarding request: Aura creates the manifest
+when necessary and stores the exact reference in `preset`. On a fresh manifest, setup starts with
+the preset's snippets, skills, and required MCP servers selected and labels those rows “from
+preset.” Unavailable rows remain visible with the reason and next action. Existing manifest
+snippet and skill selections remain authoritative on later runs, so deliberate adjustments are
+not reset to preset defaults.
+
 ```json
 {
   "schemaVersion": 1,
@@ -67,6 +74,19 @@ Fetching a remote reference is network access, so `check` performs it only with 
 it, an `npm:` or `https:` preset resolves from cache and otherwise fails with a note naming the
 flag. `setup` already contacts skill directories to build its pickers and always resolves remotely.
 
+The setup summary shows effective preset check settings as read-only policy, under a heading that
+names the preset once. It does not copy them into `manifest.checks`: only an explicit manifest or
+command-line override belongs in that layer. Existing managed snippets and skills also stay at
+their recorded revision until an interactive review accepts the displayed one. Non-interactive
+setup never changes managed content, and the summary lists everything it held back so a `--yes`
+run cannot look like a run with nothing to do.
+
+A revision that is not newer — a rollback, or a pair of versions this build cannot order — is
+offered for review too, labelled a switch rather than an update. Aura keeps the recorded revision
+either way, so a revision that was never offered would be one you could never resolve. Plugins must
+declare canonical semver versions for snippets and skills; the registry refuses a contribution
+whose version cannot be compared.
+
 ## Fields
 
 - `schemaVersion` is required and must be `1`. `name` is optional so existing repository presets
@@ -81,6 +101,10 @@ flag. `setup` already contacts skill directories to build its pickers and always
   supported applications at global scope; unknown IDs fail configuration resolution. A requirement
   whose server name is already configured in your manifest leaves your own entry untouched and
   reports that it was not applied — the manifest outranks the preset here as it does elsewhere.
+  Setup requires confirmation before omitting one and stores the resulting exception in
+  `overrides.requiredMcpServers` until the server is selected or the requirement disappears. Only a
+  run that actually resolved the preset rewrites that list, so an offline run leaves a recorded
+  exception alone rather than reading "could not fetch" as "no longer required".
 - `snippets` contains snippet IDs. `skills` uses source-qualified `{ "id", "source" }` entries.
   Optional unavailable content remains selected so setup can explain the problem.
 - `allowedSkillSources` is exhaustive when present. It accepts up to 256 `plugin:`, `directory:`,

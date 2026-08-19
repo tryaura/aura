@@ -2,6 +2,7 @@ import type { Writable } from "node:stream";
 
 import type {
   AuraConfigurationLayer,
+  AuraEffectiveConfig,
   AuraManifest,
   Environment,
   SetupRunOutcome,
@@ -21,7 +22,7 @@ import { endOnGreen, gatherFindings } from "./green.js";
 import { createSnippetCatalog } from "./snippets.js";
 import { SETUP_STEPS } from "./steps/index.js";
 import { type GatherStart } from "./gather.js";
-import type { SetupStep } from "./types.js";
+import type { SetupPresetContext, SetupStep } from "./types.js";
 import type { WizardIo } from "./wizard-types.js";
 
 /** Everything one `setup` run needs, so the flow does not reach back into the command object. */
@@ -117,6 +118,7 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
     presetOrigin: configured.presetOrigin,
     registry: request.registry,
   });
+  const preset = setupPresetContext(request, configured.config, configured.preset);
 
   const stepContext = {
     appCatalog: buildAppCatalog(request.registry.adapters, model, scan.skipped),
@@ -127,7 +129,12 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
     mcpCatalog: catalogs.mcpCatalog,
     model: effectiveModel,
     skillCatalog: catalogs.skillCatalog,
-    snippetCatalog: createSnippetCatalog(request.registry.snippets, model.manifest),
+    snippetCatalog: createSnippetCatalog(
+      request.registry.snippets,
+      model.manifest,
+      preset?.snippets ?? [],
+    ),
+    ...(preset === undefined ? {} : { preset }),
   };
 
   // The confirmation can send the user ← back into the last step, so gather → plan → confirm
@@ -182,4 +189,48 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
     appliedOperationCount: result.appliedOperationCount,
     manifest: ready.manifest,
   });
+}
+
+function setupPresetContext(
+  request: SetupRequest,
+  config: AuraEffectiveConfig,
+  preset: Parameters<typeof createSetupCatalogs>[0]["preset"],
+): SetupPresetContext | undefined {
+  const selected = config.preset;
+  if (selected === undefined || preset === undefined) {
+    return undefined;
+  }
+  return Object.freeze({
+    checkSummary: presetCheckSummary(config),
+    explicit: request.cliReference !== undefined,
+    name: selected.name,
+    reference: request.cliReference ?? selected.reference,
+    skills: Object.freeze([...(preset.skills ?? [])]),
+    snippets: Object.freeze([...(preset.snippets ?? [])]),
+  });
+}
+
+function presetCheckSummary(config: AuraEffectiveConfig): readonly string[] {
+  const lines: string[] = [];
+  for (const [id, check] of Object.entries(config.checks)) {
+    if (check.enabled.provenance.layer === "preset") {
+      lines.push(`${id}: ${check.enabled.value ? "enabled" : "disabled"}`);
+    }
+    if (check.severity.provenance.layer === "preset") {
+      lines.push(`${id}: severity ${check.severity.value}`);
+    }
+    if (check.thresholds.provenance.layer === "preset") {
+      lines.push(`${id}: ${formatThresholds(check.thresholds.value)}`);
+    }
+  }
+  return Object.freeze(lines);
+}
+
+/** Thresholds read as settings, not as the JSON they happen to be stored in. */
+function formatThresholds(thresholds: Readonly<Record<string, unknown>>): string {
+  const pairs = Object.entries(thresholds).map(
+    ([name, value]) =>
+      `${name}=${typeof value === "object" ? JSON.stringify(value) : String(value)}`,
+  );
+  return pairs.length === 0 ? "no thresholds" : pairs.join(", ");
 }

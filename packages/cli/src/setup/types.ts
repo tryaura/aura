@@ -16,6 +16,8 @@ import type { WizardFlowContext, WizardIo } from "./wizard-types.js";
 
 /** What the apps step decided; see `steps/apps.ts`. */
 interface AppSelections {
+  /** Detected apps deliberately left outside the manifest's managed app map. */
+  readonly ignored?: readonly string[] | undefined;
   /** Adapter ids the user chose to manage, in catalog order. */
   readonly managed: readonly string[];
 }
@@ -53,6 +55,8 @@ interface InstructionSelections {
 interface SnippetSelections {
   /** Available selected ids in picker order, followed by locked unavailable selections. */
   readonly selected: readonly string[];
+  /** Existing selections whose source revision the user explicitly reviewed and accepted. */
+  readonly updates?: readonly string[] | undefined;
 }
 
 export interface SkillSelection {
@@ -72,6 +76,8 @@ interface SkillSelections {
    */
   readonly resolved?: readonly ResolvedSkillPack[] | undefined;
   readonly selected: readonly SkillSelection[];
+  /** Existing source revisions explicitly reviewed and accepted, keyed by source plus id. */
+  readonly updates?: readonly string[] | undefined;
 }
 
 interface McpSelections {
@@ -122,6 +128,8 @@ export interface SetupStepContext {
   readonly manifest: AuraManifestState;
   readonly mcpCatalog: McpSetupCatalog;
   readonly model: WorkspaceModel;
+  /** Active team-preset defaults and the explicit reference this run must persist. */
+  readonly preset?: SetupPresetContext | undefined;
   readonly selections: SetupSelections;
   /**
    * The skills the run can install, fetched on first use.
@@ -137,6 +145,15 @@ export interface SetupStepContext {
    * back what that step resolved, and skips the whole catalog when the step did not run.
    */
   readonly snippetCatalog: SnippetCatalog;
+}
+
+export interface SetupPresetContext {
+  readonly checkSummary: readonly string[];
+  readonly explicit: boolean;
+  readonly name: string;
+  readonly reference: string;
+  readonly skills: readonly SkillSelection[];
+  readonly snippets: readonly string[];
 }
 
 /** The out-of-band outcome of a step the user backed out of. */

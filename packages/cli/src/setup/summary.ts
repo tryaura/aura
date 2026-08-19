@@ -46,17 +46,20 @@ export function renderSetupSummary(
 }
 
 const NOTICE_HEADINGS: Readonly<Record<SetupNotice["kind"], string>> = Object.freeze({
+  held: "Managed content kept at its recorded revision:",
   overwritten: "Hand edits Aura is replacing:",
+  policy: "Effective check policy:",
   preserved: "Preserved content Aura does not own:",
 });
 
 function renderNotices(notices: readonly SetupNotice[], output: Writable): void {
-  for (const kind of ["overwritten", "preserved"] as const) {
+  for (const kind of ["overwritten", "preserved", "held", "policy"] as const) {
     const matching = notices.filter((notice) => notice.kind === kind);
     if (matching.length === 0) {
       continue;
     }
-    output.write(`\n${NOTICE_HEADINGS[kind]}\n`);
+    const heading = matching.find((notice) => notice.heading !== undefined)?.heading;
+    output.write(`\n${safe(heading ?? NOTICE_HEADINGS[kind])}\n`);
     for (const notice of matching) {
       output.write(`  · ${safe(notice.message)}\n`);
     }

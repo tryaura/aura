@@ -70,7 +70,7 @@ and the snapshots together.
 ## Releases and versioning
 
 - `0.0.0` marks a private, unpublished package. The publishable trio — `@tryaura/aura-sdk`,
-  `@tryaura/aura-cli`, `@tryaura/aura-testkit` — sits at `0.1.0` and is kept in lockstep;
+  `@tryaura/aura-cli`, `@tryaura/aura-testkit` — sits at `0.1.1` and is kept in lockstep;
   `scripts/verify-packages.mjs` asserts every public manifest against the SDK's version.
 - `pnpm verify:packages` is the clean-room check: it packs the trio, validates tarball contents
   and manifests (no install hooks, no private-dependency leaks), installs only those tarballs into

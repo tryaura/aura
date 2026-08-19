@@ -18,6 +18,7 @@ export function serverNames(result: Awaited<ReturnType<typeof mcpStep.gather>>):
 
 export interface ContextOptions {
   readonly interactive?: boolean | undefined;
+  readonly overriddenRequiredIds?: readonly string[] | undefined;
 }
 
 export function context(
@@ -25,7 +26,7 @@ export function context(
   requiredIds: readonly string[] = [],
   options: ContextOptions = {},
 ): SetupStepContext {
-  const manifest = readyManifest();
+  const manifest = readyManifest(options.overriddenRequiredIds);
   const model = createWorkspaceModel({
     availableMcpServers: definitions,
     apps: apps().flatMap((entry) => (entry.kind === "detected" ? [entry.app] : [])),
@@ -81,7 +82,9 @@ function detectedApp(adapterId: string, displayName: string): AppCatalogEntry {
   };
 }
 
-function readyManifest(): Extract<WorkspaceModel["manifest"], { readonly status: "ready" }> {
+function readyManifest(
+  overriddenRequiredIds: readonly string[] | undefined,
+): Extract<WorkspaceModel["manifest"], { readonly status: "ready" }> {
   return {
     exists: true,
     path: "/home/dev/agents/aura.json",
@@ -93,6 +96,9 @@ function readyManifest(): Extract<WorkspaceModel["manifest"], { readonly status:
         cursor: { managed: true },
       },
       mcpServers: [],
+      ...(overriddenRequiredIds === undefined
+        ? {}
+        : { overrides: { requiredMcpServers: overriddenRequiredIds } }),
       ownership: {},
       schemaVersion: 1,
       skills: [],

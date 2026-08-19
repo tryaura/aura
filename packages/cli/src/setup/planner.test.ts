@@ -41,6 +41,35 @@ describe("planSetup", () => {
     expect(outcome.blockers).toEqual([]);
   });
 
+  it("creates a sticky manifest for an explicit preset without copying preset checks", async () => {
+    const model = await scan();
+    const base = context(model, false);
+
+    const outcome = planSetup({
+      ...base,
+      preset: {
+        checkSummary: ["MGD-002: disabled"],
+        explicit: true,
+        name: "Acme",
+        reference: "plugin:acme/onboarding",
+        skills: [],
+        snippets: [],
+      },
+    });
+
+    expect(outcome.manifest.preset).toBe("plugin:acme/onboarding");
+    expect(outcome.manifest.checks).toBeUndefined();
+    // The preset is named once, in the group heading, not repeated on every setting.
+    expect(outcome.notices).toEqual([
+      {
+        heading: "Effective check policy from preset Acme (not copied into your manifest):",
+        kind: "policy",
+        message: "MGD-002: disabled",
+      },
+    ]);
+    expect(operationPaths(outcome)).toEqual([join(model.homeDir, "agents", "aura.json")]);
+  });
+
   it("omits an existing manifest when its parsed state and mode already match", async () => {
     const model = await scan(seedManifest(0o600));
 

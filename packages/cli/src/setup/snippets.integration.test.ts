@@ -192,6 +192,36 @@ describe("snippet setup integration", () => {
     expect(await manifestIds(fixture.homeDir)).toEqual([]);
   });
 
+  it("holds a newer source revision on a non-interactive run and says which one it held", async () => {
+    // Holding is the safe default, but a run that holds silently is indistinguishable from a run
+    // with nothing to do — exactly the reading a `--yes` run would get wrong.
+    const fixture = await createFixture();
+    const sourcePath = join(fixture.workspace, "rules.md");
+    await writeFile(sourcePath, "Version one.\n", "utf8");
+    const before = createPluginRegistry([
+      snippetPlugin([snippet("fixture/rules", sourcePath, "general", "Rules")]),
+    ]);
+    await expect(runSetup(fixture.request(before, answers(["fixture/rules"], true)))).resolves.toBe(
+      0,
+    );
+
+    const sharedPath = join(fixture.homeDir, "agents", "AGENTS.md");
+    const installed = await readFile(sharedPath, "utf8");
+    await writeFile(sourcePath, "Version two.\n", "utf8");
+    const after = createPluginRegistry([
+      snippetPlugin([
+        { ...snippet("fixture/rules", sourcePath, "general", "Rules"), version: "2.0.0" },
+      ]),
+    ]);
+
+    await expect(runSetup(fixture.request(after, answers(["fixture/rules"])))).resolves.toBe(0);
+
+    await expect(readFile(sharedPath, "utf8")).resolves.toBe(installed);
+    expect(await manifestSnippets(fixture.homeDir)).toMatchObject([{ version: "1.0.0" }]);
+    expect(fixture.output()).toContain("Managed content kept at its recorded revision:");
+    expect(fixture.output()).toContain("fixture/rules stays at 1.0.0; 2.0.0 is available.");
+  });
+
   it("preserves and reports a tagged section absent from the manifest ledger", async () => {
     const fixture = await createFixture();
     const sourcePath = join(fixture.workspace, "owned.md");

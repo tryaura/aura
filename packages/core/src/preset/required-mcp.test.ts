@@ -129,6 +129,35 @@ describe("applyRequiredMcpServers", () => {
       'MCP server "official/docs" required by Acme platform is already configured as "docs", so your own settings were kept.',
     ]);
   });
+
+  it("records an explicit manifest override without projecting it as desired configuration", () => {
+    const model = createWorkspaceModel({
+      apps: [app],
+      availableMcpServers: [catalog],
+      manifest: {
+        exists: true,
+        path: "/home/dev/agents/aura.json",
+        status: "ready",
+        value: {
+          apps: { "claude-code": { managed: true } },
+          mcpServers: [],
+          overrides: { requiredMcpServers: ["official/docs"] },
+          ownership: {},
+          schemaVersion: 1,
+          skills: [],
+          snippets: [],
+        },
+      },
+      sharedInstructions: { exists: false, path: "/home/dev/agents/AGENTS.md" },
+    });
+
+    const projected = applyRequiredMcpServers(model, config());
+
+    expect(projected.model.requiredMcpServers).toBeUndefined();
+    expect(projected.model.overriddenRequiredMcpServers).toEqual([
+      { catalogId: "official/docs", requiredBy: "Acme platform" },
+    ]);
+  });
 });
 
 function config(): AuraEffectiveConfig {

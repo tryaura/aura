@@ -23,6 +23,7 @@ Every top-level section is required, including sections that are still empty:
   "apps": {
     "claude-code": { "managed": true }
   },
+  "ignoredApps": ["cursor"],
   "snippets": [
     {
       "id": "official/commit-conventions",
@@ -66,6 +67,9 @@ Every top-level section is required, including sections that are still empty:
       "scope": "project"
     }
   ],
+  "overrides": {
+    "requiredMcpServers": ["official/github"]
+  },
   "ownership": {
     "claude-code": {
       "mcpServerNames": [],
@@ -78,13 +82,25 @@ Every top-level section is required, including sections that are still empty:
 `preset` is the sticky team preset reference used when `--preset` is absent. `checks` stores
 per-user activation, severity, and threshold overrides. Both fields are optional for compatibility
 with existing manifests, and `check` never persists either field automatically. `apps` records
-which detected applications Aura should manage. Snippet versions and hashes record
+which detected applications Aura should manage. `ignoredApps` records detected applications the
+user deliberately left unselected, so later setup and MGD-003 runs do not ask about them again;
+selecting an app clears its ignore. Snippet versions and hashes record
 the exact selected content; a pinned snippet is kept at that revision. Each skill records its
 source-local, kebab-case `id`, stable source provenance, source version, deterministic tree hash,
 and pin state. Source provenance starts with `plugin:`, `directory:`, or `driver:`. A pinned skill
 keeps its recorded revision. Each `mcpServers` entry records one desired server, the applications
 that should receive it, and whether it belongs in global or project configuration. `catalogId`
 records provenance for a catalog selection and is omitted for a custom server.
+
+`overrides.requiredMcpServers` records an explicit decision to omit a server required by the active
+preset. Setup requires interactive confirmation before adding this override, clears it when the
+server is selected or the preset no longer requires it, and reports the deviation through MCP-001
+without trying to converge the omitted server. Both new lists accept at most 256 unique, valid IDs.
+They and `overrides` are optional; no schema-version bump is required.
+
+Unknown keys inside `overrides` are preserved so a manifest written by a newer Aura survives a
+downgrade, bounded at 32 camelCase names — setup rebuilds this object on every run, so the
+forward-compatibility window is deliberately not general-purpose storage.
 
 Aura installs each managed skill once below `~/agents/skills/<id>` and links supported application
 skill directories to that shared copy. Two sources may publish the same local ID, but a manifest

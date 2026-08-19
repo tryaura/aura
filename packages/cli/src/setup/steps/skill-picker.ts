@@ -29,6 +29,7 @@ export function pickerOptions(inputs: SkillStageInputs): readonly WizardOption[]
   );
   const policy = inputs.catalog.policy;
   const unsupported = !hasSkillsHome(inputs.managedApps);
+  const preset = new Set(inputs.presetSkills.map((skill) => skillIdentity(skill.source, skill.id)));
 
   const entryRows = sortForDisplay(inputs.listing.entries, (entry) => [
     entry.sourceName,
@@ -38,7 +39,7 @@ export function pickerOptions(inputs: SkillStageInputs): readonly WizardOption[]
     description: `${entry.description} · v${entry.version}`,
     ...(unsupported ? { disabled: true, disabledNote: "no selected app supports skills" } : {}),
     group: entry.sourceName,
-    label: entry.name,
+    label: `${entry.name}${preset.has(entry.identity) ? " (from preset)" : ""}`,
     ...(entry.preview === undefined ? {} : { preview: entry.preview }),
     value: entry.identity,
   }));
@@ -86,5 +87,20 @@ export function pickerOptions(inputs: SkillStageInputs): readonly WizardOption[]
       value: `source:${source.id}`,
     }));
 
-  return [...entryRows, ...manifestRows, ...sourceRows];
+  const represented = new Set([
+    ...inputs.listing.entries.map((entry) => entry.identity),
+    ...inputs.manifestSkills.map((skill) => skillIdentity(skill.source, skill.id)),
+  ]);
+  const presetRows = inputs.presetSkills
+    .filter((skill) => !represented.has(skillIdentity(skill.source, skill.id)))
+    .map((skill): WizardOption => ({
+      description: "Selected by the active team preset, but unavailable in this run.",
+      disabled: true,
+      disabledNote: "preset selection unavailable",
+      group: skill.source,
+      label: `${skill.id} (from preset)`,
+      value: skillIdentity(skill.source, skill.id),
+    }));
+
+  return [...entryRows, ...manifestRows, ...presetRows, ...sourceRows];
 }

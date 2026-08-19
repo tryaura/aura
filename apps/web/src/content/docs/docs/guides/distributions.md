@@ -9,13 +9,13 @@ For a complete private-plugin example that bundles an internal agent adapter, sn
 and MCP definitions, follow
 [Build an internal distribution](/docs/guides/internal-distribution/).
 
-> The `0.1.0` packages are release candidates and are not published to npm yet. Use local tarballs until publication is enabled in a later milestone.
+> The three packages are published to npm and released in lockstep. Pin all of them to the same version.
 
 ## Set up the project
 
-Use Node.js 24, pnpm, TypeScript, and Bun 1.3.14. Add matching `0.1.0` artifacts for `@tryaura/aura-cli`, `@tryaura/aura-sdk`, and `@tryaura/aura-testkit`.
+Use Node.js 24, pnpm, TypeScript, and Bun 1.3.14. Add `@tryaura/aura-cli`, `@tryaura/aura-sdk`, and `@tryaura/aura-testkit` at the same version.
 
-Before registry publication, replace versions with `file:` paths to all three locally packed tarballs and add pnpm overrides for the same names. This makes transitive CLI and SDK references resolve to tarballs without contacting a registry. `pnpm verify:packages` performs this exact isolated-store walkthrough.
+To try an unreleased change, replace the versions with `file:` paths to all three locally packed tarballs and add pnpm overrides for the same names. This makes transitive CLI and SDK references resolve to tarballs without contacting a registry. `pnpm verify:packages` performs this exact isolated-store walkthrough.
 
 ## Compose the executable
 

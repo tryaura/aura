@@ -2,6 +2,7 @@ import type {
   AuraManifest,
   AuraManifestApp,
   AuraManifestOwnership,
+  AuraManifestOverrides,
   AuraManifestSkill,
   AuraManifestSnippet,
   JsonObject,
@@ -26,8 +27,14 @@ import {
 export { AuraManifestValidationError } from "./schema-values.js";
 
 const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
+const APP_ID_PATTERN = /^[a-z0-9][a-z0-9._-]*$/u;
+const MCP_CATALOG_ID_PATTERN = /^[a-z0-9][a-z0-9._-]*\/[a-zA-Z0-9][a-zA-Z0-9._-]*$/u;
 const SKILL_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 const SKILL_SOURCE_PATTERN = /^(?:directory|driver|plugin):[^\s:]+$/u;
+const OVERRIDE_KEY_PATTERN = /^[a-z][a-zA-Z0-9]{0,63}$/u;
+
+/** Room for several future override kinds without leaving the forward-compat window unbounded. */
+const MAX_OVERRIDE_KEYS = 32;
 
 /**
  * How deep the manifest may nest.
@@ -54,13 +61,75 @@ export function validateAuraManifest(value: unknown): AuraManifest {
     ...source,
     apps: apps(source["apps"]),
     ...optionalChecks(source["checks"]),
+    ...optionalIdList(source["ignoredApps"], "$.ignoredApps", APP_ID_PATTERN, "ignoredApps"),
     mcpServers: mcpServers(source["mcpServers"]),
     ownership: ownership(source["ownership"]),
+    ...optionalOverrides(source["overrides"]),
     ...optionalPreset(source["preset"]),
     schemaVersion: AURA_MANIFEST_SCHEMA_VERSION,
     skills: skills(source["skills"]),
     snippets: snippets(source["snippets"]),
   });
+}
+
+/**
+ * Reads `overrides`, keeping the extension keys a newer Aura may have written.
+ *
+ * Passing unknown keys through matches how the top-level object is normalized, so a downgrade does
+ * not quietly delete a newer build's decisions. Unlike the top level, though, this object is
+ * rebuilt from scratch on every setup run, so an unbounded bag here would be rewritten verbatim
+ * forever: the key count and spelling are bounded to keep the forward-compatibility window from
+ * doubling as unbounded manifest storage.
+ */
+function optionalOverrides(value: JsonValue | undefined): {
+  readonly overrides?: AuraManifestOverrides;
+} {
+  if (value === undefined) {
+    return {};
+  }
+  const source = requiredObject(value, "$.overrides");
+  const keys = Object.keys(source);
+  if (keys.length > MAX_OVERRIDE_KEYS) {
+    throw invalid("$.overrides", `must contain at most ${String(MAX_OVERRIDE_KEYS)} keys`);
+  }
+  for (const key of keys) {
+    if (!OVERRIDE_KEY_PATTERN.test(key)) {
+      throw invalid(`$.overrides.${key}`, "must be a camelCase override name");
+    }
+  }
+  const required = optionalIdList(
+    source["requiredMcpServers"],
+    "$.overrides.requiredMcpServers",
+    MCP_CATALOG_ID_PATTERN,
+    "requiredMcpServers",
+  );
+  return { overrides: Object.freeze({ ...source, ...required }) };
+}
+
+function optionalIdList(
+  value: JsonValue | undefined,
+  path: string,
+  pattern: RegExp,
+  key: string,
+): Readonly<Record<string, readonly string[]>> {
+  if (value === undefined) {
+    return {};
+  }
+  const ids = stringArray(value, path);
+  if (ids.length > 256) {
+    throw invalid(path, "must contain at most 256 ids");
+  }
+  const seen = new Set<string>();
+  for (const [index, id] of ids.entries()) {
+    if (!pattern.test(id)) {
+      throw invalid(`${path}[${String(index)}]`, "must be a valid id");
+    }
+    if (seen.has(id)) {
+      throw invalid(`${path}[${String(index)}]`, "must not duplicate another id");
+    }
+    seen.add(id);
+  }
+  return { [key]: ids };
 }
 
 function skills(value: JsonValue | undefined): readonly AuraManifestSkill[] {

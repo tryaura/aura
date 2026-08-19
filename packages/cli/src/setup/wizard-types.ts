@@ -137,3 +137,25 @@ export function defaultAnswer(question: WizardQuestion): WizardAnswer {
 export function selectedValues(answer: WizardAnswer | undefined): readonly string[] {
   return answer === undefined || answer.kind !== "options" ? [] : answer.values;
 }
+
+/**
+ * Folds one review form's answers back into the decisions carried by a chain's state.
+ *
+ * Review forms are keyed `<prefix><identity>` so a single form can carry one question per item.
+ * Answers already given for items this form did not ask about are kept: a stage re-entered through
+ * ← re-asks a subset, and dropping the rest would silently reset decisions the user already made.
+ */
+export function foldDecisions(
+  previous: Readonly<Record<string, string>>,
+  answers: WizardAnswers,
+  prefix: string,
+  fallback: string,
+): Readonly<Record<string, string>> {
+  const decisions = { ...previous };
+  for (const [id, answer] of Object.entries(answers)) {
+    if (id.startsWith(prefix)) {
+      decisions[id.slice(prefix.length)] = selectedValues(answer)[0] ?? fallback;
+    }
+  }
+  return decisions;
+}
