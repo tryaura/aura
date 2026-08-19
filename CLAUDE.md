@@ -15,7 +15,7 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) for detail. The non-negotiables:
 - **Layering:** `packages/testkit` depends on the CLI, so `packages/cli` must never import it —
   CLI tests use local fixtures.
 - **Versioning:** `0.0.0` = private/unpublished; the publishable trio (sdk, cli, testkit) stays
-  in lockstep at `0.1.1`.
+  in lockstep at `0.2.0`.
 - **PRs:** conventional-commit title; the title becomes the squash commit subject.
 - Never name the tool configured under `.conductor/` in product source or docs, and never
   reference the maintainer's issue tracker (names or issue ids) anywhere in the repo.
