@@ -127,17 +127,20 @@ function detectMissingLink(app: AppModel, model: WorkspaceModel): readonly Detec
   ];
 }
 
-/** Whether the declared entry already carries a link the declared mechanism would have written. */
+/**
+ * Whether the declared entry already carries a link the declared mechanism would have written.
+ *
+ * Target validity belongs to INS-001 and INS-006. INS-002 only owns the link's mechanism and
+ * destination; treating a missing shared source as a missing link produces a zero-operation fix
+ * because the planner correctly sees that the link itself is already converged.
+ */
 function linksToShared(app: AppModel, shared: ResolvedSharedLink, sharedPath: string): boolean {
   const entryPath = resolve(shared.entryPath);
   return app.instructionFiles.some(
     (document) =>
       resolve(document.path) === entryPath &&
       document.links.some(
-        (link) =>
-          link.valid &&
-          compatibleLink(shared.kind, link.kind) &&
-          resolve(link.targetPath) === sharedPath,
+        (link) => compatibleLink(shared.kind, link.kind) && resolve(link.targetPath) === sharedPath,
       ),
   );
 }
