@@ -43,6 +43,20 @@ interface WalkState {
   totalBytes: number;
 }
 
+/** The tree being walked, as the caller spelled it and as the filesystem canonicalizes it. */
+interface WalkRoot {
+  /**
+   * Canonical directory every file read must land inside.
+   *
+   * Resolved once, because the caller's spelling routinely is not canonical — a temporary
+   * directory on macOS reaches its files through a symlink — and a boundary that does not match
+   * what the filesystem answers would refuse the whole tree.
+   */
+  readonly boundary: string;
+  /** The root as it was given, which every reported path stays relative to. */
+  readonly path: string;
+}
+
 /** The bounds an untrusted, driver-supplied tree is read under. */
 export const DRIVER_WALK_POLICY: WalkPolicy = Object.freeze({
   maxFileBytes: MAX_SKILL_FILE_BYTES,
@@ -71,15 +85,9 @@ export async function walkTree(
   const files: ResolvedSkillFile[] = [];
   const entries: SharedSkillEntry[] = [];
   const state: WalkState = { portablePaths: new Set(), totalBytes: 0 };
-  const problem = await walkPath(
-    resolve(root),
-    resolve(root),
-    reader,
-    files,
-    entries,
-    state,
-    policy,
-  );
+  const path = resolve(root);
+  const walkRoot: WalkRoot = { boundary: (await reader.realPath(path)) ?? path, path };
+  const problem = await walkPath(walkRoot, path, reader, files, entries, state, policy);
   return {
     entries: Object.freeze(entries),
     files: Object.freeze(files.sort((left, right) => comparePortablePaths(left.path, right.path))),
@@ -89,7 +97,7 @@ export async function walkTree(
 
 // fallow-ignore-next-line complexity -- every branch rejects or resolves one filesystem entry kind.
 async function walkPath(
-  root: string,
+  root: WalkRoot,
   path: string,
   reader: FileReader,
   files: ResolvedSkillFile[],
@@ -97,11 +105,16 @@ async function walkPath(
   state: WalkState,
   policy?: WalkPolicy,
 ): Promise<WalkProblem | undefined> {
-  const contents = await reader.read(
+  // Bounded, because the tree a driver materialized is whatever that driver wrote: an entry
+  // swapped for a link between the walk deciding what it is and the read capturing it would
+  // otherwise deliver a file from outside the tree under a name from inside it. `readWithin` reads
+  // from the object it verified, so contents can only come from within the tree.
+  const { contents } = await reader.readWithin(
     path,
+    [root.boundary],
     policy === undefined ? undefined : { maxBytes: policy.maxFileBytes },
   );
-  const relativePath = portablePath(relative(root, path));
+  const relativePath = portablePath(relative(root.path, path));
   if (!contents.exists) {
     return {
       kind: "unreadable",
