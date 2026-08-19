@@ -115,19 +115,21 @@ The bundled checks cover:
 
 ### Check flags
 
-| Flag             | Purpose                                                                                          |
-| ---------------- | ------------------------------------------------------------------------------------------------ |
-| `--only`         | Select a check ID, category, or canonical application ID. Repeat to union selectors.             |
-| `--json`         | Emit JSON on a stream separate from prompts and progress. Also applies to `--explain`.           |
-| `--json-version` | Select the JSON contract version; version `1` is supported and remains the default.              |
-| `--detail`       | Include diagnostic detail and fix diffs. May contain file contents.                              |
-| `--explain`      | Explain a check by ID without scanning adapters or repository state.                             |
-| `--fix`          | Preview automatic fixes and apply them after one confirmation.                                   |
-| `--interactive`  | With `--fix`, choose guided remediations before the combined preview. Requires terminal prompts. |
-| `--dry-run`      | With `--fix`, prepare and preview the same plan without confirming or writing.                   |
-| `--yes`          | With `--fix`, apply automatic fixes without confirmation.                                        |
-| `--home`         | Override the home directory. Must be absolute.                                                   |
-| `--path`         | Override the executable search path. Must list absolute directories.                             |
+| Flag             | Purpose                                                                                            |
+| ---------------- | -------------------------------------------------------------------------------------------------- |
+| `--only`         | Select a check ID, category, or canonical application ID. Repeat to union selectors.               |
+| `--json`         | Emit untruncated JSON on a stream separate from prompts and progress. Also applies to `--explain`. |
+| `--json-version` | Select the JSON contract version; version `1` is supported and remains the default.                |
+| `--detail`       | Include diagnostic detail and fix diffs. May contain file contents.                                |
+| `--verbose`      | Expand human output within its 100-finding and 100-location safety ceilings.                       |
+| `--no-color`     | Disable terminal colors. This global flag is accepted before or after a command.                   |
+| `--explain`      | Explain a check by ID without scanning adapters or repository state.                               |
+| `--fix`          | Preview automatic fixes and apply them after one confirmation.                                     |
+| `--interactive`  | With `--fix`, choose guided remediations before the combined preview. Requires terminal prompts.   |
+| `--dry-run`      | With `--fix`, prepare and preview the same plan without confirming or writing.                     |
+| `--yes`          | With `--fix`, apply automatic fixes without confirmation.                                          |
+| `--home`         | Override the home directory. Must be absolute.                                                     |
+| `--path`         | Override the executable search path. Must list absolute directories.                               |
 
 The versioned JSON contract and published schema are documented in the
 [check JSON reference](https://tryaura.sh/docs/reference/check-json/).

@@ -48,6 +48,9 @@ export function renderRootHelp(branding: CliBranding): string {
         ],
         title: "Help",
       },
+      // Only the global flag: --home and --path belong to the scanning commands, so listing them
+      // on the root screen would advertise a parse error.
+      { rows: [NO_COLOR_ROW], title: "Advanced" },
     ],
     branding.docsUrl === undefined ? [] : [`Docs: ${branding.docsUrl}`],
   );
@@ -84,7 +87,7 @@ export function renderCheckHelp(branding: CliBranding): string {
         rows: [
           {
             term: "--verbose",
-            text: "Show every occurrence, location, passed check, and application",
+            text: "Expand occurrences and locations; add passed checks and applications",
           },
           { term: "--detail", text: "Include the failing plugin's own error text" },
         ],
@@ -152,7 +155,10 @@ export function renderSetupHelp(branding: CliBranding, addKinds: readonly string
       },
       { rows: advancedRows(), title: "Advanced" },
     ],
-    [`After setup, run '${bin} check' to verify the machine converged`],
+    [
+      `After setup, run '${bin} check' to verify the machine converged`,
+      "Exit codes: 0 applied/converged/dry-run/declined · 1 aborted or warnings · 2 conflicts/errors/invalid usage · 3 operational failures",
+    ],
   );
 }
 
@@ -209,10 +215,14 @@ export function renderUnknownCommand(branding: CliBranding, input: string): stri
   );
 }
 
+/** The one flag every screen shares, because it is consumed before any command parses. */
+const NO_COLOR_ROW: HelpRow = { term: "--no-color", text: "Disable terminal colors" };
+
 /** Test and CI plumbing, present on every command and interesting to almost nobody. */
 function advancedRows(): readonly HelpRow[] {
   return [
     { term: "--home <dir>", text: "Override the home directory" },
+    NO_COLOR_ROW,
     { term: "--path <dir>", text: "Override the executable search path" },
   ];
 }

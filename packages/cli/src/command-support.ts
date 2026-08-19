@@ -31,6 +31,12 @@ export function writeOptionRejection(
   return 2;
 }
 
+/** Writes the one-line operational failure a run reports when it cannot finish its own work. */
+export function writeRunFailure(error: unknown, branding: CliBranding, stderr: Writable): void {
+  const message = error instanceof Error ? error.message : String(error);
+  stderr.write(`${branding.displayName}: ${message}\n`);
+}
+
 /**
  * Whether Aura can hold a conversation through this stream.
  *
