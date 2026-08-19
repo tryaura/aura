@@ -64,7 +64,7 @@ describe("aura check --fix", () => {
 
     const result = await run(seed, ["check", "--fix", "--dry-run"]);
 
-    expect(result.exitCode).toBe(2);
+    expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain(`create ${cursorPath}`);
     expect(result.stdout).not.toContain("diff --aura");
     expect(result.stdout).toContain("Re-run with --detail to see the full diff of every change.");
@@ -91,7 +91,7 @@ describe("aura check --fix", () => {
 
     const result = await run(seed, ["check", "--fix", "--yes"]);
 
-    expect(result.exitCode).toBe(2);
+    expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("Consolidate its content");
     await expect(readFile(codexPath, "utf8")).resolves.toBe(original);
     expect((await lstat(codexPath)).isSymbolicLink()).toBe(false);

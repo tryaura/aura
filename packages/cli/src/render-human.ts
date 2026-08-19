@@ -65,7 +65,7 @@ export function renderHumanCheckReport(
     renderInventory(report, branding, output, context);
   }
   renderMore(report, branding, output, context, shown, checks);
-  output.write(`\n${verdictStyle(report, context.style)(resultLine(report))}\n`);
+  output.write(`\n${resultLine(report, context.style)}\n`);
 }
 
 /**
@@ -265,15 +265,17 @@ function humanVerdict(report: CheckReport): string {
   }
 }
 
-function resultLine(report: CheckReport): string {
-  return `Result: ${humanVerdict(report)} (exit ${String(report.summary.exitCode)})`;
+function resultLine(report: CheckReport, style: Style): string {
+  const decorateVerdict = verdictStyle(report, style);
+  const decorateExit = report.summary.exitCode === 0 ? style.green : decorateVerdict;
+  return `${decorateVerdict(`Result: ${humanVerdict(report)}`)} (${decorateExit(`exit ${String(report.summary.exitCode)}`)})`;
 }
 
 function verdictStyle(report: CheckReport, style: Style): (text: string) => string {
   if (report.status === "clean") {
     return style.green;
   }
-  return report.status === "warning" || report.status === "empty" ? style.yellow : style.red;
+  return report.status === "operational-error" ? style.red : style.yellow;
 }
 
 function hasHiddenDetail(

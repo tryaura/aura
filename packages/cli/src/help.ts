@@ -117,7 +117,7 @@ export function renderCheckHelp(branding: CliBranding): string {
       { rows: advancedRows(), title: "Advanced" },
     ],
     [
-      "Exit codes: 0 clean · 1 warnings · 2 errors or usage/state conflicts · 3 operational failures",
+      "Exit codes: 0 completed check · 2 usage/state conflicts or no checks · 3 operational failures",
     ],
   );
 }

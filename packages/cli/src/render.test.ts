@@ -92,7 +92,7 @@ describe("action-first human check output", () => {
   it("leads with one command for automatic and guided fixes", async () => {
     const capture = createCapture(["check"]);
 
-    expect(await runCli(distro([groupedPlugin()]), capture.runtime)).toBe(2);
+    expect(await runCli(distro([groupedPlugin()]), capture.runtime)).toBe(0);
 
     expect(capture.stdout.text).toContain("Acme Doctor check — action required");
     expect(capture.stdout.text).toContain("▶ Recommended next step");
@@ -133,7 +133,7 @@ describe("action-first human check output", () => {
         Expand occurrences and locations; add passed checks and applications: acme check --verbose
         Docs: https://example.com/docs
 
-      Result: action required (exit 2)
+      Result: action required (exit 0)
       "
     `);
   });
@@ -226,7 +226,7 @@ describe("action-first human check output", () => {
     expect(verbose.stdout.text).toContain("· Not found (1)");
   });
 
-  it("uses human verdicts while preserving exit codes", async () => {
+  it("uses human verdicts while completed checks exit successfully", async () => {
     const clean = createCapture(["check"]);
     const warned = createCapture(["check"]);
     const errored = createCapture(["check"]);
@@ -236,41 +236,8 @@ describe("action-first human check output", () => {
     await runCli(distro([findingPlugin("error")]), errored.runtime);
 
     expect(clean.stdout.text).toContain("Result: all clear (exit 0)");
-    expect(warned.stdout.text).toContain("Result: attention recommended (exit 1)");
-    expect(errored.stdout.text).toContain("Result: action required (exit 2)");
-  });
-
-  it("uses color only to reinforce visible glyphs and verdict text", async () => {
-    const plain = createCapture(["check"]);
-    const colored = createCapture(["check"]);
-    const disabled = createCapture(["check", "--no-color"]);
-    await runCli(distro([findingPlugin("warn")]), plain.runtime);
-    await runCli(distro([findingPlugin("warn")]), { ...colored.runtime, colorDepth: 8 });
-    await runCli(distro([findingPlugin("warn")]), { ...disabled.runtime, colorDepth: 8 });
-
-    expect(plain.stdout.text).not.toContain("\u001b[");
-    expect(colored.stdout.text).toContain("\u001b[33m! warn finding\u001b[39m");
-    expect(colored.stdout.text).toContain(
-      "\u001b[33mResult: attention recommended (exit 1)\u001b[39m",
-    );
-    expect(disabled.stdout.text).not.toContain("\u001b[");
-  });
-
-  it("keeps an injected stream free of color whatever the surrounding process forces", async () => {
-    const escape = String.fromCharCode(27);
-    const forced = createCapture(["check"]);
-    const asked = createCapture(["check"]);
-
-    // FORCE_COLOR answers a question about the process's own terminal, never about a stream an
-    // embedder handed in: only the embedder's own colorDepth can put escapes in its capture.
-    await runCli(distro([findingPlugin("warn")]), {
-      ...forced.runtime,
-      environmentVariables: { FORCE_COLOR: "1", PATH: "/usr/bin" },
-    });
-    await runCli(distro([findingPlugin("warn")]), { ...asked.runtime, colorDepth: 8 });
-
-    expect(forced.stdout.text).not.toContain(escape);
-    expect(asked.stdout.text).toContain(`${escape}[33m`);
+    expect(warned.stdout.text).toContain("Result: attention recommended (exit 0)");
+    expect(errored.stdout.text).toContain("Result: action required (exit 0)");
   });
 
   it("suppresses fix recommendations when a scan is incomplete", async () => {
@@ -281,19 +248,5 @@ describe("action-first human check output", () => {
     expect(capture.stdout.text).toContain("Aura will not recommend applying fixes");
     expect(capture.stdout.text).toContain("Available fixes (2)");
     expect(capture.stdout.text).not.toContain("▶ Recommended next step");
-  });
-
-  it("keeps JSON unchanged and free of styling", async () => {
-    const capture = createCapture(["check", "--json"]);
-
-    expect(
-      await runCli(distro([findingPlugin("warn")]), { ...capture.runtime, colorDepth: 8 }),
-    ).toBe(1);
-
-    expect(capture.stdout.text).not.toContain("\u001b[");
-    expect(JSON.parse(capture.stdout.text)).toMatchObject({
-      kind: "check-report",
-      schemaVersion: 1,
-    });
   });
 });

@@ -155,13 +155,13 @@ describe("compiled Aura distribution", () => {
         },
         diagnostics: 0,
         errors: 1,
-        exitCode: 2,
+        exitCode: 0,
         informational: 0,
         passed: 23,
         warnings: 0,
       },
     });
-    expect(result.exitCode).toBe(2);
+    expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe("");
     expect(result.diffs).toEqual([]);
   });
@@ -193,7 +193,7 @@ describe("compiled Aura distribution", () => {
       ["ENV-004", "claude-permission-mode:plan"],
       ["ENV-004", "codex-project-trust:unknown"],
     ]);
-    expect(result.exitCode).toBe(2);
+    expect(result.exitCode).toBe(0);
     await expect(seed.invocations("claude")).resolves.toEqual([["--version"], ["auth", "status"]]);
     await expect(seed.invocations("codex")).resolves.toEqual([["--version"], ["login", "status"]]);
   });

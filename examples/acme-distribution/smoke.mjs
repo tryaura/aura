@@ -90,7 +90,7 @@ try {
 
   assert.equal(
     result.exitCode,
-    2,
+    0,
     JSON.stringify(
       { report: result.report, stderr: result.stderr, stdout: result.stdout },
       null,
@@ -110,7 +110,7 @@ try {
   const telemetryEnv = { ACME_TELEMETRY_FILE: telemetryFile };
 
   const check = await runBinary(["check"], telemetryEnv);
-  assert.equal(check.exitCode, 2, check.stdout);
+  assert.equal(check.exitCode, 0, check.stdout);
   const setup = await runBinary(["setup", "--dry-run"], telemetryEnv);
   assert.equal(setup.exitCode, 0, setup.stdout);
   const undo = await runBinary(["undo", "--list"], telemetryEnv);
@@ -132,7 +132,7 @@ try {
     assert.equal(event.distroVersion, "0.1.1");
     assert.match(event.at, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
   }
-  assert.equal(checkRun.exitCode, 2);
+  assert.equal(checkRun.exitCode, 0);
   // The report above carries the detected `1.2.3`, but telemetry deliberately drops it: an
   // application's version is a string an external tool returned, so it stops at this boundary.
   assert.deepEqual(

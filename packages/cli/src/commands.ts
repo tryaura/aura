@@ -52,7 +52,7 @@ export class CheckCommand extends Command<AuraCliContext> {
   static override usage = Command.Usage({
     description: "Inspect the current AI agent setup.",
     details:
-      "Exit codes: 0 clean/info, 1 warning, 2 errors or usage/state conflicts, 3 operational failures.",
+      "Exit codes: 0 completed check, 2 usage/state conflicts or no checks, 3 operational failures.",
     examples: [
       ["Run all checks", "$0 check"],
       ["Emit machine-readable output", "$0 check --json"],

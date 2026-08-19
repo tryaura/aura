@@ -15,14 +15,33 @@ const CHECK: Check = {
 };
 
 describe("createCheckReport", () => {
-  it("returns zero for clean and informational-only reports", () => {
+  it("returns zero for every completed report regardless of finding severity", () => {
     expect(report().summary.exitCode).toBe(0);
     expect(report({ findings: [finding("info")] }).summary.exitCode).toBe(0);
+    expect(report({ findings: [finding("warn")] })).toMatchObject({
+      status: "warning",
+      summary: { exitCode: 0 },
+    });
+    expect(report({ findings: [finding("warn"), finding("error")] })).toMatchObject({
+      status: "error",
+      summary: { exitCode: 0 },
+    });
   });
 
-  it("returns one for warnings and two when any error is present", () => {
-    expect(report({ findings: [finding("warn")] }).summary.exitCode).toBe(1);
-    expect(report({ findings: [finding("warn"), finding("error")] }).summary.exitCode).toBe(2);
+  it("preserves a forced failure exit code after producing a report", () => {
+    expect(report({ findings: [finding("error")], forcedExitCode: 2 })).toMatchObject({
+      status: "error",
+      summary: { exitCode: 2 },
+    });
+  });
+
+  it("supports setup's finding-sensitive end-on-green report", () => {
+    expect(
+      report({ findings: [finding("warn")], findingsAffectExitCode: true }).summary.exitCode,
+    ).toBe(1);
+    expect(
+      report({ findings: [finding("error")], findingsAffectExitCode: true }).summary.exitCode,
+    ).toBe(2);
   });
 
   it("treats scan diagnostics as errors and omits their untrusted detail", () => {

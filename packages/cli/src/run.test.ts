@@ -70,7 +70,7 @@ describe("runCli", () => {
 
       expect(await runCli(distro([plugin]), offline.runtime)).toBe(0);
       expect(requests).toBe(0);
-      expect(await runCli(distro([plugin]), online.runtime)).toBe(2);
+      expect(await runCli(distro([plugin]), online.runtime)).toBe(0);
       expect(requests).toBe(1);
       expect(online.stdout.text).toContain("remote probe failed");
     } finally {
@@ -178,7 +178,7 @@ describe("runCli", () => {
         homeDir: root,
       });
 
-      expect(exitCode).toBe(1);
+      expect(exitCode).toBe(0);
 
       expect(parseCheckReport(capture.stdout.text).fixes).toEqual([]);
       expect(capture.stderr.text).toContain(
@@ -221,11 +221,11 @@ describe("runCli", () => {
     const redacted = createCapture(["check", "--fix", "--dry-run", "--json"]);
     const detailed = createCapture(["check", "--fix", "--dry-run", "--json", "--detail"]);
 
-    expect(await runCli(distro([plugin]), redacted.runtime)).toBe(1);
+    expect(await runCli(distro([plugin]), redacted.runtime)).toBe(0);
     const redactedReport = parseCheckReport(redacted.stdout.text);
     expect(redactedReport.fixes?.[0]?.operations[0]).not.toHaveProperty("diff");
     expect(redacted.stdout.text).not.toContain("potentially secret contents");
-    expect(await runCli(distro([plugin]), detailed.runtime)).toBe(1);
+    expect(await runCli(distro([plugin]), detailed.runtime)).toBe(0);
     const detailedReport = parseCheckReport(detailed.stdout.text);
     expect(detailedReport.fixes?.[0]?.operations[0]?.diff).toContain("diff --aura");
     expect(detailed.stdout.text).toContain("potentially secret contents");
@@ -531,14 +531,14 @@ describe("runCli", () => {
     expect(search.stderr.text).toContain("(empty)");
   });
 
-  it("classifies manual findings and applies warning/error exit-code precedence", async () => {
+  it("classifies manual findings while completed checks exit successfully", async () => {
     const warning = createCapture(["check"]);
     const error = createCapture(["check"]);
 
-    expect(await runCli(distro([findingPlugin("warn")]), warning.runtime)).toBe(1);
+    expect(await runCli(distro([findingPlugin("warn")]), warning.runtime)).toBe(0);
     expect(warning.stdout.text).toContain("Manual attention (1)");
     expect(warning.stdout.text).toContain("! warn finding");
-    expect(await runCli(distro([findingPlugin("error")]), error.runtime)).toBe(2);
+    expect(await runCli(distro([findingPlugin("error")]), error.runtime)).toBe(0);
     expect(error.stdout.text).toContain("✗ error finding");
   });
 

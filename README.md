@@ -139,14 +139,15 @@ IDs. Categories are the local ID prefix, such as `ENV` in `ENV-003`. `claude` an
 are aliases for the canonical `claude-code` adapter ID. Repeated selectors are ORed within the
 check and application dimensions, then those dimensions are intersected.
 
-Check exit codes are stable enough to gate CI on:
+Check exit codes describe whether the command completed, independently of finding severity:
 
-| Code | Meaning                                                                                       |
-| ---- | --------------------------------------------------------------------------------------------- |
-| `0`  | Clean, or informational findings only.                                                        |
-| `1`  | Warning findings.                                                                             |
-| `2`  | Error findings, invalid usage or selectors, filesystem conflicts, or an empty check registry. |
-| `3`  | Adapter, check, plugin, registry, command, or fix preparation/application failures.           |
+| Code | Meaning                                                                                          |
+| ---- | ------------------------------------------------------------------------------------------------ |
+| `0`  | The check completed and reported its findings, including warning or error findings.              |
+| `2`  | Invalid usage or selectors, filesystem or fix conflicts, unavailable confirmation, or no checks. |
+| `3`  | Adapter, check, plugin, registry, command, or fix preparation/application failures.              |
+
+Use the report status or severity counts, rather than the process exit code, to gate CI on findings.
 
 ## How a scan works
 
