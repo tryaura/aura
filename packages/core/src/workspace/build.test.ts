@@ -283,7 +283,34 @@ describe("buildWorkspaceModel", () => {
     const outside = await buildWorkspaceModel({ ...options, reader: createMemoryReader() });
 
     expect(scan.model.projectRoot).toBe("/workspace");
+    expect(scan.model.gitMainWorktreeRoot).toBe("/workspace");
     expect(outside.model.projectRoot).toBeUndefined();
+    expect(outside.model.gitMainWorktreeRoot).toBeUndefined();
+  });
+
+  it("passes a linked worktree's primary checkout to adapters and the workspace model", async () => {
+    let received: AdapterParseInput | undefined;
+    const adapter = createTestAdapter({
+      parse: (input) => {
+        received = input;
+        return createSnapshot();
+      },
+    });
+
+    const { model } = await buildWorkspaceModel({
+      adapters: [adapter],
+      environment: createTestEnvironment({ cwd: "/worktrees/feature/packages/core" }),
+      reader: createMemoryReader({
+        "/worktrees/feature/.git": "gitdir: /repos/main/.git/worktrees/feature\n",
+      }),
+    });
+
+    expect(received?.projectRoot).toBe("/worktrees/feature");
+    expect(received?.gitMainWorktreeRoot).toBe("/repos/main");
+    expect(model).toMatchObject({
+      gitMainWorktreeRoot: "/repos/main",
+      projectRoot: "/worktrees/feature",
+    });
   });
 
   it("canonicalizes cwd and home before adapters construct paths", async () => {

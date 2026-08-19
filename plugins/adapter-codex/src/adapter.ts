@@ -48,7 +48,7 @@ export const codexAdapter = defineAdapter({
   mcpWrite: writeMcpServers,
   mcpSecrets: transformMcpSecrets,
   parse: (input) => {
-    const { cwd, files, homeDir, projectRoot } = input;
+    const { cwd, files, gitMainWorktreeRoot, homeDir } = input;
     const mcp = files.get(SOURCE_IDS.mcp);
     const mcpConfig = mcp === undefined ? EMPTY_MCP : parseMcpServers(mcp);
     const settings = parseCodexProjectSettings(mcp);
@@ -63,7 +63,7 @@ export const codexAdapter = defineAdapter({
       mcpSecretSightings: mcpConfig.secretSightings ?? [],
       metadata: {
         [CODEX_PROJECT_TRUST_KEY]:
-          mcp === undefined ? "unknown" : parseProjectTrust(mcp, { cwd, projectRoot }),
+          mcp === undefined ? "unknown" : parseProjectTrust(mcp, { cwd, gitMainWorktreeRoot }),
       },
       problems: [
         ...shadowedEntryProblems(instructions.shadowed),

@@ -30,6 +30,8 @@ import { createAppMcpSecretPlanner, rememberMcpSecretPlanner } from "./mcp-secre
 export interface ScanContext {
   readonly documents: DocumentResolver;
   readonly environment: Environment;
+  /** Primary Git checkout used by applications that key configuration to repository identity. */
+  readonly gitMainWorktreeRoot: Promise<string | undefined>;
   /** Canonical directory project-scoped paths must stay inside. Awaited once per adapter. */
   readonly projectBoundary: Promise<string | undefined>;
   readonly projectRoot: Promise<string | undefined>;
@@ -188,6 +190,7 @@ async function parseAdapter(
       cwd: context.environment.cwd,
       detection,
       files: discovery.files,
+      gitMainWorktreeRoot: await context.gitMainWorktreeRoot,
       homeDir: context.environment.homeDir,
       projectRoot: await context.projectRoot,
     });

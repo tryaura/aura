@@ -28,6 +28,7 @@ export function projectModel(
       instructionFiles: options.instructionFiles ?? [],
     }),
     cwd: "/repo/packages/app",
+    gitMainWorktreeRoot: "/repo",
     projectRoot: "/repo",
     repository: {
       gitignore: rootGitignore,

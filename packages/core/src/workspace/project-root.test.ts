@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { findProjectRoot } from "./project-root.js";
+import { findGitMainWorktreeRoot, findProjectRoot } from "./project-root.js";
 import { createMemoryReader, DIRECTORY } from "./testing.js";
 
 describe("findProjectRoot", () => {
@@ -28,5 +28,41 @@ describe("findProjectRoot", () => {
       "/home/.git",
       "/.git",
     ]);
+  });
+});
+
+describe("findGitMainWorktreeRoot", () => {
+  it("uses the repository root for a normal checkout", async () => {
+    const reader = createMemoryReader({ "/home/dev/repo/.git": DIRECTORY });
+
+    await expect(findGitMainWorktreeRoot("/home/dev/repo", reader)).resolves.toBe("/home/dev/repo");
+  });
+
+  it.each([
+    ["gitdir: /home/dev/repo/.git/worktrees/tree\n", "/home/dev/repo"],
+    ["gitdir: ../repo/.git/worktrees/tree\n", "/home/dev/repo"],
+  ])("resolves a linked worktree pointer", async (content, expected) => {
+    const reader = createMemoryReader({ "/home/dev/tree/.git": content });
+
+    await expect(findGitMainWorktreeRoot("/home/dev/tree", reader)).resolves.toBe(expected);
+  });
+
+  it.each([
+    ["missing marker", createMemoryReader()],
+    ["empty pointer", createMemoryReader({ "/home/dev/tree/.git": "gitdir:   \n" })],
+    ["malformed pointer", createMemoryReader({ "/home/dev/tree/.git": "not a pointer\n" })],
+    [
+      "unexpected layout",
+      createMemoryReader({ "/home/dev/tree/.git": "gitdir: /home/dev/repo/.git/tree\n" }),
+    ],
+    [
+      "unreadable marker",
+      createMemoryReader(
+        { "/home/dev/tree/.git": "gitdir: /home/dev/repo/.git/worktrees/tree\n" },
+        { problems: { "/home/dev/tree/.git": "denied" } },
+      ),
+    ],
+  ])("returns undefined for a %s", async (_case, reader) => {
+    await expect(findGitMainWorktreeRoot("/home/dev/tree", reader)).resolves.toBeUndefined();
   });
 });
