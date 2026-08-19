@@ -130,6 +130,8 @@ export {
 } from "./workspace/mcp-secret-plan.js";
 export type { ScanDiagnostic, ScanPhase } from "./workspace/diagnostics.js";
 export { createFileReader, MAX_FILE_BYTES } from "./workspace/reader.js";
+export { isEmbeddedAssetPath } from "./workspace/embedded-assets.js";
+export { MAX_SNIPPET_BYTES } from "./workspace/reader-limits.js";
 export { createHttpGet, vetHttpUrl } from "./http.boundary.js";
 export { createHttpPost } from "./http-post.boundary.js";
 export { listDirectorySkills, resolveDirectorySkills } from "./skills/directory-client.js";

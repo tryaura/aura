@@ -1,4 +1,6 @@
-import { readFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
+import { dirname, join, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import {
   buildWorkspaceModel,
@@ -20,6 +22,9 @@ const EXPECTED_SNIPPETS = [
   ["official/typescript-style", "language", "TypeScript style"],
   ["official/python-style", "language", "Python style"],
 ] as const;
+
+/** The directory `build-binary.mjs` copies wholesale into the compiled binary. */
+const CONTENT_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "content");
 
 // Deliberate allowlist: extend it when a new snippet instruction starts with an unlisted verb.
 const IMPERATIVE_PREFIX =
@@ -46,6 +51,21 @@ describe("official snippets", () => {
         url: "https://agenticskills.io",
       },
     ]);
+  });
+
+  /**
+   * The compiled binary embeds a directory, not a list: `build-binary.mjs` copies `content/` and
+   * hands every file under it to `bun build` as an asset. Anything registered from outside that
+   * tree resolves here, where the package is a directory on disk, and is simply missing from the
+   * binary — which the release lane only notices once the artifact exists.
+   */
+  it("registers every source from the tree the binary embeds", async () => {
+    for (const source of [...officialContent.snippets, ...officialContent.mcpCatalog]) {
+      const path = fileURLToPath(source.source.url);
+
+      expect(path.startsWith(`${CONTENT_ROOT}${sep}`), source.id).toBe(true);
+      await expect(access(path), source.id).resolves.toBeUndefined();
+    }
   });
 
   it("keeps every source portable, concise, and suitable for picker previews", async () => {
