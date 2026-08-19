@@ -1,5 +1,8 @@
+import type { FileHandle } from "node:fs/promises";
 import { open, readFile, stat } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
+
+import { isEmbeddedAssetPath, MAX_SNIPPET_BYTES } from "@tryaura/core";
 
 import type { AuraManifestState, Snippet } from "@tryaura/aura-sdk";
 
@@ -22,12 +25,6 @@ interface UnavailableSnippetCatalogEntry extends SnippetCatalogEntryBase {
   readonly reason: string;
   readonly status: "unavailable";
 }
-
-/**
- * A snippet's whole body is spliced into the user's instruction file and held in memory for the
- * rest of the run, so a plugin cannot hand us an arbitrarily large one.
- */
-const MAX_SNIPPET_BYTES = 64 * 1024;
 
 /**
  * The registry's snippets, read at most once and only if some step asks for them.
@@ -126,15 +123,12 @@ async function resolveSnippet(snippet: Snippet): Promise<SnippetCatalogEntry> {
   }
 }
 
+/** Measures the open file rather than the path, so the size cannot change between the two calls. */
 async function readBoundedSource(source: URL): Promise<string> {
-  const path = fileURLToPath(source);
-  if (path.startsWith("/$bunfs/")) {
-    const { size } = await stat(path);
-    rejectLargeSnippet(size);
-    return readFile(path, "utf8");
+  const handle = await openSource(source);
+  if (handle === undefined) {
+    return readEmbeddedSource(fileURLToPath(source));
   }
-
-  const handle = await open(source, "r");
   try {
     const { size } = await handle.stat();
     rejectLargeSnippet(size);
@@ -142,6 +136,32 @@ async function readBoundedSource(source: URL): Promise<string> {
   } finally {
     await handle.close();
   }
+}
+
+/**
+ * The open handle, or nothing for a snippet Bun embedded in a compiled executable.
+ *
+ * That filesystem answers `stat` and `readFile` but not the positional `open`/`read` behind a file
+ * handle, so those snippets have to be measured by path. Trying the handle first keeps every real
+ * file on the path that cannot be raced, and keeps the original error when `open` fails for the
+ * ordinary reasons.
+ */
+async function openSource(source: URL): Promise<FileHandle | undefined> {
+  try {
+    return await open(source, "r");
+  } catch (error) {
+    if (!isEmbeddedAssetPath(fileURLToPath(source))) {
+      throw error;
+    }
+    return undefined;
+  }
+}
+
+/** Safe only because the embedded tree is fixed for the life of the process: nothing can grow. */
+async function readEmbeddedSource(path: string): Promise<string> {
+  const { size } = await stat(path);
+  rejectLargeSnippet(size);
+  return readFile(path, "utf8");
 }
 
 function rejectLargeSnippet(size: number): void {

@@ -73,6 +73,9 @@ importers:
       '@tryaura/aura-testkit':
         specifier: workspace:*
         version: link:../../packages/testkit
+      '@tryaura/content-official':
+        specifier: workspace:*
+        version: link:../../plugins/content-official
       '@tryaura/core':
         specifier: workspace:*
         version: link:../../packages/core
