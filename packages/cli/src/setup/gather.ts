@@ -99,5 +99,6 @@ function withFlow(io: WizardIo, flow: WizardFlowContext): WizardIo {
   return {
     ...io,
     ask: async (questions, override) => io.ask(questions, override ?? flow),
+    load: async (request, task, override) => io.load(request, task, override ?? flow),
   };
 }

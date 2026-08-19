@@ -3,12 +3,18 @@ import { createStyle, type Style } from "../style.js";
 import { wrapPreviewLines } from "../text-width.js";
 import { clipBody } from "./wizard-clip.js";
 import { DONE, renderTabBar, UNANSWERED } from "./wizard-tabs.js";
-import type { WizardFlowContext, WizardQuestion } from "./wizard-types.js";
+import type { WizardFlowContext, WizardOption, WizardQuestion } from "./wizard-types.js";
 
 /** One question's live state while its form is on screen. */
 export interface WizardQuestionView {
+  /** The unfiltered option set, used to summarize hidden selections after submission. */
+  readonly allOptions?: readonly WizardOption[] | undefined;
   readonly answered: boolean;
   readonly question: WizardQuestion;
+  /** Whether printable keys currently belong to the search field. */
+  readonly searching?: boolean | undefined;
+  /** The live local search query. */
+  readonly searchText?: string | undefined;
   /** Values currently selected, before or after the question is answered. */
   readonly selected: ReadonlySet<string>;
   /** Draft on the free-text row. */
@@ -96,7 +102,7 @@ export function renderWizardFrame(
     ),
   );
 
-  lines.push("", style.dim(renderHint(active?.question, submitLocked)));
+  lines.push("", style.dim(renderHint(active?.question, submitLocked, active?.searching === true)));
   return `${lines.join("\n")}\n`;
 }
 
@@ -109,7 +115,7 @@ export interface WizardStyle extends Style {
   readonly active: (text: string) => string;
 }
 
-function createWizardStyle(colorDepth: number): WizardStyle {
+export function createWizardStyle(colorDepth: number): WizardStyle {
   const style = createStyle(colorDepth);
   return {
     ...style,
@@ -132,6 +138,8 @@ function renderQuestionBody(
   const lines = [` ${style.bold(safe(view.question.prompt))}`, ""];
   let focus = 0;
 
+  lines.push(...searchLines(view, style));
+
   let previousGroup: string | undefined;
   view.question.options.forEach((option, index) => {
     lines.push(...groupHeadingLines(option.group, index, previousGroup, style));
@@ -141,6 +149,11 @@ function renderQuestionBody(
     }
     lines.push(...optionLines(option, index, view, cursorRow, style));
   });
+
+  if (view.question.search !== undefined && view.question.options.length === 0) {
+    focus = lines.length;
+    lines.push(style.dim("   No matching options."));
+  }
 
   if (view.question.freeText === true) {
     const onFreeText = cursorRow === view.question.options.length;
@@ -153,6 +166,23 @@ function renderQuestionBody(
   }
 
   return { focus, lines };
+}
+
+function searchLines(view: WizardQuestionView, style: Style): readonly string[] {
+  const search = view.question.search;
+  if (search === undefined) {
+    return [];
+  }
+  const query = view.searchText ?? "";
+  if (view.searching === true) {
+    const draft = query === "" ? style.dim(search.placeholder) : safe(query);
+    return [` ${CURSOR} / Search: ${draft}`, ""];
+  }
+  if (query !== "") {
+    const count = view.question.options.length;
+    return [`   / Search: ${safe(query)} · ${String(count)} match${count === 1 ? "" : "es"}`, ""];
+  }
+  return [`   / ${safe(search.placeholder)}`, ""];
 }
 
 function groupHeadingLines(
@@ -207,15 +237,26 @@ function renderSubmitBody(
   return lines;
 }
 
-function renderHint(question: WizardQuestion | undefined, submitLocked: boolean): string {
+function renderHint(
+  question: WizardQuestion | undefined,
+  submitLocked: boolean,
+  searching: boolean,
+): string {
   if (question === undefined) {
     return submitLocked ? " ←/→ steps · esc cancel" : " ↵ submit · ←/→ steps · esc cancel";
+  }
+  // While the query has focus the two keys the hint leads with mean something else: ↵ hands focus
+  // back to the rows and esc clears the query instead of cancelling the form. Naming the standing
+  // bindings here would be naming the wrong ones.
+  if (searching) {
+    return " type to filter · ↑/↓ move · ↵ results · esc clear search";
   }
   const toggle = question.kind === "multiselect" ? " · space toggle" : "";
   const preview = question.options.some((option) => option.preview !== undefined)
     ? " · p preview"
     : "";
-  return ` ↑/↓ move${toggle}${preview} · ←/→ steps · ↵ select · esc cancel`;
+  const search = question.search === undefined ? "" : " · / search";
+  return ` ↑/↓ move${toggle}${preview}${search} · ←/→ steps · ↵ select · esc cancel`;
 }
 
 /**
@@ -245,7 +286,7 @@ function summarizeAnswer(view: WizardQuestionView): string {
   if (view.text !== "" && view.answered && view.selected.size === 0) {
     return safe(view.text);
   }
-  const labels = view.question.options
+  const labels = (view.allOptions ?? view.question.options)
     .filter((option) => view.selected.has(option.value))
     .map((option) => safe(option.label));
   return labels.length === 0 ? "(none)" : labels.join(", ");

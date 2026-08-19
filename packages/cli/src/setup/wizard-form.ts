@@ -1,4 +1,4 @@
-import { digitRow, rowCount, tabDelta } from "./wizard-keys.js";
+import { digitRow, printable, rowCount, tabDelta } from "./wizard-keys.js";
 import { handlePreviewKeypress, openPreview, type PreviewState } from "./wizard-preview.js";
 import {
   answerActive,
@@ -9,6 +9,7 @@ import {
   toggleRow,
   toView,
   type QuestionState,
+  visibleOptions,
 } from "./wizard-question.js";
 import type { WizardFrame, WizardQuestionView } from "./wizard-render.js";
 import type { Keypress, WizardAnswers, WizardFlowContext, WizardQuestion } from "./wizard-types.js";
@@ -77,6 +78,11 @@ export function createFormSession(
       preview = previewResult.preview;
       return previewResult.event;
     }
+    const active = states[activeTab];
+    if (applySearchKeypress(keypress, active)) {
+      cursorRow = 0;
+      return "repaint";
+    }
     if (keypress.name === "escape") {
       return "abort";
     }
@@ -102,7 +108,7 @@ export function createFormSession(
     if (commit) {
       commitActive(state);
     } else {
-      answerActive(state, cursorRow);
+      answerActive(state, cursorRow, visibleOptions(state));
     }
     // A flow form and a one-question form have nothing left to review, so answering the last
     // open question is submitting.
@@ -129,7 +135,7 @@ export function createFormSession(
       return;
     }
     if (state.question.kind === "select" && state.selected.size === 0) {
-      answerActive(state, cursorRow);
+      answerActive(state, cursorRow, visibleOptions(state));
       return;
     }
     state.answered = true;
@@ -162,7 +168,8 @@ export function createFormSession(
       return false;
     }
 
-    const rows = rowCount(state.question);
+    const options = visibleOptions(state);
+    const rows = rowCount(state.question, options.length);
     if (keypress.name === "up" && rows > 0) {
       cursorRow = (cursorRow - 1 + rows) % rows;
       return true;
@@ -171,18 +178,25 @@ export function createFormSession(
       cursorRow = (cursorRow + 1) % rows;
       return true;
     }
-    return applyTextOrToggle(keypress, state);
+    return applyTextOrToggle(keypress, state, options);
   };
 
-  const applyTextOrToggle = (keypress: Keypress, state: QuestionState): boolean => {
-    const onFreeText =
-      state.question.freeText === true && cursorRow === state.question.options.length;
-    return onFreeText ? editFreeText(keypress, state) : applyOptionKey(keypress, state);
+  const applyTextOrToggle = (
+    keypress: Keypress,
+    state: QuestionState,
+    options: readonly WizardQuestion["options"][number][],
+  ): boolean => {
+    const onFreeText = state.question.freeText === true && cursorRow === options.length;
+    return onFreeText ? editFreeText(keypress, state) : applyOptionKey(keypress, state, options);
   };
 
-  const applyOptionKey = (keypress: Keypress, state: QuestionState): boolean => {
+  const applyOptionKey = (
+    keypress: Keypress,
+    state: QuestionState,
+    options: readonly WizardQuestion["options"][number][],
+  ): boolean => {
     if (keypress.sequence === "p") {
-      const option = state.question.options[cursorRow];
+      const option = options[cursorRow];
       if (option?.preview === undefined || option.disabled === true) {
         return false;
       }
@@ -190,15 +204,15 @@ export function createFormSession(
       return true;
     }
     if (keypress.name === "space") {
-      return toggleRow(state, cursorRow);
+      return toggleRow(state, cursorRow, options);
     }
 
-    const digit = digitRow(keypress, state.question);
+    const digit = digitRow(keypress, state.question, options.length);
     if (digit === undefined) {
       return false;
     }
     cursorRow = digit;
-    toggleRow(state, digit);
+    toggleRow(state, digit, options);
     return true;
   };
 
@@ -208,6 +222,44 @@ export function createFormSession(
     handle,
     views: () => states.map(toView),
   };
+}
+
+/** Gives a searchable question first refusal over keys used to enter, edit, or clear its query. */
+function applySearchKeypress(keypress: Keypress, state: QuestionState | undefined): boolean {
+  if (state === undefined) {
+    return false;
+  }
+  if (!state.searching) {
+    if (state.question.search === undefined || keypress.sequence !== "/") {
+      return false;
+    }
+    state.searching = true;
+    return true;
+  }
+  if (keypress.name === "escape") {
+    state.searching = false;
+    state.searchText = "";
+    return true;
+  }
+  if (keypress.name === "return" || keypress.name === "enter") {
+    state.searching = false;
+    return true;
+  }
+  return editSearch(keypress, state);
+}
+
+/** Edits the live search field while search mode owns printable keys. */
+function editSearch(keypress: Keypress, state: QuestionState): boolean {
+  if (keypress.name === "backspace") {
+    state.searchText = [...state.searchText].slice(0, -1).join("");
+    return true;
+  }
+  const typed = printable(keypress);
+  if (typed === undefined) {
+    return false;
+  }
+  state.searchText += typed;
+  return true;
 }
 
 /** The next unanswered question after `activeTab`, or the Submit tab. */

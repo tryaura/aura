@@ -8,7 +8,12 @@ import { createWorkspaceModel } from "@tryaura/aura-sdk/testing";
 
 import { skillIdentity } from "../skill-planner-paths.js";
 import type { AppCatalogEntry } from "../catalog.js";
-import type { SkillCatalog, SkillCatalogEntry, UnavailableSkillSource } from "../skills-catalog.js";
+import type {
+  PendingSkillSource,
+  SkillCatalog,
+  SkillCatalogEntry,
+  UnavailableSkillSource,
+} from "../skills-catalog.js";
 import { emptyMcpCatalog, emptySkillCatalog } from "../testing.js";
 import type { SetupStepContext } from "../types.js";
 import { createScriptedWizardIo, type ScriptedWizardIo } from "../wizard-scripted.js";
@@ -72,6 +77,7 @@ interface CatalogOptions {
   readonly entries?: readonly SkillCatalogEntry[];
   readonly notes?: readonly string[];
   readonly packs?: ReadonlyMap<string, ResolvedSkillPack>;
+  readonly pendingSources?: readonly PendingSkillSource[];
   readonly policy?: SkillCatalog["policy"];
   readonly privateSources?: readonly PrivateDirectorySkillSource[];
   readonly problems?: ReadonlyMap<string, string>;
@@ -80,12 +86,18 @@ interface CatalogOptions {
 
 export function fakeCatalog(options: CatalogOptions = {}): SkillCatalog {
   return {
-    load: () =>
-      Promise.resolve({
+    load: (_approved, update) => {
+      for (const source of options.pendingSources ?? []) {
+        update?.(source.id, "active");
+        update?.(source.id, "complete");
+      }
+      return Promise.resolve({
         entries: options.entries ?? [],
         notes: options.notes ?? [],
         unavailableSources: options.unavailableSources ?? [],
-      }),
+      });
+    },
+    pendingSources: () => options.pendingSources ?? [],
     policy: options.policy ?? emptySkillCatalog().policy,
     privateSources: options.privateSources ?? [],
     resolve: () =>

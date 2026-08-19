@@ -91,6 +91,7 @@ function createHarness(script: ScriptedWizardScript = {}): Harness {
         return scripted.ask(questions);
       },
       confirm: scripted.confirm,
+      load: scripted.load,
       note: scripted.note,
     },
   };

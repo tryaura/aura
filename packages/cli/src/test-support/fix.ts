@@ -152,6 +152,7 @@ export function scriptedWizard(
     get confirmations() {
       return confirmations;
     },
+    load: async (_request, task) => task(() => undefined),
     note: () => {},
     questions,
   };

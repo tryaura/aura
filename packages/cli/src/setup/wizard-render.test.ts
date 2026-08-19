@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 
 import { displayWidth } from "../text-width.js";
+import { renderWizardLoadingFrame } from "./wizard-loading-render.js";
 import {
   renderAnsweredSummary,
   renderWizardFrame,
@@ -47,6 +48,30 @@ function view(
 }
 
 describe("renderWizardFrame", () => {
+  it("renders per-item loading states under the active flow header", () => {
+    const rendered = renderWizardLoadingFrame(
+      "Loading skill sources…",
+      [
+        { id: "one", label: "AgenticSkills", status: "active" },
+        { id: "two", label: "Team skills", status: "pending" },
+        { id: "three", label: "Local index", status: "complete" },
+      ],
+      0,
+      0,
+      undefined,
+      {
+        completed: [{ label: "Snippets" }],
+        step: { label: "Skills" },
+        upcoming: [{ label: "MCP" }],
+      },
+    );
+
+    expect(rendered).toContain("✔ Snippets │ ▶ Skills ☐ │ MCP ☐ │ Submit");
+    expect(rendered).toContain("⠋ AgenticSkills");
+    expect(rendered).toContain("☐ Team skills");
+    expect(rendered).toContain("✔ Local index");
+  });
+
   it("renders a select question with tab bar, cursor, and free-text row", () => {
     const frame: WizardFrame = {
       activeTab: 0,

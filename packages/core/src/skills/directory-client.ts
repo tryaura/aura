@@ -11,6 +11,7 @@ import { isAllowedHttpUrl } from "../http.js";
 import { createLimiter } from "../workspace/concurrency.js";
 import { failedResolution, partitionResolutions } from "../workspace/resolution.js";
 import { treeHash } from "../workspace/skills.js";
+import { listAgenticSkills, resolveAgenticSkills } from "./agenticskills-client.js";
 import { parseDirectoryIndex } from "./index-schema.js";
 import {
   MAX_CONCURRENT_SKILL_REQUESTS,
@@ -44,6 +45,9 @@ export async function listDirectorySkills(
   environment: Environment,
   source: DirectorySkillSource,
 ): Promise<DirectorySkillListingResult> {
+  if (source.kind === "directory" && source.protocol === "agenticskills") {
+    return listAgenticSkills(environment, source);
+  }
   const outcome = await request(environment, source, "index.json", MAX_DIRECTORY_INDEX_BYTES);
   if (outcome.kind === "missing-token") {
     return {
@@ -80,6 +84,9 @@ export async function resolveDirectorySkills(
   readonly diagnostics: readonly ScanDiagnostic[];
   readonly skills: readonly ResolvedSkillPack[];
 }> {
+  if (source.kind === "directory" && source.protocol === "agenticskills") {
+    return resolveAgenticSkills(environment, source, skillIds);
+  }
   const limit = createLimiter(MAX_CONCURRENT_SKILL_REQUESTS);
   const outcomes = await Promise.all(
     skillIds.map((skillId) =>
@@ -177,7 +184,6 @@ async function request(
   }
   return { body: result.body, kind: "response", status: result.status };
 }
-
 type DirectoryEndpoint =
   | { readonly kind: "failure"; readonly reason: "insecure-url" | "invalid-url" }
   | { readonly kind: "url"; readonly url: string };

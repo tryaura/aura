@@ -47,6 +47,7 @@ describe("snippets step", () => {
         return scripted.ask(questions);
       },
       confirm: scripted.confirm,
+      load: scripted.load,
       note: scripted.note,
     });
 
@@ -71,6 +72,7 @@ describe("snippets step", () => {
         return scripted.ask(questions);
       },
       confirm: scripted.confirm,
+      load: scripted.load,
       note: scripted.note,
     });
 
@@ -111,6 +113,7 @@ describe("snippets step", () => {
         return scripted.ask(questions);
       },
       confirm: scripted.confirm,
+      load: scripted.load,
       note: scripted.note,
     });
 
@@ -137,6 +140,7 @@ describe("snippets step", () => {
         return scripted.ask(questions);
       },
       confirm: scripted.confirm,
+      load: scripted.load,
       note: scripted.note,
     });
 
