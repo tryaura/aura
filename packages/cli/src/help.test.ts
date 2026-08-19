@@ -27,6 +27,9 @@ describe("help screens", () => {
           acme <command> --help    Full flag reference for a command
           acme --version           Print the version and exit
 
+        Advanced
+          --no-color               Disable terminal colors
+
         Docs: https://example.com/docs
       "
     `);
@@ -57,7 +60,7 @@ describe("help screens", () => {
           --online                      Probe remote MCP URLs with bounded network requests
 
         Reporting
-          --verbose                     Show every occurrence, location, passed check, and application
+          --verbose                     Expand occurrences and locations; add passed checks and applications
           --detail                      Include the failing plugin's own error text
 
         Configuration
@@ -78,6 +81,7 @@ describe("help screens", () => {
 
         Advanced
           --home <dir>                  Override the home directory
+          --no-color                    Disable terminal colors
           --path <dir>                  Override the executable search path
 
         Exit codes: 0 clean · 1 warnings · 2 errors or usage/state conflicts · 3 operational failures
@@ -108,9 +112,12 @@ describe("help screens", () => {
 
         Advanced
           --home <dir>                  Override the home directory
+          --no-color                    Disable terminal colors
           --path <dir>                  Override the executable search path
 
         After setup, run 'acme check' to verify the machine converged
+
+        Exit codes: 0 applied/converged/dry-run/declined · 1 aborted or warnings · 2 conflicts/errors/invalid usage · 3 operational failures
       "
     `);
   });
@@ -131,6 +138,7 @@ describe("help screens", () => {
 
         Advanced
           --home <dir>             Override the home directory
+          --no-color               Disable terminal colors
           --path <dir>             Override the executable search path
 
         Exit codes: 0 restored or nothing to undo · 1 aborted or declined at the prompt · 2 conflicts · 3 operational failures

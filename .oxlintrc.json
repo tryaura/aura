@@ -11,6 +11,7 @@
   "overrides": [
     {
       "files": [
+        "packages/cli/src/resolve-runtime.ts",
         "packages/cli/src/run.ts",
         "packages/core/src/environment.ts",
         "packages/core/src/http.ts",

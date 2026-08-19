@@ -67,8 +67,10 @@ export interface CliRuntime {
   /**
    * Color depth reported to the command framework.
    *
-   * Defaults to what the terminal supports, honouring `NO_COLOR` and `FORCE_COLOR`. Always no color
-   * when `stdout` is injected, since the destination is then not a terminal Aura can ask.
+   * Defaults to what the process's own stdout supports, honouring the CLI and environment color
+   * policy. Always no color when `stdout` is injected, since neither that stream nor the
+   * surrounding process's `FORCE_COLOR` says anything about the destination — set this to ask for
+   * color there. An explicit value stays authoritative unless the command line says `--no-color`.
    */
   readonly colorDepth?: number | undefined;
   /** Directory the command was invoked from. */

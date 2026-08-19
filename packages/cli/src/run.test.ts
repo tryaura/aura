@@ -423,6 +423,22 @@ describe("runCli", () => {
     expect(undo.stdout.text).toContain("<backup-id>");
   });
 
+  it("accepts --no-color globally before and after a command", async () => {
+    const root = createCapture(["--no-color", "--help"]);
+    const before = createCapture(["--no-color", "check", "--help"]);
+    const after = createCapture(["check", "--no-color", "--help"]);
+    const version = createCapture(["--no-color", "--version"]);
+
+    expect(await runCli(distro(), root.runtime)).toBe(0);
+    expect(await runCli(distro(), before.runtime)).toBe(0);
+    expect(await runCli(distro(), after.runtime)).toBe(0);
+    expect(await runCli(distro(), version.runtime)).toBe(0);
+    expect(root.stderr.text).toBe("");
+    expect(before.stdout.text).toContain("acme check — Inspect the current AI agent setup");
+    expect(after.stdout.text).toBe(before.stdout.text);
+    expect(version.stdout.text).toBe("1.2.3\n");
+  });
+
   it("passes --home and --path overrides into the environment", async () => {
     let observed: Environment | undefined;
     const plugin = definePlugin({
