@@ -4,19 +4,22 @@ import { isConfigRecord, parseConfigObject, type AdapterSourceFile } from "@trya
 import { parse } from "smol-toml";
 
 import type { ProjectTrust } from "./contract.js";
-import { projectDirectories, type ProjectLookup } from "./project-directories.js";
 
-/** Where the current project sits, from the narrowest directory outward. */
-export type TrustLookup = ProjectLookup;
+/** The two repository identities Codex consults for project trust. */
+export interface TrustLookup {
+  /** Directory Codex was launched in. */
+  readonly cwd: string;
+  /** Primary Git checkout, which differs from the current root inside a linked worktree. */
+  readonly gitMainWorktreeRoot?: string | undefined;
+}
 
 /**
  * Reads the current project's trust marker from Codex's shared configuration.
  *
- * Codex keys `[projects."..."]` by the directory it was launched in, which is frequently a
- * subdirectory of the repository rather than its root. Looking only at the root would report a
- * project as untrusted whenever the developer started Codex from somewhere inside it, so every
- * directory from `cwd` up to and including the repository root is considered and the narrowest
- * recorded answer wins.
+ * Codex first checks the exact directory it was launched in, then the primary Git checkout. The
+ * second identity matters for linked worktrees: Codex resolves their `.git` pointer back to the
+ * main checkout, so trusting that checkout covers every associated worktree unless an exact cwd
+ * entry overrides it.
  */
 export function parseProjectTrust(file: AdapterSourceFile, lookup: TrustLookup): ProjectTrust {
   const root = parseConfigObject(file.content, parse);
@@ -36,7 +39,7 @@ export function parseProjectTrust(file: AdapterSourceFile, lookup: TrustLookup):
     Object.entries(projects).map(([key, value]) => [normalize(key), value] as const),
   );
 
-  for (const directory of projectDirectories(lookup)) {
+  for (const directory of trustDirectories(lookup)) {
     const project = entries.get(directory);
     if (!isConfigRecord(project)) {
       continue;
@@ -48,6 +51,16 @@ export function parseProjectTrust(file: AdapterSourceFile, lookup: TrustLookup):
   }
 
   return "unknown";
+}
+
+function trustDirectories(lookup: TrustLookup): readonly string[] {
+  const cwd = normalize(lookup.cwd);
+  if (lookup.gitMainWorktreeRoot === undefined) {
+    return [cwd];
+  }
+
+  const mainWorktreeRoot = normalize(lookup.gitMainWorktreeRoot);
+  return cwd === mainWorktreeRoot ? [cwd] : [cwd, mainWorktreeRoot];
 }
 
 /** Collapses separators and trailing slashes so a config key and a scanned path compare equal. */
