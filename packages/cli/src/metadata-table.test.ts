@@ -48,7 +48,7 @@ describe("finding metadata tables", () => {
         presentation,
       },
     ]);
-    const human = createCapture(["check"]);
+    const human = createCapture(["check", "--verbose"]);
     const json = createCapture(["check", "--json"]);
 
     expect(await runCli(distro([plugin]), human.runtime)).toBe(0);
@@ -65,7 +65,7 @@ describe("finding metadata tables", () => {
   });
 
   it("stops printing rows a check did not bound and says how many are missing", async () => {
-    const capture = createCapture(["check"]);
+    const capture = createCapture(["check", "--verbose"]);
     const plugin = findingPlugin("info", [
       {
         id: "unbounded",

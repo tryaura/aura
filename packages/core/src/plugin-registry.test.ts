@@ -93,6 +93,51 @@ describe("createPluginRegistry", () => {
     expect(registry.ownerOf("adapter", "alpha/SEC-001")).toBeUndefined();
   });
 
+  it("accepts consistent namespaced finding groups shared by checks", () => {
+    const findingGroup = {
+      description: "Resolve both fixture findings.",
+      id: "alpha/fixtures",
+      title: "Resolve fixture findings",
+    };
+    const first = { ...createCheck("alpha/FIRST"), findingGroup };
+    const second = { ...createCheck("alpha/SECOND"), findingGroup };
+
+    const registry = createPluginRegistry([createPlugin("alpha", { checks: [first, second] })]);
+
+    expect(registry.checks).toEqual([first, second]);
+  });
+
+  it("rejects unusable or inconsistent finding groups", () => {
+    const wrongNamespace = {
+      ...createCheck("alpha/FIRST"),
+      findingGroup: { description: "Fixture.", id: "other/fixtures", title: "Fixtures" },
+    };
+    const emptyCopy = {
+      ...createCheck("alpha/SECOND"),
+      findingGroup: { description: " ", id: "alpha/empty", title: "Fixtures" },
+    };
+    const inconsistent = [
+      {
+        ...createCheck("alpha/THIRD"),
+        findingGroup: { description: "First.", id: "alpha/shared", title: "Fixtures" },
+      },
+      {
+        ...createCheck("alpha/FOURTH"),
+        findingGroup: { description: "Second.", id: "alpha/shared", title: "Fixtures" },
+      },
+    ];
+
+    const error = captureRegistryError([
+      createPlugin("alpha", { checks: [wrongNamespace, emptyCopy, ...inconsistent] }),
+    ]);
+
+    expect(error.message).toContain('finding-group ID "other/fixtures"');
+    expect(error.message).toContain(
+      'finding group "alpha/empty" with an empty title or description',
+    );
+    expect(error.message).toContain('finding group "alpha/shared" uses inconsistent');
+  });
+
   it("freezes the registry and its contribution lists", () => {
     const registry = createPluginRegistry([
       createPlugin("alpha", { checks: [createCheck("alpha/SEC-001")] }),

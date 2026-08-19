@@ -8,6 +8,7 @@ const INTERNAL_PACKAGES = [
   "@tryaura/checks-core",
   "@tryaura/content-official",
   "@tryaura/core",
+  "@tryaura/core/display-path",
   "@tryaura/core/pluralize",
 ];
 
@@ -33,6 +34,7 @@ export default defineConfig({
     "@tryaura/adapter-cursor": source("../../plugins/adapter-cursor/src/index.ts"),
     "@tryaura/checks-core": source("../../plugins/checks-core/src/index.ts"),
     "@tryaura/content-official": source("../../plugins/content-official/src/index.ts"),
+    "@tryaura/core/display-path": source("../../packages/core/src/display-path.ts"),
     "@tryaura/core/pluralize": source("../../packages/core/src/pluralize.ts"),
     "@tryaura/core": source("../../packages/core/src/index.ts"),
   },

@@ -35,6 +35,16 @@ export interface FindingLocation {
   readonly path: string;
 }
 
+/** Human-facing copy used to summarize related findings in concise check output. */
+export interface FindingGroupPresentation {
+  /** Stable, plugin-namespaced identity shared by checks that belong in one group. */
+  readonly id: string;
+  /** One short action-oriented heading for the group. */
+  readonly title: string;
+  /** One sentence explaining the outcome of resolving the grouped findings. */
+  readonly description: string;
+}
+
 /** How a metadata-table column should render its values in human output. */
 export type FindingMetadataColumnFormat = "boolean" | "integer" | "percentage" | "text";
 
@@ -158,6 +168,8 @@ interface CheckDefinition {
   ) => readonly DetectedFinding[];
   /** Why the rule exists, in one or two sentences. Shown when a user asks about a finding. */
   readonly explain: string;
+  /** Optional presentation for grouping related findings in concise human output. */
+  readonly findingGroup?: FindingGroupPresentation | undefined;
   /** Stable check identifier, namespaced by the owning {@link AuraPlugin.id}. */
   readonly id: string;
   /** Whether the rule is about user-level or workspace-level state. */

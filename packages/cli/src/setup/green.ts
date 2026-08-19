@@ -1,10 +1,11 @@
 import type { Writable } from "node:stream";
 
-import type { AuraEffectiveConfig, Check, Finding } from "@tryaura/aura-sdk";
+import type { AuraEffectiveConfig, Check, Environment, Finding } from "@tryaura/aura-sdk";
 import { runChecks, type PluginRegistry, type WorkspaceScan } from "@tryaura/core";
 
 import { createCheckReport } from "../report.js";
-import { renderHuman } from "../render.js";
+import { renderHumanCheckReport } from "../render-human.js";
+import { pathDisplayRoots } from "../render-human-types.js";
 import type { CliBranding, CliExitCode } from "../types.js";
 import type { WizardIo } from "./wizard-types.js";
 
@@ -12,6 +13,7 @@ import type { WizardIo } from "./wizard-types.js";
 export interface GreenContext {
   readonly branding: CliBranding;
   readonly colorDepth: number;
+  readonly environment: Environment;
   readonly registry: PluginRegistry;
   readonly stdout: Writable;
   readonly withDetail: boolean;
@@ -35,7 +37,12 @@ export function endOnGreen(
     skipped: scan.skipped,
     withDetail: request.withDetail,
   });
-  renderHuman(report, request.branding, request.stdout, request.colorDepth);
+  renderHumanCheckReport(report, request.branding, request.stdout, {
+    checks,
+    colorDepth: request.colorDepth,
+    roots: pathDisplayRoots(request.environment, scan.model.projectRoot),
+    verbose: false,
+  });
   return report.summary.exitCode;
 }
 

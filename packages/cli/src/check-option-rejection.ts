@@ -19,6 +19,7 @@ export interface CheckOptionValues {
   readonly pathValue: string | undefined;
   readonly stdin: Readable;
   readonly stdout: Writable;
+  readonly verbose: boolean;
   readonly yes: boolean;
 }
 
@@ -31,10 +32,21 @@ export interface CheckOptionValues {
 export function rejectInvalidCheckOptions(options: CheckOptionValues): string | undefined {
   return (
     rejectInvalidJsonOptions(options) ??
+    rejectInvalidVerboseOptions(options) ??
     rejectInvalidFixOptions(options) ??
     rejectInvalidExplainOptions(options) ??
     rejectInvalidPathOptions(options.home, options.pathValue)
   );
+}
+
+function rejectInvalidVerboseOptions(options: CheckOptionValues): string | undefined {
+  if (options.verbose && options.json) {
+    return "--verbose cannot be combined with --json; JSON already includes every reported field.";
+  }
+  if (options.verbose && options.explaining) {
+    return "--verbose cannot be combined with --explain; an explanation already targets one check.";
+  }
+  return undefined;
 }
 
 function rejectInvalidExplainOptions(options: CheckOptionValues): string | undefined {

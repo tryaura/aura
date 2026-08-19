@@ -34,6 +34,11 @@ export const duplicateInstructionsCheck = defineCheck({
   explain: `Repeated guidance across agent instruction files is easy to update in one place and forget in another. Similar copies also consume context repeatedly and can diverge into subtly different rules.
 
 Review each reported cluster and keep its clearest version in the shared instruction source. Remove the redundant copies only after confirming their scopes and conditions are preserved.`,
+  findingGroup: {
+    description: "Keep each piece of guidance in one canonical source.",
+    id: "checks-core/duplicate-instructions",
+    title: "Consolidate duplicated instruction guidance",
+  },
   fixability: "manual",
   id: "INS-003",
   scope: "global",

@@ -33,6 +33,7 @@ export type {
   CheckRuntimeSettings,
   DetectedFinding,
   Finding,
+  FindingGroupPresentation,
   FindingLocation,
   FindingMetadataBooleanColumn,
   FindingMetadataColumnFormat,

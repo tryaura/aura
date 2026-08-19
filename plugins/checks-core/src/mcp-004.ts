@@ -16,6 +16,11 @@ export const mcp004 = defineCheck({
   defaultSeverity: "error",
   detect: detectInlineSecrets,
   explain: EXPLAIN,
+  findingGroup: {
+    description: "Replace inline credentials with environment-variable references.",
+    id: "checks-core/mcp-credentials",
+    title: "Protect credentials stored in MCP configuration",
+  },
   fix: remediation,
   fixability: "guided",
   guidedFixes,

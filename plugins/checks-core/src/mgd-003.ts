@@ -15,6 +15,11 @@ export const unmanagedDetectedAppCheck = defineCheck({
   detect: detectUnmanagedApps,
   explain:
     "Aura can inspect an installed agent application without managing it. This informational check highlights detected applications that have never been accepted or ignored in the Aura manifest.\n\nRun `aura setup` to add the application, or leave it unchecked once to record that Aura should ignore it. There is no automatic fix: the decision belongs to the apps step, and this check never starts a nested command.",
+  findingGroup: {
+    description: "Run `aura setup` to manage them or record an ignore decision.",
+    id: "checks-core/application-management",
+    title: "Decide which detected applications Aura should manage",
+  },
   fixability: "manual",
   id: CHECK_ID,
   scope: "global",

@@ -49,6 +49,7 @@ export interface TelemetryCheckFlags {
   readonly interactive: boolean;
   readonly json: boolean;
   readonly online: boolean;
+  readonly verbose: boolean;
 }
 
 /** One completed `check` run. */
