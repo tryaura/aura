@@ -2,6 +2,7 @@ import {
   defineCheck,
   definePlugin,
   pluginContentUrl,
+  type DriverSkillPack,
   type WorkspaceModel,
 } from "@tryaura/aura-sdk";
 
@@ -10,6 +11,16 @@ import { ACME_AGENT_ID, acmeAgentAdapter } from "./internal-agent.js";
 function contentUrl(path: string): string {
   return pluginContentUrl(import.meta.url, path);
 }
+
+const driverReviewSkill: DriverSkillPack = {
+  description: "Review an Acme change before it lands.",
+  id: "acme-review",
+  kind: "skill-pack",
+  name: "Acme review",
+  originUrl: "https://engineering.acme.example/skills/acme-review",
+  source: { type: "directory", url: contentUrl("skills/acme-review/") },
+  version: "1.0.0",
+};
 
 const distributionCheck = defineCheck({
   defaultSeverity: "error",
@@ -55,6 +66,7 @@ export default definePlugin({
   adapters: [acmeAgentAdapter],
   apiVersion: 1,
   checks: [distributionCheck],
+  disabledSkillSources: ["directory:agenticskills"],
   id: "acme",
   mcpCatalog: [
     {
@@ -85,6 +97,22 @@ export default definePlugin({
       name: "Acme release",
       source: { type: "directory", url: contentUrl("skills/acme-release/") },
       version: "1.0.0",
+    },
+  ],
+  skillSources: [
+    {
+      description: "Skills published by Acme engineering.",
+      id: "acme/engineering-skills",
+      async list() {
+        const { source: _source, kind: _kind, ...listing } = driverReviewSkill;
+        return [listing];
+      },
+      name: "Acme engineering skills",
+      async resolve(_environment, skillIds) {
+        return new Map(
+          skillIds.flatMap((id) => (id === driverReviewSkill.id ? [[id, driverReviewSkill]] : [])),
+        );
+      },
     },
   ],
   snippets: [

@@ -18,6 +18,8 @@ export interface SetupCatalogs {
 interface SetupCatalogInputs {
   readonly config: AuraEffectiveConfig;
   readonly environment: Environment;
+  /** Whether this run may call a skill-source driver, which is the one source kind running code. */
+  readonly interactive: boolean;
   readonly model: WorkspaceModel;
   readonly preset: AuraTeamPreset | undefined;
   /** Messages from resolving the configuration, surfaced with the catalogs' own notes. */
@@ -42,13 +44,28 @@ export function createSetupCatalogs(inputs: SetupCatalogInputs): SetupCatalogs {
     }),
     skillCatalog: createSkillCatalog({
       environment: inputs.environment,
+      interactive: inputs.interactive,
       model: inputs.model,
       preset: inputs.preset,
-      presetNotes: inputs.presetNotes,
+      presetNotes: [...inputs.presetNotes, ...disabledSourceNotes(inputs.registry)],
       presetOrigin: inputs.presetOrigin,
       registryDirectories: inputs.registry.skillDirectories,
+      registryDrivers: inputs.registry.skillSources,
     }),
   };
+}
+
+/**
+ * Names the plugin behind every skill source this distribution removed.
+ *
+ * A denylist that fires silently is indistinguishable from a source that broke: the row is simply
+ * not there. Only removals that actually matched something are reported, so a distribution that
+ * disables a source it never shipped says nothing at all.
+ */
+function disabledSourceNotes(registry: PluginRegistry): readonly string[] {
+  return [...registry.disabledSkillSources].map(
+    ([id, pluginId]) => `Skill source "${id}" is not offered: plugin "${pluginId}" disables it.`,
+  );
 }
 
 /**

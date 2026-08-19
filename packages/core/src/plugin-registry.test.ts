@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- one registry matrix covers every contribution and policy slot. */
 import { describe, expect, it } from "vitest";
 
 import {
@@ -91,6 +92,50 @@ describe("createPluginRegistry", () => {
     expect(registry.ownerOf("check", "INS-001")).toBe(core);
     expect(registry.ownerOf("check", "alpha/UNKNOWN")).toBeUndefined();
     expect(registry.ownerOf("adapter", "alpha/SEC-001")).toBeUndefined();
+  });
+
+  it("suppresses exact registered skill sources and ignores absent targets", () => {
+    const bundled = createPlugin("bundled", { skills: [createSkill("review")] });
+    const directory = createSkillDirectory("catalog");
+    const driver = createSkillSource("remote/catalog");
+    const remote = createPlugin("remote", {
+      skillDirectories: [directory],
+      skillSources: [driver],
+    });
+    const policy = createPlugin("policy", {
+      disabledSkillSources: [
+        "plugin:bundled",
+        "directory:catalog",
+        "driver:remote/catalog",
+        "driver:optional/missing",
+      ],
+    });
+
+    const registry = createPluginRegistry([bundled, remote, policy]);
+
+    expect(registry.skills).toEqual([]);
+    expect(registry.skillDirectories).toEqual([]);
+    expect(registry.skillSources).toEqual([]);
+    // Only removals that matched something are attributable; the absent target explains nothing.
+    expect([...registry.disabledSkillSources]).toEqual([
+      ["directory:catalog", "policy"],
+      ["plugin:bundled", "policy"],
+      ["driver:remote/catalog", "policy"],
+    ]);
+  });
+
+  it("rejects malformed and duplicate disabled skill source IDs", () => {
+    const malformed = captureRegistryError([
+      createPlugin("policy", { disabledSkillSources: ["driver:bad:id"] }),
+    ]);
+    const duplicate = captureRegistryError([
+      createPlugin("policy", {
+        disabledSkillSources: ["directory:catalog", "directory:catalog"],
+      }),
+    ]);
+
+    expect(malformed.message).toContain("disables invalid skill source ID");
+    expect(duplicate.message).toContain("disables duplicate skill source ID");
   });
 
   it("accepts consistent namespaced finding groups shared by checks", () => {

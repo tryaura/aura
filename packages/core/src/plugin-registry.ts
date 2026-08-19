@@ -7,10 +7,16 @@ import type {
   Preset,
   BundledSkillSource,
   SkillPack,
+  SkillSourceId,
   SkillSourceDriver,
   Snippet,
 } from "@tryaura/aura-sdk";
 
+import {
+  applyDisabledSkillSources,
+  collectDisabledSkillSources,
+  type DisabledSkillSource,
+} from "./plugin-registry-skill-policy.js";
 import { directorySourceProblem } from "./skills/directory-config.js";
 import { contentVersionProblem } from "./plugin-validation-version.js";
 import { collectFindingGroupViolations } from "./plugin-validation-finding-group.js";
@@ -50,6 +56,15 @@ export interface PluginRegistryOptions {
 export interface PluginRegistry {
   readonly adapters: readonly Adapter[];
   readonly checks: readonly Check[];
+  /**
+   * Source id → the plugin id that removed it, for denylist entries that matched something.
+   *
+   * Only applied removals are recorded: an entry naming a source this distribution never had is a
+   * documented no-op and has nothing to explain. Exposed so a source vanishing from the picker can
+   * be attributed on screen — the alternative is a user hunting for a directory that some other
+   * plugin quietly took away.
+   */
+  readonly disabledSkillSources: ReadonlyMap<SkillSourceId, string>;
   readonly mcpServers: readonly McpServerDef[];
   /**
    * Resolves the plugin that contributed `id`, or `undefined` when nothing claims it.
@@ -77,6 +92,8 @@ export interface RegisteredSkillPack {
 interface CollectedContributions {
   readonly adapters: Adapter[];
   readonly checks: Check[];
+  /** Every accepted denylist entry, paired with the plugin that declared it. */
+  readonly disabledSkillSources: DisabledSkillSource[];
   readonly mcpServers: McpServerDef[];
   readonly plugins: AuraPlugin[];
   readonly presets: Preset[];
@@ -101,6 +118,7 @@ export function createPluginRegistry(
   const collected: CollectedContributions = {
     adapters: [],
     checks: [],
+    disabledSkillSources: [],
     mcpServers: [],
     plugins: [],
     presets: [],
@@ -120,18 +138,21 @@ export function createPluginRegistry(
     throw new Error(formatViolations(state.violations));
   }
 
+  const sources = applyDisabledSkillSources(collected, collected.disabledSkillSources);
+
   // `readonly` is erased at runtime, and plugin code runs in this process, so the validated result
   // is frozen rather than left mutable behind a compile-time-only guarantee.
   return Object.freeze({
     adapters: Object.freeze(collected.adapters),
     checks: Object.freeze(collected.checks),
+    disabledSkillSources: sources.disabled,
     mcpServers: Object.freeze(collected.mcpServers),
     ownerOf: (kind: ContributionKind, id: string) => state.owners.get(kind)?.get(id),
     plugins: Object.freeze(collected.plugins),
     presets: Object.freeze(collected.presets),
-    skillDirectories: Object.freeze(collected.skillDirectories),
-    skills: Object.freeze(collected.skills),
-    skillSources: Object.freeze(collected.skillSources),
+    skillDirectories: Object.freeze(sources.skillDirectories),
+    skills: Object.freeze(sources.skills),
+    skillSources: Object.freeze(sources.skillSources),
     snippets: Object.freeze(collected.snippets),
   });
 }
@@ -156,6 +177,8 @@ function collectCandidate(
   }
 
   collected.plugins.push(plugin);
+
+  collectDisabledSkillSources(state, plugin, collected.disabledSkillSources);
 
   collectAdapterViolations(state, plugin.adapters, plugin);
   collectFindingGroupViolations(state, plugin.checks, plugin);

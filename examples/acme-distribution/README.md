@@ -4,8 +4,9 @@ This is a complete private Aura distribution. It adds:
 
 - an adapter for an internal `acme-agent` CLI;
 - an Acme engineering instruction snippet;
-- an `acme-release` Agent Skill; and
-- a credential-safe Acme source-control MCP catalog entry; and
+- bundled `acme-release` and driver-provided `acme-review` Agent Skills;
+- a credential-safe Acme source-control MCP catalog entry;
+- a denylist removing the optional AgenticSkills directory; and
 - a bundled `plugin:acme/platform` runtime preset demonstrating checks, required MCP, content, and
   skill-source policy.
 

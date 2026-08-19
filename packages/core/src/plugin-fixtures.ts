@@ -1,11 +1,13 @@
 import type {
   Adapter,
+  AuraPlugin,
   Check,
   DirectorySkillSource,
+  DriverSkillListing,
+  DriverSkillPack,
   McpServerDef,
   Preset,
   PrivateDirectorySkillSource,
-  SkillListing,
   SkillPack,
   SkillSourceDriver,
   Snippet,
@@ -19,6 +21,7 @@ export interface PluginFixtureOptions {
   readonly adapters?: readonly Adapter[] | undefined;
   readonly apiVersion?: number | undefined;
   readonly checks?: readonly Check[] | undefined;
+  readonly disabledSkillSources?: AuraPlugin["disabledSkillSources"];
   readonly mcpCatalog?: readonly McpServerDef[] | undefined;
   readonly name?: string | undefined;
   readonly presets?: readonly Preset[] | undefined;
@@ -34,6 +37,7 @@ export function createPlugin(id: string, options: PluginFixtureOptions = {}): Pl
     adapters: options.adapters,
     apiVersion: options.apiVersion ?? 1,
     checks: options.checks,
+    disabledSkillSources: options.disabledSkillSources,
     id,
     mcpCatalog: options.mcpCatalog,
     name: options.name ?? id,
@@ -150,11 +154,11 @@ export function createSkillSource(id: string): SkillSourceDriver {
   return {
     description: "Fixture skill source.",
     id,
-    async list(): Promise<readonly SkillListing[]> {
+    async list(): Promise<readonly DriverSkillListing[]> {
       return [];
     },
     name: id,
-    async resolve(): Promise<ReadonlyMap<string, SkillPack>> {
+    async resolve(): Promise<ReadonlyMap<string, DriverSkillPack>> {
       return new Map();
     },
   };

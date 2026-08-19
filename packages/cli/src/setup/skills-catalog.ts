@@ -1,27 +1,24 @@
 import type {
   AuraTeamPreset,
   DirectorySkillSource,
+  DriverSkillSource,
   Environment,
   PrivateDirectorySkillSource,
   ResolvedSkillPack,
   SkillSourceId,
+  SkillSourceDriver,
   WorkspaceModel,
 } from "@tryaura/aura-sdk";
 import {
   AURA_TEAM_PRESET_PATH,
   collectSkillDirectorySources,
-  createLimiter,
   isSkillSourceAllowed,
-  listDirectorySkills,
-  type DirectorySkillListingResult,
+  type DriverSkillListingResult,
 } from "@tryaura/core";
 
 import { resolveSkillSelections } from "./skill-catalog-resolution.js";
-import { skillIdentity } from "./skill-planner-paths.js";
+import { loadListing } from "./skills-catalog-listing.js";
 import type { SkillSelection } from "./types.js";
-
-/** How many skill directories the picker lists at once; each is one loading row on screen. */
-const MAX_CONCURRENT_SOURCE_LISTINGS = 4;
 
 /** The allowlist in force, in the shape the planner can enforce synchronously. */
 export interface SkillSourcePolicy {
@@ -82,7 +79,7 @@ export interface PendingSkillSource {
 }
 
 type SkillSourceLoadStatus = "active" | "complete";
-type SkillSourceLoadUpdate = (id: string, status: SkillSourceLoadStatus) => void;
+export type SkillSourceLoadUpdate = (id: string, status: SkillSourceLoadStatus) => void;
 
 /**
  * The skills the run can install, resolved on demand.
@@ -111,6 +108,14 @@ export interface SkillCatalog {
 
 export interface SkillCatalogInputs {
   readonly environment: Environment;
+  /**
+   * Whether this run may call a skill-source driver at all.
+   *
+   * Required rather than defaulted: a driver is the one source kind that runs plugin code, and a
+   * caller that simply forgot the flag would silently ship a catalog with every driver missing and
+   * nothing on screen to say so.
+   */
+  readonly interactive: boolean;
   readonly model: WorkspaceModel;
   readonly preset: AuraTeamPreset | undefined;
   /** Messages from reading the preset file, surfaced with the catalog's own notes. */
@@ -118,6 +123,7 @@ export interface SkillCatalogInputs {
   /** Where the active policy came from. Defaults to the conventional checkout path. */
   readonly presetOrigin?: string | undefined;
   readonly registryDirectories: readonly DirectorySkillSource[];
+  readonly registryDrivers?: readonly SkillSourceDriver[] | undefined;
 }
 
 export function createSkillCatalog(inputs: SkillCatalogInputs): SkillCatalog {
@@ -125,6 +131,18 @@ export function createSkillCatalog(inputs: SkillCatalogInputs): SkillCatalog {
   const packs = new Map<string, ResolvedSkillPack>();
   const failures = new Map<string, string>();
   const pending = new Map<string, Promise<SkillCatalogListing>>();
+  const driverListings = new Map<string, Promise<DriverSkillListingResult>>();
+  const listedDriverSkills = new Map<string, Set<string>>();
+  const drivers: readonly DriverSkillSource[] = inputs.interactive
+    ? (inputs.registryDrivers ?? [])
+        .map((driver): DriverSkillSource => ({
+          driver,
+          id: `driver:${driver.id}`,
+          kind: "driver",
+          name: driver.name,
+        }))
+        .filter((source) => isSkillSourceAllowed(inputs.preset, source.id))
+    : [];
 
   return {
     load: (approvedPrivateSourceIds = new Set(), update) => {
@@ -140,13 +158,19 @@ export function createSkillCatalog(inputs: SkillCatalogInputs): SkillCatalog {
         (source): source is PrivateDirectorySkillSource =>
           source.kind === "private-directory" && !approvedPrivateSourceIds.has(source.id),
       );
-      const listing = loadListing(
+      const listing = loadListing({
+        driverListings,
+        drivers,
         inputs,
-        approved,
-        [...inputs.presetNotes, ...collected.diagnostics.map((diagnostic) => diagnostic.message)],
+        listedDriverSkills,
+        notes: [
+          ...inputs.presetNotes,
+          ...collected.diagnostics.map((diagnostic) => diagnostic.message),
+        ],
+        sources: approved,
         unapproved,
         update,
-      );
+      });
       pending.set(key, listing);
       return listing;
     },
@@ -154,12 +178,17 @@ export function createSkillCatalog(inputs: SkillCatalogInputs): SkillCatalog {
       if (pending.has(approvalKey(approvedPrivateSourceIds))) {
         return [];
       }
-      return collected.sources
-        .filter(
-          (source) =>
-            source.kind !== "private-directory" || approvedPrivateSourceIds.has(source.id),
-        )
-        .map((source) => ({ id: source.id, name: source.name }));
+      return [
+        ...collected.sources
+          .filter(
+            (source) =>
+              source.kind !== "private-directory" || approvedPrivateSourceIds.has(source.id),
+          )
+          .map((source) => ({ id: source.id, name: source.name })),
+        ...drivers
+          .filter((source) => !driverListings.has(source.id))
+          .map((source) => ({ id: source.id, name: source.name })),
+      ];
     },
     policy: {
       ...(inputs.preset?.allowedSkillSources === undefined
@@ -182,88 +211,9 @@ export function createSkillCatalog(inputs: SkillCatalogInputs): SkillCatalog {
         selections,
         packs,
         failures,
+        drivers,
+        listedDriverSkills,
       ),
-  };
-}
-
-async function loadListing(
-  inputs: SkillCatalogInputs,
-  sources: readonly DirectorySkillSource[],
-  baseNotes: readonly string[],
-  unapproved: readonly PrivateDirectorySkillSource[],
-  update: SkillSourceLoadUpdate | undefined,
-): Promise<SkillCatalogListing> {
-  const entries: SkillCatalogEntry[] = [];
-  const notes = [...baseNotes];
-  const unavailableSources: UnavailableSkillSource[] = unapproved.map((source) => ({
-    hint: `connection not approved; token ${source.tokenEnv}`,
-    id: source.id,
-    name: source.name,
-  }));
-
-  for (const skill of inputs.model.availableSkills ?? []) {
-    if (!isSkillSourceAllowed(inputs.preset, skill.source.id)) {
-      continue;
-    }
-    entries.push({
-      description: skill.description,
-      id: skill.id,
-      identity: skillIdentity(skill.source.id, skill.id),
-      name: skill.name,
-      preview: skill.files.find((file) => file.path === "SKILL.md")?.content,
-      remote: false,
-      sourceId: skill.source.id,
-      sourceName: skill.source.name,
-      version: skill.version,
-    });
-  }
-
-  const limit = createLimiter(MAX_CONCURRENT_SOURCE_LISTINGS);
-  const listings: readonly {
-    readonly result: DirectorySkillListingResult;
-    readonly source: DirectorySkillSource;
-  }[] = await Promise.all(
-    sources.map((source) =>
-      limit(async () => {
-        update?.(source.id, "active");
-        try {
-          return {
-            result: await listDirectorySkills(inputs.environment, source),
-            source,
-          };
-        } finally {
-          update?.(source.id, "complete");
-        }
-      }),
-    ),
-  );
-  for (const { result, source } of listings) {
-    notes.push(...result.diagnostics.map((diagnostic) => diagnostic.message));
-    if (result.status.kind === "unavailable") {
-      unavailableSources.push({ hint: result.status.hint, id: source.id, name: source.name });
-      continue;
-    }
-    for (const listing of result.listings) {
-      entries.push({
-        description: listing.description,
-        id: listing.id,
-        identity: skillIdentity(source.id, listing.id),
-        name: listing.name,
-        remote: true,
-        sourceId: source.id,
-        sourceName: source.name,
-        // The host that serves the bytes, not the catalog that advertised them: a directory that
-        // indexes content elsewhere names the real origin, and that is what the review shows.
-        sourceUrl: listing.originUrl ?? source.url,
-        version: listing.version,
-      });
-    }
-  }
-
-  return {
-    entries: Object.freeze(entries),
-    notes: Object.freeze(notes),
-    unavailableSources: Object.freeze(unavailableSources),
   };
 }
 

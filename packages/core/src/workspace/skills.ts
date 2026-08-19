@@ -1,36 +1,24 @@
-import { createHash } from "node:crypto";
-import { join, relative, resolve, sep } from "node:path";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
   parseSkillFrontmatter,
   parseSkillReferences,
+  type DriverSkillPack,
+  type DriverSkillSource,
   type Environment,
-  type FileProblem,
-  type ResolvedSkillFile,
   type ResolvedSkillPack,
-  type SharedSkillEntry,
   type SharedSkillState,
 } from "@tryaura/aura-sdk";
 
 import type { RegisteredSkillPack } from "../plugin-registry.js";
 import type { ScanDiagnostic } from "./diagnostics.js";
-import type { FileReader, PathContents } from "./reader.js";
+import type { FileReader } from "./reader.js";
 import { sharedSkillsRoot } from "./skill-deployment-plan.js";
+import { DRIVER_WALK_POLICY, treeHash, walkTree, type WalkedTree } from "./skill-tree-walk.js";
 
 const SKILLS_DIAGNOSTIC_ID = "core/skills";
 const SKILL_FILE = "SKILL.md";
-
-interface WalkedTree {
-  readonly entries: readonly SharedSkillEntry[];
-  readonly files: readonly ResolvedSkillFile[];
-  readonly problem?: WalkProblem | undefined;
-}
-
-interface WalkProblem {
-  readonly kind: FileProblem;
-  readonly message: string;
-}
 
 /** Canonical shared skill root for one captured environment. */
 function sharedSkillsPath(environment: Pick<Environment, "homeDir">): string {
@@ -98,6 +86,41 @@ export async function resolveBundledSkills(
   };
 }
 
+export type DriverSkillPackResolution =
+  | { readonly kind: "invalid" }
+  | { readonly kind: "resolved"; readonly value: ResolvedSkillPack };
+
+/** Safely reads one driver-materialized directory without exposing its rejected data. */
+export async function resolveDriverSkillPack(
+  skill: DriverSkillPack,
+  source: DriverSkillSource,
+  reader: FileReader,
+): Promise<DriverSkillPackResolution> {
+  let path: string;
+  try {
+    path = fileURLToPath(skill.source.url);
+  } catch {
+    return { kind: "invalid" };
+  }
+  const tree = await walkTree(path, reader, DRIVER_WALK_POLICY);
+  if (tree.problem !== undefined || !tree.files.some((file) => file.path === SKILL_FILE)) {
+    return { kind: "invalid" };
+  }
+  return {
+    kind: "resolved",
+    value: Object.freeze({
+      description: skill.description,
+      files: tree.files,
+      id: skill.id,
+      name: skill.name,
+      originUrl: skill.originUrl,
+      source,
+      treeHash: treeHash(tree.files),
+      version: skill.version,
+    }),
+  };
+}
+
 /** Reads every skill below the canonical shared directory. */
 export async function scanSharedSkills(
   environment: Pick<Environment, "homeDir">,
@@ -132,9 +155,9 @@ export async function scanSharedSkills(
 /**
  * Describes the skill definition, distinguishing an absent one from an unread one.
  *
- * {@link walkPath} stops at the first entry it cannot resolve, and it walks in sorted order, so a
- * single unsupported sibling that sorts before `SKILL.md` leaves the definition unvisited. Calling
- * that "missing" would send the user to repair a file that is already correct, so an aborted walk
+ * The walker stops at the first entry it cannot resolve, and it walks in sorted order, so a single
+ * unsupported sibling that sorts before `SKILL.md` leaves the definition unvisited. Calling that
+ * "missing" would send the user to repair a file that is already correct, so an aborted walk
  * reports `unreadable` and leaves the real cause to travel in `problemDetail`.
  */
 function sharedSkillDefinition(
@@ -177,100 +200,4 @@ function sharedSkillDefinition(
     skillFilePath,
     ...(frontmatter.version === undefined ? {} : { version: frontmatter.version }),
   };
-}
-
-/** Deterministic, platform-independent signature of a normalized skill tree. */
-export function treeHash(files: readonly ResolvedSkillFile[]): string {
-  const signature = [...files]
-    .map((file) => ({ ...file, path: file.path.replaceAll("\\", "/") }))
-    .sort((left, right) => comparePortablePaths(left.path, right.path))
-    .map(
-      (file) => `f:${file.path}:${createHash("sha256").update(file.content, "utf8").digest("hex")}`,
-    )
-    .join("\n");
-  return createHash("sha256").update(`${signature}\n`, "utf8").digest("hex");
-}
-
-async function walkTree(root: string, reader: FileReader): Promise<WalkedTree> {
-  const files: ResolvedSkillFile[] = [];
-  const entries: SharedSkillEntry[] = [];
-  const problem = await walkPath(resolve(root), resolve(root), reader, files, entries);
-  return {
-    entries: Object.freeze(entries),
-    files: Object.freeze(files.sort((left, right) => comparePortablePaths(left.path, right.path))),
-    ...(problem === undefined ? {} : { problem }),
-  };
-}
-
-// fallow-ignore-next-line complexity -- every branch rejects or resolves one filesystem entry kind.
-async function walkPath(
-  root: string,
-  path: string,
-  reader: FileReader,
-  files: ResolvedSkillFile[],
-  entries: SharedSkillEntry[],
-): Promise<WalkProblem | undefined> {
-  const contents = await reader.read(path);
-  const relativePath = portablePath(relative(root, path));
-  if (!contents.exists) {
-    return {
-      kind: "unreadable",
-      message: `${relativePath || "."} does not exist`,
-    };
-  }
-  if (contents.pathKind === "symlink") {
-    return {
-      kind: "unsupported",
-      message: `${relativePath || "."} is a symbolic link`,
-    };
-  }
-  if (contents.problem !== undefined) {
-    return {
-      kind: contents.problem,
-      message: `${relativePath || "."} could not be read (${contents.problem})`,
-    };
-  }
-  if (contents.entries !== undefined) {
-    entries.push({ kind: "directory", path });
-    for (const entry of contents.entries) {
-      const problem = await walkPath(root, join(path, entry), reader, files, entries);
-      if (problem !== undefined) {
-        return problem;
-      }
-    }
-    return undefined;
-  }
-  return addFile(path, relativePath, contents, files, entries);
-}
-
-function addFile(
-  path: string,
-  relativePath: string,
-  contents: PathContents,
-  files: ResolvedSkillFile[],
-  entries: SharedSkillEntry[],
-): WalkProblem | undefined {
-  if (contents.content === undefined) {
-    return {
-      kind: "unsupported",
-      message: `${relativePath} is not a readable regular file`,
-    };
-  }
-  if (contents.utf8Valid === false) {
-    return {
-      kind: "unsupported",
-      message: `${relativePath} is not valid UTF-8`,
-    };
-  }
-  entries.push({ kind: "file", path });
-  files.push({ content: contents.content, path: relativePath });
-  return undefined;
-}
-
-function portablePath(path: string): string {
-  return sep === "/" ? path : path.replaceAll(sep, "/");
-}
-
-function comparePortablePaths(left: string, right: string): number {
-  return left < right ? -1 : left > right ? 1 : 0;
 }

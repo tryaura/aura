@@ -119,6 +119,10 @@ Aura installs each managed skill once below `~/agents/skills/<id>` and links sup
 skill directories to that shared copy. Two sources may publish the same local ID, but a manifest
 cannot select both at once because they would share the same installation directory.
 
+A driver source is recorded as `driver:<namespaced-driver-id>`. If that driver is offline, fails,
+or is disabled in the current distribution, setup preserves the existing entry and installed tree;
+it never treats temporary source unavailability as a request to remove desired state.
+
 ## MCP credential safety
 
 MCP definitions contain credential references, never credential values. Stdio `env` entries must

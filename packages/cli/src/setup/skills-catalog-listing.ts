@@ -1,0 +1,184 @@
+import type {
+  DirectorySkillSource,
+  DriverSkillSource,
+  PrivateDirectorySkillSource,
+} from "@tryaura/aura-sdk";
+import {
+  createLimiter,
+  isSkillSourceAllowed,
+  listDirectorySkills,
+  listDriverSkills,
+  type DriverSkillListingResult,
+} from "@tryaura/core";
+
+import { skillIdentity } from "./skill-planner-paths.js";
+import type {
+  SkillCatalogEntry,
+  SkillCatalogInputs,
+  SkillCatalogListing,
+  SkillSourceLoadUpdate,
+  UnavailableSkillSource,
+} from "./skills-catalog.js";
+
+/** How many skill sources the picker lists at once; each is one loading row on screen. */
+const MAX_CONCURRENT_SOURCE_LISTINGS = 4;
+
+/** Everything one listing pass reads, plus the per-run memos it fills in. */
+export interface SkillListingRequest {
+  /** Driver id → its in-flight or settled listing, memoized for the whole run. */
+  readonly driverListings: Map<string, Promise<DriverSkillListingResult>>;
+  readonly drivers: readonly DriverSkillSource[];
+  readonly inputs: SkillCatalogInputs;
+  /** Driver id → the skill ids it actually advertised; resolution refuses anything else. */
+  readonly listedDriverSkills: Map<string, Set<string>>;
+  /** Messages from reading the preset and collecting sources, surfaced ahead of listing notes. */
+  readonly notes: readonly string[];
+  readonly sources: readonly DirectorySkillSource[];
+  readonly unapproved: readonly PrivateDirectorySkillSource[];
+  readonly update: SkillSourceLoadUpdate | undefined;
+}
+
+/**
+ * Lists every allowed source into one picker order: bundled, then directories, then drivers.
+ *
+ * Directories and drivers are independent I/O and start together — the step's whole latency sits
+ * between the user and the picker, so serializing the two kinds would make them wait for the sum
+ * of both. Only the draining is ordered, which is what keeps the picker's rows stable.
+ */
+export async function loadListing(request: SkillListingRequest): Promise<SkillCatalogListing> {
+  const entries: SkillCatalogEntry[] = [...bundledEntries(request.inputs)];
+  const notes = [...request.notes];
+  const unavailableSources: UnavailableSkillSource[] = request.unapproved.map((source) => ({
+    hint: `connection not approved; token ${source.tokenEnv}`,
+    id: source.id,
+    name: source.name,
+  }));
+
+  const limit = createLimiter(MAX_CONCURRENT_SOURCE_LISTINGS);
+  const [directoryResults, driverResults] = await Promise.all([
+    Promise.all(
+      request.sources.map((source) =>
+        limit(async () => ({
+          result: await reporting(request.update, source.id, () =>
+            listDirectorySkills(request.inputs.environment, source),
+          ),
+          source,
+        })),
+      ),
+    ),
+    Promise.all(
+      request.drivers.map((source) =>
+        limit(async () => ({
+          result: await reporting(request.update, source.id, () =>
+            memoizedDriverListing(request, source),
+          ),
+          source,
+        })),
+      ),
+    ),
+  ]);
+
+  for (const { result, source } of directoryResults) {
+    notes.push(...result.diagnostics.map((diagnostic) => diagnostic.message));
+    if (result.status.kind === "unavailable") {
+      unavailableSources.push({ hint: result.status.hint, id: source.id, name: source.name });
+      continue;
+    }
+    entries.push(...remoteEntries(result.listings, source));
+  }
+  for (const { result, source } of driverResults) {
+    notes.push(...result.messages);
+    if (result.status === "unavailable") {
+      unavailableSources.push({
+        hint: "could not be listed in this run",
+        id: source.id,
+        name: source.name,
+      });
+      continue;
+    }
+    request.listedDriverSkills.set(source.id, new Set(result.listings.map(({ id }) => id)));
+    entries.push(...remoteEntries(result.listings, source));
+  }
+
+  return {
+    entries: Object.freeze(entries),
+    notes: Object.freeze(notes),
+    unavailableSources: Object.freeze(unavailableSources),
+  };
+}
+
+/** Keeps the loading row honest even when the listing throws or the memo is already settled. */
+async function reporting<T>(
+  update: SkillSourceLoadUpdate | undefined,
+  id: string,
+  load: () => Promise<T>,
+): Promise<T> {
+  update?.(id, "active");
+  try {
+    return await load();
+  } finally {
+    update?.(id, "complete");
+  }
+}
+
+/** One `list` call per driver per run, shared across every approval set and back-navigation. */
+function memoizedDriverListing(
+  request: SkillListingRequest,
+  source: DriverSkillSource,
+): Promise<DriverSkillListingResult> {
+  const existing = request.driverListings.get(source.id);
+  if (existing !== undefined) {
+    return existing;
+  }
+  const listing = listDriverSkills(request.inputs.environment, source);
+  request.driverListings.set(source.id, listing);
+  return listing;
+}
+
+function bundledEntries(inputs: SkillCatalogInputs): readonly SkillCatalogEntry[] {
+  return (inputs.model.availableSkills ?? [])
+    .filter((skill) => isSkillSourceAllowed(inputs.preset, skill.source.id))
+    .map((skill) => ({
+      description: skill.description,
+      id: skill.id,
+      identity: skillIdentity(skill.source.id, skill.id),
+      name: skill.name,
+      preview: skill.files.find((file) => file.path === "SKILL.md")?.content,
+      remote: false,
+      sourceId: skill.source.id,
+      sourceName: skill.source.name,
+      version: skill.version,
+    }));
+}
+
+/**
+ * One remote row per listing, differing only in what its origin URL means.
+ *
+ * For a directory the origin is where the bytes were fetched from, falling back to the catalog's
+ * own URL when the index named nothing more specific. A driver instead hands Aura a local
+ * directory, so its origin is the one the driver *declares* for the content — attributed to the
+ * driver at the review rather than presented as a host Aura observed serving it.
+ */
+function remoteEntries(
+  listings: readonly {
+    readonly description: string;
+    readonly id: string;
+    readonly name: string;
+    readonly originUrl?: string | undefined;
+    readonly version: string;
+  }[],
+  source: DirectorySkillSource | DriverSkillSource,
+): readonly SkillCatalogEntry[] {
+  const fallbackUrl = source.kind === "driver" ? undefined : source.url;
+  return listings.map((listing) => ({
+    description: listing.description,
+    id: listing.id,
+    identity: skillIdentity(source.id, listing.id),
+    name: listing.name,
+    remote: true,
+    sourceId: source.id,
+    sourceName: source.name,
+    sourceUrl: listing.originUrl ?? fallbackUrl,
+    version: listing.version,
+  }));
+}

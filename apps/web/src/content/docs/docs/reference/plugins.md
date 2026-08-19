@@ -15,10 +15,11 @@ Every slot is optional.
 | ------------------------------ | ------------------------------------------------------------------------------------------------------- |
 | `adapters`                     | Detect an agent application, declare files for core to read, parse contents into a normalized snapshot. |
 | `checks`                       | Synchronously inspect the `WorkspaceModel` and optionally return a `FixPlan`.                           |
+| `disabledSkillSources`         | Remove exact bundled, directory, or driver source IDs when those sources are present.                   |
 | `snippets`                     | Reference Markdown files.                                                                               |
 | `skills`                       | Reference skill directories.                                                                            |
 | `skillDirectories`             | Remote directories served through Aura's bounded HTTP client or a built-in provider adapter.            |
-| `skillSources`                 | Build-time drivers that list and resolve non-standard external skills.                                  |
+| `skillSources`                 | Lazy drivers that list and resolve non-standard external skills during interactive setup.               |
 | [`mcpCatalog`](./mcp-catalog/) | Reference JSON MCP catalog entries.                                                                     |
 | [`presets`](./team-preset/)    | Reference JSON preset definitions.                                                                      |
 
@@ -26,6 +27,30 @@ Public `skillDirectories` use Aura's `index.json` and `skills/<id>` protocol by 
 distribution may set `protocol: "agenticskills"` on a registered public directory to translate
 AgenticSkills' metadata feed and exact GitHub skill directories into the same bounded, reviewed
 install flow. Team presets remain data-only and use the native protocol.
+
+Each driver ID becomes `driver:<namespaced-id>` in presets and manifests. Aura calls `list` once
+when interactive setup opens Skills, groups selected IDs into one `resolve` call per driver, and
+caches both results for the run. Neither method is called during a workspace scan, a check run, or
+`setup --yes`. A resolved pack references an absolute local `file:` directory and carries a
+credential-free origin URL. Aura reads the tree, enforces file, path, count, size, and encoding
+limits, computes its hash, and requires `SKILL.md`. Failures are isolated by source and skill; raw
+errors and returned bytes are never diagnostics.
+
+A driver runs your code, so it is trusted like the distribution that compiled it — which is also
+why it is never handed a credential the way a private directory is. Aura bounds only its own wait:
+a `list` or `resolve` that has not returned within 30 seconds is treated as unavailable. Because the
+protocol has no cancellation, the call itself keeps running, so a driver that may take longer than
+that should cache its work rather than expect Aura to block on it.
+
+The origin URL a driver returns is a claim about where the content came from, not a URL Aura
+fetched. It is shown at the review attributed to the driver. Return the address a reader could
+actually audit the content at.
+
+`disabledSkillSources` is additive across loaded plugins and applied after every plugin has loaded,
+so it does not depend on plugin order. A matching registered source is omitted and reported at setup
+as a note naming your plugin; an absent target is a no-op. A disabled source still reserves its ID,
+so removing one can never let a colliding contribution through. Existing manifest selections remain
+unavailable rather than being automatically removed.
 
 ## Namespacing
 
