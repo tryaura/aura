@@ -56,6 +56,10 @@ Every source file is capped at 300 lines, blank lines and comments included (`ma
 Any change to help screens, glyphs, or wizard behavior updates the document, the implementation,
 and the snapshots together.
 
+This repository ships its own `.aura/preset.json` — the repository preset layer, dogfooded.
+Running `aura` here picks it up: interactive `aura setup` offers to trust it once, and `aura
+check` notes it as held until then.
+
 ## Tests
 
 - Tests are co-located `*.test.ts` files, collected workspace-wide by the root

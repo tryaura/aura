@@ -132,6 +132,8 @@ export interface SetupStepContext {
   readonly model: WorkspaceModel;
   /** Active team-preset defaults and the explicit reference this run must persist. */
   readonly preset?: SetupPresetContext | undefined;
+  /** How this run resolved the repository preset; absent when no `.aura/preset.json` exists. */
+  readonly repoPreset?: SetupRepoPresetContext | undefined;
   readonly selections: SetupSelections;
   /**
    * The skills the run can install, fetched on first use.
@@ -156,6 +158,17 @@ export interface SetupPresetContext {
   readonly reference: string;
   readonly skills: readonly SkillSelection[];
   readonly snippets: readonly string[];
+}
+
+/** The repository preset as this run resolved it, alongside this run's trust decision. */
+export interface SetupRepoPresetContext {
+  /** True when this run's prompt accepted the applied contents, so the plan records the trust. */
+  readonly accepted: boolean;
+  /** Check values the repo layer supplied, in the preset policy summary's wording. */
+  readonly checkSummary: readonly string[];
+  readonly hash: string;
+  readonly path: string;
+  readonly status: "applied" | "held";
 }
 
 /** The out-of-band outcome of a step the user backed out of. */

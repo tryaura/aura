@@ -19,6 +19,8 @@ import type { CliBranding, CliExitCode } from "../types.js";
 import { buildAppCatalog } from "./catalog.js";
 import { createSetupCatalogs } from "./catalogs.js";
 import { endOnGreen, gatherFindings } from "./green.js";
+import { presetCheckSummary } from "./preset-policy.js";
+import { setupRepoPresetContext } from "./repo-trust.js";
 import { createSnippetCatalog } from "./snippets.js";
 import { SETUP_STEPS } from "./steps/index.js";
 import { type GatherStart } from "./gather.js";
@@ -96,6 +98,10 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
     request.stderr.write(`${branding.displayName}: ${safe(booted.message)}\n`);
     return finish(2, "unusable");
   }
+  if (booted.status === "aborted") {
+    stdout.write("\nLeft everything as it was.\n");
+    return finish(1, "aborted");
+  }
   const { activeChecks, configured, effectiveModel, effectiveScan, projected, scan } = booted;
   const model = scan.model;
 
@@ -119,6 +125,7 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
     registry: request.registry,
   });
   const preset = setupPresetContext(request, configured.config, configured.preset);
+  const repoPreset = setupRepoPresetContext(configured, booted.acceptedRepoPresetHash);
 
   const stepContext = {
     appCatalog: buildAppCatalog(request.registry.adapters, model, scan.skipped),
@@ -135,6 +142,7 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
       preset?.snippets ?? [],
     ),
     ...(preset === undefined ? {} : { preset }),
+    ...(repoPreset === undefined ? {} : { repoPreset }),
   };
 
   // The confirmation can send the user ← back into the last step, so gather → plan → confirm
@@ -201,36 +209,11 @@ function setupPresetContext(
     return undefined;
   }
   return Object.freeze({
-    checkSummary: presetCheckSummary(config),
+    checkSummary: presetCheckSummary(config, "preset"),
     explicit: request.cliReference !== undefined,
     name: selected.name,
     reference: request.cliReference ?? selected.reference,
     skills: Object.freeze([...(preset.skills ?? [])]),
     snippets: Object.freeze([...(preset.snippets ?? [])]),
   });
-}
-
-function presetCheckSummary(config: AuraEffectiveConfig): readonly string[] {
-  const lines: string[] = [];
-  for (const [id, check] of Object.entries(config.checks)) {
-    if (check.enabled.provenance.layer === "preset") {
-      lines.push(`${id}: ${check.enabled.value ? "enabled" : "disabled"}`);
-    }
-    if (check.severity.provenance.layer === "preset") {
-      lines.push(`${id}: severity ${check.severity.value}`);
-    }
-    if (check.thresholds.provenance.layer === "preset") {
-      lines.push(`${id}: ${formatThresholds(check.thresholds.value)}`);
-    }
-  }
-  return Object.freeze(lines);
-}
-
-/** Thresholds read as settings, not as the JSON they happen to be stored in. */
-function formatThresholds(thresholds: Readonly<Record<string, unknown>>): string {
-  const pairs = Object.entries(thresholds).map(
-    ([name, value]) =>
-      `${name}=${typeof value === "object" ? JSON.stringify(value) : String(value)}`,
-  );
-  return pairs.length === 0 ? "no thresholds" : pairs.join(", ");
 }

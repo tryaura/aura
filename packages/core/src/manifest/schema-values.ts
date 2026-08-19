@@ -1,5 +1,7 @@
 import type { JsonObject, JsonValue } from "@tryaura/aura-sdk";
 
+export const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
+
 export class AuraManifestValidationError extends Error {
   readonly jsonPath: string;
 

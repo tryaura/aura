@@ -62,6 +62,9 @@ describe("check --explain", () => {
     expect(await runCli(distro([findingPlugin("info", [])]), capture.runtime)).toBe(0);
     // `--json` keeps the document alone on stdout and moves everything else to stderr.
     expect(parseCheckExplanation(capture.stdout.text)).toEqual({
+      configuration: {
+        repositoryPreset: { path: ".aura/preset.json", status: "held" },
+      },
       enabled: true,
       explain: "Test check.",
       fixability: "manual",

@@ -1,11 +1,18 @@
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { defineCheck, definePlugin } from "@tryaura/aura-sdk";
+import { defineCheck, definePlugin, type AuraManifestState } from "@tryaura/aura-sdk";
+import {
+  createEmptyAuraManifest,
+  createEnvironment,
+  createPluginRegistry,
+  hashRepoPreset,
+} from "@tryaura/core";
 import { describe, expect, it } from "vitest";
 
 import { runCli } from "./index.js";
+import { resolveRuntimeConfig } from "./runtime-config.js";
 import { parseCheckExplanation, parseCheckReport } from "./test-support/check-output-schema.js";
 import { createCapture, distro, findingPlugin, fixtureAdapter } from "./testing.js";
 
@@ -109,6 +116,140 @@ describe("runtime configuration", () => {
     });
   });
 });
+
+describe("repository preset layer", () => {
+  const REPO_PRESET = JSON.stringify({
+    checks: { severity: { "runtime/CHECK": "error" } },
+    name: "Repo policy",
+    schemaVersion: 1,
+  });
+
+  it("holds an untrusted repository preset without applying its values", async () => {
+    const cwd = await workspaceWithRepoPreset(REPO_PRESET);
+    const result = await resolveRuntimeConfig({
+      environment: createEnvironment({ cwd, homeDir: join(cwd, "home") }),
+      manifest: missingManifest(cwd),
+      registry: createPluginRegistry([runtimePlugin(() => [])], {}),
+    });
+
+    expect(result.status).toBe("ready");
+    if (result.status !== "ready") {
+      return;
+    }
+    expect(result.repoPreset).toEqual({
+      hash: hashRepoPreset(REPO_PRESET),
+      path: join(cwd, ".aura", "preset.json"),
+      status: "held",
+    });
+    expect(result.config.checks["runtime/CHECK"]?.severity.value).toBe("info");
+  });
+
+  it.each(["recorded", "accepted-this-run"])(
+    "applies the layer for a %s trust of the exact contents",
+    async (kind) => {
+      const cwd = await workspaceWithRepoPreset(REPO_PRESET);
+      const hash = hashRepoPreset(REPO_PRESET);
+      const path = join(cwd, ".aura", "preset.json");
+      const result = await resolveRuntimeConfig({
+        ...(kind === "accepted-this-run" ? { acceptedRepoPresetHash: hash } : {}),
+        environment: createEnvironment({ cwd, homeDir: join(cwd, "home") }),
+        manifest: kind === "recorded" ? readyManifest(cwd, [{ hash, path }]) : missingManifest(cwd),
+        registry: createPluginRegistry([runtimePlugin(() => [])], {}),
+      });
+
+      expect(result.status).toBe("ready");
+      if (result.status !== "ready") {
+        return;
+      }
+      expect(result.repoPreset).toMatchObject({ status: "applied" });
+      expect(result.config.checks["runtime/CHECK"]?.severity).toEqual({
+        provenance: { label: ".aura/preset.json", layer: "repo" },
+        value: "error",
+      });
+    },
+  );
+
+  it("holds the layer when the recorded trust no longer matches the contents", async () => {
+    const cwd = await workspaceWithRepoPreset(REPO_PRESET);
+    const path = join(cwd, ".aura", "preset.json");
+    const result = await resolveRuntimeConfig({
+      environment: createEnvironment({ cwd, homeDir: join(cwd, "home") }),
+      manifest: readyManifest(cwd, [{ hash: "a".repeat(64), path }]),
+      registry: createPluginRegistry([runtimePlugin(() => [])], {}),
+    });
+
+    expect(result.status).toBe("ready");
+    if (result.status !== "ready") {
+      return;
+    }
+    expect(result.repoPreset).toMatchObject({ status: "held" });
+    expect(result.config.checks["runtime/CHECK"]?.severity.value).toBe("info");
+  });
+
+  it("fails closed when the repository preset is unreadable", async () => {
+    const cwd = await workspaceWithRepoPreset("{ broken");
+    const result = await resolveRuntimeConfig({
+      environment: createEnvironment({ cwd, homeDir: join(cwd, "home") }),
+      manifest: missingManifest(cwd),
+      registry: createPluginRegistry([runtimePlugin(() => [])], {}),
+    });
+
+    expect(result.status).toBe("invalid");
+    if (result.status !== "invalid") {
+      return;
+    }
+    expect(result.message).toContain("is not valid JSON");
+    expect(result.message).toContain("Fix or remove the file to continue.");
+  });
+
+  it("surfaces held state in JSON reports and JSON and human explanations", async () => {
+    const cwd = await workspaceWithRepoPreset(REPO_PRESET);
+    const runtime = { cwd, homeDir: join(cwd, "home") };
+    const reportCapture = createCapture(["check", "--json"]);
+    const jsonExplanation = createCapture(["check", "--explain", "runtime/CHECK", "--json"]);
+    const humanExplanation = createCapture(["check", "--explain", "runtime/CHECK"]);
+    const plugins = [runtimePlugin(() => [])];
+
+    expect(await runCli(distro(plugins), { ...reportCapture.runtime, ...runtime })).toBe(0);
+    expect(parseCheckReport(reportCapture.stdout.text).configuration).toEqual({
+      repositoryPreset: { path: ".aura/preset.json", status: "held" },
+    });
+
+    expect(await runCli(distro(plugins), { ...jsonExplanation.runtime, ...runtime })).toBe(0);
+    expect(parseCheckExplanation(jsonExplanation.stdout.text).configuration).toEqual({
+      repositoryPreset: { path: ".aura/preset.json", status: "held" },
+    });
+
+    expect(await runCli(distro(plugins), { ...humanExplanation.runtime, ...runtime })).toBe(0);
+    expect(humanExplanation.stdout.text).toContain(
+      "Repository preset: .aura/preset.json — held because it is not trusted",
+    );
+  });
+});
+
+async function workspaceWithRepoPreset(content: string): Promise<string> {
+  const cwd = await mkdtemp(join(tmpdir(), "aura-repo-layer-"));
+  await mkdir(join(cwd, ".aura"));
+  await writeFile(join(cwd, ".aura", "preset.json"), content, "utf8");
+  return cwd;
+}
+
+function missingManifest(cwd: string): AuraManifestState {
+  return { exists: false, path: join(cwd, "home", "agents", "aura.json"), status: "missing" };
+}
+
+function readyManifest(
+  cwd: string,
+  trustedRepoPresets: readonly { hash: string; path: string }[],
+): AuraManifestState {
+  return {
+    exists: true,
+    mode: 0o600,
+    path: join(cwd, "home", "agents", "aura.json"),
+    status: "ready",
+    value: { ...createEmptyAuraManifest(), trustedRepoPresets },
+  };
+}
 
 function runtimePlugin(detect: Parameters<typeof defineCheck>[0]["detect"]) {
   return definePlugin({

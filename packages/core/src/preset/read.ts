@@ -8,8 +8,10 @@ import { validateTeamPreset } from "./schema.js";
 
 const PRESET_DIAGNOSTIC_ID = "core/team-preset";
 
-/** The team preset in effect, alongside anything wrong with the file that carries it. */
+/** The repository preset in effect, alongside anything wrong with the file that carries it. */
 export interface TeamPresetState {
+  /** The raw text that was validated, present when the file was readable. */
+  readonly content?: string | undefined;
   readonly diagnostics: readonly ScanDiagnostic[];
   /** Absent when no preset file exists — which is not a problem, just the default. */
   readonly preset: AuraTeamPreset | undefined;
@@ -18,11 +20,11 @@ export interface TeamPresetState {
 }
 
 /**
- * Reads and validates the workspace team preset.
+ * Reads and validates the workspace repository preset.
  *
  * A missing file is the ordinary case and produces neither preset nor diagnostic. An unreadable or
  * invalid file produces a diagnostic and no preset: allowlist enforcement downstream treats "no
- * preset" as "everything permitted", so a broken preset must be surfaced rather than silently
+ * preset" as "everything permitted", so a broken preset must stop the run rather than silently
  * widening what a team locked down.
  */
 export async function readTeamPreset(cwd: string, reader: FileReader): Promise<TeamPresetState> {
@@ -54,7 +56,7 @@ export async function readTeamPreset(cwd: string, reader: FileReader): Promise<T
   if (result.kind === "invalid") {
     return failure(path, `is not a valid team preset (${result.problem})`);
   }
-  return { diagnostics: [], preset: result.preset, status: "ready" };
+  return { content: contents.content, diagnostics: [], preset: result.preset, status: "ready" };
 }
 
 function failure(path: string, reason: string): TeamPresetState {
@@ -62,7 +64,7 @@ function failure(path: string, reason: string): TeamPresetState {
     diagnostics: [
       {
         adapterId: PRESET_DIAGNOSTIC_ID,
-        message: `Team preset "${AURA_TEAM_PRESET_PATH}" ${reason}, so it is ignored.`,
+        message: `Repository preset "${AURA_TEAM_PRESET_PATH}" ${reason}.`,
         path,
         phase: "read",
       },

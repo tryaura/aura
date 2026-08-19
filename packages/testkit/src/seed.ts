@@ -1,6 +1,8 @@
-import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { platform, tmpdir } from "node:os";
 import { dirname, isAbsolute, join, normalize, relative, sep } from "node:path";
+
+import { hashRepoPreset, MAX_TRUSTED_REPO_PRESETS } from "@tryaura/core";
 
 import { readInvocations, validateShim, writeShim } from "./shims.js";
 import type { SeedContent, SeedRoots, ShimResponse, TestSeed, TestSeedBuilder } from "./types.js";
@@ -15,9 +17,16 @@ interface SeedShim {
   readonly responses: readonly ShimResponse[];
 }
 
+interface SeedTrustedRepoPreset {
+  readonly [key: string]: unknown;
+  readonly hash: string;
+  readonly path: string;
+}
+
 class SeedBuilder implements TestSeedBuilder {
   readonly #homeFiles = new Map<string, SeedFile>();
   readonly #shims = new Map<string, SeedShim>();
+  readonly #trustedPresets = new Set<string>();
   readonly #workspaceFiles = new Map<string, SeedFile>();
 
   homeFile(path: string, content: SeedContent): TestSeedBuilder {
@@ -34,6 +43,11 @@ class SeedBuilder implements TestSeedBuilder {
       command,
       responses: responses.map((response) => ({ ...response, args: [...response.args] })),
     });
+    return this;
+  }
+
+  trustWorkspacePreset(path = ".aura/preset.json"): TestSeedBuilder {
+    this.#trustedPresets.add(normalizeSeedPath(path));
     return this;
   }
 
@@ -73,6 +87,9 @@ class SeedBuilder implements TestSeedBuilder {
           writeShim({ command: shim.command, logDir, pathDir, responses: shim.responses }),
         ),
       );
+      if (this.#trustedPresets.size > 0) {
+        await recordTrustedPresets(homeDir, workspaceDir, this.#trustedPresets);
+      }
     } catch (error) {
       await rm(root, { force: true, recursive: true });
       throw error;
@@ -103,6 +120,87 @@ class SeedBuilder implements TestSeedBuilder {
 /** Starts a fluent description of one isolated fake machine. */
 export function createSeedBuilder(): TestSeedBuilder {
   return new SeedBuilder();
+}
+
+/**
+ * Merges trust records for the seeded presets into the seed's manifest.
+ *
+ * A trust record binds an absolute preset path to a hash of its contents, and both exist only
+ * once the seed is materialized, so this runs after the files are written and reads them back.
+ */
+async function recordTrustedPresets(
+  homeDir: string,
+  workspaceDir: string,
+  presets: ReadonlySet<string>,
+): Promise<void> {
+  const manifestPath = join(homeDir, "agents", "aura.json");
+  const existing = await readFile(manifestPath, "utf8").catch(() => undefined);
+  const manifest: Record<string, unknown> =
+    existing === undefined
+      ? { apps: {}, mcpServers: [], ownership: {}, schemaVersion: 1, skills: [], snippets: [] }
+      : parseSeedManifest(existing, manifestPath);
+  const added: SeedTrustedRepoPreset[] = [];
+  for (const relativePath of presets) {
+    const path = join(workspaceDir, relativePath);
+    const content = await readFile(path, "utf8").catch(() => {
+      throw new Error(`trustWorkspacePreset needs the seeded workspace file: ${relativePath}`);
+    });
+    added.push({ hash: hashRepoPreset(content), path });
+  }
+  const addedPaths = new Set(added.map((entry) => entry.path));
+  const trustedRepoPresets = [
+    ...parseTrustedRepoPresets(manifest["trustedRepoPresets"], manifestPath).filter(
+      (entry) => !addedPaths.has(entry.path),
+    ),
+    ...added,
+  ];
+  if (trustedRepoPresets.length > MAX_TRUSTED_REPO_PRESETS) {
+    throw new Error(
+      `Seed manifest ${manifestPath} exceeds the ${String(MAX_TRUSTED_REPO_PRESETS)} trusted repository preset limit`,
+    );
+  }
+  await mkdir(dirname(manifestPath), { recursive: true });
+  await writeFile(
+    manifestPath,
+    `${JSON.stringify({ ...manifest, trustedRepoPresets }, undefined, 2)}\n`,
+    { encoding: "utf8", mode: 0o600 },
+  );
+}
+
+function parseSeedManifest(source: string, path: string): Record<string, unknown> {
+  const value: unknown = JSON.parse(source);
+  if (!isRecord(value)) {
+    throw new Error(`Seed manifest ${path} must contain a JSON object`);
+  }
+  return value;
+}
+
+function parseTrustedRepoPresets(
+  value: unknown,
+  manifestPath: string,
+): readonly SeedTrustedRepoPreset[] {
+  if (value === undefined) {
+    return [];
+  }
+  if (!Array.isArray(value)) {
+    throw new Error(`Seed manifest ${manifestPath} trustedRepoPresets must be an array`);
+  }
+  return value.map((candidate, index) => {
+    if (
+      !isRecord(candidate) ||
+      typeof candidate["hash"] !== "string" ||
+      typeof candidate["path"] !== "string"
+    ) {
+      throw new Error(
+        `Seed manifest ${manifestPath} trustedRepoPresets[${String(index)}] must contain string hash and path fields`,
+      );
+    }
+    return { ...candidate, hash: candidate["hash"], path: candidate["path"] };
+  });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 export function assertSupportedPlatform(platform: NodeJS.Platform): void {

@@ -19,10 +19,12 @@ export type {
   CheckSummary,
   PassedCheck,
   ReportApp,
+  ReportConfiguration,
   ReportDiagnostic,
   ReportFinding,
   ReportFix,
   ReportFixOperation,
+  ReportRepositoryPreset,
   ReportStatus,
 } from "./report-types.js";
 export type {
