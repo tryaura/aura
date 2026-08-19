@@ -24,7 +24,7 @@ acmedev/
 ├── src/
 │   ├── internal-agent.ts
 │   ├── plugin.ts
-│   └── main.ts
+│   └── main.boundary.ts
 └── build.mjs
 ```
 
@@ -310,7 +310,7 @@ that the referenced files exist and that their payloads are valid when it scans 
 
 ## 6. Compose the distribution
 
-Create `src/main.ts` and append the private plugin to the official build-time plugin list:
+Create `src/main.boundary.ts` and append the private plugin to the official build-time plugin list:
 
 ```ts
 #!/usr/bin/env node
@@ -343,9 +343,9 @@ Run the source distribution before compiling it:
 
 ```sh
 pnpm exec tsc --noEmit
-bun run src/main.ts --help
-bun run src/main.ts setup --dry-run
-bun run src/main.ts check --json
+bun run src/main.boundary.ts --help
+bun run src/main.boundary.ts setup --dry-run
+bun run src/main.boundary.ts check --json
 ```
 
 Put a semver-producing `acme-agent --version` executable on `PATH` to verify the adapter appears as
@@ -385,7 +385,7 @@ const result = spawnSync(
   "bun",
   [
     "build",
-    "src/main.ts",
+    "src/main.boundary.ts",
     ...assets,
     "--compile",
     "--asset-naming=[dir]/[name].[ext]",

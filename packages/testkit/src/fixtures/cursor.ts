@@ -1,5 +1,5 @@
 import type { ShimResponse, TestSeed } from "../types.js";
-import { createSeedBuilder } from "../seed.js";
+import { createSeedBuilder } from "../seed.boundary.js";
 
 export type CursorFixtureVersion = "3.11.0" | "4.0.0";
 export type CursorRulesFixture = "current" | "legacy";

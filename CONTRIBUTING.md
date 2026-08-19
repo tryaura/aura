@@ -33,16 +33,18 @@ under Releases.
 
 ## The Environment invariant
 
-Product code never reads ambient process state. `.oxlintrc.json` bans `process.env`,
-`process.cwd`, `process.platform`, `process.argv`, `Date.now`, the bare `Date` global, and
-`os.homedir`/`hostname`/`tmpdir`/`userInfo` everywhere except the boot seam
-(`packages/cli/src/run.ts`, `packages/core/src/environment.ts`), test files, and testkit seeding.
+Product code reads ambient process state only in explicitly named `*.boundary.ts` modules.
+`.oxlintrc.json` uses that filename convention for the boot seams and testkit seeding; everywhere
+else it bans `process.env`, `process.cwd`, `process.platform`, `process.argv`, `Date.now`, the bare
+`Date` global, and `os.homedir`/`hostname`/`tmpdir`/`userInfo`. Tests and test helpers have their own
+filename conventions.
 
 Use the `Environment` injected at boot instead — defined in `packages/sdk/src/environment.ts`:
 `cwd`, `homeDir`, `platform`, `pathEntries`, `now()`, and `exec()`. `new Date(value)` is fine only
 where `value` comes from data. This is what lets the testkit seed a fake HOME, `PATH`, and clock
-and get byte-stable output; a direct `process.env` read punches a hole in that determinism. Do not
-add lint suppressions or new override entries to route around it.
+and get byte-stable output; a direct `process.env` read punches a hole in that determinism. A real
+new process seam is a `*.boundary.ts` file, which makes the exception visible in review without a
+config edit. Do not add lint suppressions or individual override entries to route around the ban.
 
 ## The 300-line cap
 
@@ -66,8 +68,8 @@ check` notes it as held until then.
   `vitest.config.ts`. Run them with `pnpm test`; `pnpm test:coverage` adds a report-only V8
   coverage report (no thresholds, not part of `verify`).
 - **Layering rule:** `packages/testkit` depends on `@tryaura/aura-cli`, so it sits _above_ the
-  CLI. `distros/aura` and `scripts/fixtures` consume it; `packages/cli` must not — CLI tests use
-  local fixtures instead. Importing the testkit from `packages/cli` would create a cycle.
+  CLI. `distros/aura` and `examples/acme-distribution` consume it; `packages/cli` must not — CLI
+  tests use local fixtures instead. Importing the testkit from `packages/cli` would create a cycle.
 - Binary smoke tests live in `distros/aura/src/*.smoke.ts` and run against the compiled Bun
   executable via `pnpm verify:binary`.
 

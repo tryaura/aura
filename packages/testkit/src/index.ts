@@ -6,7 +6,7 @@ export { expectConvergedTwice } from "./convergence.js";
 export type { ConvergenceRunResult, ConvergedTwiceResult } from "./convergence.js";
 export { captureFilesystem } from "./filesystem.js";
 export type { FilesystemSnapshot } from "./filesystem.js";
-export { createSeedBuilder } from "./seed.js";
+export { createSeedBuilder } from "./seed.boundary.js";
 export { loopbackOnlyHttpGet } from "./http.js";
 export { createMockDirectoryBuilder } from "./mock-directory.js";
 export type {

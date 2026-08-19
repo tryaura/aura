@@ -1,6 +1,6 @@
 import type { DirectorySkillSource } from "@tryaura/aura-sdk";
 
-import { isAllowedHttpUrl } from "../http.js";
+import { isAllowedHttpUrl } from "../http.boundary.js";
 
 /**
  * Directory source ids are global, so the whole id is validated here rather than a namespace

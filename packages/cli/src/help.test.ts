@@ -41,7 +41,7 @@ describe("help screens", () => {
 
     expect(help.startsWith("Aura\n")).toBe(true);
     expect(help).not.toContain("Docs:");
-    // Without a version the flag is never registered (run.ts), so the row must not advertise it.
+    // Without a version the flag is never registered (run.boundary.ts), so the row must not advertise it.
     expect(help).not.toContain("--version");
   });
 

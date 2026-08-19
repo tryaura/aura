@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createEnvironment } from "../environment.js";
+import { createEnvironment } from "../environment.boundary.js";
 import { createEmptyAuraManifest } from "../manifest/codec.js";
 import { createMemoryReader } from "../workspace/testing.js";
 import { hashRepoPreset, isRepoPresetTrusted, readRepoPreset } from "./repo-trust.js";

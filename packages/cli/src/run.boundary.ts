@@ -20,7 +20,7 @@ import {
   renderUndoHelp,
   renderUnknownCommand,
 } from "./help.js";
-import { resolveRuntime, type ResolvedRuntime } from "./resolve-runtime.js";
+import { resolveRuntime, type ResolvedRuntime } from "./resolve-runtime.boundary.js";
 import { SetupCommand } from "./setup/command.js";
 import { setupAddKinds } from "./setup/steps/index.js";
 import { createTelemetryRecorder, telemetryEnabled, type TelemetryRecorder } from "./telemetry.js";

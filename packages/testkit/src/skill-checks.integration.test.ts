@@ -8,7 +8,7 @@ import { expectConvergedTwice } from "./convergence.js";
 import { claudeCodeShimResponses } from "./fixtures/claude-code.js";
 import { codexShimResponses } from "./fixtures/codex.js";
 import { runCheck } from "./runner.js";
-import { createSeedBuilder } from "./seed.js";
+import { createSeedBuilder } from "./seed.boundary.js";
 
 const DISTRO = {
   branding: { command: "aura", displayName: "Aura" },

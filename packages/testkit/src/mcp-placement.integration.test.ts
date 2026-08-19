@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import { claudeCodeShimResponses } from "./fixtures/claude-code.js";
 import { guidedCheck, officialScan } from "./official-scan.js";
-import { createSeedBuilder } from "./seed.js";
+import { createSeedBuilder } from "./seed.boundary.js";
 
 /**
  * `claude mcp add` writes to `projects` in `~/.claude.json` unless told otherwise.
