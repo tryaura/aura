@@ -1,18 +1,17 @@
 import { resolve } from "node:path";
 
 import type { ArchiveFileReplacement, FileOperation, Scope } from "@tryaura/aura-sdk";
-import { planSharedInstructionLink } from "@tryaura/core";
 import { SHARED_INSTRUCTIONS_TEMPLATE } from "@tryaura/content-official";
 
+import { planLinks } from "./instruction-links.js";
+import { composeConsolidatedInstructions, unmergedSources } from "./instruction-merge.js";
 import {
   archiveRelativePath,
-  composeConsolidatedInstructions,
   duplicateClusters,
   instructionInventory,
   instructionTargetContent,
   instructionTargetSource,
 } from "./instructions.js";
-import { managedAppIdList } from "./managed-apps.js";
 import type { SetupBlocker } from "./planner.js";
 import type { InstructionScopeSelection, SetupStepContext } from "./types.js";
 
@@ -153,7 +152,13 @@ function planScope(
     return false;
   }
   planConsolidatedTarget(context, selection, existing, content, state);
-  planOriginals(context, selection, chosen, state);
+  planOriginals(
+    context,
+    selection,
+    chosen,
+    new Set(unmergedSources(chosen, selection, clusters, context.model, existing)),
+    state,
+  );
   return true;
 }
 
@@ -164,7 +169,13 @@ function planConsolidatedTarget(
   content: string,
   state: InstructionPlanState,
 ): void {
-  if (existing !== undefined && selection.archiveOriginals) {
+  if (existing !== undefined) {
+    // A merge that changed nothing is not a migration. Archiving anyway would back up and rewrite
+    // identical bytes, so re-running the consolidate answer on a converged machine would add an
+    // undo entry every time — the empty plan is the honest answer, and the one that converges.
+    if (existing.content === content) {
+      return;
+    }
     const relativePath = archiveRelativePath(existing.path, selection.scope, context.model);
     if (relativePath === undefined) {
       state.blockers.push({ path: existing.path, reason: "The target has no safe archive path." });
@@ -189,24 +200,29 @@ function planConsolidatedTarget(
 }
 
 /**
- * Decides what happens to the files the merged text came from.
+ * Archives the sources the merged text came from, and leaves behind the ones it did not.
  *
- * A source left in place produces no manual step. Keeping originals is the default answer, so a
- * line per untouched file would appear on every run forever — including the converged one, where
- * "Steps to take yourself" would name work nobody has to do. What that choice actually leaves
- * behind is guidance living in two places, and INS-003 reports exactly that against what is on disk
- * once setup ends on green.
+ * Consolidation is a migration, so a source that reached the target is backed up and taken off disk
+ * in the same plan, before app links replace or remove what is left. A source the merge left out is
+ * the one case where that would delete the only copy of what the file says: its heading is already
+ * in the target, so nothing new was appended, and the text on disk is not text the target holds. It
+ * stays where it is and the run names it. That step repeats until the divergence is resolved, which
+ * is work someone does have to do — unlike a line per untouched file on a converged machine.
  */
 function planOriginals(
   context: SetupStepContext,
   selection: InstructionScopeSelection,
   chosen: ReturnType<typeof instructionInventory>,
+  unmerged: ReadonlySet<string>,
   state: InstructionPlanState,
 ): void {
-  if (!selection.archiveOriginals) {
-    return;
-  }
   for (const source of chosen) {
+    if (unmerged.has(resolve(source.path))) {
+      state.manualSteps.push(
+        `${source.path} changed since Aura merged it into ${selection.targetPath}, so Aura left the file in place rather than archiving text the target does not have. Move what is new into ${selection.targetPath}, then delete ${source.path}.`,
+      );
+      continue;
+    }
     const relativePath = archiveRelativePath(source.path, source.scope, context.model);
     if (relativePath === undefined) {
       state.blockers.push({ path: source.path, reason: "The source has no safe archive path." });
@@ -214,59 +230,6 @@ function planOriginals(
       state.archived.set(resolve(source.path), { relativePath, scope: source.scope });
     }
   }
-}
-
-function planLinks(
-  context: SetupStepContext,
-  scopeSelections: readonly InstructionScopeSelection[],
-  archived: ReadonlyMap<string, { readonly relativePath: string; readonly scope: Scope }>,
-  ownership: Map<string, string[]>,
-  manualSteps: string[],
-): FileOperation[] {
-  const managedIds = new Set(managedAppIdList(context));
-  const operations: FileOperation[] = [];
-  for (const app of context.model.apps) {
-    if (app.synthetic === true || !managedIds.has(app.adapterId)) {
-      continue;
-    }
-    operations.push(
-      ...planAppLinks(context, app, scopeSelections, archived, ownership, manualSteps),
-    );
-  }
-  return operations;
-}
-
-function planAppLinks(
-  context: SetupStepContext,
-  app: SetupStepContext["model"]["apps"][number],
-  scopeSelections: readonly InstructionScopeSelection[],
-  archived: ReadonlyMap<string, { readonly relativePath: string; readonly scope: Scope }>,
-  ownership: Map<string, string[]>,
-  manualSteps: string[],
-): FileOperation[] {
-  return scopeSelections.flatMap((selection) => {
-    const link = selection.scope === "global" ? app.sharedLink : app.projectSharedLink;
-    if (link === undefined) {
-      return [];
-    }
-    // Resolved on both sides: `archived` is keyed by canonical path, and a miss here would plan a
-    // write against pre-archival content on a path an archive already claims — two operations on
-    // one path, which the kernel rejects as a conflict rather than falling back to anything.
-    const outcome = planSharedInstructionLink(app, context.model, {
-      link,
-      ...(archived.has(resolve(link.entryPath)) ? { sourceContent: "" } : {}),
-      symlinkTarget: selection.targetPath,
-    });
-    if ("blocked" in outcome) {
-      manualSteps.push(`Aura could not wire ${link.entryPath}: ${outcome.blocked}`);
-      return [];
-    }
-    manualSteps.push(...(outcome.plan.manualSteps ?? []));
-    const files = ownership.get(app.adapterId) ?? [];
-    files.push(link.entryPath);
-    ownership.set(app.adapterId, files);
-    return [...outcome.plan.operations];
-  });
 }
 
 function primaryPath(operation: FileOperation): string {

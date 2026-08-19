@@ -33,10 +33,10 @@ import {
 /**
  * The instructions step: one back-navigable chain of forms across both scopes.
  *
- * Each scope contributes action → sources → duplicate review → archive stages; a stage whose
- * precondition no longer holds (a non-consolidate action, no duplicated paragraphs left) simply
- * disappears from the chain. The chain runner owns ← navigation between the forms and re-seeds
- * re-asked questions with their previous answers.
+ * Each scope contributes action → sources → duplicate review stages; a stage whose precondition no
+ * longer holds (a non-consolidate action, no duplicated paragraphs left) simply disappears from
+ * the chain. The chain runner owns ← navigation between the forms and re-seeds re-asked questions
+ * with their previous answers.
  */
 export const instructionsStep: SetupStep = {
   gather: async (context, io) => {
@@ -124,7 +124,6 @@ function scopeSelection(input: ScopeInput, draft: ScopeDraft): InstructionScopeS
   );
   return {
     action: "consolidate",
-    archiveOriginals: draft.archiveOriginals === true,
     duplicateWinners,
     scope: input.scope,
     selectedSources,
@@ -152,7 +151,6 @@ function inactiveSelection(
 ): InstructionScopeSelection {
   return {
     action,
-    archiveOriginals: false,
     duplicateWinners: {},
     scope: input.scope,
     selectedSources: [],
@@ -172,7 +170,6 @@ function toDraft(selection: InstructionScopeSelection | undefined): ScopeDraft {
   }
   return {
     action: selection.action,
-    archiveOriginals: selection.archiveOriginals,
     duplicateWinners: selection.duplicateWinners,
     selectedSources: selection.action === "consolidate" ? selection.selectedSources : undefined,
   };

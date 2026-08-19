@@ -41,7 +41,6 @@ type InstructionTargetAction = "blocked" | "consolidate" | "keep" | "skip" | "te
 
 export interface InstructionScopeSelection {
   readonly action: InstructionTargetAction;
-  readonly archiveOriginals: boolean;
   /** INS-003 finding id to selected `path:startLine:endLine` member id. */
   readonly duplicateWinners: Readonly<Record<string, string>>;
   readonly scope: Scope;
