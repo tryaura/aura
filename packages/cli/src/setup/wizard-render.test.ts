@@ -89,7 +89,7 @@ describe("renderWizardFrame", () => {
         2. ○ Claude Code only
         3. Type something.
 
-       ↑/↓ move · ←/→ steps · ↵ select · esc cancel
+       ↑/↓ move · space select · ←/→ steps · ↵ confirm · esc cancel
       "
     `);
   });

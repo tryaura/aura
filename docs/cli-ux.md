@@ -238,9 +238,14 @@ bar, so compact tabs lose no information.
 ### General
 
 - The bar is purely informational + navigational; all answering happens in the body below it
-  (↑/↓ move, space toggles, digits jump, ↵ answers and advances).
-- Footer hint line: `↑/↓ move · space toggle · ←/→ steps · ↵ select · esc cancel` (segments
-  appear only when applicable; a locked Submit drops `↵ submit`).
+  (↑/↓ move, digits jump, ↵ answers and advances).
+- Space marks the row under the cursor and stays put: a multiselect toggles its `☑`, a select
+  moves its `●`. Marking never answers the step by itself — the tab stays `☐` until ↵ answers it
+  (or → commits the form as it stands). A disabled option can never be marked; a multiselect's
+  already-marked one can still be cleared. Digits jump to a row and mark it the same way.
+- Footer hint line: `↑/↓ move · space toggle · ←/→ steps · ↵ select · esc cancel` on a
+  multiselect, `↑/↓ move · space select · ←/→ steps · ↵ confirm · esc cancel` on a select
+  (segments appear only when applicable; a locked Submit drops `↵ submit`).
 - Once a form resolves, it collapses to one `✔ <step>  <answer>` line per step — printed on the
   form's first completion and again only when a re-answer changed it, so back-and-forth
   navigation never stacks duplicate lines and the scrollback's last word is never a stale answer.
