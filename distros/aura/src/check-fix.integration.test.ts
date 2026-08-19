@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { lstat, readFile, readlink } from "node:fs/promises";
+import { lstat, mkdir, readFile, readlink, symlink } from "node:fs/promises";
 import { join } from "node:path";
 import { Readable, Writable } from "node:stream";
 
@@ -95,6 +95,25 @@ describe("aura check --fix", () => {
     expect(result.stdout).toContain("Consolidate its content");
     await expect(readFile(codexPath, "utf8")).resolves.toBe(original);
     expect((await lstat(codexPath)).isSymbolicLink()).toBe(false);
+  });
+
+  it("does not offer a zero-operation INS-002 fix for a link with a missing target", async () => {
+    await using seed = await createSeedBuilder()
+      .shim("codex", [
+        { args: ["--version"], stdout: "codex-cli 0.147.0\n" },
+        { args: ["login", "status"], stdout: "Logged in using ChatGPT\n" },
+      ])
+      .build();
+    const codexPath = join(seed.homeDir, ".codex", "AGENTS.md");
+    const sharedPath = join(seed.homeDir, "agents", "AGENTS.md");
+    await mkdir(join(seed.homeDir, ".codex"), { recursive: true });
+    await symlink(sharedPath, codexPath);
+
+    const result = await run(seed, ["check", "--only", "INS-002", "--fix", "--yes"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("Nothing to fix.");
+    expect(result.stdout).not.toContain("No executable fixes are available");
   });
 });
 
