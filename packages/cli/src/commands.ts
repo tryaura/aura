@@ -289,5 +289,4 @@ export class CheckCommand extends Command<AuraCliContext> {
       await requester?.close();
     }
   }
-
 }

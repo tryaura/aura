@@ -109,6 +109,9 @@ describe("action-first human check output", () => {
       2 errors · 0 warnings · 0 suggestions
       · 0 checks passed · 0 applications detected
 
+      · Configuration
+        Repository preset .aura/preset.json is present but not trusted on this machine, so it was not applied. Run acme setup to review and trust it.
+
       ▶ Recommended next step
         acme check --fix --interactive
         Review 2 available fixes: 1 automatic · 1 guided.
