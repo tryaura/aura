@@ -6,6 +6,8 @@ import { ANY_ARGUMENT, type ShimArgument, type ShimResponse } from "./types.js";
 
 const COMMAND_NAME = /^[A-Za-z0-9._+-]+$/u;
 const RESERVED_NAMES: ReadonlySet<string> = new Set([".", ".."]);
+const RECORD_FORMAT = "aura-testkit-v1";
+const RECORD_LIMIT_BYTES = 2_048;
 
 interface WriteShimOptions {
   readonly command: string;
@@ -27,9 +29,12 @@ export async function writeShim(options: WriteShimOptions): Promise<void> {
 /**
  * Reads back every invocation one shim recorded.
  *
- * The log frames each record as its argument count followed by that many arguments, all
- * NUL-terminated. Arguments cannot contain NUL — {@link validateShim} rejects that — so the framing
- * stays unambiguous for empty arguments and for arguments holding newlines.
+ * Each invocation is one LF-terminated ASCII record containing the format version, argument count,
+ * and one base64-encoded UTF-8 field per argument, separated by tabs. The shim appends the complete
+ * record with one `printf`, so concurrent invocations cannot interleave individual fields.
+ *
+ * A missing log means the seeded shim has not run. Invalid command names and malformed or truncated
+ * records throw instead of being conflated with that valid empty state.
  */
 export async function readInvocations(
   logDir: string,
@@ -38,7 +43,7 @@ export async function readInvocations(
   // The command reaches this function from a caller's argument and is about to be joined onto a
   // path, so it is checked here as well as where the shim was declared.
   if (!isPortableCommandName(command)) {
-    return [];
+    throw new Error(`Shim command must be a portable executable name. Received: ${command}`);
   }
 
   let log: string;
@@ -51,17 +56,14 @@ export async function readInvocations(
     throw error;
   }
 
-  const fields = log.split("\0");
-  fields.pop();
   const invocations: (readonly string[])[] = [];
-  let cursor = 0;
-  while (cursor < fields.length) {
-    const count = Number(fields[cursor]);
-    if (!Number.isInteger(count) || count < 0 || cursor + 1 + count > fields.length) {
-      throw new Error(`Shim ${command} wrote an invocation log this runner cannot read.`);
-    }
-    invocations.push(Object.freeze(fields.slice(cursor + 1, cursor + 1 + count)));
-    cursor += 1 + count;
+  const records = log.split("\n");
+  if (records.pop() !== "") {
+    throw unreadableInvocationLog(command);
+  }
+
+  for (const record of records) {
+    invocations.push(parseInvocationRecord(command, record));
   }
   return Object.freeze(invocations);
 }
@@ -115,12 +117,17 @@ function validateResponse(command: string, response: ShimResponse): void {
 function renderShim(command: string, logPath: string, responses: readonly ShimResponse[]): string {
   return [
     "#!/bin/sh",
-    "{",
-    `  printf '%s\\0' "$#"`,
-    '  for aura_recorded in "$@"; do',
-    `    printf '%s\\0' "$aura_recorded"`,
-    "  done",
-    `} >> ${shellQuote(logPath)}`,
+    `aura_record="${RECORD_FORMAT}\t$#"`,
+    'for aura_recorded in "$@"; do',
+    `  aura_encoded=$(printf '%s' "$aura_recorded" | /usr/bin/base64 | /usr/bin/tr -d '\\r\\n')`,
+    '  aura_record="${aura_record}\t${aura_encoded}"',
+    "done",
+    'aura_record="${aura_record}\n"',
+    "aura_record_length=${#aura_record}",
+    `if [ "$aura_record_length" -gt ${String(RECORD_LIMIT_BYTES)} ]; then`,
+    `  aura_record="${RECORD_FORMAT}\ttruncated\t\${aura_record_length}\n"`,
+    "fi",
+    `printf '%s' "$aura_record" >> ${shellQuote(logPath)}`,
     ...responses.map(renderResponse),
     `printf '%s' ${shellQuote(`aura-testkit: unmatched invocation: ${command}`)} >&2`,
     'for aura_reported in "$@"; do',
@@ -154,4 +161,58 @@ function shellQuote(value: string): string {
 
 function isNotFound(error: unknown): boolean {
   return isRecord(error) && error["code"] === "ENOENT";
+}
+
+function isUnsignedInteger(value: string): boolean {
+  return /^(?:0|[1-9][0-9]*)$/u.test(value);
+}
+
+function parseInvocationRecord(command: string, record: string): readonly string[] {
+  const fields = record.split("\t");
+  if (fields[0] !== RECORD_FORMAT) {
+    throw unreadableInvocationLog(command);
+  }
+  if (fields[1] === "truncated") {
+    throwTruncatedInvocation(command, fields);
+  }
+  return parseInvocationFields(command, fields);
+}
+
+function throwTruncatedInvocation(command: string, fields: readonly string[]): never {
+  const recordLength = fields[2];
+  if (fields.length !== 3 || recordLength === undefined || !isUnsignedInteger(recordLength)) {
+    throw unreadableInvocationLog(command);
+  }
+  throw new Error(
+    `Shim ${command} invocation produced a ${recordLength}-byte log record, exceeding the ` +
+      `${String(RECORD_LIMIT_BYTES)}-byte atomic limit. Reduce the invocation's arguments.`,
+  );
+}
+
+function parseInvocationFields(command: string, fields: readonly string[]): readonly string[] {
+  const countField = fields[1];
+  if (countField === undefined || !isUnsignedInteger(countField)) {
+    throw unreadableInvocationLog(command);
+  }
+  const count = Number(countField);
+  if (!Number.isSafeInteger(count) || fields.length !== count + 2) {
+    throw unreadableInvocationLog(command);
+  }
+  return Object.freeze(fields.slice(2).map((field) => decodeArgument(command, field)));
+}
+
+function decodeArgument(command: string, value: string): string {
+  const bytes = Buffer.from(value, "base64");
+  if (bytes.toString("base64") !== value) {
+    throw unreadableInvocationLog(command);
+  }
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    throw unreadableInvocationLog(command);
+  }
+}
+
+function unreadableInvocationLog(command: string): Error {
+  return new Error(`Shim ${command} wrote an invocation log this runner cannot read.`);
 }
