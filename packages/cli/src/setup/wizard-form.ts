@@ -6,7 +6,7 @@ import {
   createQuestionState,
   editFreeText,
   initialCursorRow,
-  toggleRow,
+  markRow,
   toView,
   type QuestionState,
   visibleOptions,
@@ -21,9 +21,9 @@ type FormEvent = "abort" | "back" | "none" | "repaint" | "submit";
  * The wizard form's state machine, free of any I/O.
  *
  * The prompt engine feeds it keypresses and repaints; tests can drive it directly. All navigation
- * rules live here: ←/→ and tab move between question tabs, ↑/↓ move the cursor, space toggles a
- * multi-select row, digits jump to a row, enter answers and advances, and the Submit tab resolves
- * the form once every question is answered.
+ * rules live here: ←/→ and tab move between question tabs, ↑/↓ move the cursor, space marks the
+ * row without answering, digits jump to a row and mark it, enter answers and advances, and the
+ * Submit tab resolves the form once every question is answered.
  */
 export interface FormSession {
   /** The recorded answers; only meaningful after `handle` returned `"submit"`. */
@@ -204,7 +204,7 @@ export function createFormSession(
       return true;
     }
     if (keypress.name === "space") {
-      return toggleRow(state, cursorRow, options);
+      return markRow(state, cursorRow, options);
     }
 
     const digit = digitRow(keypress, state.question, options.length);
@@ -212,7 +212,7 @@ export function createFormSession(
       return false;
     }
     cursorRow = digit;
-    toggleRow(state, digit, options);
+    markRow(state, digit, options);
     return true;
   };
 

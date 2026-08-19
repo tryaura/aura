@@ -88,6 +88,12 @@ function createSession(): Session {
   };
 }
 
+/** Everything painted since the last erase: the frame currently on screen. */
+function lastFrame(session: Session): string {
+  const output = session.output();
+  return output.slice(output.lastIndexOf("\u001b[0J"));
+}
+
 describe("interactive wizard", () => {
   it("keeps the flow header and per-item loader visible during asynchronous work", async () => {
     const session = createSession();
@@ -146,6 +152,34 @@ describe("interactive wizard", () => {
 
     await expect(form).resolves.toEqual({ apps: { kind: "options", values: ["claude"] } });
     expect(session.output()).toContain("✔ Apps  Claude Code only");
+  });
+
+  it("marks a select option with space without answering or advancing", async () => {
+    const session = createSession();
+    const io = createInteractiveWizardIo({
+      colorDepth: 0,
+      stdin: session.stdin,
+      stdout: session.stdout,
+    });
+
+    const form = io.ask([APPS_QUESTION, MCP_QUESTION]);
+    session.press("down");
+    session.press("space", { sequence: " " });
+
+    // The mark moved off the seeded option, but the step stays open on its own tab.
+    const marked = lastFrame(session);
+    expect(marked).toContain("▶ Apps ☐");
+    expect(marked).toContain("1. ○ Claude Code + Cursor");
+    expect(marked).toContain("❯ 2. ● Claude Code only");
+
+    session.press("return");
+    session.press("return");
+    session.press("return");
+
+    await expect(form).resolves.toEqual({
+      apps: { kind: "options", values: ["claude"] },
+      mcp: { kind: "options", values: ["acme"] },
+    });
   });
 
   it("toggles multiselect values with space before answering", async () => {

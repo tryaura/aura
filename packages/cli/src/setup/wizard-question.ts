@@ -68,24 +68,64 @@ export function editFreeText(keypress: Keypress, state: QuestionState): boolean 
 }
 
 /**
- * Toggles the multi-select option on `row`; a no-op on any other kind of row.
+ * Marks the option on `row` without answering the question: a multiselect toggles it, a select
+ * moves its single mark to it.
  *
- * A disabled option can be cleared but never selected. Refusing both directions would strand any
- * selection that was seeded before the option became unavailable, with no way to give it up.
+ * Space stops at marking on purpose — the row shows what would stand, and ↵ is still the only key
+ * that answers the question and moves on.
  */
-export function toggleRow(
+export function markRow(
   state: QuestionState,
   row: number,
   options: readonly WizardQuestion["options"][number][] = state.question.options,
 ): boolean {
+  const marked =
+    state.question.kind === "multiselect"
+      ? toggle(state, row, options)
+      : choose(state, row, options);
+  if (marked) {
+    // A question answered with free text renders no selection at all, so a mark left behind it
+    // would be invisible; what was just marked is what the question now says.
+    state.answeredWithText = false;
+  }
+  return marked;
+}
+
+/**
+ * Toggles the multi-select option on `row`.
+ *
+ * A disabled option can be cleared but never selected. Refusing both directions would strand any
+ * selection that was seeded before the option became unavailable, with no way to give it up.
+ */
+function toggle(
+  state: QuestionState,
+  row: number,
+  options: readonly WizardQuestion["options"][number][],
+): boolean {
   const option = options[row];
-  if (option === undefined || state.question.kind !== "multiselect") {
+  if (option === undefined || (option.disabled === true && !state.selected.has(option.value))) {
     return false;
   }
-  if (option.disabled === true && !state.selected.has(option.value)) {
+  if (state.selected.has(option.value)) {
+    state.selected.delete(option.value);
+  } else {
+    state.selected.add(option.value);
+  }
+  return true;
+}
+
+/** Moves a select's single mark to `row`; a disabled option can never take it. */
+function choose(
+  state: QuestionState,
+  row: number,
+  options: readonly WizardQuestion["options"][number][],
+): boolean {
+  const option = options[row];
+  if (option === undefined || option.disabled === true) {
     return false;
   }
-  toggle(state.selected, option.value);
+  state.selected.clear();
+  state.selected.add(option.value);
   return true;
 }
 
@@ -166,12 +206,4 @@ export function visibleOptions(state: QuestionState): readonly WizardQuestion["o
       (option) => state.selected.has(option.value) && !visibleValues.has(option.value),
     ),
   ];
-}
-
-function toggle(selected: Set<string>, value: string): void {
-  if (selected.has(value)) {
-    selected.delete(value);
-  } else {
-    selected.add(value);
-  }
 }
