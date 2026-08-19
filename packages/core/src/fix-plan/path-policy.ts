@@ -2,7 +2,7 @@ import { isAbsolute, resolve, sep } from "node:path";
 
 import type { FileOperation, FixPlan, WorkspaceModel } from "@tryaura/aura-sdk";
 
-import { claimPath, comparablePath, createClaimIndex, detectCaseInsensitive } from "./claims.js";
+import { claimPath, comparablePath, createClaimIndex, detectCaseSensitivity } from "./claims.js";
 import { backupRoot } from "./journal-paths.js";
 import { runProbes, type AncestorProbe } from "./probe.js";
 import { describeRoots, matchRoot, resolveAllowedRoots, type AllowedRoot } from "./roots.js";
@@ -18,11 +18,26 @@ export interface ValidatedOperation {
 
 /** Everything path validation needs that is worth resolving once per plan. */
 export interface PathPolicy {
-  /** Whether path comparison must ignore case. See {@link detectCaseInsensitive}. */
+  /**
+   * Whether two spellings of one path must be treated as the same file.
+   *
+   * Widened when {@link detectCaseSensitivity} cannot decide, because everything keyed off this
+   * answer only ever *refuses* work: folding two spellings that turn out to be distinct files raises
+   * a conflict, reserves a lock, or blocks a write. Never use it to decide where a plan may write —
+   * that is {@link PathPolicy.rootsCaseInsensitive}.
+   */
   readonly caseInsensitive: boolean;
   readonly roots: readonly AllowedRoot[];
   /** Kernel-owned paths that plans may never mutate. */
   readonly reservedRoots: readonly string[];
+  /**
+   * Whether a path may match an allowed root it differs from only by case.
+   *
+   * Narrowed when {@link detectCaseSensitivity} cannot decide, because this one *grants*: on a
+   * case-sensitive volume `/srv/app` and `/srv/APP` are different directories, so folding them under
+   * a probe that merely failed to answer would let a plan write outside every root it was given.
+   */
+  readonly rootsCaseInsensitive: boolean;
 }
 
 /** Resolves the roots and filesystem traits a plan is validated against. */
@@ -31,10 +46,12 @@ export async function createPathPolicy(
   managedHomeRoots: readonly string[] | undefined,
 ): Promise<PathPolicy> {
   const workspaceRoot = resolve(model.projectRoot ?? model.cwd);
+  const sensitivity = await detectCaseSensitivity(workspaceRoot);
   return {
-    caseInsensitive: await detectCaseInsensitive(workspaceRoot),
+    caseInsensitive: sensitivity !== "sensitive",
     reservedRoots: Object.freeze([backupRoot(model.homeDir)]),
     roots: resolveAllowedRoots(model, managedHomeRoots),
+    rootsCaseInsensitive: sensitivity === "insensitive",
   };
 }
 
@@ -89,7 +106,7 @@ export async function validatePlanPaths(
     }
   }
 
-  await runProbes(probes, policy.roots, policy.caseInsensitive);
+  await runProbes(probes, policy.roots, policy.rootsCaseInsensitive);
   return Object.freeze(operations);
 }
 
@@ -108,8 +125,8 @@ function coalescedWriteOwner(
   if (owner?.operation.type !== "write") {
     return undefined;
   }
-  // The claim key is case-folded whenever `detectCaseInsensitive` cannot decide, and it answers
-  // "insensitive" when in doubt. Widening that way stays safe while it only ever raises a conflict;
+  // The claim key is case-folded whenever `detectCaseSensitivity` cannot decide, since `policy`
+  // widens in doubt. Widening that way stays safe while it only ever raises a conflict;
   // it is not safe for coalescing, where two genuinely distinct files would merge into one write
   // and the second spelling would never reach disk. Merge only literally identical paths.
   return resolve(owner.operation.path) === resolvedPath ? exactOwner : undefined;
@@ -145,7 +162,7 @@ export async function revalidateMutationPath(
   await runProbes(
     [{ includeFinalPath: false, operationIndex, path }],
     policy.roots,
-    policy.caseInsensitive,
+    policy.rootsCaseInsensitive,
   );
 }
 
@@ -159,7 +176,7 @@ export async function revalidateSymlinkTarget(
   await runProbes(
     [{ includeFinalPath: true, operationIndex, path }],
     policy.roots,
-    policy.caseInsensitive,
+    policy.rootsCaseInsensitive,
   );
 }
 
@@ -203,7 +220,7 @@ function assertPathShape(path: string, policy: PathPolicy, operationIndex: numbe
     );
   }
 
-  if (matchRoot(path, policy.roots, policy.caseInsensitive) === undefined) {
+  if (matchRoot(path, policy.roots, policy.rootsCaseInsensitive) === undefined) {
     throw operationError(
       "invalid-path",
       operationIndex,

@@ -162,6 +162,31 @@ describe("fix-plan application", () => {
     expect(preview.operations[0]?.diff).toContain("mode 0o644 requested; existing mode 0o600");
   });
 
+  it("corrects an enforced mode without replacing identical file contents", async () => {
+    const fixture = await createFixture();
+    const path = fixture.model.manifest.path;
+    await mkdir(join(fixture.home, "agents"), { recursive: true });
+    await writeFile(path, "{}\n", "utf8");
+    await chmod(path, 0o644);
+    const before = await lstat(path);
+
+    const result = await executeFixPlan({
+      model: fixture.model,
+      now,
+      plan: {
+        operations: [{ content: "{}\n", path, type: "write" }],
+        summary: "Correct the manifest mode.",
+      },
+    });
+    const after = await lstat(path);
+
+    expect(result.preview.operations[0]).toMatchObject({ effect: "update" });
+    expect(after.mode & 0o777).toBe(0o600);
+    expect(after.ino).toBe(before.ino);
+    expect(after.mtimeMs).toBe(before.mtimeMs);
+    await expect(readFile(path, "utf8")).resolves.toBe("{}\n");
+  });
+
   it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
     "carries the underlying errno code so a caller can tell failures apart",
     async () => {

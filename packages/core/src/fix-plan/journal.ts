@@ -62,7 +62,7 @@ export async function stageJournal(
       stored.push(await storeOperation(operation, directory, virtualDirectories));
     }
     const manifest: JournalManifest = {
-      caseInsensitive: plan.policy.caseInsensitive,
+      caseInsensitive: plan.policy.rootsCaseInsensitive,
       createdAt: createdAt.toISOString(),
       homeDir: resolve(plan.model.homeDir),
       id,

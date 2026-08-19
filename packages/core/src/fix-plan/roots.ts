@@ -58,9 +58,13 @@ export function matchRoot(
   roots: readonly AllowedRoot[],
   caseInsensitive: boolean,
 ): AllowedRoot | undefined {
-  const resolvedPath = resolve(path);
+  // Folded once here rather than per root, since every comparison below needs the same spelling.
+  const candidate = comparablePath(resolve(path), caseInsensitive);
   const directoryRoot = roots
-    .filter((root) => !root.exact && isStrictDescendant(root.path, resolvedPath))
+    .filter(
+      (root) =>
+        !root.exact && isStrictDescendant(comparablePath(root.path, caseInsensitive), candidate),
+    )
     .sort((left, right) => right.path.length - left.path.length)[0];
 
   if (directoryRoot !== undefined) {
@@ -68,9 +72,7 @@ export function matchRoot(
   }
 
   return roots.find(
-    (root) =>
-      root.exact &&
-      comparablePath(root.path, caseInsensitive) === comparablePath(resolvedPath, caseInsensitive),
+    (root) => root.exact && comparablePath(root.path, caseInsensitive) === candidate,
   );
 }
 
@@ -82,7 +84,12 @@ export function describeRoots(roots: readonly AllowedRoot[]): string {
     .join(", ");
 }
 
-/** Returns true when `candidate` sits strictly inside `root`. */
+/**
+ * Returns true when `candidate` sits strictly inside `root`.
+ *
+ * Both arguments must already be resolved, and folded to the same case convention. Doing it in the
+ * caller keeps `matchRoot` from re-resolving the one path it is asked about once per root.
+ */
 function isStrictDescendant(root: string, candidate: string): boolean {
   const difference = relative(root, candidate);
   return (
