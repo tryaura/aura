@@ -25,6 +25,7 @@ describe("documented toolchain versions", () => {
       bunPin,
       rootManifest,
       webManifest,
+      cliManifest,
       contributing,
       readme,
       distributions,
@@ -34,6 +35,7 @@ describe("documented toolchain versions", () => {
       read(".bun-version"),
       readManifest("package.json"),
       readManifest("apps/web/package.json"),
+      readManifest("packages/cli/package.json"),
       read("CONTRIBUTING.md"),
       read("README.md"),
       read("apps/web/src/content/docs/docs/guides/distributions.md"),
@@ -45,6 +47,7 @@ describe("documented toolchain versions", () => {
     const pnpmVersion = rootManifest.packageManager.replace(/^pnpm@/u, "");
     const rootTypeScriptVersion = rootManifest.devDependencies.typescript;
     const webTypeScriptVersion = webManifest.devDependencies.typescript;
+    const releaseTag = `v${cliManifest.version}`;
 
     expect(contributing).toContain(`**Node.js ${major(nodeVersion)}**`);
     expect(contributing).toContain(`**pnpm ${pnpmVersion}**`);
@@ -62,5 +65,9 @@ describe("documented toolchain versions", () => {
       `Use Node.js ${major(nodeVersion)}, pnpm, TypeScript, and Bun ${bunVersion}.`,
     );
     expect(install).toContain(`If you already have Node.js ${major(nodeVersion)} or newer`);
+    expect(install).toContain(`Install a specific tag, for example \`${releaseTag}\`.`);
+    expect(install).toContain(
+      `AURA_INSTALL_DIR=/usr/local/bin AURA_VERSION=${releaseTag} curl -fsSL`,
+    );
   });
 });

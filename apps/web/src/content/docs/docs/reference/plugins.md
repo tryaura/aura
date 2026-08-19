@@ -54,10 +54,24 @@ unavailable rather than being automatically removed.
 
 ## Namespacing
 
-Most contribution IDs are namespaced under the plugin's own ID. Plugin `acme` contributes
-`acme/rules`, never `rules`. Bundled skills are the exception: their kebab-case IDs are local to
+Checks, snippets, MCP catalog entries, presets, and skill-source drivers are normally namespaced
+under the plugin's own ID. Plugin `acme` contributes `acme/rules`, never `rules`. Adapter IDs are
+global application identities such as `claude-code`, and skill-directory IDs are global source
+identities such as `agenticskills`; neither uses the plugin prefix. Bundled skill IDs are local to
 their source, so `review` from `plugin:acme` and `review` from another source can coexist in the
 catalog. The registry validates versions, IDs, and composite source/skill collisions.
+
+Bare check IDs are the one privilege a distribution can grant. Name the plugin in the registry's
+`bareCheckIdPlugins` option and its checks may contribute unprefixed IDs such as `ENV-001`:
+
+```ts
+createPluginRegistry(plugins, { bareCheckIdPlugins: ["checks-core"] });
+```
+
+The list is validated against the loaded plugins, so a typo fails at boot rather than silently
+granting nothing. Reserve it for the checks your distribution presents as its own stable surface;
+everything else stays namespaced. See the [distributions guide](/docs/guides/distributions/) for
+where this is wired up.
 
 ## Content references
 
@@ -67,8 +81,10 @@ Content references must be absolute `file:` URLs, constructed relative to the pl
 const url = new URL("./content/preset.json", import.meta.url).href;
 ```
 
-Working-directory-relative paths do not work. Existence and schema validation happen when the
-registry loads the contribution, not at first use.
+Working-directory-relative paths do not work. The registry validates declared shapes — IDs,
+semver versions, the API version, and shared-link declarations — but it does not open content
+URLs. Snippet sources are read during a workspace scan, where unreadable or malformed content
+becomes a diagnostic; other content sources are not read until the contribution is used.
 
 Plugin authors need `@types/node` in their `tsconfig` for the `import.meta.url` idiom above.
 
