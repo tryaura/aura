@@ -110,6 +110,13 @@ function detectMissingLink(app: AppModel, model: WorkspaceModel): readonly Detec
   }
 
   const outcome = planSharedInstructionLink(app, model);
+  // The planner read the file and found the declared mechanism already materialized there, so the
+  // link exists and only the adapter's parser failed to report it. Trusting the parser here is
+  // what produced an error nobody could clear: the report offered `--fix`, the fix planned zero
+  // operations, and the next run said the same thing again.
+  if ("plan" in outcome && outcome.plan.operations.length === 0) {
+    return [];
+  }
   const blocked = "blocked" in outcome;
   return [
     {

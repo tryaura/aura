@@ -12,11 +12,7 @@ import {
   type WorkspaceModel,
 } from "@tryaura/aura-sdk";
 
-import {
-  cursorMcpStateChoice,
-  cursorMcpStateFindings,
-  mcpServerNameKey,
-} from "./mcp-003-cursor.js";
+import { cursorMcpStateFindings, mcpServerNameKey } from "./mcp-003-cursor.js";
 
 const CHECK_ID = "MCP-003";
 
@@ -82,6 +78,9 @@ function unsetEnvironmentFindings(model: WorkspaceModel): readonly DetectedFindi
       );
       const finding: DetectedFinding = {
         details,
+        // Aura never holds a credential value, so setting the variable is the user's alone. The
+        // check is guided for the transports it can repair; this reminder is not one of them.
+        fixability: "manual",
         id: `environment:${String(serverIndex)}:${variableName}`,
         locations: [{ path: model.manifest.path }],
         message: `MCP server ${server.name} needs environment variable ${variableName}.`,
@@ -144,10 +143,6 @@ function findingFor(
 }
 
 function guidedFixes(finding: Finding, model: WorkspaceModel): readonly GuidedFixChoice[] {
-  const cursorChoice = cursorMcpStateChoice(finding);
-  if (cursorChoice !== undefined) {
-    return [cursorChoice];
-  }
   const server = findingServer(finding, model);
   const kind = finding.metadata?.["kind"];
   if (server === undefined || (kind !== "command" && kind !== "url")) {

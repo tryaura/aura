@@ -62,6 +62,22 @@ export function reportFixes(
   });
 }
 
+/**
+ * What a run that prepared no plan says it did.
+ *
+ * Candidates survive the preparation only when their plan does something, so candidates without a
+ * single operation are plans made entirely of steps the user has to take. Reporting those as no
+ * available fix contradicts the choice the user just made and hides the steps below it.
+ */
+export function fixlessMessage(candidates: number, findings: number): string {
+  if (candidates > 0) {
+    return "Nothing to write: what these fixes need is listed below.\n\n";
+  }
+  return findings === 0
+    ? "Nothing to fix.\n\n"
+    : "No executable fixes are available for the findings below.\n\n";
+}
+
 export function reportUnpreparedFixes(candidates: readonly FixCandidate[]): readonly ReportFix[] {
   return candidates.flatMap((candidate): readonly ReportFix[] => {
     if (candidate.plan.operations.length === 0) {

@@ -1,10 +1,4 @@
-import type {
-  Finding,
-  GuidedFixChoice,
-  JsonObject,
-  McpServer,
-  WorkspaceModel,
-} from "@tryaura/aura-sdk";
+import type { JsonObject, McpServer, WorkspaceModel } from "@tryaura/aura-sdk";
 import { runChecks } from "@tryaura/core";
 import { describe, expect, it } from "vitest";
 
@@ -13,15 +7,19 @@ import { app, model } from "./testing.js";
 
 describe("MCP-003 Cursor runtime state", () => {
   it.each([
-    ["needs-approval", "approve-in-cursor", "approve server docs"],
-    ["disabled", "enable-in-cursor", "enable server docs"],
-    ["error", "repair-in-cursor", "inspect the connection error for server docs"],
-  ] as const)("warns when Cursor reports a configured server as %s", (state, choiceId, step) => {
+    ["needs-approval", "approve server docs"],
+    ["disabled", "enable server docs"],
+    ["error", "inspect the connection error for server docs"],
+  ] as const)("warns when Cursor reports a configured server as %s", (state, guidance) => {
     const workspace = cursorWorkspace(state);
     const finding = runChecks([mcp003], workspace).findings[0];
 
     expect(finding).toMatchObject({
       checkId: "MCP-003",
+      // Approval and enablement are Cursor's own, so the finding downgrades the check's guided
+      // fixability: a wizard question here can only repeat the detail and leave the state as it
+      // was, which is what made the same servers reappear run after run.
+      fixability: "manual",
       metadata: {
         appId: "cursor",
         kind: "cursor-state",
@@ -34,13 +32,11 @@ describe("MCP-003 Cursor runtime state", () => {
     });
     expect(finding?.message).toContain("docs");
     expect(finding?.message).toContain("Cursor");
+    expect(finding?.details).toContain(guidance);
     if (finding === undefined) {
       throw new Error("Expected a Cursor MCP state finding.");
     }
-    expect(mcp003.guidedFixes?.(finding, workspace).map((choice) => choice.id)).toEqual([choiceId]);
-    const selected = choiceFor(finding, workspace, choiceId);
-    expect(selected.plan.operations).toEqual([]);
-    expect(selected.plan.manualSteps?.[0]).toContain(step);
+    expect(mcp003.guidedFixes?.(finding, workspace)).toEqual([]);
   });
 
   it("does not duplicate a concrete failure with Cursor's connection state", () => {
@@ -68,6 +64,7 @@ describe("MCP-003 Cursor runtime state", () => {
     }
 
     expect(finding).toMatchObject({
+      fixability: "manual",
       metadata: { appId: "cursor", kind: "cursor-state-unreadable", serverName: "docs" },
       severity: "info",
     });
@@ -86,6 +83,7 @@ describe("MCP-003 Cursor runtime state", () => {
 
     expect(findings).toHaveLength(1);
     expect(findings[0]).toMatchObject({
+      fixability: "manual",
       metadata: { appId: "cursor", kind: "cursor-state-unavailable", reason },
       severity: "info",
     });
@@ -127,14 +125,4 @@ function cursorServer(): McpServer {
     sourceId: "cursor.mcp.global",
     transport: { args: ["@example/docs"], command: "npx", type: "stdio" },
   };
-}
-
-function choiceFor(finding: Finding, workspace: WorkspaceModel, id: string): GuidedFixChoice {
-  const selected = mcp003
-    .guidedFixes?.(finding, workspace)
-    .find((candidate) => candidate.id === id);
-  if (selected === undefined) {
-    throw new Error(`Expected guided choice ${id}.`);
-  }
-  return selected;
 }
