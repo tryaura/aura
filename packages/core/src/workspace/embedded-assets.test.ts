@@ -38,8 +38,8 @@ describe("embedded asset directories", () => {
         isDirectory: true,
         pathKind: "directory",
       },
+      kind: "read",
       resolvedPath: root,
-      withinBoundary: true,
     });
   });
 

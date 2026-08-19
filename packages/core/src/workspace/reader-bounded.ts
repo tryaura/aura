@@ -129,7 +129,9 @@ async function readOpenedFile(
   target: InspectedTarget,
   options: FileReadOptions | undefined,
 ): Promise<BoundedPathRead> {
-  const openedStats = await file.stat();
+  // Identity is asked of the handle in 64-bit form and the metadata below in the ordinary one,
+  // which is two calls on an already-open descriptor: no path is walked twice, and the alternative
+  // is converting widths by hand on every field a reader reports.
   const identity = await file.stat({ bigint: true });
   const resolved = await resolvedIdentity(path);
   if (resolved === undefined || !sameIdentity(resolved, identity)) {
@@ -138,6 +140,8 @@ async function readOpenedFile(
   if (!insideAny(directories, resolved.path)) {
     return outside(target, resolved.path, options);
   }
+
+  const openedStats = await file.stat();
   if (!openedStats.isFile()) {
     return {
       contents: {

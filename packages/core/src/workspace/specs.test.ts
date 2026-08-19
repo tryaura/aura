@@ -2,6 +2,7 @@ import type { AdapterFileSpec } from "@tryaura/aura-sdk";
 import { describe, expect, it } from "vitest";
 
 import { buildWorkspaceModel } from "../index.js";
+import type { FileReader } from "./reader.js";
 import {
   createMemoryReader,
   createTestAdapter,
@@ -161,6 +162,39 @@ describe("declared path handling", () => {
       problem: "outside-project",
     });
     expect(diagnostics[0]?.message).toContain("outside /workspace");
+  });
+
+  it("reports a path that moved mid-read as changed rather than as an escape", async () => {
+    const spec: AdapterFileSpec = {
+      id: "mcp",
+      kind: "mcp",
+      path: "/workspace/.mcp.json",
+      scope: "project",
+    };
+    const adapter = createTestAdapter({ files: () => [spec] });
+    const memory = createMemoryReader({ "/workspace/.mcp.json": "{}" });
+    const reader: FileReader = {
+      ...memory,
+      readWithin: () =>
+        Promise.resolve({
+          contents: { exists: true, isDirectory: false, problem: "unreadable" },
+          kind: "unverified",
+        }),
+    };
+
+    const { diagnostics, model } = await buildWorkspaceModel({
+      adapters: [adapter],
+      environment: createTestEnvironment({ cwd: "/workspace" }),
+      reader,
+    });
+
+    expect(model.apps[0]?.sourceFiles[0]).toMatchObject({
+      exists: true,
+      problem: "unreadable",
+    });
+    expect(diagnostics[0]?.message).toContain("changed while Aura was reading it");
+    // An unverifiable read is not evidence of an escape, and must not be dressed up as one.
+    expect(diagnostics[0]?.message).not.toContain("outside");
   });
 
   it("allows project skill links only into Aura's canonical shared skill root", async () => {
