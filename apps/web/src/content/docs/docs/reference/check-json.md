@@ -16,8 +16,9 @@ also shipped in the package as `schema/check-output-v1.schema.json`.
 
 The `CheckReportV1` envelope has `kind: "check-report"` and `schemaVersion: 1`. It contains:
 
-- `status` and `summary`, including the exit code, diagnostic count, overall passed/info/warn/error
-  counts, and the same counts keyed by check category;
+- `status` and `summary`, including the command exit code, diagnostic count, overall
+  passed/info/warn/error counts, and the same counts keyed by check category. `status` describes
+  the findings while the exit code describes whether the command completed;
 - `apps`, with every selected real adapter in registry order, its canonical ID and display name,
   safe detection fields, and support information when installed;
 - `diagnostics`, `passedChecks`, and `findings`; and
@@ -55,12 +56,13 @@ automatic and guided checks and false for manual checks.
 
 ## Exit codes
 
-| Code | Meaning                                                                                                               |
-| ---- | --------------------------------------------------------------------------------------------------------------------- |
-| `0`  | The run is clean or contains informational findings only.                                                             |
-| `1`  | The run contains warning findings and no higher-priority failure.                                                     |
-| `2`  | The run contains error findings, has no checks, uses invalid options/selectors, or finds a filesystem-state conflict. |
-| `3`  | An adapter, check, plugin, registry, command, or fix preparation/application operation failed.                        |
+| Code | Meaning                                                                                        |
+| ---- | ---------------------------------------------------------------------------------------------- |
+| `0`  | The check completed and reported its findings, including warning or error findings.            |
+| `2`  | Invalid options/selectors, no checks, unavailable confirmation, or a filesystem/fix conflict.  |
+| `3`  | An adapter, check, plugin, registry, command, or fix preparation/application operation failed. |
 
-Diagnostics take precedence over finding severity, so a report containing a warning plus a check
-diagnostic exits with code 3.
+`check` no longer emits code 1; the frozen version 1 schema continues to accept it for compatibility.
+Diagnostics and forced command failures take precedence over finding severity, so a report containing
+a warning plus a check diagnostic exits with code 3. Gate on `status` or the severity counts when
+findings should fail CI.

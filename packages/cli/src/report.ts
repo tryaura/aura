@@ -87,6 +87,8 @@ export interface CheckReportInput {
   readonly checks: readonly Check[];
   readonly configuration?: ReportConfiguration | undefined;
   readonly findings: readonly Finding[];
+  /** Setup's end-on-green report still treats unresolved findings as an incomplete setup. */
+  readonly findingsAffectExitCode?: boolean | undefined;
   readonly fixDiagnostics?: readonly DiagnosticSource[] | undefined;
   readonly fixes?: readonly ReportFix[] | undefined;
   readonly forcedExitCode?: CliExitCode | undefined;
@@ -108,7 +110,11 @@ export function createCheckReport(input: CheckReportInput): CheckReport {
     .map((check) => Object.freeze({ id: check.id, title: check.title }));
   const diagnostics = diagnosticsFor(input);
   const status = resolveStatus(input.findings, diagnostics, input.checks, input.forcedExitCode);
-  const exitCode = EXIT_CODES[status];
+  const exitCode = resolveExitCode(
+    status,
+    input.forcedExitCode,
+    input.findingsAffectExitCode ?? false,
+  );
   const summary = Object.freeze({
     categories: categoryCounts(input.checks, input.findings, passedChecks),
     diagnostics: diagnostics.length,
@@ -210,13 +216,30 @@ function countSeverity(findings: readonly Finding[], severity: Severity): number
   return findings.filter((finding) => finding.severity === severity).length;
 }
 
-const EXIT_CODES: Readonly<Record<ReportStatus, CliExitCode>> = {
-  clean: 0,
-  empty: 2,
-  error: 2,
-  "operational-error": 3,
-  warning: 1,
-};
+function resolveExitCode(
+  status: ReportStatus,
+  forcedExitCode: CliExitCode | undefined,
+  findingsAffectExitCode: boolean,
+): CliExitCode {
+  if (status === "operational-error") {
+    return 3;
+  }
+  if (forcedExitCode !== undefined) {
+    return forcedExitCode;
+  }
+  if (status === "empty") {
+    return 2;
+  }
+  if (findingsAffectExitCode) {
+    if (status === "error") {
+      return 2;
+    }
+    if (status === "warning") {
+      return 1;
+    }
+  }
+  return 0;
+}
 
 function resolveStatus(
   findings: readonly Finding[],

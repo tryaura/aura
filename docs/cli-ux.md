@@ -105,8 +105,10 @@ be incomplete.
 
 ## Exit codes
 
-`0` clean/info · `1` warnings · `2` errors or usage/state conflicts · `3` operational failures.
-Every command returns one of these; `runCli` normalizes anything else to 2.
+For `check`: `0` completed check, regardless of finding severity · `2` usage/state conflicts or no
+checks · `3` operational failures. Finding health remains visible through the report status and
+severity counts. Setup and undo also use `1` for incomplete user-driven flows. `runCli` normalizes
+any other code to 2.
 
 ## Glyph vocabulary
 

@@ -50,14 +50,21 @@ describe("runCli telemetry", () => {
     const { events, sink } = capturingSink();
     const capture = createCapture(["check", "--fix", "--dry-run"]);
 
-    await runCli(
+    const exitCode = await runCli(
       { ...distro([findingPlugin("error", [])]), telemetry: sink },
       { ...capture.runtime, now: CLOCK },
     );
 
+    expect(exitCode).toBe(0);
     const kinds = events.map((event) => event.kind);
     expect(kinds).toEqual(["check-run", "fix-run"]);
-    expect(events[1]).toMatchObject({ command: "check", dryRun: true, kind: "fix-run" });
+    expect(events[0]).toMatchObject({ exitCode: 0, kind: "check-run" });
+    expect(events[1]).toMatchObject({
+      command: "check",
+      dryRun: true,
+      exitCode: 0,
+      kind: "fix-run",
+    });
   });
 
   it("keeps --json output as one clean document while events flow", async () => {

@@ -72,7 +72,7 @@ describe("runtime configuration", () => {
     });
     const capture = createCapture(["check", "--preset", preset, "--json"]);
 
-    expect(await runCli(distro([plugin]), capture.runtime)).toBe(2);
+    expect(await runCli(distro([plugin]), capture.runtime)).toBe(0);
     expect(parseCheckReport(capture.stdout.text).findings).toMatchObject([
       { checkId: "runtime/CHECK", severity: "error" },
     ]);
