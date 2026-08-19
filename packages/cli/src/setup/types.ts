@@ -161,12 +161,16 @@ export interface SetupPresetContext {
 
 /** The repository preset as this run resolved it, alongside this run's trust decision. */
 export interface SetupRepoPresetContext {
-  /** True when this run's prompt accepted the applied contents, so the plan records the trust. */
+  /** True when this run's prompt accepted the applied contents, so this run persists the trust. */
   readonly accepted: boolean;
   /** Check values the repo layer supplied, in the preset policy summary's wording. */
   readonly checkSummary: readonly string[];
   readonly hash: string;
+  /** Same path in the primary Git checkout, present only inside a linked worktree. */
+  readonly mainWorktreePath?: string | undefined;
   readonly path: string;
+  /** True once the acceptance is on disk, written before the wizard opened. */
+  readonly recorded: boolean;
   readonly status: "applied" | "held";
 }
 

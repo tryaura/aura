@@ -13,19 +13,21 @@ import {
 import { resolveRuntimeConfig, type RuntimeConfigResult } from "../runtime-config.js";
 import { establishRepoPresetTrust } from "./repo-trust.js";
 import type { SetupRequest } from "./setup.js";
+import { bootRepoPresetTrust } from "./trust-record.js";
+import type { SetupRepoPresetContext } from "./types.js";
 
 /** Everything one setup run establishes before it asks the user anything else. */
 export type SetupBoot =
   | { readonly message: string; readonly status: "invalid" }
   | { readonly status: "aborted" }
   | {
-      /** Hash the trust prompt accepted this run, absent when nothing was newly accepted. */
-      readonly acceptedRepoPresetHash?: string | undefined;
       readonly activeChecks: readonly Check[];
       readonly configured: Extract<RuntimeConfigResult, { status: "ready" }>;
       readonly effectiveModel: WorkspaceModel;
       readonly effectiveScan: WorkspaceScan;
       readonly projected: RequiredMcpProjection;
+      /** How this run resolved the repository preset, including whether trust reached disk. */
+      readonly repoPreset?: SetupRepoPresetContext | undefined;
       readonly scan: WorkspaceScan;
       readonly status: "ready";
     };
@@ -35,17 +37,25 @@ export type SetupBoot =
  *
  * All of it happens before the first wizard prompt so the wizard never asks a question it will
  * then have to take back — an unusable manifest or an unresolvable preset stops the run while
- * nothing has been shown and nothing has been written. The one exception is the repository preset
- * trust confirmation: its answer decides whether the repo layer joins the configuration at all, so
- * it must precede resolution, and the read-only manifest check runs before it so it is never asked
- * for a run that is already dead.
+ * nothing has been shown and nothing has been written. Repository preset trust is the exception on
+ * both counts: its answer decides whether the repo layer joins the configuration at all, so the
+ * confirmation must precede resolution, and an accepted answer is written here, before the wizard
+ * opens, so that backing out of a wizard step does not discard a security decision the user has
+ * already made and get them asked again. The read-only manifest check runs before the prompt so it
+ * is never asked for a run that is already dead.
+ *
+ * The full scan stays behind every cheap early exit. It supplies the canonical model the trust
+ * write needs, but an invalid manifest, an aborted trust prompt, or invalid configuration should
+ * not scan every adapter and package manifest first.
  */
 export async function bootSetup(
   request: SetupRequest,
   environment: Environment,
 ): Promise<SetupBoot> {
-  const manifestPath = resolveAuraManifestPath(environment.homeDir);
-  const manifest = readAuraManifest(manifestPath, await createFileReader().read(manifestPath));
+  const reader = createFileReader();
+  const homeDir = (await reader.realPath(environment.homeDir)) ?? environment.homeDir;
+  const manifestPath = resolveAuraManifestPath(homeDir);
+  const manifest = readAuraManifest(manifestPath, await reader.read(manifestPath));
   if (manifest.status === "read-only") {
     return { message: manifest.problem.message, status: "invalid" };
   }
@@ -83,19 +93,22 @@ export async function bootSetup(
     snippets: request.registry.snippets,
     skills: request.registry.skills,
   });
-  const projected = applyRequiredMcpServers(scan.model, configured.config);
+  // After resolution, because only then is it known whether the layer the prompt described is the
+  // layer this run applied — a file rewritten between the two reads leaves it held.
+  const trusted = await bootRepoPresetTrust(request, configured, trust.acceptedHash, scan);
+  const projected = applyRequiredMcpServers(trusted.scan.model, configured.config);
   return {
-    ...(trust.acceptedHash === undefined ? {} : { acceptedRepoPresetHash: trust.acceptedHash }),
     activeChecks: enabledChecks(request.registry.checks, configured.config),
     configured,
     effectiveModel: projected.model,
     effectiveScan: {
-      ...scan,
-      diagnostics: [...scan.diagnostics, ...projected.diagnostics],
+      ...trusted.scan,
+      diagnostics: [...trusted.scan.diagnostics, ...projected.diagnostics],
       model: projected.model,
     },
     projected,
-    scan,
+    ...(trusted.repoPreset === undefined ? {} : { repoPreset: trusted.repoPreset }),
+    scan: trusted.scan,
     status: "ready",
   };
 }

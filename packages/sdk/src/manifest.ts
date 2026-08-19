@@ -85,13 +85,23 @@ export interface AuraManifestOverrides {
 /**
  * One repository preset the user accepted during interactive setup.
  *
- * Trust binds to exact contents: a `.aura/preset.json` that changes after acceptance is treated
- * as untrusted again until the user reviews the new contents. Only acceptances are recorded —
- * declining leaves no entry, so the next interactive setup asks again.
+ * Trust binds to exact contents and to the repository, not to the directory the run started in: a
+ * `.aura/preset.json` that changes after acceptance is treated as untrusted again until the user
+ * reviews the new contents, while a linked worktree holding those same contents applies them
+ * without asking. Only acceptances are recorded — declining leaves no entry, so the next
+ * interactive setup asks again.
  */
 export interface AuraManifestTrustedRepoPreset {
   /** Hash of the canonicalized preset contents that were accepted. */
   readonly hash: string;
+  /**
+   * Same preset path resolved against the repository's primary Git checkout.
+   *
+   * Present only when the acceptance happened inside a linked worktree. It is an identity token
+   * for the repository — compared against other entries, never opened — so trusting one worktree
+   * covers its siblings without granting the primary checkout's own file any standing.
+   */
+  readonly mainWorktreePath?: string | undefined;
   /** Absolute path of the repository preset file. */
   readonly path: string;
 }

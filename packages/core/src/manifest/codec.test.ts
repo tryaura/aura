@@ -148,6 +148,36 @@ describe("Aura manifest protocol", () => {
     expect(state.problem.message).toContain("at most 256");
   });
 
+  it("lets one repository hold a trust entry per set of contents its worktrees accepted", () => {
+    const source = {
+      apps: {},
+      mcpServers: [],
+      ownership: {},
+      schemaVersion: 1,
+      skills: [],
+      snippets: [],
+      trustedRepoPresets: [
+        {
+          hash: "a".repeat(64),
+          mainWorktreePath: "/repo/.aura/preset.json",
+          path: "/trees/one/.aura/preset.json",
+        },
+        {
+          hash: "b".repeat(64),
+          mainWorktreePath: "/repo/.aura/preset.json",
+          path: "/trees/one/.aura/preset.json",
+        },
+      ],
+    };
+
+    const state = parseAuraManifest(JSON.stringify(source), PATH);
+    expect(state.status).toBe("ready");
+    if (state.status !== "ready") {
+      throw new Error("expected a ready manifest");
+    }
+    expect(JSON.parse(serializeAuraManifest(state.value, PATH))).toEqual(source);
+  });
+
   it("preserves other apps and extension fields through add, disable, and remove edits", () => {
     const initial = parseAuraManifest(
       JSON.stringify({
@@ -405,11 +435,11 @@ describe("Aura manifest protocol", () => {
         snippets: [],
         trustedRepoPresets: [
           { hash: "a".repeat(64), path: "/repo/.aura/preset.json" },
-          { hash: "b".repeat(64), path: "/repo/.aura/preset.json" },
+          { hash: "a".repeat(64), path: "/repo/.aura/preset.json" },
         ],
       },
-      "$.trustedRepoPresets[1].path",
-      "must not duplicate another trusted preset path",
+      "$.trustedRepoPresets[1].hash",
+      "must not duplicate another trusted preset path and hash",
     ],
     [
       {
@@ -426,6 +456,36 @@ describe("Aura manifest protocol", () => {
       },
       "$.trustedRepoPresets",
       "must contain at most 64 entries",
+    ],
+    [
+      {
+        apps: {},
+        mcpServers: [],
+        ownership: {},
+        schemaVersion: 1,
+        skills: [],
+        snippets: [],
+        trustedRepoPresets: [
+          { hash: "a".repeat(64), mainWorktreePath: 7, path: "/repo/.aura/preset.json" },
+        ],
+      },
+      "$.trustedRepoPresets[0].mainWorktreePath",
+      "must be a string",
+    ],
+    [
+      {
+        apps: {},
+        mcpServers: [],
+        ownership: {},
+        schemaVersion: 1,
+        skills: [],
+        snippets: [],
+        trustedRepoPresets: [
+          { hash: "a".repeat(64), mainWorktreePath: "", path: "/repo/.aura/preset.json" },
+        ],
+      },
+      "$.trustedRepoPresets[0].mainWorktreePath",
+      "must be a non-empty path of at most 1024 characters",
     ],
   ])("reports the precise path for invalid known fields", (value, jsonPath, reason) => {
     const state = parseAuraManifest(JSON.stringify(value), PATH);

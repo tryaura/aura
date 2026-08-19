@@ -41,15 +41,27 @@ export function repoPresetNotices(context: SetupStepContext): readonly SetupNoti
       },
     ];
   }
-  return repo.checkSummary.map((message, index) => ({
-    ...(index === 0
-      ? {
-          heading: `Effective check policy from the repository preset ${AURA_TEAM_PRESET_PATH} (not copied into your manifest):`,
-        }
-      : {}),
-    kind: "repo",
-    message,
-  }));
+  const recorded: readonly SetupNotice[] = repo.recorded
+    ? [
+        {
+          heading: "Repository preset trust recorded before this plan:",
+          kind: "repo",
+          message: `Trust of ${AURA_TEAM_PRESET_PATH} is already saved; declining or aborting this plan keeps it.`,
+        },
+      ]
+    : [];
+  return [
+    ...recorded,
+    ...repo.checkSummary.map((message, index): SetupNotice => ({
+      ...(index === 0
+        ? {
+            heading: `Effective check policy from the repository preset ${AURA_TEAM_PRESET_PATH} (not copied into your manifest):`,
+          }
+        : {}),
+      kind: "repo",
+      message,
+    })),
+  ];
 }
 
 /** The check values one layer supplied, in the wording the policy summaries share. */

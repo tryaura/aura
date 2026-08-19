@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -94,7 +94,7 @@ interface Fixture {
 }
 
 async function createFixture(directoryUrl: string): Promise<Fixture> {
-  const root = await mkdtemp(join(tmpdir(), "aura-skills-flow-"));
+  const root = await realpath(await mkdtemp(join(tmpdir(), "aura-skills-flow-")));
   temporaryDirectories.push(root);
   const homeDir = join(root, "home");
   const workspace = join(root, "workspace");

@@ -1,5 +1,5 @@
 import type { AuraEffectiveConfig, AuraManifest, Check, SetupRunOutcome } from "@tryaura/aura-sdk";
-import { prepareFixPlan, type WorkspaceScan } from "@tryaura/core";
+import { AURA_TEAM_PRESET_PATH, prepareFixPlan, type WorkspaceScan } from "@tryaura/core";
 
 import { safe } from "../safe-text.js";
 import type { CliExitCode } from "../types.js";
@@ -49,16 +49,22 @@ export async function runPass(
     request.stderr.write(
       `${branding.displayName}: the ${safe(gathered.stepTitle)} step needs ${safe(gathered.missing)}. Run ${branding.command} setup to establish it, then retry this command.\n`,
     );
+    if (stepContext.repoPreset?.recorded === true) {
+      stdout.write(leftUnchanged(stepContext));
+    }
     return { code: 2, kind: "exit", outcome: "unusable" };
   }
   if (gathered.status === "aborted") {
-    stdout.write("\nLeft everything as it was.\n");
+    stdout.write(leftUnchanged(stepContext));
     return { code: 1, kind: "exit", outcome: "aborted" };
   }
   const selections = gathered.selections;
 
   const planned = await previewPlan(request, { ...stepContext, selections });
   if (planned.kind === "converged") {
+    if (stepContext.repoPreset?.recorded === true) {
+      stdout.write(leftUnchanged(stepContext));
+    }
     return {
       code: endOnGreen(request, scan, activeChecks, config),
       kind: "exit",
@@ -67,6 +73,9 @@ export async function runPass(
     };
   }
   if (planned.kind === "blocked") {
+    if (stepContext.repoPreset?.recorded === true) {
+      stdout.write(leftUnchanged(stepContext));
+    }
     return { code: 2, kind: "exit", manifest: planned.manifest, outcome: "blocked" };
   }
   if (request.dryRun) {
@@ -87,12 +96,24 @@ export async function runPass(
     };
   }
   if (confirmation !== "accepted") {
-    stdout.write("\nLeft everything as it was.\n");
+    stdout.write(leftUnchanged(stepContext));
     return confirmation === "aborted"
       ? { code: 1, kind: "exit", manifest: planned.manifest, outcome: "aborted" }
       : { code: 0, kind: "exit", manifest: planned.manifest, outcome: "declined" };
   }
   return { kind: "apply", manifest: planned.manifest, prepared: planned.prepared };
+}
+
+/**
+ * The closing line for a pass that applied nothing.
+ *
+ * A run that recorded repository preset trust during boot did write one file, and "left everything
+ * as it was" is the one sentence a user checks against their own filesystem.
+ */
+function leftUnchanged(stepContext: Omit<SetupStepContext, "selections">): string {
+  return stepContext.repoPreset?.recorded === true
+    ? `\nRecorded your trust of ${AURA_TEAM_PRESET_PATH}. Left everything else as it was.\n`
+    : "\nLeft everything as it was.\n";
 }
 
 /** Plans the gathered selections, renders the summary, and classifies what can happen next. */
@@ -123,8 +144,9 @@ async function previewPlan(
   );
 
   if (prepared.preview.conflictedOperationCount > 0 || outcome.blockers.length > 0) {
+    const recorded = inputs.repoPreset?.recorded === true;
     request.stderr.write(
-      `${request.branding.displayName}: the plan is blocked by the current state of these files; nothing was changed.\n`,
+      `${request.branding.displayName}: the plan is blocked by the current state of these files; ${recorded ? "the repository preset trust record was the only change" : "nothing was changed"}.\n`,
     );
     return { kind: "blocked", manifest: outcome.manifest };
   }

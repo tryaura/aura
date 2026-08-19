@@ -72,7 +72,8 @@ Every top-level section is required, including sections that are still empty:
   },
   "trustedRepoPresets": [
     {
-      "path": "/home/dev/projects/acme/.aura/preset.json",
+      "path": "/home/dev/worktrees/acme-feature/.aura/preset.json",
+      "mainWorktreePath": "/home/dev/projects/acme/.aura/preset.json",
       "hash": "456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123"
     }
   ],
@@ -112,8 +113,14 @@ forward-compatibility window is deliberately not general-purpose storage.
 preset's absolute path and a SHA-256 hash of its canonicalized contents. Only acceptances are
 recorded — declining leaves no entry, so the next interactive setup asks again — and an entry
 whose hash no longer matches the file treats the preset as untrusted until the new contents are
-reviewed. The list holds at most 64 entries; recording a new acceptance past that drops the
-oldest. The field is optional and needs no schema-version bump.
+reviewed. An acceptance made inside a linked Git worktree also records `mainWorktreePath`, the same
+path resolved against the repository's primary checkout. That value identifies the repository and
+is only ever compared, never opened, so a sibling worktree holding the same contents applies the
+layer without asking again while the primary checkout's own file gains no standing of its own. It
+carries no uniqueness: every worktree of one repository shares it, so a repository accumulates one
+entry per distinct set of contents its user accepted rather than one per working directory. The
+list holds at most 64 entries; recording a new acceptance past that drops the oldest. Both fields
+are optional and need no schema-version bump.
 
 Aura installs each managed skill once below `~/agents/skills/<id>` and links supported application
 skill directories to that shared copy. Two sources may publish the same local ID, but a manifest

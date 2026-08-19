@@ -166,7 +166,11 @@ function desiredManifest(
       : withSnippets;
   const repo = context.repoPreset;
   return repo?.accepted === true
-    ? withTrustedRepoPreset(withPreset, { hash: repo.hash, path: repo.path })
+    ? withTrustedRepoPreset(withPreset, {
+        hash: repo.hash,
+        ...(repo.mainWorktreePath === undefined ? {} : { mainWorktreePath: repo.mainWorktreePath }),
+        path: repo.path,
+      })
     : withPreset;
 }
 
