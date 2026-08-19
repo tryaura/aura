@@ -13,14 +13,20 @@ run spawns.
 ```ts
 import { createSeedBuilder, runCheck } from "@tryaura/aura-testkit";
 
-it("reports a legacy config", async () => {
+it("runs a distribution against a fake machine", async () => {
   await using seed = await createSeedBuilder()
     .homeFile(".fixture/config.txt", "legacy=true\n")
     .workspaceFile("AGENTS.md", "workspace instructions\n")
     .shim("fixture-agent", [{ args: ["--version"], stdout: "fixture-agent 1.2.3\n" }])
     .build();
 
-  const result = await runCheck({ distro, seed });
+  const result = await runCheck({
+    distro: {
+      branding: { command: "fixture", displayName: "Fixture Doctor" },
+      plugins: [],
+    },
+    seed,
+  });
 
   expect(result.findings).toMatchInlineSnapshot();
 });
@@ -58,6 +64,26 @@ Every invocation is recorded, matched or not:
 ```ts
 await expect(seed.invocations("fixture-agent")).resolves.toEqual([["--version"]]);
 ```
+
+Asking for a command that was not seeded rejects and lists the known shims. A seeded command that
+has not run resolves to an empty list.
+
+### Shim record contract
+
+The invocation log is a public, versioned format. Each invocation is one ASCII line:
+
+```text
+aura-testkit-v1<TAB><argument-count><TAB><base64-UTF-8-argument>...<LF>
+```
+
+Empty and multiline arguments round-trip because every argument is encoded separately. A shim
+builds the complete record in memory and appends it with one `printf`, so parallel invocations do
+not interleave fields. Records are capped at 2,048 bytes; an invocation over that limit writes a
+versioned truncation marker, and `seed.invocations(command)` rejects with the record size and limit
+instead of returning incomplete arguments.
+
+Generated shims require a POSIX shell and the standard `base64` and `tr` utilities available at
+`/usr/bin`. Seed building fails immediately on Windows with an explicit platform error.
 
 Versioned official-app fixtures are also exported for adapter and binary integration tests:
 

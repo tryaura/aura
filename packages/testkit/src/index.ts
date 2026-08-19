@@ -42,4 +42,4 @@ export type {
   TestSeed,
   TestSeedBuilder,
 } from "./types.js";
-export type { CheckReport } from "@tryaura/aura-cli";
+export type { CheckReport, CliDistro } from "@tryaura/aura-cli";
