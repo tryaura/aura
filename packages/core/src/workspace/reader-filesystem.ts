@@ -7,6 +7,7 @@ import type { AdapterPathKind } from "@tryaura/aura-sdk";
 import { embeddedDirectoryEntries, isEmbeddedAssetPath } from "./embedded-assets.js";
 import { readEmbeddedDirectory } from "./reader-embedded-directory.js";
 import { isAbsence, toProblem } from "./reader-errors.js";
+import { readFileHandlePrefix } from "./reader-file-handle.js";
 import { MAX_DIRECTORY_ENTRIES, MAX_FILE_BYTES } from "./reader-limits.js";
 import type { FileReadOptions, PathContents } from "./reader.js";
 
@@ -160,7 +161,7 @@ async function readResolvedPath(
  * The fallback loses nothing: an embedded filesystem has no symlinks, so the two calls agree
  * wherever both work. Non-embedded failures keep their original error.
  */
-async function compatibleLstat(path: string): Promise<Stats> {
+export async function compatibleLstat(path: string): Promise<Stats> {
   try {
     return await lstat(path);
   } catch (error) {
@@ -171,7 +172,7 @@ async function compatibleLstat(path: string): Promise<Stats> {
   }
 }
 
-function resolvedMetadata(
+export function resolvedMetadata(
   stats: Stats,
   pathKind: AdapterPathKind,
   symlinkTarget?: string,
@@ -241,22 +242,13 @@ async function readPrefix(path: string, maxBytes: number): Promise<Buffer> {
   }
   const file = await open(path, "r");
   try {
-    const buffer = Buffer.allocUnsafe(maxBytes);
-    let offset = 0;
-    while (offset < buffer.length) {
-      const result = await file.read(buffer, offset, buffer.length - offset, offset);
-      if (result.bytesRead === 0) {
-        break;
-      }
-      offset += result.bytesRead;
-    }
-    return buffer.subarray(0, offset);
+    return await readFileHandlePrefix(file, maxBytes);
   } finally {
     await file.close();
   }
 }
 
-async function readDirectory(
+export async function readDirectory(
   path: string,
   metadata: Pick<PathContents, "pathKind" | "symlinkTarget">,
 ): Promise<PathContents> {

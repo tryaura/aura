@@ -31,6 +31,16 @@ describe("embedded asset directories", () => {
     });
     await expect(reader.exists(root)).resolves.toBe(true);
     await expect(reader.realPath(root)).resolves.toBe(root);
+    await expect(reader.readWithin(root, ["/$bunfs/root/content"])).resolves.toEqual({
+      contents: {
+        entries: ["SKILL.md", "references"],
+        exists: true,
+        isDirectory: true,
+        pathKind: "directory",
+      },
+      resolvedPath: root,
+      withinBoundary: true,
+    });
   });
 
   it("does not synthesize unrelated or empty directories", async () => {

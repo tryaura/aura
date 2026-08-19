@@ -70,6 +70,58 @@ describe("createFileReader", () => {
     });
   });
 
+  it("reads whole files and prefixes from identity-verified handles", async () => {
+    const root = await createTemporaryDirectory();
+    const path = join(root, "AGENTS.md");
+    await writeFile(path, "abcdef", "utf8");
+    await chmod(path, 0o644);
+    const boundary = await reader.realPath(root);
+    if (boundary === undefined) {
+      throw new Error("The temporary directory must have a canonical path.");
+    }
+
+    await expect(reader.readWithin(path, [boundary])).resolves.toMatchObject({
+      contents: { content: "abcdef", exists: true, isDirectory: false, pathKind: "file" },
+      resolvedPath: await reader.realPath(path),
+      withinBoundary: true,
+    });
+    await expect(reader.readWithin(path, [boundary], { maxBytes: 3 })).resolves.toMatchObject({
+      contents: { content: "abc", exists: true, isDirectory: false, size: 6 },
+      resolvedPath: await reader.realPath(path),
+      withinBoundary: true,
+    });
+  });
+
+  it("rejects a symlink swapped after an earlier canonicalization", async () => {
+    const root = await createTemporaryDirectory();
+    const project = join(root, "project");
+    const safe = join(project, "safe.md");
+    const secret = join(root, "secret.md");
+    const link = join(project, "AGENTS.md");
+    await mkdir(project);
+    await writeFile(safe, "# safe", "utf8");
+    await writeFile(secret, "secret", "utf8");
+    await symlink(safe, link);
+    const boundary = await reader.realPath(project);
+    if (boundary === undefined) {
+      throw new Error("The project directory must have a canonical path.");
+    }
+
+    const caching = createCachingReader(createFileReader());
+    await expect(caching.realPath(link)).resolves.toBe(await reader.realPath(safe));
+    await rm(link);
+    await symlink(secret, link);
+
+    const bounded = await caching.readWithin(link, [boundary]);
+
+    expect(bounded).toMatchObject({
+      contents: { problem: "outside-project" },
+      resolvedPath: await reader.realPath(secret),
+      withinBoundary: false,
+    });
+    expect(bounded.contents).not.toHaveProperty("content");
+  });
+
   it("lists a directory's immediate children, sorted", async () => {
     const root = await createTemporaryDirectory();
     const path = join(root, "skills");
@@ -203,6 +255,23 @@ describe("createCachingReader", () => {
 
     await expect(caching.read(path)).resolves.toEqual(first);
     expect(first.content).toBe("# first");
+  });
+
+  it("memoizes a bounded identity check and read as one result", async () => {
+    const root = await createTemporaryDirectory();
+    const path = join(root, "CLAUDE.md");
+    await writeFile(path, "# first", "utf8");
+    const boundary = await reader.realPath(root);
+    if (boundary === undefined) {
+      throw new Error("The temporary directory must have a canonical path.");
+    }
+
+    const caching = createCachingReader(createFileReader());
+    const first = await caching.readWithin(path, [boundary]);
+    await writeFile(path, "# second", "utf8");
+
+    await expect(caching.readWithin(path, [boundary])).resolves.toEqual(first);
+    expect(first.contents.content).toBe("# first");
   });
 });
 

@@ -1,4 +1,4 @@
-import { isAbsolute, sep } from "node:path";
+import { isAbsolute } from "node:path";
 
 import type { Adapter, AdapterFileSpec, AdapterSourceFile, FileProblem } from "@tryaura/aura-sdk";
 
@@ -10,6 +10,7 @@ import {
   type FileReader,
   type PathContents,
 } from "./reader.js";
+import { readSpecPath, type ProjectEscape } from "./specs-project-read.js";
 
 /** One declared path, read, together with anything worth telling the user about it. */
 export interface SpecRead {
@@ -50,17 +51,20 @@ export async function readSpec(spec: AdapterFileSpec, options: SpecReadOptions):
     return invalid;
   }
 
-  const escape = await findEscape(spec, options);
-  if (escape !== undefined) {
-    return escapedSpec(spec, options.adapter, escape);
+  const outcome = await readSpecPath(spec, options);
+  if (outcome.kind === "escape") {
+    return escapedSpec(spec, options.adapter, outcome.escape);
+  }
+  if (outcome.kind === "unverified") {
+    return unverifiedSpec(spec, options.adapter);
   }
 
-  const contents = await readDeclaredPath(spec, options.reader);
-  const resolvedPath =
-    contents.pathKind === "symlink" ? await options.reader.realPath(spec.path) : undefined;
-  const file = toSourceFile(spec, contents, resolvedPath);
+  const file = toSourceFile(spec, outcome.contents, outcome.resolvedPath);
 
-  return { diagnostics: describe(spec, options.adapter, contents.problem, file.exists), file };
+  return {
+    diagnostics: describe(spec, options.adapter, outcome.contents.problem, file.exists),
+    file,
+  };
 }
 
 function invalidSpec(spec: AdapterFileSpec, adapter: Adapter): SpecRead | undefined {
@@ -116,15 +120,27 @@ function escapedSpec(spec: AdapterFileSpec, adapter: Adapter, escape: ProjectEsc
   };
 }
 
-async function readDeclaredPath(spec: AdapterFileSpec, reader: FileReader): Promise<PathContents> {
-  if (spec.kind === "probe" && reader.inspect !== undefined) {
-    return reader.inspect(spec.path);
-  }
-  const maxBytes = spec.maxBytes;
-  return reader.read(
-    spec.path,
-    maxBytes === undefined ? undefined : { maxBytes: Math.min(maxBytes, MAX_FILE_BYTES) },
-  );
+/**
+ * Reports a path whose object moved mid-read, which is a retry rather than an accusation.
+ *
+ * The boundary check refuses what it can prove left the project. This is the other outcome: the
+ * file that was opened could not be shown to be the file standing at the path by the time the
+ * check ran. An editor writing a new file over an old one does that, and so does an attacker, so
+ * nothing is read either way — but only one of them deserves the sentence {@link escapedSpec}
+ * writes, and it is not the user saving their own config.
+ */
+function unverifiedSpec(spec: AdapterFileSpec, adapter: Adapter): SpecRead {
+  return {
+    diagnostics: [
+      {
+        adapterId: adapter.id,
+        message: `${adapter.displayName} declares the project ${spec.kind} file ${spec.path}, but it changed while Aura was reading it, so Aura could not confirm what it had opened and did not use it. Checks that rely on it were skipped; run the command again.`,
+        path: spec.path,
+        phase: "read",
+      },
+    ],
+    file: { exists: true, problem: "unreadable", spec },
+  };
 }
 
 function toSourceFile(
@@ -144,57 +160,6 @@ function toSourceFile(
     spec,
     ...(contents.symlinkTarget === undefined ? {} : { symlinkTarget: contents.symlinkTarget }),
   };
-}
-
-/**
- * Resolves a project-scoped path and returns where it landed, when that is outside the project.
- *
- * Global-scope paths are adapter-authored locations under the home directory and are not subject
- * to this: the untrusted input is the repository the user happens to have checked out.
- */
-interface ProjectEscape {
-  readonly boundary: string;
-  readonly path: string;
-}
-
-// fallow-ignore-next-line complexity -- each guard preserves one project-boundary security case.
-async function findEscape(
-  spec: AdapterFileSpec,
-  options: SpecReadOptions,
-): Promise<ProjectEscape | undefined> {
-  if (spec.scope !== "project") {
-    return undefined;
-  }
-
-  const requestedBoundary = spec.projectBoundary ?? options.projectBoundary;
-  if (requestedBoundary === undefined) {
-    return undefined;
-  }
-  const projectBoundary =
-    spec.projectBoundary === undefined
-      ? requestedBoundary
-      : await options.reader.realPath(requestedBoundary);
-  if (projectBoundary === undefined) {
-    return { boundary: requestedBoundary, path: spec.path };
-  }
-  const resolved = await options.reader.realPath(spec.path);
-  if (
-    resolved === undefined ||
-    contains(projectBoundary, resolved) ||
-    (spec.kind === "skills" &&
-      options.sharedSkillsRoot !== undefined &&
-      contains(options.sharedSkillsRoot, resolved))
-  ) {
-    return undefined;
-  }
-
-  return { boundary: projectBoundary, path: resolved };
-}
-
-function contains(directory: string, path: string): boolean {
-  return (
-    path === directory || path.startsWith(directory.endsWith(sep) ? directory : directory + sep)
-  );
 }
 
 /** Turns the read outcome into the one sentence the user needs, or nothing when all is well. */

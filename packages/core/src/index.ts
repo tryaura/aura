@@ -148,4 +148,9 @@ export { MAX_TRUSTED_REPO_PRESETS } from "./manifest/schema-trust.js";
 export { applyRequiredMcpServers } from "./preset/required-mcp.js";
 export type { RequiredMcpProjection } from "./preset/required-mcp.js";
 /** @public */
-export type { FileReader, FileReadOptions, PathContents } from "./workspace/reader.js";
+export type {
+  BoundedPathRead,
+  FileReader,
+  FileReadOptions,
+  PathContents,
+} from "./workspace/reader.js";
