@@ -4,7 +4,6 @@ import type {
   AuraManifestOwnership,
   AuraManifestOverrides,
   AuraManifestSkill,
-  AuraManifestSnippet,
   JsonObject,
   JsonValue,
   SkillSourceId,
@@ -16,6 +15,7 @@ import { isRecord } from "../values.js";
 import { AURA_MANIFEST_SCHEMA_VERSION } from "./protocol.js";
 import { optionalChecks, optionalPreset } from "./schema-checks.js";
 import { mcpServers } from "./schema-mcp.js";
+import { snippets } from "./schema-snippets.js";
 import { optionalTrustedRepoPresets } from "./schema-trust.js";
 import {
   invalid,
@@ -206,30 +206,6 @@ function apps(value: JsonValue | undefined): Readonly<Record<string, AuraManifes
     );
   }
   return Object.freeze(result);
-}
-
-function snippets(value: JsonValue | undefined): readonly AuraManifestSnippet[] {
-  if (!Array.isArray(value)) {
-    throw invalid("$.snippets", "must be an array");
-  }
-
-  return Object.freeze(
-    value.map((candidate, index) => {
-      const path = `$.snippets[${String(index)}]`;
-      const snippet = requiredObject(candidate, path);
-      const hash = requiredString(snippet, "hash", path);
-      if (!SHA256_PATTERN.test(hash)) {
-        throw invalid(`${path}.hash`, "must be a lowercase SHA-256 hash");
-      }
-      return Object.freeze({
-        ...snippet,
-        hash,
-        id: requiredString(snippet, "id", path),
-        pinned: requiredBoolean(snippet, "pinned", path),
-        version: requiredString(snippet, "version", path),
-      });
-    }),
-  );
 }
 
 function ownership(value: JsonValue | undefined): Readonly<Record<string, AuraManifestOwnership>> {

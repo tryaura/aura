@@ -1,8 +1,8 @@
 import { relative, resolve } from "node:path";
 
 import { splitSourceLines, type Scope, type WorkspaceModel } from "@tryaura/aura-sdk";
-import { stripManagedBlock } from "@tryaura/core";
 
+import { importLineLinks, stripAuraInstructionArtifacts } from "./instruction-artifacts.js";
 import type { DuplicateCluster, DuplicateMember, InstructionSource } from "./instructions.js";
 import type { InstructionScopeSelection } from "./types.js";
 
@@ -99,17 +99,19 @@ function mergeSections(
 ): readonly MergeSection[] {
   const selected = new Set(selection.selectedSources.map((path) => resolve(path)));
   const removals = loserRanges(selection, clusters);
+  const links = importLineLinks(model);
   return sources
     .filter((source) => selected.has(resolve(source.path)))
     .sort((left, right) => left.path.localeCompare(right.path))
     .map((source) => ({
       heading: provenanceHeading(source.path, selection.scope, model),
       path: resolve(source.path),
-      // Duplicate ranges first — INS-003 measured its lines against the original file — then the
-      // managed block: it is Aura's own artifact, and merging it would plant the shared import
-      // inside the shared file itself. What survives both is the text the user actually wrote.
-      text: stripManagedBlock(
+      // Duplicate ranges first — INS-003 measured its lines against the original file — then Aura's
+      // legacy or plain shared import. What survives both is the text the user actually wrote.
+      text: stripAuraInstructionArtifacts(
         removeRanges(source.content, removals.get(resolve(source.path)) ?? []),
+        source.path,
+        links,
       ),
     }));
 }

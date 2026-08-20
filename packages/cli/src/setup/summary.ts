@@ -51,10 +51,11 @@ const NOTICE_HEADINGS: Readonly<Record<SetupNotice["kind"], string>> = Object.fr
   policy: "Effective check policy:",
   preserved: "Preserved content Aura does not own:",
   repo: "Repository preset:",
+  skipped: "Selections Aura could not apply:",
 });
 
 function renderNotices(notices: readonly SetupNotice[], output: Writable): void {
-  for (const kind of ["overwritten", "preserved", "held", "policy", "repo"] as const) {
+  for (const kind of ["overwritten", "preserved", "held", "skipped", "policy", "repo"] as const) {
     const matching = notices.filter((notice) => notice.kind === kind);
     if (matching.length === 0) {
       continue;

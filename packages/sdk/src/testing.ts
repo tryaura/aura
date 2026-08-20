@@ -11,7 +11,6 @@ import type { WorkspaceModel } from "./workspace-model.js";
 const EMPTY_MODEL = {
   availableMcpServers: [],
   availableSkills: [],
-  availableSnippets: [],
   apps: [],
   cwd: "/workspace",
   homeDir: "/home/dev",

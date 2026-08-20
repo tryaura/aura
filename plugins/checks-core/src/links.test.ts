@@ -132,7 +132,7 @@ describe("INS-002", () => {
     expect(sharedInstructionLinksCheck.fix(changedFinding, changedModel)).toBeUndefined();
   });
 
-  it("preserves malformed Claude managed markers and says why", () => {
+  it("preserves malformed legacy markers while appending the plain import", () => {
     const path = "/home/dev/.claude/CLAUDE.md";
     const model = workspace(
       [
@@ -157,9 +157,15 @@ describe("INS-002", () => {
     );
     const finding = onlyFinding(sharedInstructionLinksCheck, model);
 
-    expect(finding.details).toContain("malformed");
-    expect(finding.details).not.toContain(READY);
-    expect(sharedInstructionLinksCheck.fix(finding, model)).toBeUndefined();
+    expect(finding.details).toBe(READY);
+    expect(sharedInstructionLinksCheck.fix(finding, model)?.operations).toEqual([
+      {
+        content: "handwritten\n<!-- aura:begin -->\n\n@~/agents/AGENTS.md\n",
+        mode: 0o644,
+        path,
+        type: "write",
+      },
+    ]);
   });
 
   it("says nothing about an application with no global instruction file", () => {

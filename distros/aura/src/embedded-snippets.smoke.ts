@@ -1,10 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { hashManagedSnippet } from "@tryaura/core";
 import officialContent from "@tryaura/content-official";
 import { createSeedBuilder } from "@tryaura/aura-testkit";
-import type { AuraManifestSnippet } from "@tryaura/aura-sdk";
 import { describe, expect, it } from "vitest";
 
 import { runCompiled } from "./binary-test-support.js";
@@ -19,9 +17,9 @@ describe("compiled snippet content", () => {
    * A snippet the binary cannot read is reported as unavailable and then dropped, so a test written
    * as "the output never mentions this snippet" also passes when the snippets step never ran — and
    * it does not run without a detected application and a shared instruction file to splice into.
-   * Seeding the selections as an existing manifest is what makes the step reach every embedded
-   * source, and comparing the spliced text against this repository's own Markdown is what proves
-   * the binary read the asset rather than something else shaped like it.
+   * Selecting every source through a local preset makes the non-interactive binary read each
+   * embedded asset. Comparing the appended text against this repository's Markdown proves the
+   * bundled binary read the asset rather than something else shaped like it.
    */
   it("reads every embedded snippet during setup", async () => {
     const sources = await Promise.all(
@@ -31,12 +29,7 @@ describe("compiled snippet content", () => {
         version: snippet.version,
       })),
     );
-    const selections = sources.map((source): AuraManifestSnippet => ({
-      hash: hashManagedSnippet(source.body),
-      id: source.id,
-      pinned: false,
-      version: source.version,
-    }));
+    const selections = sources.map((source) => source.id);
 
     await using seed = await createSeedBuilder()
       .homeFile("agents/AGENTS.md", "# Shared agent instructions\n")
@@ -49,11 +42,15 @@ describe("compiled snippet content", () => {
             ownership: {},
             schemaVersion: 1,
             skills: [],
-            snippets: selections,
+            snippets: [],
           },
           undefined,
           2,
         )}\n`,
+      )
+      .workspaceFile(
+        "all-snippets.json",
+        JSON.stringify({ name: "All snippets", schemaVersion: 1, snippets: selections }),
       )
       .shim("claude", [
         { args: ["--version"], stdout: `${CLAUDE_VERSION}\n` },
@@ -61,12 +58,17 @@ describe("compiled snippet content", () => {
       ])
       .build();
 
-    const result = await runCompiled(seed, ["setup", "--yes"], { NO_COLOR: "1" });
+    const result = await runCompiled(
+      seed,
+      ["setup", "--yes", "--preset", join(seed.workspaceDir, "all-snippets.json")],
+      { NO_COLOR: "1" },
+    );
 
     expect(result.stderr).toBe("");
     expect(result.stdout).not.toContain("is unavailable");
     expect(result.exitCode).toBe(0);
     const instructions = await readFile(join(seed.homeDir, "agents", "AGENTS.md"), "utf8");
+    expect(instructions).not.toContain("<!-- aura:");
     for (const source of sources) {
       expect(instructions, source.id).toContain(source.body.trim());
     }

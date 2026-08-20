@@ -170,8 +170,8 @@ Snippets are Markdown fragments users can select during `acmedev setup`. Create
 - Run the repository's typecheck, test, and lint commands before requesting review.
 ```
 
-Keep snippets short and imperative. Do not add frontmatter: Aura inserts the file as a managed,
-hash-tracked block in `~/agents/AGENTS.md`.
+Keep snippets short and imperative. Do not add frontmatter: Aura appends the plain Markdown once to
+`~/agents/AGENTS.md`. Later runs show it as installed but never update or remove its text.
 
 ## 3. Add a skill
 
@@ -398,8 +398,10 @@ bun run src/main.boundary.ts check --json
 
 Put a semver-producing `acme-agent --version` executable on `PATH` to verify the adapter appears as
 detected. In the setup wizard, confirm that `Acme engineering` appears under snippets and
-`Acme release` appears under skills. A malformed or missing content source should produce a scan
-diagnostic, not silently disappear.
+`Acme release` appears under skills. A malformed or missing snippet source should produce a
+disabled row, not silently disappear.
+
+After installation, rerun setup and confirm the snippet row is disabled as installed.
 
 For automated coverage, use `createSeedBuilder`, `runSetup`, `runCheck`, and `runBinaryCheck` from
 `@tryaura/aura-testkit`. Assert the selected snippet in `~/agents/AGENTS.md`, the skill tree below

@@ -37,7 +37,7 @@ describe("aura check --fix", () => {
       first.stdout.indexOf("Applied 3 fix operations."),
     );
     expect(first.stdout).toContain("0 errors · 0 warnings · 3 suggestions");
-    expect(first.stdout).toContain("✓ 23 checks passed · 3 applications detected");
+    expect(first.stdout).toContain("✓ 22 checks passed · 3 applications detected");
     await expect(readFile(sharedPath, "utf8")).resolves.toBe(SHARED_TEMPLATE);
     await expect(readlink(claudePath)).resolves.toBe(sharedPath);
     await expect(readlink(codexPath)).resolves.toBe(sharedPath);

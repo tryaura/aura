@@ -138,7 +138,6 @@ async function restoreBackup(request: UndoRequest, backup: ReadableBackup): Prom
     adapters: request.registry.adapters,
     environment: request.environment,
     mcpCatalog: request.registry.mcpServers,
-    snippets: request.registry.snippets,
     skills: request.registry.skills,
   });
   const result = await undoFixPlan({

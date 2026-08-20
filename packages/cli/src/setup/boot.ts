@@ -81,7 +81,6 @@ export async function bootSetup(
       mcpCatalog: request.registry.mcpServers,
       onAdapterScan: report,
       signal: scanCancellation.signal,
-      snippets: request.registry.snippets,
       skills: request.registry.skills,
     }),
   );

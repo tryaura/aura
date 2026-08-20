@@ -1,9 +1,3 @@
-/** A snippet Aura should place in the managed block. Input order is preserved. */
-export interface DesiredManagedSnippet {
-  readonly content: string;
-  readonly id: string;
-}
-
 /** A snippet parsed from an existing managed block. */
 export interface ManagedSnippet {
   /** Canonical SHA-256 computed from the parsed content. */
@@ -68,13 +62,7 @@ export interface ManagedBlockProblem {
 }
 
 /** Stable categories for source state a caller should report. */
-type ManagedBlockNoteCode =
-  | "overwritten-snippet"
-  | "preserved-unowned-snippet"
-  | "removed-snippet"
-  | "repaired-invalid-block"
-  | "unmanaged-content"
-  | "unterminated-fence";
+type ManagedBlockNoteCode = "unmanaged-content" | "unterminated-fence";
 
 /** Source state discovered alongside the main parser result. */
 export interface ManagedBlockNote {
@@ -93,57 +81,6 @@ export type ManagedBlockReadResult =
       readonly status: "present";
     }
   | {
-      readonly notes: readonly ManagedBlockNote[];
-      readonly problems: readonly ManagedBlockProblem[];
-      readonly status: "invalid";
-    };
-
-/** How reconciliation should treat a source string it cannot parse. */
-export interface ManagedBlockReconcileOptions {
-  /**
-   * `"fail"` (the default) returns the source untouched so a damaged file is never overwritten.
-   * `"repair"` strips every protocol marker, keeps the handwritten text, and rebuilds the block —
-   * the escape hatch for a file that would otherwise stay unmanageable until edited by hand.
-   */
-  readonly onInvalid?: "fail" | "repair";
-  /**
-   * Snippet ids Aura owned before this reconciliation.
-   *
-   * When omitted, the desired snippets remain the complete managed set for backward compatibility.
-   * When present, existing snippets outside this ledger and the desired set are preserved verbatim.
-   */
-  readonly ownedSnippetIds?: readonly string[] | undefined;
-  /**
-   * Last manifest-recorded hashes for owned snippets, used to identify actual hand edits.
-   *
-   * A map rather than a record because snippet ids come from parsing a user-editable file, and the
-   * id grammar admits `constructor` and `toString`: a record lookup would answer those with an
-   * inherited function while claiming to return a string.
-   */
-  readonly previousSnippetHashes?: ReadonlyMap<string, string> | undefined;
-  /** Owned snippet ids whose existing sections must be preserved verbatim for this run. */
-  readonly preserveSnippetIds?: readonly string[] | undefined;
-}
-
-/** One targeted resolution for a parsed managed snippet. */
-export type ManagedSnippetResolution =
-  | { readonly kind: "keep" }
-  | { readonly content: string; readonly kind: "restore" };
-
-/** Result of reconciling a source string with a complete desired snippet set. */
-export type ManagedBlockWriteResult =
-  | {
-      readonly content: string;
-      readonly notes: readonly ManagedBlockNote[];
-      readonly status: "unchanged";
-    }
-  | {
-      readonly content: string;
-      readonly notes: readonly ManagedBlockNote[];
-      readonly status: "updated";
-    }
-  | {
-      readonly content: string;
       readonly notes: readonly ManagedBlockNote[];
       readonly problems: readonly ManagedBlockProblem[];
       readonly status: "invalid";

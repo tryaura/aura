@@ -47,7 +47,6 @@ export function createCheckScan(options: CheckScanOptions): CheckScan {
     mcpCatalog: options.registry.mcpServers,
     mcpProbes: requester === undefined ? {} : { urlRequest: requester.request },
     skills: options.registry.skills,
-    snippets: options.registry.snippets,
   };
   // Synthetic adapters model files, not installed applications; naming one here would claim the
   // user runs something they have never heard of. They probe nothing, so nothing waits on them.

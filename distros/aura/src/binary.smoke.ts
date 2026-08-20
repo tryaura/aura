@@ -116,12 +116,8 @@ describe("compiled Aura distribution", () => {
           title: "Instruction guidance respects global and project precedence",
         },
         {
-          id: "MGD-001",
-          title: "Aura-managed instruction blocks have not changed by hand",
-        },
-        {
           id: "MGD-002",
-          title: "Managed snippets and skills are at their reviewed source revisions",
+          title: "Managed skills are at their reviewed source revisions",
         },
         {
           id: "MGD-003",
@@ -150,14 +146,14 @@ describe("compiled Aura distribution", () => {
           ENV: { errors: 0, informational: 0, passed: 4, warnings: 0 },
           INS: { errors: 1, informational: 0, passed: 7, warnings: 0 },
           MCP: { errors: 0, informational: 0, passed: 5, warnings: 0 },
-          MGD: { errors: 0, informational: 0, passed: 3, warnings: 0 },
+          MGD: { errors: 0, informational: 0, passed: 2, warnings: 0 },
           SKL: { errors: 0, informational: 0, passed: 4, warnings: 0 },
         },
         diagnostics: 0,
         errors: 1,
         exitCode: 0,
         informational: 0,
-        passed: 23,
+        passed: 22,
         warnings: 0,
       },
     });

@@ -54,11 +54,16 @@ interface InstructionSelections {
   readonly project?: InstructionScopeSelection | undefined;
 }
 
+/**
+ * The snippets step is add-only: a run appends text or it does nothing.
+ *
+ * There is no cleared half. Aura writes no markers, so it cannot know which bytes of the shared
+ * file were once a given snippet, and an install record it dropped would only invite appending the
+ * same text a second time. Installed rows are locked in the picker for the same reason.
+ */
 interface SnippetSelections {
-  /** Available selected ids in picker order, followed by locked unavailable selections. */
+  /** Snippet ids this run should append, in picker order. Installed ids are never included. */
   readonly selected: readonly string[];
-  /** Existing selections whose source revision the user explicitly reviewed and accepted. */
-  readonly updates?: readonly string[] | undefined;
 }
 
 export interface SkillSelection {

@@ -310,7 +310,7 @@ describe("runSetup", () => {
       mcpServers: [{ catalogId: "fixture/docs", name: "fixture-docs" }],
       preset: "plugin:fixture/onboarding",
       skills: [{ id: "review", source: "plugin:fixture", version: "1.0.0" }],
-      snippets: [{ id: "fixture/rules", version: "1.0.0" }],
+      snippets: [{ id: "fixture/rules" }],
     });
     expect(manifest.checks).toBeUndefined();
     expect(fixture.stdout()).toContain(

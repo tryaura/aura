@@ -17,7 +17,7 @@ import { AURA_DISTRO } from "./distro.js";
  * manifest is replaced with the shape the boot-time repository-preset trust recorder writes when no
  * manifest exists — empty ownership — and the shared file is reset to the starter template. That is
  * the state a blocked earlier run leaves behind, and the next run must converge from it without
- * merging Aura's own managed block or the Codex symlink back into the shared file.
+ * merging Aura's own legacy block or the Codex symlink back into the shared file.
  */
 describe("aura setup recovery", () => {
   it("re-converges after the manifest loses ownership of the wired links", async () => {

@@ -67,12 +67,11 @@ describe("snippet catalog resolution", () => {
     expect(catalog).toEqual([
       {
         category: "general",
-        description: "Previously selected, but no installed plugin currently provides it.",
+        description: "Installed previously, but no installed plugin currently provides it.",
         id: "retired/rules",
         name: "retired/rules",
         reason: "The contributing plugin is unavailable.",
         status: "unavailable",
-        version: "1.2.3",
       },
     ]);
   });
@@ -105,7 +104,7 @@ function readyManifest(id: string): AuraManifestState {
       ownership: {},
       schemaVersion: 1,
       skills: [],
-      snippets: [{ hash: "a".repeat(64), id, pinned: false, version: "1.2.3" }],
+      snippets: [{ id }],
     },
   };
 }

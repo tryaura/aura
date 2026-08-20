@@ -28,6 +28,14 @@ export interface WizardOption {
    */
   readonly loadPreview?: (() => Promise<string>) | undefined;
   /**
+   * Settled: the row renders as it stands and neither space nor its digit ever moves its checkbox.
+   *
+   * Stronger than `disabled`, which refuses only the marking direction so a seeded selection can
+   * always be given up. A locked row states something the form is not asking about — a record Aura
+   * has no way to act on either way — so both directions are refused and the cursor skips it.
+   */
+  readonly locked?: boolean | undefined;
+  /**
    * Values this row checks and clears as a group instead of selecting its own.
    *
    * Makes the row a gesture over other rows — a skill pack — rather than an answer: its own

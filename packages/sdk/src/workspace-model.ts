@@ -5,7 +5,6 @@ import type {
   AppModel,
   InstructionDocument,
   McpServer,
-  ResolvedSnippet,
   SharedInstructionsState,
   UnusableMcpServer,
 } from "./model.js";
@@ -24,8 +23,6 @@ export interface WorkspaceModel {
   readonly availableMcpServers: readonly ResolvedMcpServerDef[];
   /** Bundled skill packs whose directory sources resolved in this run. */
   readonly availableSkills?: readonly ResolvedSkillPack[] | undefined;
-  /** Registry snippets whose bundled Markdown sources were readable in this run. */
-  readonly availableSnippets: readonly ResolvedSnippet[];
   /** Every detected application. */
   readonly apps: readonly AppModel[];
   /** Directory Aura was invoked from. */

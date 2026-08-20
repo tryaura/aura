@@ -239,9 +239,8 @@ describe("createPluginRegistry", () => {
     },
   );
 
-  // Managed content is held at its recorded revision until a newer one is reviewed, and "newer" is
-  // a semver comparison. A version semver cannot order has no upgrade path at all, so it would sit
-  // frozen forever with neither setup nor MGD-002 ever naming it.
+  // Snippet versions remain canonical contribution metadata even though install history records
+  // only IDs. Reject ambiguous spellings consistently across every content contribution.
   it.each(["2024-05", "v1.0.0", "1.0", "latest"])(
     "rejects a snippet version it could never compare: %s",
     (version) => {
@@ -250,7 +249,7 @@ describe("createPluginRegistry", () => {
       ]);
 
       expect(error.message).toContain(`snippet "alpha/rules" declares version "${version}"`);
-      expect(error.message).toContain("held at its recorded revision");
+      expect(error.message).toContain("canonical semver metadata");
     },
   );
 

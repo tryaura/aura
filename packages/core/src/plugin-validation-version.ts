@@ -20,16 +20,13 @@ export function canonicalSemver(version: string): string | undefined {
 /**
  * Why a content revision could never be compared to a recorded one, or `undefined` when it can.
  *
- * Managed snippets and skills are held at their recorded revision until a newer one is reviewed,
- * and "newer" is a semver comparison. A version semver cannot order therefore has no upgrade path
- * at all: setup would never offer it and MGD-002 would never report it, so the content would sit
- * frozen with nothing on screen explaining why. Refusing it at registry build is what keeps that
- * dead end out of a user's manifest, enforcing the SDK's documented "semver version of the content
- * itself" rather than trusting it.
+ * Content versions are canonical semver metadata. Skills use them for reviewed revision changes;
+ * snippets retain the same contribution shape even though their install-once manifest record is
+ * only an ID. Refusing ambiguous spellings keeps registry behavior deterministic.
  */
 export function contentVersionProblem(version: string): string | undefined {
   return canonicalSemver(version) === version
     ? undefined
     : `declares version "${version}"; expected a canonical semver version such as "1.0.0", ` +
-        "because managed content is held at its recorded revision until a newer one is reviewed";
+        "because content contributions require canonical semver metadata";
 }

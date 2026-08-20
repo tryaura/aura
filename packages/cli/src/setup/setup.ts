@@ -198,7 +198,6 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
     adapters: request.registry.adapters,
     environment,
     mcpCatalog: request.registry.mcpServers,
-    snippets: request.registry.snippets,
     skills: request.registry.skills,
   });
   const effectiveRescan = projectRescan(rescanned, configured.config);

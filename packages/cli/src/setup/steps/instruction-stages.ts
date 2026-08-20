@@ -37,7 +37,24 @@ export interface ScopeInput {
   readonly targetPath: string;
 }
 
+/**
+ * The target's current text when this scope has nothing left to decide, otherwise undefined.
+ *
+ * A populated target with no sources to merge leaves a menu of two answers: one that changes
+ * nothing, one that overwrites text Aura did not write. The step reports the state instead and the
+ * scope settles on `keep`, which still wires any application missing its link.
+ */
+export function settledTargetContent(input: ScopeInput): string | undefined {
+  if (input.blocked || input.sources.length > 0 || !hasTargetContent(input)) {
+    return undefined;
+  }
+  return input.targetContentValue;
+}
+
 export function scopeStages(input: ScopeInput): readonly ChainStage<ChainState>[] {
+  if (settledTargetContent(input) !== undefined) {
+    return [];
+  }
   const options = actionOptions(input);
   const offered = new Set(options.map((option) => option.value));
   // The least invasive offered answer that still configures the scope, which is what option order
@@ -163,7 +180,7 @@ function settled(
  */
 function actionOptions(input: ScopeInput): readonly WizardOption[] {
   const options: WizardOption[] = [];
-  if ((input.targetContentValue?.trim().length ?? 0) > 0) {
+  if (hasTargetContent(input)) {
     options.push({
       description: "Leave the existing shared file and every source untouched.",
       label: "Keep existing shared file",
@@ -187,13 +204,16 @@ function actionOptions(input: ScopeInput): readonly WizardOption[] {
       // Declining is not undoing: an earlier run's target and the link pointing at it survive this
       // answer untouched, and a converged summary saying "nothing to do" would be the only thing
       // the user ever heard about them.
-      description:
-        (input.targetContentValue?.trim().length ?? 0) > 0
-          ? `Aura writes nothing here and adds no project-level link; ${basename(input.targetPath)} and anything already linking to it stay as they are.`
-          : "Aura writes nothing here and adds no project-level link.",
+      description: hasTargetContent(input)
+        ? `Aura writes nothing here and adds no project-level link; ${basename(input.targetPath)} and anything already linking to it stay as they are.`
+        : "Aura writes nothing here and adds no project-level link.",
       label: "Skip project instructions",
       value: SKIP_VALUE,
     });
   }
   return options;
+}
+
+function hasTargetContent(input: ScopeInput): boolean {
+  return (input.targetContentValue?.trim().length ?? 0) > 0;
 }

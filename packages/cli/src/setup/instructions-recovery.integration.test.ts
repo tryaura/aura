@@ -15,7 +15,7 @@ afterEach(cleanupFixtures);
 
 /*
  * The damaged state a partially applied earlier run leaves behind: the link artifacts exist on
- * disk — an import-line entry holding Aura's managed block, a symlink at the Codex entry — but the
+ * disk — an import-line entry holding Aura's legacy block, a symlink at the Codex entry — but the
  * manifest was recreated by the boot-time trust recorder with an empty ownership ledger, and the
  * shared file holds only the starter template. Setup must converge from here without consuming its
  * own artifacts: no self-import merged into the shared file, no archive of the symlink, and the

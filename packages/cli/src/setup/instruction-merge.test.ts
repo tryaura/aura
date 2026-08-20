@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { parseAuraManifest } from "@tryaura/core";
-import type { WorkspaceModel } from "@tryaura/aura-sdk";
+import type { AppModel, WorkspaceModel } from "@tryaura/aura-sdk";
 import { createWorkspaceModel } from "@tryaura/aura-sdk/testing";
 
 import { composeConsolidatedInstructions, unmergedSources } from "./instruction-merge.js";
@@ -17,6 +17,8 @@ const MANAGED_BLOCK = [
   "<!-- aura:end -->",
   "",
 ].join("\n");
+const ENTRY_PATH = "/home/dev/.claude/CLAUDE.md";
+const PLAIN_IMPORT = "@~/agents/AGENTS.md\n";
 
 describe("managed blocks in consolidation", () => {
   it("merges only the user text of a source that carries Aura's block", () => {
@@ -68,6 +70,45 @@ describe("managed blocks in consolidation", () => {
       content: `User rule.\n\nAdded later.\n${MANAGED_BLOCK}`,
     };
     expect(unmergedSources([edited], chosen, [], model(), target)).toEqual([wired.path]);
+  });
+
+  it("merges user text without Aura's plain import suffix", () => {
+    const wired: InstructionSource = {
+      content: `# Mine\n\nKeep this.\n\n${PLAIN_IMPORT}`,
+      path: ENTRY_PATH,
+      scope: "global",
+    };
+    const application = importApp();
+
+    const output = composeConsolidatedInstructions(
+      [wired],
+      selection([wired.path]),
+      [],
+      model([application]),
+    );
+
+    expect(output).toContain("Keep this.");
+    expect(output).not.toContain("@~/agents/AGENTS.md");
+  });
+
+  // The shared file is what the import points at, so merging the line into it makes an instruction
+  // file that imports itself. Where the user put their own notes cannot decide that.
+  it("merges user text without Aura's plain import wherever the user left it", () => {
+    const wired: InstructionSource = {
+      content: `${PLAIN_IMPORT}\n# Mine\n\nKeep this.\n`,
+      path: ENTRY_PATH,
+      scope: "global",
+    };
+
+    const output = composeConsolidatedInstructions(
+      [wired],
+      selection([wired.path]),
+      [],
+      model([importApp()]),
+    );
+
+    expect(output).toContain("Keep this.");
+    expect(output).not.toContain("@~/agents/AGENTS.md");
   });
 });
 
@@ -128,7 +169,7 @@ function selection(selectedSources: readonly string[]): InstructionScopeSelectio
   };
 }
 
-function model(): WorkspaceModel {
+function model(apps: readonly AppModel[] = []): WorkspaceModel {
   const manifest = parseAuraManifest(
     JSON.stringify({
       apps: {},
@@ -141,6 +182,7 @@ function model(): WorkspaceModel {
     "/home/dev/agents/aura.json",
   );
   return createWorkspaceModel({
+    apps,
     cwd: "/repo/fallback",
     manifest,
     projectRoot: "/repo/project",
@@ -150,4 +192,23 @@ function model(): WorkspaceModel {
       path: "/home/dev/agents/AGENTS.md",
     },
   });
+}
+
+function importApp(): AppModel {
+  return {
+    adapterId: "claude-code",
+    detection: { installed: true },
+    displayName: "Claude Code",
+    instructionFiles: [],
+    mcpServers: [],
+    sharedLink: {
+      content: PLAIN_IMPORT,
+      entryPath: ENTRY_PATH,
+      kind: "import-line",
+      scope: "global",
+    },
+    skills: [],
+    sourceFiles: [],
+    support: { status: "supported", supportedRange: ">=1 <2", version: "1.0.0" },
+  };
 }

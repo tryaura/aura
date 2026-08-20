@@ -2,7 +2,7 @@ import { isAbsolute, join, relative } from "node:path";
 
 import type { AuraManifest, AuraTeamPreset, Environment } from "@tryaura/aura-sdk";
 
-import { hashManagedSnippet } from "../managed-block/protocol.js";
+import { hashContent } from "../content-hash.js";
 import type { ScanDiagnostic } from "../workspace/diagnostics.js";
 import { findGitMainWorktreeRoot, findProjectRoot } from "../workspace/project-root.js";
 import { createFileReader, type FileReader } from "../workspace/reader.js";
@@ -42,11 +42,11 @@ export interface RepoPresetState extends RepoPresetIdentity {
 /**
  * Hashes repository preset contents for the trust record.
  *
- * Uses the managed-snippet canonicalization so a checkout that rewrites line endings does not
- * invalidate a trust the user already granted to the same bytes-as-authored.
+ * Normalizes line endings so a checkout that rewrites them does not invalidate a trust the user
+ * already granted to the same bytes-as-authored.
  */
 export function hashRepoPreset(content: string): string {
-  return hashManagedSnippet(content);
+  return hashContent(content);
 }
 
 /** Reads and validates the repository preset below the invoking directory. */

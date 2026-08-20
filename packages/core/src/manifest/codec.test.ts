@@ -80,15 +80,7 @@ describe("Aura manifest protocol", () => {
           version: "1.2.3",
         },
       ],
-      snippets: [
-        {
-          hash: HASH,
-          id: "official/commit-conventions",
-          pinned: false,
-          provenance: { registry: "official" },
-          version: "1.0.0",
-        },
-      ],
+      snippets: [{ hash: HASH, id: "official/commit-conventions" }],
       trustedRepoPresets: [
         { acceptedBy: "future-build", hash: HASH, path: "/repo/.aura/preset.json" },
       ],
@@ -103,6 +95,54 @@ describe("Aura manifest protocol", () => {
     const serialized = serializeAuraManifest(state.value, PATH);
     expect(serialized.endsWith("\n")).toBe(true);
     expect(JSON.parse(serialized)).toEqual(source);
+  });
+
+  // Both older shapes name an install that must survive the read: the released record carried a
+  // revision Aura no longer holds content at, and an early install-once build wrote a bare id.
+  it("migrates legacy snippet shapes and folds duplicate ids to first-occurrence order", () => {
+    const source = {
+      apps: {},
+      mcpServers: [],
+      ownership: {},
+      schemaVersion: 1,
+      skills: [],
+      snippets: [
+        { hash: HASH, id: "official/one", pinned: false, version: "1.0.0" },
+        "official/two",
+        { hash: HASH, id: "official/one", pinned: true, version: "2.0.0" },
+      ],
+    };
+
+    const state = parseAuraManifest(JSON.stringify(source), PATH);
+    expect(state.status).toBe("ready");
+    if (state.status !== "ready") {
+      throw new Error("expected a ready manifest");
+    }
+    // The recorded hash carries over; `pinned` and `version` do not, because nothing holds an
+    // installed snippet at a revision any more and a dead key would outlive every reader of it.
+    expect(state.value.snippets).toEqual([
+      { hash: HASH, id: "official/one" },
+      { id: "official/two" },
+    ]);
+    expect(JSON.parse(serializeAuraManifest(state.value, PATH)).snippets).toEqual([
+      { hash: HASH, id: "official/one" },
+      { id: "official/two" },
+    ]);
+  });
+
+  it("refuses a snippet id outside the grammar a preset may name", () => {
+    const source = {
+      apps: {},
+      mcpServers: [],
+      ownership: {},
+      schemaVersion: 1,
+      skills: [],
+      snippets: ["Official/Rules"],
+    };
+
+    const state = parseAuraManifest(JSON.stringify(source), PATH);
+
+    expect(state.status).toBe("read-only");
   });
 
   it("accepts old manifests without ignored apps or overrides", () => {
@@ -252,10 +292,10 @@ describe("Aura manifest protocol", () => {
         ownership: {},
         schemaVersion: 1,
         skills: [],
-        snippets: [{ hash: "short", id: "x", pinned: false, version: "1" }],
+        snippets: [{ hash: "short", pinned: false, version: "1" }],
       },
-      "$.snippets[0].hash",
-      "lowercase SHA-256",
+      "$.snippets[0].id",
+      "must be a string",
     ],
     [
       {

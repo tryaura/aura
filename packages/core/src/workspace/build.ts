@@ -5,7 +5,6 @@ import {
   type AppModel,
   type Environment,
   type McpServerDef,
-  type Snippet,
   type WorkspaceModel,
 } from "@tryaura/aura-sdk";
 
@@ -29,7 +28,6 @@ import { scanRepository } from "./repository.js";
 import { withScanCancellation } from "./scan-cancellation.js";
 import { sharedInstructionsPath, toSharedInstructions } from "./shared-links.js";
 import { resolveBundledSkills, scanSharedSkills } from "./skills.js";
-import { resolveSnippets } from "./snippet-catalog.js";
 
 export type { SkippedApp } from "./adapter-scan.js";
 
@@ -69,12 +67,6 @@ export interface WorkspaceScanOptions {
   readonly reader?: FileReader | undefined;
   /** Cancels adapter work, including any subprocess Aura is still waiting on. */
   readonly signal?: AbortSignal | undefined;
-  /**
-   * Registry snippets to resolve during the same read pass, each bounded by `MAX_SNIPPET_BYTES`.
-   * A snippet that cannot be resolved is reported as a diagnostic and left out of the model rather
-   * than surfaced as a partial one.
-   */
-  readonly snippets?: readonly Snippet[] | undefined;
   /** Bundled skills paired with their owning plugin source. */
   readonly skills?: readonly RegisteredSkillPack[] | undefined;
 }
@@ -146,7 +138,6 @@ export async function buildWorkspaceModel(options: WorkspaceScanOptions): Promis
   );
   const sharedContentsPending = reader.read(sharedPath);
   const manifestContentsPending = reader.read(manifestPath);
-  const resolvedSnippetsPending = resolveSnippets(options.snippets ?? [], reader);
   const resolvedCatalogPending = resolveMcpCatalog(options.mcpCatalog ?? [], reader);
   const resolvedSkillsPending = resolveBundledSkills(options.skills ?? [], reader);
   const sharedSkillsPending = scanSharedSkills(environment, reader);
@@ -156,7 +147,6 @@ export async function buildWorkspaceModel(options: WorkspaceScanOptions): Promis
   const repository = await repositoryPending;
   const sharedContents = await sharedContentsPending;
   const manifestContents = await manifestContentsPending;
-  const resolvedSnippets = await resolvedSnippetsPending;
   const resolvedCatalog = await resolvedCatalogPending;
   const resolvedSkills = await resolvedSkillsPending;
   const sharedSkills = await sharedSkillsPending;
@@ -177,7 +167,6 @@ export async function buildWorkspaceModel(options: WorkspaceScanOptions): Promis
 
   const manifest = readAuraManifest(manifestPath, manifestContents);
   diagnostics.push(...auraManifestDiagnostics(manifest));
-  diagnostics.push(...resolvedSnippets.diagnostics);
   diagnostics.push(...resolvedCatalog.diagnostics);
   diagnostics.push(...resolvedSkills.diagnostics);
 
@@ -186,7 +175,6 @@ export async function buildWorkspaceModel(options: WorkspaceScanOptions): Promis
     model: {
       availableMcpServers: resolvedCatalog.values,
       availableSkills: resolvedSkills.skills,
-      availableSnippets: resolvedSnippets.values,
       apps,
       cwd: environment.cwd,
       ...(mainWorktreeRoot === undefined ? {} : { gitMainWorktreeRoot: mainWorktreeRoot }),

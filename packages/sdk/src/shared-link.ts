@@ -37,6 +37,10 @@ export interface AdapterContentSharedLink extends AdapterSharedLinkBase {
   /**
    * Content to reconcile or write, containing exactly one
    * {@link SHARED_INSTRUCTIONS_TEMPLATE_TOKEN}.
+   *
+   * An `import-line` template must be a single line, which is how Aura recognizes the reference it
+   * already wrote: a multi-line one would never match the entry it appended, and every run would
+   * append another copy. A `native-copy` template is a whole wrapper file and may span lines.
    */
   readonly lineTemplate: string;
 }

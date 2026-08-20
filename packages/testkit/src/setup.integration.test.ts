@@ -2,7 +2,6 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { hashManagedSnippet } from "@tryaura/core";
 import { defineCheck, definePlugin } from "@tryaura/aura-sdk";
 import type { CliDistro } from "@tryaura/aura-cli";
 import { describe, expect, it } from "vitest";
@@ -45,7 +44,6 @@ describe("seeded setup integration", () => {
   it("installs a third-party snippet through the standard contribution path", async () => {
     const snippetContent = "# Fixture rules\n\n- Keep fixture behavior deterministic.\n";
     const snippetId = "fixture-content/rules";
-    const snippetHash = hashManagedSnippet(snippetContent);
     await using seed = await createSeedBuilder()
       .homeFile("agents/AGENTS.md", "# Shared agent instructions\n")
       .homeFile(
@@ -57,13 +55,21 @@ describe("seeded setup integration", () => {
             ownership: {},
             schemaVersion: 1,
             skills: [],
-            snippets: [{ hash: snippetHash, id: snippetId, pinned: false, version: "1.0.0" }],
+            snippets: [],
           },
           undefined,
           2,
         ) + "\n",
       )
       .workspaceFile("fixture-snippet.md", snippetContent)
+      .workspaceFile(
+        "fixture-preset.json",
+        JSON.stringify({
+          name: "Fixture snippet",
+          schemaVersion: 1,
+          snippets: [snippetId],
+        }),
+      )
       .build();
 
     const { first: result } = await expectConvergedTwice(seed, () =>
@@ -73,13 +79,13 @@ describe("seeded setup integration", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe("");
     const instructions = await readFile(join(seed.homeDir, "agents", "AGENTS.md"), "utf8");
-    expect(instructions).toContain(`<!-- aura:begin id=${snippetId} sha256=${snippetHash} -->`);
+    expect(instructions).not.toContain("<!-- aura:");
     expect(instructions).toContain(snippetContent);
     const manifest: unknown = JSON.parse(
       await readFile(join(seed.homeDir, "agents", "aura.json"), "utf8"),
     );
     expect(manifest).toMatchObject({
-      snippets: [{ hash: snippetHash, id: snippetId, pinned: false, version: "1.0.0" }],
+      snippets: [{ id: snippetId }],
     });
   });
 });
@@ -113,12 +119,26 @@ function snippetDistro(workspaceDir: string): CliDistro {
   const base = distro();
   return {
     ...base,
+    defaultPreset: "plugin:fixture-content/install",
     plugins: [
       ...base.plugins,
       definePlugin({
         apiVersion: 1,
         id: "fixture-content",
         name: "Fixture content",
+        presets: [
+          {
+            description: "Installs the fixture snippet.",
+            id: "fixture-content/install",
+            kind: "preset",
+            name: "Fixture snippet",
+            source: {
+              type: "file",
+              url: pathToFileURL(join(workspaceDir, "fixture-preset.json")).href,
+            },
+            version: "1.0.0",
+          },
+        ],
         snippets: [
           {
             category: "fixture",

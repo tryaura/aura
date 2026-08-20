@@ -15,7 +15,7 @@ Create plugins with `definePlugin`. A plugin declares an `id`, a `name`, a `vers
 - `adapters` detect an agent application, declare the files core should read, and parse those
   supplied contents into a normalized snapshot.
 - `checks` synchronously inspect the normalized `WorkspaceModel` and may return a `FixPlan`.
-- `snippets` reference Markdown files.
+- `snippets` reference Markdown fragments users can append once to shared instructions.
 - `skills` reference skill directories.
 - `skillSources` are build-time drivers that list and resolve external skills.
 - `mcpCatalog` references JSON entries following the
@@ -194,6 +194,13 @@ export default definePlugin({
 });
 ```
 
+Snippets are additive onboarding content. Setup appends a selected snippet directly to
+`~/agents/AGENTS.md` without ownership markers and records its ID plus a content hash. Installed IDs
+appear as enabled, ticked rows on later runs so users can clear the record without removing text;
+Aura does not compare versions, update text, or remove an installed snippet. The hash only lets
+setup note that the source changed or that the installed text is missing. Keep `version` as canonical
+semver contribution metadata.
+
 ## Environment and model invariants
 
 `Environment` contains injected HOME, cwd, PATH entries, platform, command execution, and clock.
@@ -287,8 +294,8 @@ const url = new URL("./content/preset.json", import.meta.url).href;
 
 Do not use cwd-relative paths. The registry validates declared shapes — ids, semver versions, the
 API version, shared-link declarations — when it loads a contribution, but it does not open content
-URLs. Snippet sources are read during a workspace scan, and an unreadable or malformed snippet
-surfaces there as a diagnostic; other content sources are not read until the contribution is used.
+URLs. Snippet sources are read lazily when setup opens the snippet picker; an unreadable or
+oversized snippet appears there as unavailable. Other content sources are not read until used.
 
 `Snippet`, `SkillPack`, `McpServerDef`, and `Preset` share the `ContentContribution` fields and are
 distinguished by a `kind` discriminant, so a snippet cannot be passed where a preset is expected.

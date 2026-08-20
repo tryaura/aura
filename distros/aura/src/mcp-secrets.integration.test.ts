@@ -48,10 +48,11 @@ describe("MCP-004 permanent sentinel audit", () => {
     }
     expect(human.stdout).toContain("Check: MCP-004");
     expect(explain.stdout).toContain("Aura never displays or stores those values");
-    // A shell with no terminal cannot answer the questions this rewrite is made of, so it says
-    // what it left rather than rewriting a credential nobody has copied out yet.
-    expect(redirected.stdout).toContain("guided findings alone");
-    expect(redirected.stdout).toContain("check --fix in a terminal");
+    // A shell with no terminal may preview unrelated automatic fixes, but it cannot answer the
+    // credential rewrite questions and must leave the protected source untouched.
+    expect(redirected.stdout).toContain("Fix preview: Apply 1 fix.");
+    expect(redirected.stdout).toContain("2 guided");
+    await expect(readFile(configPath, "utf8")).resolves.toContain(SENTINEL);
     expect(JSON.stringify(json.report)).not.toContain(SENTINEL);
 
     const model = await scan(seed);

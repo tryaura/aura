@@ -28,16 +28,24 @@ export interface AuraManifestApp {
   readonly managed: boolean;
 }
 
-/** One managed snippet and the source revision selected for it. */
+/**
+ * One snippet installed into the shared instructions, and a fingerprint of what was appended.
+ *
+ * The record is install history, not desired text: Aura never rewrites an installed snippet from
+ * it. The hash exists so a later run can still say which text it planted — plugin-authored
+ * Markdown carries no markers once it is in the file, and without a fingerprint there is nothing
+ * left that distinguishes it from the user's own guidance.
+ */
 export interface AuraManifestSnippet {
+  /**
+   * Canonical hash of the Markdown Aura appended.
+   *
+   * Optional because a record written before Aura kept one carries no fingerprint, and dropping
+   * such a record to satisfy the shape would re-offer a snippet the user already has.
+   */
+  readonly hash?: string | undefined;
   /** Stable, namespaced snippet identifier. */
   readonly id: string;
-  /** Hash of the canonical snippet contents. */
-  readonly hash: string;
-  /** Whether automatic update guidance is suppressed for this selection. */
-  readonly pinned: boolean;
-  /** Source version selected when the snippet was installed. */
-  readonly version: string;
 }
 
 /** One managed skill and the exact source tree selected for it. */
@@ -125,7 +133,7 @@ export interface AuraManifestV1 {
   readonly schemaVersion: 1;
   /** Managed skill selections and their source provenance. */
   readonly skills: readonly AuraManifestSkill[];
-  /** Managed snippet selections. */
+  /** Snippets installed into the shared instructions, in installation order. */
   readonly snippets: readonly AuraManifestSnippet[];
   /** Repository presets accepted for this user, keyed by absolute preset path. */
   readonly trustedRepoPresets?: readonly AuraManifestTrustedRepoPreset[] | undefined;

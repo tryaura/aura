@@ -1026,4 +1026,36 @@ describe("interactive wizard", () => {
       snippets: { kind: "options", values: [] },
     });
   });
+
+  it("never moves a locked checkbox, and opens the cursor past it", async () => {
+    const session = createSession();
+    const io = createInteractiveWizardIo({
+      colorDepth: 0,
+      stdin: session.stdin,
+      stdout: session.stdout,
+    });
+    const form = io.ask([
+      {
+        id: "snippets",
+        initial: ["official/installed"],
+        kind: "multiselect",
+        label: "Snippets",
+        options: [
+          { label: "Installed (installed)", locked: true, value: "official/installed" },
+          { label: "Available", value: "official/available" },
+        ],
+        prompt: "Choose snippets",
+      },
+    ]);
+
+    // Space lands on the row the cursor actually opened on — the first one it can act on — and the
+    // locked row's digit is inert rather than a way around the lock.
+    session.press("space", { sequence: " " });
+    session.press("1", { sequence: "1" });
+    session.press("return");
+
+    await expect(form).resolves.toEqual({
+      snippets: { kind: "options", values: ["official/installed", "official/available"] },
+    });
+  });
 });

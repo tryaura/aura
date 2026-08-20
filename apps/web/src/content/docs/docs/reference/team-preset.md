@@ -9,15 +9,17 @@ executing preset-supplied code. Aura resolves configuration once at boot in this
 `distribution defaults → selected preset → repository preset → ~/agents/aura.json → command-line flags`
 
 Later layers win for check activation, severity, and each check's complete threshold object.
-Required MCP servers and skill directories are additive. Manifest content selections replace
-preset onboarding defaults. Every effective value records the layer that supplied it.
+Required MCP servers and skill directories are additive. Manifest skill selections replace preset
+onboarding defaults; snippet install history suppresses defaults already installed. Every effective
+value records the layer that supplied it.
 
 Running `aura setup --preset <ref>` is an explicit onboarding request: Aura creates the manifest
 when necessary and stores the exact reference in `preset`. On a fresh manifest, setup starts with
-the preset's snippets, skills, and required MCP servers selected and labels those rows “from
-preset.” Unavailable rows remain visible with the reason and next action. Existing manifest
-snippet and skill selections remain authoritative on later runs, so deliberate adjustments are
-not reset to preset defaults.
+the preset's uninstalled snippets, skills, and required MCP servers selected and labels those rows
+“from preset.” Unavailable rows remain visible with the reason and next action. Installed snippet
+IDs remain ticked and are never re-applied unless the user clears their records; existing skill
+selections remain authoritative on later runs, so deliberate adjustments are not reset to preset
+defaults.
 
 ```json
 {
@@ -97,16 +99,16 @@ the run closed rather than silently widening whatever the file was written to lo
 
 The setup summary shows effective preset check settings as read-only policy, under a heading that
 names the preset once. It does not copy them into `manifest.checks`: only an explicit manifest or
-command-line override belongs in that layer. Existing managed snippets and skills also stay at
-their recorded revision until an interactive review accepts the displayed one. Non-interactive
-setup never changes managed content, and the summary lists everything it held back so a `--yes`
-run cannot look like a run with nothing to do.
+command-line override belongs in that layer. Installed snippets are inert install history: preset
+changes do not update or remove their text. Existing managed skills stay at their recorded revision
+until an interactive review accepts the displayed one. Non-interactive setup never changes managed
+skills, and the summary lists the skill changes it held back.
 
 A revision that is not newer — a rollback, or a pair of versions this build cannot order — is
 offered for review too, labelled a switch rather than an update. Aura keeps the recorded revision
 either way, so a revision that was never offered would be one you could never resolve. Plugins must
-declare canonical semver versions for snippets and skills; the registry refuses a contribution
-whose version cannot be compared.
+declare canonical semver versions for snippets and skills. Skill versions participate in revision
+review; snippet versions remain contribution metadata and are not stored after installation.
 
 ## Fields
 
@@ -126,8 +128,9 @@ whose version cannot be compared.
   `overrides.requiredMcpServers` until the server is selected or the requirement disappears. Only a
   run that actually resolved the preset rewrites that list, so an offline run leaves a recorded
   exception alone rather than reading "could not fetch" as "no longer required".
-- `snippets` contains snippet IDs. `skills` uses source-qualified `{ "id", "source" }` entries.
-  Optional unavailable content remains selected so setup can explain the problem.
+- `snippets` contains snippet IDs used as install defaults. A default applies only while that ID is
+  absent from the manifest. `skills` uses source-qualified `{ "id", "source" }` entries. Optional
+  unavailable content remains visible so setup can explain the problem.
 - `allowedSkillSources` is exhaustive when present. It accepts up to 256 `plugin:`, `directory:`,
   or `driver:` source IDs.
 - Driver sources use `driver:<plugin-id>/<driver-id>`. Disallowed drivers are filtered before their
