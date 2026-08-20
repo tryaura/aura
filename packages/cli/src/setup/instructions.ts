@@ -10,6 +10,8 @@ import {
 import { projectSharedInstructionsPath } from "@tryaura/core";
 import { pluralize } from "@tryaura/core/pluralize";
 
+import { canonicalSourcePath, isAuraArtifact } from "./instruction-artifacts.js";
+
 /**
  * One instruction file the wizard may consolidate.
  *
@@ -61,12 +63,20 @@ export function instructionInventory(model: WorkspaceModel): readonly Instructio
 
   for (const document of model.instructionFiles) {
     const path = resolve(document.path);
-    if (path === targets.global || path === targets.project || owned.has(path)) {
+    // Both spellings are checked because either can be the alias: a symlinked entry canonicalizes
+    // to the target, and an owned path recorded before a link moved still names the entry.
+    const excluded = [path, canonicalSourcePath(document)].some(
+      (candidate) =>
+        candidate === targets.global || candidate === targets.project || owned.has(candidate),
+    );
+    if (excluded || isAuraArtifact(document, model)) {
       continue;
     }
-    const current = documents.get(path);
+    // Keyed canonically so two names for one physical file collapse into a single offer.
+    const key = canonicalSourcePath(document);
+    const current = documents.get(key);
     if (current === undefined || document.content.length > current.content.length) {
-      documents.set(path, document);
+      documents.set(key, document);
     }
   }
 
