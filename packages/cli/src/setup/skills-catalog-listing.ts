@@ -18,6 +18,7 @@ import type {
   SkillCatalogListing,
   SkillCatalogVerification,
   SkillSourceLoadUpdate,
+  TruncatedSkillSource,
   UnavailableSkillSource,
 } from "./skills-catalog.js";
 
@@ -61,7 +62,9 @@ export async function loadListing(request: SkillListingRequest): Promise<SkillCa
       request.sources.map((source) =>
         limit(async () => ({
           result: await reporting(request.update, source.id, () =>
-            listDirectorySkills(request.inputs.environment, source),
+            listDirectorySkills(request.inputs.environment, source, {
+              noCache: request.inputs.noCache === true,
+            }),
           ),
           source,
         })),
@@ -79,11 +82,15 @@ export async function loadListing(request: SkillListingRequest): Promise<SkillCa
     ),
   ]);
 
+  const truncatedSources: TruncatedSkillSource[] = [];
   for (const { result, source } of directoryResults) {
     notes.push(...result.diagnostics.map((diagnostic) => diagnostic.message));
     if (result.status.kind === "unavailable") {
       unavailableSources.push({ hint: result.status.hint, id: source.id, name: source.name });
       continue;
+    }
+    if (result.truncation !== undefined) {
+      truncatedSources.push({ ...result.truncation, id: source.id, name: source.name });
     }
     entries.push(...remoteEntries(result.listings, source));
   }
@@ -104,6 +111,7 @@ export async function loadListing(request: SkillListingRequest): Promise<SkillCa
   return {
     entries: Object.freeze(entries),
     notes: Object.freeze(notes),
+    truncatedSources: Object.freeze(truncatedSources),
     unavailableSources: Object.freeze(unavailableSources),
     ...verificationFields(directoryResults),
   };

@@ -1,5 +1,7 @@
 import type { SkillListing } from "@tryaura/aura-sdk";
 
+import type { DirectoryTruncation } from "./index-schema.js";
+
 export const AGENTICSKILLS_DIAGNOSTIC_ID = "core/skill-directory";
 export const GITHUB_API_HEADERS = Object.freeze({
   Accept: "application/vnd.github+json",
@@ -14,9 +16,14 @@ export interface AgenticCatalogEntry {
 
 export type AgenticCatalogOutcome =
   | {
+      /** Set when the body came from the on-disk cache: how old that copy is. */
+      readonly cacheAgeMs?: number | undefined;
       readonly entries: readonly AgenticCatalogEntry[];
       readonly kind: "catalog";
       readonly problems: readonly string[];
+      /** Whether the cached body served because the provider could not be reached. */
+      readonly staleAfterFailure?: boolean | undefined;
+      readonly truncation?: DirectoryTruncation | undefined;
     }
   | { readonly kind: "failure"; readonly reason: string };
 

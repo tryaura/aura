@@ -26,6 +26,26 @@ describe("skillsStep search", () => {
     });
   });
 
+  it("renders a truncated source as one leading disabled row naming both numbers", async () => {
+    const scripted = recordingIo([]);
+    const catalog = fakeCatalog({
+      entries: [REMOTE_ENTRY],
+      truncatedSources: [
+        { advertised: 12_000, id: "directory:acme", name: "Acme Skills", read: 10_000 },
+      ],
+    });
+
+    await skillsStep.gather(skillStepContext(catalog), scripted);
+
+    const first = scripted.asked[0]?.[0]?.options[0];
+    expect(first?.label).toBe("Acme Skills (truncated)");
+    expect(first?.disabled).toBe(true);
+    expect(first?.description).toBe(
+      "showing 10000 of 12000 entries — the rest cannot be listed until the catalog narrows upstream",
+    );
+    expect(scripted.asked[0]?.[0]?.options[1]?.label).toBe("Review");
+  });
+
   it("opens before repository verification settles and disables a stale row in place", async () => {
     const verification = Promise.withResolvers<void>();
     const opened = Promise.withResolvers<WizardQuestion>();

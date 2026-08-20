@@ -88,7 +88,7 @@ describe("AgenticSkills repository verification", () => {
     await Promise.resolve();
 
     expect(settled).toBe(false);
-    expect(result.listings).toHaveLength(1_000);
+    expect(result.listings).toHaveLength(1_117);
     expect(treeRequests(requests)).toHaveLength(1);
     expect(treeRequests(requests)[0]?.maxResponseBytes).toBe(MAX_REPO_TREE_BYTES);
     tree.resolve(repositoryTree(catalog));

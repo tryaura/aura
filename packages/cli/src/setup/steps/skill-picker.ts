@@ -98,6 +98,19 @@ export function pickerOptions(inputs: SkillStageInputs): readonly WizardOption[]
       value: `source:${source.id}`,
     }));
 
+  // Truncation leads for the same reason an unavailable source does: nothing preselects this row,
+  // so anywhere later the initial window could hide it — and a catalog quietly missing its tail is
+  // exactly what must be visible without searching for it.
+  const truncatedRows = inputs.listing.truncatedSources.map((source): WizardOption => ({
+    description:
+      `showing ${String(source.read)} of ${String(source.advertised)} entries — ` +
+      "the rest cannot be listed until the catalog narrows upstream",
+    disabled: true,
+    group: source.name,
+    label: `${source.name} (truncated)`,
+    value: `truncated:${source.id}`,
+  }));
+
   const represented = new Set([
     ...inputs.listing.entries.map((entry) => entry.identity),
     ...inputs.manifestSkills.map((skill) => skillIdentity(skill.source, skill.id)),
@@ -113,8 +126,9 @@ export function pickerOptions(inputs: SkillStageInputs): readonly WizardOption[]
       value: skillIdentity(skill.source, skill.id),
     }));
 
-  // Unavailable sources lead. They are the only rows nothing preselects, so behind the picker's
-  // initial row window they would be the one class of row that can fall off the first frame
-  // entirely — and a source being down is exactly what has to be visible without searching for it.
-  return [...sourceRows, ...entryRows, ...manifestRows, ...presetRows];
+  // Unavailable and truncated sources lead. They are the only rows nothing preselects, so behind
+  // the picker's initial row window they would be the one class of row that can fall off the first
+  // frame entirely — and a source being down or cut short is exactly what has to be visible
+  // without searching for it.
+  return [...sourceRows, ...truncatedRows, ...entryRows, ...manifestRows, ...presetRows];
 }

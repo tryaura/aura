@@ -58,10 +58,20 @@ export interface UnavailableSkillSource {
   readonly name: string;
 }
 
+/** A source whose catalog overflowed the listing cap, rendered as a disabled picker row. */
+export interface TruncatedSkillSource {
+  readonly advertised: number;
+  readonly id: SkillSourceId;
+  readonly name: string;
+  readonly read: number;
+}
+
 export interface SkillCatalogListing {
   readonly entries: readonly SkillCatalogEntry[];
   /** First-visit `io.note` lines: preset problems, index problems, listing failures. */
   readonly notes: readonly string[];
+  /** Sources that advertise more entries than the cap; each renders a leading disabled row. */
+  readonly truncatedSources: readonly TruncatedSkillSource[];
   readonly unavailableSources: readonly UnavailableSkillSource[];
   /** Advisory background checks that can disable stale rows while the picker is open. */
   readonly verification?: SkillCatalogVerification | undefined;
@@ -125,6 +135,8 @@ export interface SkillCatalogInputs {
    */
   readonly interactive: boolean;
   readonly model: WorkspaceModel;
+  /** Bypass catalog cache reads and writes, mirroring the preset loader's `--no-cache`. */
+  readonly noCache?: boolean | undefined;
   readonly preset: AuraTeamPreset | undefined;
   /** Messages from reading the preset file, surfaced with the catalog's own notes. */
   readonly presetNotes: readonly string[];

@@ -13,6 +13,7 @@ import type {
   SkillCatalog,
   SkillCatalogEntry,
   SkillCatalogVerification,
+  TruncatedSkillSource,
   UnavailableSkillSource,
 } from "../skills-catalog.js";
 import { emptyMcpCatalog, emptySkillCatalog } from "../testing.js";
@@ -82,23 +83,26 @@ interface CatalogOptions {
   readonly policy?: SkillCatalog["policy"];
   readonly privateSources?: readonly PrivateDirectorySkillSource[];
   readonly problems?: ReadonlyMap<string, string>;
+  readonly truncatedSources?: readonly TruncatedSkillSource[];
   readonly unavailableSources?: readonly UnavailableSkillSource[];
   readonly verification?: SkillCatalogVerification | undefined;
 }
 
 export function fakeCatalog(options: CatalogOptions = {}): SkillCatalog {
+  const listing = {
+    entries: options.entries ?? [],
+    notes: options.notes ?? [],
+    truncatedSources: options.truncatedSources ?? [],
+    unavailableSources: options.unavailableSources ?? [],
+    ...(options.verification === undefined ? {} : { verification: options.verification }),
+  };
   return {
     load: (_approved, update) => {
       for (const source of options.pendingSources ?? []) {
         update?.(source.id, "active");
         update?.(source.id, "complete");
       }
-      return Promise.resolve({
-        entries: options.entries ?? [],
-        notes: options.notes ?? [],
-        unavailableSources: options.unavailableSources ?? [],
-        ...(options.verification === undefined ? {} : { verification: options.verification }),
-      });
+      return Promise.resolve(listing);
     },
     pendingSources: () => options.pendingSources ?? [],
     policy: options.policy ?? emptySkillCatalog().policy,

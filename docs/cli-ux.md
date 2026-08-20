@@ -435,11 +435,24 @@ A picker over every allowed skill source, then one Review form per selected remo
   returns malformed data, or carries GitHub's `truncated: true` marker keeps trusting the feed for
   that repository; it never falls back to per-entry probes. Resolution remains authoritative, so
   selecting a row before it is disabled still produces one failed Review row for that skill.
+- Directory catalogs read through an on-disk cache (`~/agents/.cache/skill-catalogs`). A copy
+  fresher than an hour serves with no request and says so in a first-visit note naming its age
+  and `--no-cache`; a staler copy revalidates with `If-None-Match` and serves silently on a 304;
+  and an unreachable source falls back to the newest copy under a week old, with a note naming
+  its age — a dated listing beats an empty picker. Every cached body passes the same validation
+  as a live one. Private directories are never cached: their listings are credential-gated
+  content, and the cache is not. `--no-cache` bypasses reads and writes for catalogs and presets
+  alike.
 - The picker groups rows by source (`option.group`); a source that cannot be listed renders one
   disabled row with the reason in place (`Acme Skills — unavailable (set ACME_SKILLS_TOKEN)`),
   ahead of the installable rows so the initial row window can never hide it, and a manifest entry
   whose source is gone or disallowed renders disabled as `<id> (preserved)` / `<id> (blocked)` —
   clearing it is how the skill is removed.
+- A source that advertises more entries than the listing cap renders one disabled row in the same
+  leading position naming both numbers (`Acme Skills (truncated)` — `showing 10000 of 12000
+entries — the rest cannot be listed until the catalog narrows upstream`). Truncation is never
+  only a diagnostic note: a catalog quietly missing its tail reads as a catalog with nothing more
+  to offer.
 - A picker with more than ten rows initially renders only its first ten, plus any preselected rows
   outside that window so an installed or preset choice never disappears. Its `/` action, labelled
   `Search all <n> skills`, filters locally across names, ids, descriptions, and sources; while a

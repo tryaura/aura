@@ -21,6 +21,8 @@ interface SetupCatalogInputs {
   /** Whether this run may call a skill-source driver, which is the one source kind running code. */
   readonly interactive: boolean;
   readonly model: WorkspaceModel;
+  /** Bypass catalog cache reads and writes, mirroring the preset loader's `--no-cache`. */
+  readonly noCache?: boolean | undefined;
   readonly preset: AuraTeamPreset | undefined;
   /** Messages from resolving the configuration, surfaced with the catalogs' own notes. */
   readonly presetNotes: readonly string[];
@@ -46,6 +48,7 @@ export function createSetupCatalogs(inputs: SetupCatalogInputs): SetupCatalogs {
       environment: inputs.environment,
       interactive: inputs.interactive,
       model: inputs.model,
+      noCache: inputs.noCache,
       preset: inputs.preset,
       presetNotes: [...inputs.presetNotes, ...disabledSourceNotes(inputs.registry)],
       presetOrigin: inputs.presetOrigin,

@@ -3,9 +3,10 @@ import type { DirectorySkillSource, Environment, ResolvedSkillPack } from "@trya
 import type { ScanDiagnostic } from "../workspace/diagnostics.js";
 import { createLimiter } from "../workspace/concurrency.js";
 import { loadAgenticCatalog } from "./agenticskills-catalog.js";
-import type { DirectorySkillListingResult } from "./directory-listing.js";
+import type { DirectoryListingOptions, DirectorySkillListingResult } from "./directory-listing.js";
 import { resolveAgenticEntry, startAgenticVerification } from "./agenticskills-github.js";
 import { AGENTICSKILLS_DIAGNOSTIC_ID, type AgenticCatalogEntry } from "./agenticskills-types.js";
+import { describeCacheAge } from "./catalog-cache.js";
 import { MAX_CONCURRENT_SKILL_REQUESTS } from "./limits.js";
 import { skillIdProblem } from "./path-guards.js";
 
@@ -13,8 +14,9 @@ import { skillIdProblem } from "./path-guards.js";
 export async function listAgenticSkills(
   environment: Environment,
   source: DirectorySkillSource,
+  options: DirectoryListingOptions = {},
 ): Promise<DirectorySkillListingResult> {
-  const catalog = await loadAgenticCatalog(environment, source);
+  const catalog = await loadAgenticCatalog(environment, source, options.noCache === true);
   if (catalog.kind === "failure") {
     return {
       diagnostics: [
@@ -25,15 +27,40 @@ export async function listAgenticSkills(
     };
   }
   return {
-    diagnostics: catalog.problems.map((problem) =>
-      diagnostic(`Skill source "${source.id}" catalog ${problem}, so some of it is unavailable.`),
-    ),
+    diagnostics: [
+      ...cacheDiagnostics(source, catalog),
+      ...catalog.problems.map((problem) =>
+        diagnostic(`Skill source "${source.id}" catalog ${problem}, so some of it is unavailable.`),
+      ),
+    ],
     listings: Object.freeze(
       catalog.entries.map(({ listing }) => Object.freeze({ ...listing, source })),
     ),
     status: { kind: "available" },
+    ...(catalog.truncation === undefined ? {} : { truncation: catalog.truncation }),
     verification: startAgenticVerification(environment, catalog.entries),
   };
+}
+
+/** Names where a cached body came from, so a run never mistakes a cached listing for a live one. */
+function cacheDiagnostics(
+  source: DirectorySkillSource,
+  catalog: {
+    readonly cacheAgeMs?: number | undefined;
+    readonly staleAfterFailure?: boolean | undefined;
+  },
+): readonly ScanDiagnostic[] {
+  if (catalog.cacheAgeMs === undefined) {
+    return [];
+  }
+  const age = describeCacheAge(catalog.cacheAgeMs);
+  return [
+    diagnostic(
+      catalog.staleAfterFailure === true
+        ? `Skill source "${source.id}" could not be reached, so its listing is served from the local cache (${age}).`
+        : `Skill source "${source.id}" listing served from the local cache (${age}); pass --no-cache to refetch it now.`,
+    ),
+  ];
 }
 
 /** Resolves AgenticSkills entries from their exact GitHub directories into reviewed Aura packs. */

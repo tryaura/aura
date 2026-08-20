@@ -239,7 +239,7 @@ function configurationRows(): readonly HelpRow[] {
     { term: "--disable <check>", text: "Disable a check; repeatable" },
     { term: "--severity <check>=<level>", text: "Override info, warn, or error; repeatable" },
     { term: "--threshold <check>=<JSON>", text: "Override a check's threshold object; repeatable" },
-    { term: "--no-cache", text: "Bypass remote preset cache reads and writes" },
+    { term: "--no-cache", text: "Bypass remote preset and skill-catalog cache reads and writes" },
   ];
 }
 

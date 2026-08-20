@@ -113,10 +113,13 @@ describe("createSkillCatalog", () => {
       active += 1;
       maximum = Math.max(maximum, active);
       return new Promise((resolve) => {
-        queueMicrotask(() => {
+        // A macrotask, not a microtask: the listing path reads the on-disk catalog cache before
+        // each request, so a response that settles within the same microtask queue would drain
+        // every source one at a time and measure the cache read instead of the request limiter.
+        setTimeout(() => {
           active -= 1;
           resolve({ body: "[]", kind: "response", status: 200 });
-        });
+        }, 1);
       });
     });
     const updates: string[] = [];

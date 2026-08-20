@@ -1,13 +1,20 @@
 /**
  * The largest directory index Aura will read, in bytes.
  *
- * Same number as the other catalog caps in `workspace/reader-limits.ts`: an index is a metadata
- * document, and the picker reads it while the user waits.
+ * Sized for the entry cap below at a few hundred bytes of metadata per entry: an index is still a
+ * metadata document, but a real public catalog carries thousands of skills, and a byte cap that
+ * silently halves the entry cap would make the two limits disagree about what fits.
  */
-export const MAX_DIRECTORY_INDEX_BYTES = 256_000;
+export const MAX_DIRECTORY_INDEX_BYTES = 4_000_000;
 
-/** The most listings one directory index may advertise; entries beyond the cap are dropped. */
-export const MAX_DIRECTORY_INDEX_ENTRIES = 1_000;
+/**
+ * The most listings one directory index may advertise; entries beyond the cap are dropped.
+ *
+ * Parsing is the only per-entry cost of a listing — nothing per-entry touches the network — so the
+ * cap guards memory, not latency. A source that overflows it renders one disabled picker row
+ * naming both numbers, never only a diagnostic note.
+ */
+export const MAX_DIRECTORY_INDEX_ENTRIES = 10_000;
 
 /** The most remote directories one workspace team preset may declare. */
 export const MAX_TEAM_PRESET_DIRECTORIES = 32;

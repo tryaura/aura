@@ -118,6 +118,7 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
     environment,
     interactive: request.interactive,
     model: effectiveModel,
+    noCache: request.noCache,
     preset: configured.preset,
     presetNotes: [
       ...configured.notes,

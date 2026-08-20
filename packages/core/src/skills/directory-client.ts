@@ -1,18 +1,26 @@
-import type {
-  DirectorySkillSource,
-  Environment,
-  HttpGetResult,
-  ResolvedSkillPack,
-} from "@tryaura/aura-sdk";
+import type { DirectorySkillSource, Environment, ResolvedSkillPack } from "@tryaura/aura-sdk";
 
 import type { ScanDiagnostic } from "../workspace/diagnostics.js";
-import { isAllowedHttpUrl } from "../http.boundary.js";
 import { createLimiter } from "../workspace/concurrency.js";
 import { failedResolution, partitionResolutions } from "../workspace/resolution.js";
 import { treeHash } from "../workspace/skill-tree-walk.js";
 import { listAgenticSkills, resolveAgenticSkills } from "./agenticskills-client.js";
-import type { DirectorySkillListingResult } from "./directory-listing.js";
-import { parseDirectoryIndex } from "./index-schema.js";
+import {
+  describeCacheAge,
+  readCatalogCache,
+  writeCatalogCache,
+  type CachedCatalog,
+} from "./catalog-cache.js";
+import type { DirectoryListingOptions, DirectorySkillListingResult } from "./directory-listing.js";
+import {
+  directoryEndpoint,
+  failureHint,
+  failureReasonText,
+  request,
+  statusHint,
+  statusReasonText,
+} from "./directory-transport.js";
+import { parseDirectoryIndex, type DirectoryIndex } from "./index-schema.js";
 import {
   MAX_CONCURRENT_SKILL_REQUESTS,
   MAX_DIRECTORY_INDEX_BYTES,
@@ -24,21 +32,46 @@ import { skillIdProblem } from "./path-guards.js";
 const DIRECTORY_DIAGNOSTIC_ID = "core/skill-directory";
 
 /**
- * Fetches a directory's index.
+ * Fetches a directory's index, through the on-disk catalog cache for public sources.
+ *
+ * A fresh cache entry serves with no request at all; a stale one revalidates with `If-None-Match`
+ * and serves on a 304; and a source that cannot be reached falls back to the stale copy with a
+ * diagnostic naming its age, because a day-old listing beats an empty picker. Private directories
+ * are never cached: their listings are credential-gated content, and the cache is not.
  *
  * A missing token is the probe outcome, not an error: the source lists as unavailable with the
  * variable to set, no request is made, and nothing is logged. Every other failure becomes one
- * diagnostic in the house voice. The token itself is read at request time inside {@link request}
- * and structurally cannot reach a diagnostic: {@link HttpGetResult} carries no request echo.
+ * diagnostic in the house voice. The token itself is read at request time inside the transport
+ * and structurally cannot reach a diagnostic.
  */
 export async function listDirectorySkills(
   environment: Environment,
   source: DirectorySkillSource,
+  options: DirectoryListingOptions = {},
 ): Promise<DirectorySkillListingResult> {
   if (source.kind === "directory" && source.protocol === "agenticskills") {
-    return listAgenticSkills(environment, source);
+    return listAgenticSkills(environment, source, options);
   }
-  const outcome = await request(environment, source, "index.json", MAX_DIRECTORY_INDEX_BYTES);
+  const endpoint = directoryEndpoint(source.url, "index.json");
+  const cacheEndpoint =
+    source.kind === "directory" && options.noCache !== true && endpoint.kind === "url"
+      ? endpoint.url
+      : undefined;
+  const cached =
+    cacheEndpoint === undefined ? undefined : await readCatalogCache(environment, cacheEndpoint);
+  if (cached?.fresh === true) {
+    return indexResult(source, parseDirectoryIndex(cached.body), [
+      servedFromCache(source, cached.ageMs),
+    ]);
+  }
+
+  const outcome = await request(
+    environment,
+    source,
+    "index.json",
+    MAX_DIRECTORY_INDEX_BYTES,
+    cached?.etag,
+  );
   if (outcome.kind === "missing-token") {
     return {
       diagnostics: [],
@@ -46,23 +79,88 @@ export async function listDirectorySkills(
       status: { hint: `set ${outcome.variable}`, kind: "unavailable" },
     };
   }
-  if (outcome.kind !== "response") {
-    return unavailable(source, outcome);
-  }
-  if (outcome.status !== 200) {
-    return unavailable(source, outcome);
-  }
+  return settleIndexOutcome(environment, source, outcome, cacheEndpoint, cached);
+}
 
-  const index = parseDirectoryIndex(outcome.body);
+/** Folds one index response — 200, a revalidating 304, an error status, or a failure — in. */
+async function settleIndexOutcome(
+  environment: Environment,
+  source: DirectorySkillSource,
+  outcome: { readonly kind: "failure"; readonly reason: string } | IndexResponse,
+  cacheEndpoint: string | undefined,
+  cached: CachedCatalog | undefined,
+): Promise<DirectorySkillListingResult> {
+  if (outcome.kind === "response" && outcome.status === 304 && cached !== undefined) {
+    if (cacheEndpoint !== undefined) {
+      await writeCatalogCache(environment, cacheEndpoint, cached.body, cached.etag);
+    }
+    return indexResult(source, parseDirectoryIndex(cached.body));
+  }
+  if (outcome.kind === "response" && outcome.status === 200) {
+    if (cacheEndpoint !== undefined) {
+      await writeCatalogCache(environment, cacheEndpoint, outcome.body, outcome.etag);
+    }
+    return indexResult(source, parseDirectoryIndex(outcome.body));
+  }
+  if (cached !== undefined) {
+    return staleFallback(source, cached.body, cached.ageMs);
+  }
+  return unavailable(source, outcome);
+}
+
+interface IndexResponse {
+  readonly body: string;
+  readonly etag?: string | undefined;
+  readonly kind: "response";
+  readonly status: number;
+}
+
+/** One available listing result, from a live body or a cached one — same validation either way. */
+function indexResult(
+  source: DirectorySkillSource,
+  index: DirectoryIndex,
+  extraDiagnostics: readonly ScanDiagnostic[] = [],
+): DirectorySkillListingResult {
   return {
-    diagnostics: index.problems.map((problem) => ({
-      adapterId: DIRECTORY_DIAGNOSTIC_ID,
-      message: `Skill source "${source.id}" index ${problem}, so some of it is unavailable.`,
-      phase: "read",
-    })),
+    diagnostics: [
+      ...extraDiagnostics,
+      ...index.problems.map((problem) => ({
+        adapterId: DIRECTORY_DIAGNOSTIC_ID,
+        message: `Skill source "${source.id}" index ${problem}, so some of it is unavailable.`,
+        phase: "read" as const,
+      })),
+    ],
     listings: index.listings.map((listing) => Object.freeze({ ...listing, source })),
     status: { kind: "available" },
+    ...(index.truncation === undefined ? {} : { truncation: index.truncation }),
   };
+}
+
+function servedFromCache(source: DirectorySkillSource, ageMs: number): ScanDiagnostic {
+  return {
+    adapterId: DIRECTORY_DIAGNOSTIC_ID,
+    message:
+      `Skill source "${source.id}" listing served from the local cache ` +
+      `(${describeCacheAge(ageMs)}); pass --no-cache to refetch it now.`,
+    phase: "read",
+  };
+}
+
+/** The stale copy with a diagnostic naming its age: a dated listing beats an empty picker. */
+function staleFallback(
+  source: DirectorySkillSource,
+  body: string,
+  ageMs: number,
+): DirectorySkillListingResult {
+  return indexResult(source, parseDirectoryIndex(body), [
+    {
+      adapterId: DIRECTORY_DIAGNOSTIC_ID,
+      message:
+        `Skill source "${source.id}" could not be reached, so its listing is served from the ` +
+        `local cache (${describeCacheAge(ageMs)}).`,
+      phase: "read",
+    },
+  ]);
 }
 
 /** Fetches and validates the named skills, one failure per skill rather than one for all. */
@@ -131,82 +229,6 @@ async function resolveProblem(
   });
 }
 
-type RequestOutcome =
-  | { readonly kind: "failure"; readonly reason: string }
-  | { readonly kind: "missing-token"; readonly variable: string }
-  | { readonly body: string; readonly kind: "response"; readonly status: number };
-
-/**
- * Performs one authenticated GET against the directory, retrying exactly once on a transient
- * failure. The token is read here, at request time, into a call-local header object; it exists
- * nowhere else and outlives nothing.
- */
-async function request(
-  environment: Environment,
-  source: DirectorySkillSource,
-  path: string,
-  maxResponseBytes: number,
-): Promise<RequestOutcome> {
-  const endpoint = directoryEndpoint(source.url, path);
-  if (endpoint.kind === "failure") {
-    return endpoint;
-  }
-
-  const headers: Record<string, string> = {};
-  const variable = tokenVariable(source);
-  if (variable !== undefined) {
-    const token = environment.readVariable(variable);
-    if (token === undefined) {
-      return { kind: "missing-token", variable };
-    }
-    headers["Authorization"] = `Bearer ${token}`;
-  }
-
-  const first = await environment.httpGet({ headers, maxResponseBytes, url: endpoint.url });
-  const result = isTransient(first)
-    ? await environment.httpGet({ headers, maxResponseBytes, url: endpoint.url })
-    : first;
-  if (result.kind === "failure") {
-    return { kind: "failure", reason: result.reason };
-  }
-  if (result.kind !== "response") {
-    return { kind: "failure", reason: "network" };
-  }
-  return { body: result.body, kind: "response", status: result.status };
-}
-type DirectoryEndpoint =
-  | { readonly kind: "failure"; readonly reason: "insecure-url" | "invalid-url" }
-  | { readonly kind: "url"; readonly url: string };
-
-/** Resolves one protocol path below a normalized directory base URL. */
-function directoryEndpoint(baseUrl: string, path: string): DirectoryEndpoint {
-  try {
-    const base = new URL(baseUrl);
-    if (!isAllowedHttpUrl(base)) {
-      return { kind: "failure", reason: "insecure-url" };
-    }
-    if (base.username !== "" || base.password !== "" || base.search !== "" || base.hash !== "") {
-      return { kind: "failure", reason: "invalid-url" };
-    }
-    base.pathname = base.pathname.endsWith("/") ? base.pathname : `${base.pathname}/`;
-    return { kind: "url", url: new URL(path, base).href };
-  } catch {
-    return { kind: "failure", reason: "invalid-url" };
-  }
-}
-
-/** A failed request or a 5xx answer may be a blip; anything else would fail identically again. */
-function isTransient(result: HttpGetResult): boolean {
-  if (result.kind === "failure") {
-    return result.reason === "network" || result.reason === "timeout";
-  }
-  return result.status >= 500;
-}
-
-function tokenVariable(source: DirectorySkillSource): string | undefined {
-  return source.kind === "private-directory" ? source.tokenEnv : undefined;
-}
-
 /** An id safe to quote in a diagnostic: validated ids only, never raw caller or server bytes. */
 function safeId(id: string): string {
   return skillIdProblem(id) === undefined ? id : "<invalid id>";
@@ -233,58 +255,4 @@ function unavailable(
     listings: [],
     status: { hint, kind: "unavailable" },
   };
-}
-
-function failureReasonText(reason: string): string {
-  switch (reason) {
-    case "insecure-url": {
-      return "has a URL that is not https";
-    }
-    case "invalid-url": {
-      return "has a URL that does not parse";
-    }
-    case "response-too-large": {
-      return "sent a response larger than Aura reads";
-    }
-    case "timeout": {
-      return "did not respond in time";
-    }
-    default: {
-      return "could not be reached";
-    }
-  }
-}
-
-function failureHint(reason: string): string {
-  switch (reason) {
-    case "insecure-url":
-    case "invalid-url": {
-      return "fix the directory URL";
-    }
-    case "response-too-large": {
-      return "index too large";
-    }
-    case "timeout": {
-      return "timed out";
-    }
-    default: {
-      return "unreachable";
-    }
-  }
-}
-
-function statusReasonText(source: DirectorySkillSource, status: number): string {
-  const variable = tokenVariable(source);
-  if ((status === 401 || status === 403) && variable !== undefined) {
-    return `rejected the token from ${variable}`;
-  }
-  return `responded with HTTP ${String(status)}`;
-}
-
-function statusHint(source: DirectorySkillSource, status: number): string {
-  const variable = tokenVariable(source);
-  if ((status === 401 || status === 403) && variable !== undefined) {
-    return `check ${variable}`;
-  }
-  return `HTTP ${String(status)}`;
 }
