@@ -6,12 +6,25 @@ import { PassThrough } from "node:stream";
 import { createEnvironment, createPluginRegistry } from "@tryaura/core";
 
 import { BRANDING, noopTelemetry } from "../testing.js";
+import { readStepOutcome } from "./gather.js";
 import type { McpSetupCatalog } from "./mcp-catalog.js";
 import type { SetupRequest } from "./setup.js";
 import type { SkillCatalog } from "./skills-catalog.js";
 import { createSnippetCatalog, type SnippetCatalog } from "./snippets.js";
+import type { SetupSelections, SetupStepOutcome } from "./types.js";
 import { createScriptedWizardIo } from "./wizard-scripted.js";
 import type { WizardAnswers } from "./wizard-types.js";
+
+/** Splits a step outcome the test expects to have completed, the way the orchestrator does. */
+export function settledStep(outcome: SetupStepOutcome): {
+  readonly offered: boolean;
+  readonly selections: SetupSelections;
+} {
+  if (typeof outcome === "symbol") {
+    throw new Error("Expected the step to resolve with selections.");
+  }
+  return readStepOutcome(outcome);
+}
 
 export interface Fixture {
   readonly homeDir: string;

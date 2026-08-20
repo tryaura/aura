@@ -1,7 +1,13 @@
 import { notFoundLine } from "../../not-found-line.js";
 import { safe } from "../../safe-text.js";
 import { catalogEntryId, catalogEntryName, type AppCatalogEntry } from "../catalog.js";
-import { SETUP_ABORTED, SETUP_BACK, type SetupStep, type SetupStepContext } from "../types.js";
+import {
+  SETUP_ABORTED,
+  SETUP_BACK,
+  type SetupStep,
+  type SetupStepContext,
+  type SetupStepUnoffered,
+} from "../types.js";
 import {
   selectedValues,
   type WizardIo,
@@ -49,6 +55,7 @@ export const appsStep: SetupStep = {
   },
   compactTitle: "Apps",
   id: "apps",
+  telemetryCategory: "applications",
   title: "Applications",
 };
 
@@ -56,14 +63,14 @@ export const appsStep: SetupStep = {
 function emptyCatalogOutcome(
   context: SetupStepContext,
   io: WizardIo,
-): SetupStepContext["selections"] | typeof SETUP_BACK {
+): SetupStepUnoffered | typeof SETUP_BACK {
   if (context.enteredBackward === true) {
     return SETUP_BACK;
   }
   if (context.revisited !== true) {
     io.note("No agent application adapters are registered.");
   }
-  return context.selections;
+  return { selections: context.selections, unoffered: true };
 }
 
 /** A re-entered step shows the answer this run already gave it, not its cold-start proposal. */

@@ -65,6 +65,7 @@ export {
   hashManagedSnippet,
 } from "./managed-block/protocol.js";
 export { readManagedBlock } from "./managed-block/read.js";
+export { stripManagedBlock } from "./managed-block/strip.js";
 export { diffManagedSnippet, reconcileManagedSnippet } from "./managed-block/reconcile-snippet.js";
 export { reconcileManagedBlock, reconcileParsedManagedBlock } from "./managed-block/reconcile.js";
 export {
@@ -128,6 +129,7 @@ export {
   canPlanMcpSecretRemediation,
   planMcpSecretRemediation,
 } from "./workspace/mcp-secret-plan.js";
+export { refreshMcpSources } from "./workspace/mcp-refresh.js";
 export type { ScanDiagnostic, ScanPhase } from "./workspace/diagnostics.js";
 export { createFileReader, MAX_FILE_BYTES } from "./workspace/reader.js";
 export { isEmbeddedAssetPath } from "./workspace/embedded-assets.js";

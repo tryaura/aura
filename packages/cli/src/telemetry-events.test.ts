@@ -1,4 +1,3 @@
-import type { AuraManifest } from "@tryaura/aura-sdk";
 import { describe, expect, it } from "vitest";
 
 import type { CheckReportV1 } from "./report-types.js";
@@ -6,10 +5,11 @@ import {
   checkRunEvent,
   commandFailedEvent,
   fixRunEvent,
-  manifestSummary,
+  setupActions,
   setupRunEvent,
   undoRunEvent,
 } from "./telemetry-events.js";
+import type { SetupSelections, SetupTelemetryCategory } from "./setup/types.js";
 
 const FLAGS = {
   dryRun: false,
@@ -31,6 +31,7 @@ const REPORT: CheckReportV1 = {
   ],
   diagnostics: [
     { id: "ENV-009", message: "adapter failed", path: "/home/user/secret.json", phase: "detect" },
+    { id: "SEC-001", message: "check failed", phase: "check" },
   ],
   findings: [
     {
@@ -64,7 +65,7 @@ const REPORT: CheckReportV1 = {
   status: "error",
   summary: {
     categories: {},
-    diagnostics: 1,
+    diagnostics: 2,
     errors: 1,
     exitCode: 2,
     informational: 1,
@@ -73,37 +74,62 @@ const REPORT: CheckReportV1 = {
   },
 };
 
-const MANIFEST: AuraManifest = {
-  apps: { "claude-code": { managed: true }, codex: { managed: false } },
-  mcpServers: [
-    {
-      apps: ["claude-code"],
-      catalogId: "official/context7",
-      name: "context7",
+const SELECTIONS: SetupSelections = {
+  apps: { managed: ["claude-code"] },
+  instructions: {
+    global: {
+      action: "consolidate",
+      duplicateWinners: { "private-duplicate": "/home/user/.claude/CLAUDE.md:1:3" },
       scope: "global",
-      transport: { type: "http", url: "https://mcp.context7.com/mcp" },
+      selectedSources: ["/home/user/.claude/CLAUDE.md"],
+      targetPath: "/home/user/agents/AGENTS.md",
     },
-    {
-      apps: ["claude-code"],
-      name: "my-private-server",
+    project: {
+      action: "skip",
+      duplicateWinners: {},
       scope: "project",
-      transport: { type: "http", url: "https://internal.example.com/mcp" },
+      selectedSources: [],
+      targetPath: "/home/user/project/AGENTS.md",
     },
-  ],
-  ownership: { "claude-code": { files: ["/home/user/.claude/CLAUDE.md"], mcpServerNames: [] } },
-  schemaVersion: 1,
-  skills: [
-    { id: "review", pinned: false, source: "plugin:official", treeHash: "abc", version: "1.0.0" },
-    {
-      id: "private-roadmap",
-      pinned: false,
-      source: "directory:internal-project",
-      treeHash: "private-hash",
-      version: "confidential-version-label",
-    },
-  ],
-  snippets: [{ hash: "def", id: "official/style", pinned: false, version: "2.0.0" }],
+  },
+  mcp: {
+    servers: [
+      {
+        apps: ["claude-code"],
+        catalogId: "official/context7",
+        name: "context7",
+        scope: "global",
+        transport: { type: "http", url: "https://mcp.context7.com/mcp" },
+      },
+      {
+        apps: ["claude-code"],
+        name: "my-private-server",
+        scope: "project",
+        transport: { type: "http", url: "https://internal.example.com/mcp" },
+      },
+    ],
+  },
 };
+
+const PRIVATE_SELECTIONS: SetupSelections = {
+  ...SELECTIONS,
+  skills: {
+    approvedPrivateSourceIds: ["directory:internal-project"],
+    selected: [
+      { id: "review", source: "plugin:official" },
+      { id: "private-roadmap", source: "directory:internal-project" },
+    ],
+  },
+  snippets: { selected: ["official/style"] },
+};
+
+const EVERY_CATEGORY: ReadonlySet<SetupTelemetryCategory> = new Set([
+  "applications",
+  "instructions",
+  "mcpServers",
+  "skills",
+  "snippets",
+]);
 
 describe("checkRunEvent", () => {
   it("aggregates findings per check and drops externally detected version strings", () => {
@@ -115,18 +141,26 @@ describe("checkRunEvent", () => {
         { appId: "codex", installed: false },
       ],
       command: "check",
+      checks: [
+        { checkId: "ENV-001", errors: 0, informational: 0, state: "passed", warnings: 0 },
+        { checkId: "INS-001", errors: 1, informational: 0, state: "findings", warnings: 1 },
+        { checkId: "MCP-002", errors: 0, informational: 1, state: "findings", warnings: 0 },
+        { checkId: "SEC-001", errors: 0, informational: 0, state: "failed", warnings: 0 },
+      ],
       counts: { errors: 1, informational: 1, passed: 1, warnings: 1 },
-      diagnosticCount: 1,
+      diagnosticCount: 2,
       durationMs: 1200,
       exitCode: 2,
-      findings: [
-        { checkId: "INS-001", errors: 1, informational: 0, warnings: 1 },
-        { checkId: "MCP-002", errors: 0, informational: 1, warnings: 0 },
-      ],
       flags: FLAGS,
       kind: "check-run",
-      passedCheckIds: ["ENV-001"],
     });
+  });
+
+  it("keeps every executed check accounted for exactly once", () => {
+    const { checks } = checkRunEvent(REPORT, FLAGS, 1200);
+
+    expect(checks).toHaveLength(new Set(checks.map(({ checkId }) => checkId)).size);
+    expect(checks.filter(({ state }) => state === "passed")).toHaveLength(REPORT.summary.passed);
   });
 });
 
@@ -159,17 +193,31 @@ describe("fixRunEvent", () => {
   });
 });
 
-describe("manifestSummary", () => {
-  it("lists distribution-owned metadata and counts externally sourced skills", () => {
-    expect(manifestSummary(MANIFEST)).toEqual({
-      managedAppIds: ["claude-code"],
+describe("setupActions", () => {
+  it("lists final distribution-owned choices and counts external selections", () => {
+    expect(setupActions({ offered: EVERY_CATEGORY, selections: PRIVATE_SELECTIONS })).toEqual({
+      applications: ["claude-code"],
+      instructions: [
+        { action: "consolidate", scope: "global" },
+        { action: "skip", scope: "project" },
+      ],
       mcpServers: { catalogIds: ["official/context7"], customCount: 1 },
       skills: {
-        bundled: [{ id: "review", source: "plugin:official", version: "1.0.0" }],
+        bundled: [{ id: "review", source: "plugin:official" }],
         externalCount: 1,
       },
-      snippets: [{ id: "official/style", version: "2.0.0" }],
+      snippets: ["official/style"],
     });
+  });
+
+  it("reports an empty choice only for a category the run actually offered", () => {
+    expect(setupActions({ offered: new Set(["skills"]), selections: {} })).toEqual({
+      skills: { bundled: [], externalCount: 0 },
+    });
+  });
+
+  it("omits a category the run never offered, even when selections carry one", () => {
+    expect(setupActions({ offered: new Set(), selections: PRIVATE_SELECTIONS })).toEqual({});
   });
 });
 
@@ -177,7 +225,12 @@ describe("privacy by construction", () => {
   it("never lets paths, messages, names, or hashes survive into an event", () => {
     const events = [
       checkRunEvent(REPORT, FLAGS, 5),
-      setupRunEvent({ durationMs: 5, exitCode: 0, manifest: MANIFEST, outcome: "applied" }),
+      setupRunEvent({
+        actions: setupActions({ offered: EVERY_CATEGORY, selections: PRIVATE_SELECTIONS }),
+        durationMs: 5,
+        exitCode: 0,
+        outcome: "applied",
+      }),
       undoRunEvent({ exitCode: 0, outcome: "restored", restoredOperationCount: 2 }),
       commandFailedEvent("undo", 3),
     ];

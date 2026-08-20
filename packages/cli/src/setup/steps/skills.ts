@@ -2,7 +2,13 @@ import type { AuraManifestSkill } from "@tryaura/aura-sdk";
 
 import { hasSkillsHome, initialSkillSelection, managedSkillApps } from "../skill-app-support.js";
 import { skillIdentity } from "../skill-planner-paths.js";
-import { SETUP_ABORTED, SETUP_BACK, type SetupStep, type SetupStepContext } from "../types.js";
+import {
+  SETUP_ABORTED,
+  SETUP_BACK,
+  type SetupStep,
+  type SetupStepContext,
+  type SetupStepUnoffered,
+} from "../types.js";
 import { runFormChain } from "../wizard-chain.js";
 import { selectedValues } from "../wizard-types.js";
 import { finalizeSkills, type FinalizedSkills } from "./skill-finalize.js";
@@ -48,6 +54,7 @@ export const skillsStep: SetupStep = {
       title: "a managed application that supports Agent Skills",
     },
   ],
+  telemetryCategory: "skills",
   title: "Skills",
 };
 
@@ -129,8 +136,10 @@ function recordedSkills(context: SetupStepContext): readonly AuraManifestSkill[]
   return context.manifest.status === "ready" ? context.manifest.value.skills : [];
 }
 
-function emptyCatalogOutcome(context: SetupStepContext) {
-  return context.enteredBackward === true ? SETUP_BACK : { ...context.selections };
+function emptyCatalogOutcome(context: SetupStepContext): SetupStepUnoffered | typeof SETUP_BACK {
+  return context.enteredBackward === true
+    ? SETUP_BACK
+    : { selections: { ...context.selections }, unoffered: true };
 }
 
 function chainEntry(context: SetupStepContext): "end" | "start" {

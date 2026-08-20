@@ -3,8 +3,14 @@ import type { AuraManifestMcpServer } from "@tryaura/aura-sdk";
 import { safe } from "../../safe-text.js";
 import { catalogEntryId } from "../catalog.js";
 import { managedAppIdList } from "../managed-apps.js";
-import { mcpCatalogEntryName, type McpSetupCatalogEntry } from "../mcp-catalog.js";
-import { SETUP_ABORTED, SETUP_BACK, type SetupStep, type SetupStepContext } from "../types.js";
+import { mcpCatalogEntryName } from "../mcp-catalog.js";
+import {
+  SETUP_ABORTED,
+  SETUP_BACK,
+  type SetupStep,
+  type SetupStepContext,
+  type SetupStepOutcome,
+} from "../types.js";
 import {
   selectedValues,
   type WizardIo,
@@ -14,6 +20,7 @@ import {
 import { editCustomTransport } from "./mcp-custom.js";
 import { configureMcpSelections } from "./mcp-entry.js";
 import type { McpStepControl, WorkingMcpEntry } from "./mcp-step-types.js";
+import { nextCustomKey, nextCustomName, workingEntries } from "./mcp-working-entries.js";
 
 const ADD_CUSTOM = "mcp:add-custom";
 
@@ -36,18 +43,20 @@ export const mcpStep: SetupStep = {
       title: "a managed application that supports MCP configuration",
     },
   ],
+  telemetryCategory: "mcpServers",
   title: "MCP servers",
 };
 
 // fallow-ignore-next-line complexity -- custom additions intentionally return to the same picker.
-async function gatherMcp(context: SetupStepContext, io: WizardIo) {
+async function gatherMcp(context: SetupStepContext, io: WizardIo): Promise<SetupStepOutcome> {
   const entries = workingEntries(context);
   if (entries.length === 0 && context.revisited !== true) {
     io.note("No MCP servers are configured or available from installed plugins.");
   }
   if (!hasManagedMcpApp(context) && entries.every((entry) => entry.existing === undefined)) {
     io.note("No detected, managed application can receive MCP configuration.");
-    return { ...context.selections, mcp: { servers: [] } };
+    // The empty slice is for the planner, which reads an absent one as "keep what is configured".
+    return { selections: { ...context.selections, mcp: { servers: [] } }, unoffered: true };
   }
 
   const overriddenRequiredIds = new Set(
@@ -103,38 +112,6 @@ async function gatherMcp(context: SetupStepContext, io: WizardIo) {
       mcp: { overriddenRequiredIds: [...overriddenRequiredIds], servers: configured },
     };
   }
-}
-
-function workingEntries(context: SetupStepContext): WorkingMcpEntry[] {
-  const previous = context.selections.mcp?.servers;
-  const entries = context.mcpCatalog.entries.map((entry): WorkingMcpEntry => ({
-    ...entry,
-    selectedServer: previous?.find((server) => matchesEntry(server, entry)) ?? entry.existing,
-  }));
-  for (const server of previous ?? []) {
-    if (entries.some((entry) => entry.selectedServer === server || matchesEntry(server, entry))) {
-      continue;
-    }
-    entries.push({
-      existing: server,
-      key: nextCustomKey(entries),
-      required: false,
-      selectedServer: server,
-    });
-  }
-  return entries;
-}
-
-function matchesEntry(server: AuraManifestMcpServer, entry: McpSetupCatalogEntry): boolean {
-  const existing = entry.existing;
-  if (existing !== undefined) {
-    return (
-      existing.catalogId === server.catalogId &&
-      existing.name === server.name &&
-      existing.scope === server.scope
-    );
-  }
-  return entry.catalog?.id === server.catalogId;
 }
 
 /**
@@ -258,38 +235,6 @@ function serverOption(entry: WorkingMcpEntry): WizardOption {
     label: `${safe(mcpCatalogEntryName(entry))}${suffix}`,
     value: entry.key,
   };
-}
-
-function nextCustomKey(entries: readonly WorkingMcpEntry[]): string {
-  let index = entries.length;
-  while (entries.some((entry) => entry.key === `custom:${String(index)}`)) {
-    index += 1;
-  }
-  return `custom:${String(index)}`;
-}
-
-/**
- * A default name no other row has taken.
- *
- * Two servers cannot share one name in one application and scope — the manifest refuses to record
- * it — so seeding every custom server with `custom` would turn "add two, accept the defaults" into
- * a plan the manifest declines to hold.
- */
-function nextCustomName(entries: readonly WorkingMcpEntry[]): string {
-  const taken = new Set(
-    entries.flatMap((entry) => {
-      const name = entry.selectedServer?.name ?? entry.existing?.name;
-      return name === undefined ? [] : [name];
-    }),
-  );
-  if (!taken.has("custom")) {
-    return "custom";
-  }
-  let index = 2;
-  while (taken.has(`custom-${String(index)}`)) {
-    index += 1;
-  }
-  return `custom-${String(index)}`;
 }
 
 function hasManagedMcpApp(context: SetupStepContext): boolean {

@@ -85,17 +85,16 @@ describe("Cursor detection", () => {
 });
 
 describe("Cursor file specifications", () => {
-  it("declares the whole-owned shared-instructions wrapper", () => {
-    expect(cursorAdapter.sharedLink).toEqual({
-      entryPath: "./.cursor/rules/aura.mdc",
-      kind: "native-copy",
-      lineTemplate: "---\nalwaysApply: true\n---\n\n@file {{sharedInstructions}}\n",
-    });
+  it("declares no shared-instruction link at either scope", () => {
+    expect(cursorAdapter).not.toHaveProperty("sharedLink");
+    expect(cursorAdapter).not.toHaveProperty("projectSharedLink");
   });
 
   it("declares the instruction-loading model checks read instead of hard-coding it", () => {
-    expect(cursorAdapter.capabilities).toEqual({
-      instructions: { importStyle: "at-import", loading: "import-graph" },
+    expect(cursorAdapter.capabilities?.instructions).toEqual({
+      globalSharedLink: "not-applicable",
+      importStyle: "at-import",
+      loading: "import-graph",
     });
   });
 
@@ -127,13 +126,6 @@ describe("Cursor file specifications", () => {
         scope: "project",
       },
       {
-        id: "cursor.rules.project/aura-owned",
-        kind: "instructions",
-        optional: true,
-        path: "/workspace/.cursor/rules/aura.mdc",
-        scope: "project",
-      },
-      {
         id: "cursor.mcp.global",
         kind: "mcp",
         optional: true,
@@ -157,6 +149,7 @@ describe("Cursor file specifications", () => {
         "cursor.rules.project",
         source("cursor.rules.project", "/workspace/.cursor/rules", "project", [
           "api.mdc",
+          "aura.mdc",
           "frontend",
         ]),
       ],
@@ -169,13 +162,20 @@ describe("Cursor file specifications", () => {
     ]);
 
     expect(
-      cursorAdapter.files({ detection: { installed: true }, environment, files }).slice(6),
+      cursorAdapter.files({ detection: { installed: true }, environment, files }).slice(5),
     ).toEqual([
       {
         id: "cursor.rules.project/api.mdc",
         kind: "instructions",
         optional: true,
         path: "/workspace/.cursor/rules/api.mdc",
+        scope: "project",
+      },
+      {
+        id: "cursor.rules.project/aura.mdc",
+        kind: "instructions",
+        optional: true,
+        path: "/workspace/.cursor/rules/aura.mdc",
         scope: "project",
       },
       {

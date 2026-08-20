@@ -1,5 +1,10 @@
-import type { AuraEffectiveConfig, AuraManifest, Check, SetupRunOutcome } from "@tryaura/aura-sdk";
-import { AURA_TEAM_PRESET_PATH, prepareFixPlan, type WorkspaceScan } from "@tryaura/core";
+import type { AuraEffectiveConfig, Check, SetupRunOutcome } from "@tryaura/aura-sdk";
+import {
+  AURA_TEAM_PRESET_PATH,
+  prepareFixPlan,
+  refreshMcpSources,
+  type WorkspaceScan,
+} from "@tryaura/core";
 
 import { safe } from "../safe-text.js";
 import type { CliExitCode } from "../types.js";
@@ -8,27 +13,29 @@ import { endOnGreen } from "./green.js";
 import { planSetup } from "./planner.js";
 import type { SetupRequest } from "./setup.js";
 import { renderConvergedSetup, renderSetupSummary } from "./summary.js";
-import type { SetupStep, SetupStepContext } from "./types.js";
+import type { GatheredSetup, SetupStep, SetupStepContext } from "./types.js";
 
 export type PreparedPlan = Awaited<ReturnType<typeof prepareFixPlan>>;
 
 type PlanOutcome =
-  | { readonly kind: "blocked"; readonly manifest: AuraManifest }
-  | { readonly kind: "converged"; readonly manifest: AuraManifest }
-  | { readonly kind: "ready"; readonly manifest: AuraManifest; readonly prepared: PreparedPlan };
+  | { readonly kind: "blocked" }
+  | { readonly kind: "converged" }
+  | { readonly kind: "ready"; readonly prepared: PreparedPlan };
 
 type PassOutcome =
   | {
+      readonly gathered: GatheredSetup;
       readonly kind: "apply";
-      readonly manifest: AuraManifest;
+      /** What this pass planned from, so a raced apply can re-plan the same selections. */
+      readonly planInputs: Parameters<typeof planSetup>[0];
       readonly prepared: PreparedPlan;
     }
   | { readonly kind: "back"; readonly start: GatherStart }
   | {
       readonly code: CliExitCode;
+      /** Present whenever the pass produced a plan, so choices survive a non-write exit. */
+      readonly gathered?: GatheredSetup | undefined;
       readonly kind: "exit";
-      /** Present whenever the pass produced a plan, so popularity data survives a non-write exit. */
-      readonly manifest?: AuraManifest | undefined;
       readonly outcome: SetupRunOutcome;
     };
 
@@ -58,17 +65,19 @@ export async function runPass(
     stdout.write(leftUnchanged(stepContext));
     return { code: 1, kind: "exit", outcome: "aborted" };
   }
-  const selections = gathered.selections;
+  const { offered, selections } = gathered;
+  const settled: GatheredSetup = { offered, selections };
 
-  const planned = await previewPlan(request, { ...stepContext, selections });
+  const planInputs = { ...stepContext, selections };
+  const planned = await previewPlan(request, planInputs);
   if (planned.kind === "converged") {
     if (stepContext.repoPreset?.recorded === true) {
       stdout.write(leftUnchanged(stepContext));
     }
     return {
       code: endOnGreen(request, scan, activeChecks, config),
+      gathered: settled,
       kind: "exit",
-      manifest: planned.manifest,
       outcome: "converged",
     };
   }
@@ -76,11 +85,11 @@ export async function runPass(
     if (stepContext.repoPreset?.recorded === true) {
       stdout.write(leftUnchanged(stepContext));
     }
-    return { code: 2, kind: "exit", manifest: planned.manifest, outcome: "blocked" };
+    return { code: 2, gathered: settled, kind: "exit", outcome: "blocked" };
   }
   if (request.dryRun) {
     stdout.write("\nDry run: nothing was written.\n");
-    return { code: 0, kind: "exit", manifest: planned.manifest, outcome: "dry-run" };
+    return { code: 0, gathered: settled, kind: "exit", outcome: "dry-run" };
   }
 
   // The confirmation is the flow's Submit: every step is gathered, so the bar shows them done.
@@ -92,16 +101,16 @@ export async function runPass(
   if (confirmation === "back") {
     return {
       kind: "back",
-      start: { entered: "backward", index: Math.max(0, steps.length - 1), selections },
+      start: { ...settled, entered: "backward", index: Math.max(0, steps.length - 1) },
     };
   }
   if (confirmation !== "accepted") {
     stdout.write(leftUnchanged(stepContext));
     return confirmation === "aborted"
-      ? { code: 1, kind: "exit", manifest: planned.manifest, outcome: "aborted" }
-      : { code: 0, kind: "exit", manifest: planned.manifest, outcome: "declined" };
+      ? { code: 1, gathered: settled, kind: "exit", outcome: "aborted" }
+      : { code: 0, gathered: settled, kind: "exit", outcome: "declined" };
   }
-  return { kind: "apply", manifest: planned.manifest, prepared: planned.prepared };
+  return { gathered: settled, kind: "apply", planInputs, prepared: planned.prepared };
 }
 
 /**
@@ -122,6 +131,10 @@ async function previewPlan(
   inputs: Parameters<typeof planSetup>[0],
 ): Promise<PlanOutcome> {
   const { stdout } = request;
+  // The scan ran before the wizard's prompts, and MCP configuration files churn under other
+  // processes in exactly that gap — `~/.claude.json` most of all. Planning against a fresh read
+  // shrinks the stale-precondition window from the wizard's runtime to the moments below.
+  await refreshMcpSources(inputs.model);
   const outcome = planSetup(inputs);
   const prepared = await prepareFixPlan({ model: inputs.model, plan: outcome.plan });
 
@@ -131,7 +144,7 @@ async function previewPlan(
     outcome.blockers.length === 0
   ) {
     renderConvergedSetup(prepared.preview, outcome.notices, request.withDetail, stdout);
-    return { kind: "converged", manifest: outcome.manifest };
+    return { kind: "converged" };
   }
 
   stdout.write("\n");
@@ -148,7 +161,7 @@ async function previewPlan(
     request.stderr.write(
       `${request.branding.displayName}: the plan is blocked by the current state of these files; ${recorded ? "the repository preset trust record was the only change" : "nothing was changed"}.\n`,
     );
-    return { kind: "blocked", manifest: outcome.manifest };
+    return { kind: "blocked" };
   }
-  return { kind: "ready", manifest: outcome.manifest, prepared };
+  return { kind: "ready", prepared };
 }

@@ -1,5 +1,11 @@
 import type { SnippetCatalogEntry } from "../snippets.js";
-import { SETUP_ABORTED, SETUP_BACK, type SetupStep, type SetupStepContext } from "../types.js";
+import {
+  SETUP_ABORTED,
+  SETUP_BACK,
+  type SetupStep,
+  type SetupStepContext,
+  type SetupStepUnoffered,
+} from "../types.js";
 import { runFormChain } from "../wizard-chain.js";
 import {
   acceptedUpdates,
@@ -48,6 +54,7 @@ export const snippetsStep: SetupStep = {
       title: "a readable shared instruction file",
     },
   ],
+  telemetryCategory: "snippets",
   title: "Snippets",
 };
 
@@ -92,14 +99,18 @@ function completedSelections(context: SetupStepContext, state: SnippetsChainStat
   };
 }
 
-function emptyCatalogOutcome(context: SetupStepContext, io: Parameters<SetupStep["gather"]>[1]) {
+function emptyCatalogOutcome(
+  context: SetupStepContext,
+  io: Parameters<SetupStep["gather"]>[1],
+): SetupStepUnoffered | typeof SETUP_BACK {
   if (context.enteredBackward === true) {
     return SETUP_BACK;
   }
   if (context.revisited !== true) {
     io.note("No snippets are available from the installed plugins.");
   }
-  return { ...context.selections, snippets: { selected: [] } };
+  // The empty slice is for the planner, which reads an absent one as "keep what is installed".
+  return { selections: { ...context.selections, snippets: { selected: [] } }, unoffered: true };
 }
 
 function previousSnippetIds(context: SetupStepContext): ReadonlySet<string> {

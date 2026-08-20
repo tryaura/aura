@@ -19,6 +19,14 @@ export type AdapterInstructionLoading = "all-files" | "import-graph";
 /** Declarative facts about how the application loads instruction files. */
 export interface AdapterInstructionCapabilities {
   /**
+   * Whether linking the global shared-instruction source is meaningful for this application.
+   *
+   * Declare `"not-applicable"` only when the application exposes no global instruction file Aura
+   * can write, such as guidance stored inside application settings. When omitted, checks preserve
+   * the legacy fallback and report a missing `Adapter.sharedLink` as manual work.
+   */
+  readonly globalSharedLink?: "not-applicable" | undefined;
+  /**
    * How many import hops the application follows before it stops loading.
    *
    * Meaningful only alongside `importStyle: "at-import"`. When omitted, checks treat chains as

@@ -3,17 +3,18 @@ import type { Writable } from "node:stream";
 import type {
   AuraConfigurationLayer,
   AuraEffectiveConfig,
-  AuraManifest,
   Environment,
   SetupRunOutcome,
+  TelemetrySetupActions,
 } from "@tryaura/aura-sdk";
-import { applyFixPlan, buildWorkspaceModel, type PluginRegistry } from "@tryaura/core";
+import { buildWorkspaceModel, type PluginRegistry } from "@tryaura/core";
 import { pluralize } from "@tryaura/core/pluralize";
 
 import { safe } from "../safe-text.js";
+import { applySetupPlan, type ApplySetupPlanOptions } from "./apply-retry.js";
 import { bootSetup, projectRescan } from "./boot.js";
 import { runPass, type PreparedPlan } from "./pass.js";
-import { elapsedMs, setupRunEvent } from "../telemetry-events.js";
+import { elapsedMs, setupActions, setupRunEvent } from "../telemetry-events.js";
 import type { TelemetryRecorder } from "../telemetry.js";
 import type { CliBranding, CliExitCode } from "../types.js";
 import { buildAppCatalog } from "./catalog.js";
@@ -23,7 +24,7 @@ import { presetCheckSummary } from "./preset-policy.js";
 import { createSnippetCatalog } from "./snippets.js";
 import { SETUP_STEPS } from "./steps/index.js";
 import { type GatherStart } from "./gather.js";
-import type { SetupPresetContext, SetupStep } from "./types.js";
+import type { GatheredSetup, SetupPresetContext, SetupStep } from "./types.js";
 import type { WizardIo } from "./wizard-types.js";
 
 /** Everything one `setup` run needs, so the flow does not reach back into the command object. */
@@ -77,16 +78,16 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
     exitCode: CliExitCode,
     outcome: SetupRunOutcome,
     extras?: {
+      readonly actions?: TelemetrySetupActions | undefined;
       readonly appliedOperationCount?: number | undefined;
-      readonly manifest?: AuraManifest | undefined;
     },
   ): CliExitCode => {
     request.telemetry.record(
       setupRunEvent({
+        actions: extras?.actions,
         appliedOperationCount: extras?.appliedOperationCount,
         durationMs: elapsedMs(environment, startedAt),
         exitCode,
-        manifest: extras?.manifest,
         outcome,
       }),
     );
@@ -150,8 +151,12 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
 
   // The confirmation can send the user ← back into the last step, so gather → plan → confirm
   // repeats until the plan is accepted, declined, or aborted. Nothing is written inside the loop.
-  let start: GatherStart = { index: 0, selections: {} };
-  let ready: { readonly manifest: AuraManifest; readonly prepared: PreparedPlan };
+  let start: GatherStart = { index: 0, offered: new Set(), selections: {} };
+  let ready: {
+    readonly gathered: GatheredSetup;
+    readonly planInputs: ApplySetupPlanOptions["planInputs"];
+    readonly prepared: PreparedPlan;
+  };
   for (;;) {
     const pass = await runPass(
       request,
@@ -167,15 +172,16 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
       continue;
     }
     if (pass.kind === "exit") {
-      return finish(pass.code, pass.outcome, { manifest: pass.manifest });
+      return finish(pass.code, pass.outcome, { actions: plannedActions(pass.gathered) });
     }
     ready = pass;
     break;
   }
 
-  const result = await applyFixPlan(ready.prepared, {
-    now: environment.now,
-    stateHomeDir: request.stateHomeDir,
+  const result = await applySetupPlan({
+    planInputs: ready.planInputs,
+    prepared: ready.prepared,
+    request,
   });
   stdout.write(
     `\nApplied ${String(result.appliedOperationCount)} ${pluralize(result.appliedOperationCount, "operation")}.\n`,
@@ -197,9 +203,14 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
   });
   const effectiveRescan = projectRescan(rescanned, configured.config);
   return finish(endOnGreen(request, effectiveRescan, activeChecks, configured.config), "applied", {
+    actions: setupActions(ready.gathered),
     appliedOperationCount: result.appliedOperationCount,
-    manifest: ready.manifest,
   });
+}
+
+/** A pass that never reached a plan has no choices to report, which is not the same as none made. */
+function plannedActions(gathered: GatheredSetup | undefined): TelemetrySetupActions | undefined {
+  return gathered === undefined ? undefined : setupActions(gathered);
 }
 
 function setupPresetContext(

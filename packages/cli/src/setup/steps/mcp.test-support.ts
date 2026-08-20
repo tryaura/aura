@@ -3,17 +3,15 @@ import { createWorkspaceModel } from "@tryaura/aura-sdk/testing";
 
 import type { AppCatalogEntry } from "../catalog.js";
 import type { McpSetupCatalog } from "../mcp-catalog.js";
-import { emptySkillCatalog, emptySnippetCatalog } from "../testing.js";
+import { emptySkillCatalog, emptySnippetCatalog, settledStep } from "../testing.js";
 import type { SetupStepContext } from "../types.js";
 import type { WizardAnswer, WizardAnswers } from "../wizard-types.js";
 import type { mcpStep } from "./mcp.js";
 
 /** The configured names in order, for assertions about identity rather than transport. */
 export function serverNames(result: Awaited<ReturnType<typeof mcpStep.gather>>): readonly string[] {
-  if (typeof result === "symbol") {
-    throw new Error("Expected the step to resolve with selections.");
-  }
-  return (result.mcp?.servers ?? []).map((server) => server.name);
+  const { selections } = settledStep(result);
+  return (selections.mcp?.servers ?? []).map((server) => server.name);
 }
 
 export interface ContextOptions {
