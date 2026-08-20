@@ -91,6 +91,45 @@ function instructionSpec(id: string, path: string): AdapterFileSpec {
   return { id, kind: "instructions", optional: true, path, scope: "global" };
 }
 
+/** A Codex-shaped adapter whose shared link is a symlink at its own instruction entry. */
+export function symlinkConsolidationPlugin(): AuraPlugin {
+  return definePlugin({
+    adapters: [
+      defineAdapter({
+        detect: () => Promise.resolve({ installed: true, version: "1.0.0" }),
+        displayName: "Symlink Agent",
+        files: ({ environment }) => [
+          instructionSpec("symlink-agent", join(environment.homeDir, ".codex", "AGENTS.md")),
+        ],
+        id: "symlink-agent",
+        parse: ({ files }) => ({
+          instructionFiles: [...files.values()].flatMap((file) =>
+            file.content === undefined
+              ? []
+              : [
+                  {
+                    content: file.content,
+                    links: [],
+                    path: file.spec.path,
+                    scope: file.spec.scope,
+                    sourceId: file.spec.id,
+                  },
+                ],
+          ),
+          mcpServers: [],
+          skills: [],
+        }),
+        sharedLink: { entryPath: "~/.codex/AGENTS.md", kind: "symlink" },
+        supportedRange: ">=1 <2",
+      }),
+    ],
+    apiVersion: 1,
+    id: "symlink-consolidation",
+    name: "Symlink Consolidation",
+    version: "1.0.0",
+  });
+}
+
 export function projectConsolidationPlugin(): AuraPlugin {
   return definePlugin({
     adapters: [
