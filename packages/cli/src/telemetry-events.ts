@@ -1,20 +1,20 @@
 import type {
-  AuraManifest,
   CheckRunEvent,
   CommandFailedEvent,
   Environment,
   FixRunEvent,
   SetupRunEvent,
   SetupRunOutcome,
-  TelemetryCheckFindings,
   TelemetryCheckFlags,
+  TelemetryCheckState,
   TelemetryCommand,
-  TelemetryManifestSummary,
+  TelemetrySetupActions,
   UndoRunEvent,
   UndoRunOutcome,
 } from "@tryaura/aura-sdk";
 
 import type { CheckReportV1, ReportFix } from "./report-types.js";
+import type { GatheredSetup, SetupSelections } from "./setup/types.js";
 
 /**
  * Pure builders that turn the shapes commands already hold into telemetry event drafts.
@@ -40,6 +40,7 @@ export function checkRunEvent(
       appId: app.appId,
       installed: app.detection.installed,
     })),
+    checks: checkStates(report),
     command: "check",
     counts: {
       errors: report.summary.errors,
@@ -50,10 +51,8 @@ export function checkRunEvent(
     diagnosticCount: report.diagnostics.length,
     durationMs,
     exitCode: report.summary.exitCode,
-    findings: findingsByCheck(report),
     flags,
     kind: "check-run",
-    passedCheckIds: report.passedChecks.map((check) => check.id),
   };
 }
 
@@ -82,16 +81,17 @@ export function fixRunEvent(
 
 /** What a setup run reports about how it ended. */
 export interface SetupRunFacts {
+  readonly actions?: TelemetrySetupActions | undefined;
   readonly appliedOperationCount?: number | undefined;
   readonly durationMs: number;
   readonly exitCode: number;
-  readonly manifest?: AuraManifest | undefined;
   readonly outcome: SetupRunOutcome;
 }
 
 /** Draft of the one {@link SetupRunEvent} a setup run emits. */
 export function setupRunEvent(facts: SetupRunFacts): Omit<SetupRunEvent, "at" | "distroVersion"> {
   return {
+    ...(facts.actions === undefined ? {} : { actions: facts.actions }),
     ...(facts.appliedOperationCount === undefined
       ? {}
       : { appliedOperationCount: facts.appliedOperationCount }),
@@ -99,7 +99,6 @@ export function setupRunEvent(facts: SetupRunFacts): Omit<SetupRunEvent, "at" | 
     durationMs: facts.durationMs,
     exitCode: facts.exitCode,
     kind: "setup-run",
-    ...(facts.manifest === undefined ? {} : { manifest: manifestSummary(facts.manifest) }),
     outcome: facts.outcome,
   };
 }
@@ -137,50 +136,113 @@ export function commandFailedEvent(
 }
 
 /**
- * The manifest reduced to what popularity metrics need.
+ * Setup selections reduced to privacy-safe popularity metrics.
  *
  * Catalog MCP servers and bundled skills keep distribution-owned ids. Custom servers and
  * externally sourced skills are counted, never named — their metadata is user- or service-authored
- * text. Ownership is dropped entirely because it references files.
+ * text. Instruction sources, duplicate choices, private-source approvals, names, and transports
+ * are dropped entirely.
+ *
+ * Only categories the run actually offered are reported, so an empty list always means the user
+ * was asked and chose nothing — never that the distribution had nothing to ask about.
  */
-export function manifestSummary(manifest: AuraManifest): TelemetryManifestSummary {
-  const catalogIds = manifest.mcpServers.flatMap((server) =>
+export function setupActions({ offered, selections }: GatheredSetup): TelemetrySetupActions {
+  const selectedSkills = selections.skills?.selected ?? [];
+  const bundledSkills = selectedSkills.filter(isBundledSkillSelection);
+  const selectedMcpServers = selections.mcp?.servers ?? [];
+  const catalogIds = selectedMcpServers.flatMap((server) =>
     server.catalogId === undefined ? [] : [server.catalogId],
   );
-  const bundledSkills = manifest.skills.filter(isBundledSkill);
   return {
-    managedAppIds: Object.entries(manifest.apps)
-      .filter(([, app]) => app.managed)
-      .map(([appId]) => appId),
-    mcpServers: {
-      catalogIds,
-      customCount: manifest.mcpServers.length - catalogIds.length,
-    },
-    skills: {
-      bundled: bundledSkills.map((skill) => ({
-        id: skill.id,
-        source: skill.source,
-        version: skill.version,
-      })),
-      externalCount: manifest.skills.length - bundledSkills.length,
-    },
-    snippets: manifest.snippets.map((snippet) => ({ id: snippet.id, version: snippet.version })),
+    ...(offered.has("applications") ? { applications: selections.apps?.managed ?? [] } : {}),
+    ...(offered.has("instructions")
+      ? { instructions: instructionActions(selections.instructions) }
+      : {}),
+    ...(offered.has("mcpServers")
+      ? {
+          mcpServers: {
+            catalogIds,
+            customCount: selectedMcpServers.length - catalogIds.length,
+          },
+        }
+      : {}),
+    ...(offered.has("skills")
+      ? {
+          skills: {
+            bundled: bundledSkills.map((skill) => ({ id: skill.id, source: skill.source })),
+            externalCount: selectedSkills.length - bundledSkills.length,
+          },
+        }
+      : {}),
+    ...(offered.has("snippets") ? { snippets: selections.snippets?.selected ?? [] } : {}),
   };
 }
 
-type BundledManifestSkill = AuraManifest["skills"][number] & {
+type SelectedSkill = NonNullable<SetupSelections["skills"]>["selected"][number];
+type BundledSkillSelection = SelectedSkill & {
   readonly source: `plugin:${string}`;
 };
 
-/** Narrows manifest skills to metadata owned by a plugin bundled into the distribution. */
-function isBundledSkill(skill: AuraManifest["skills"][number]): skill is BundledManifestSkill {
+/** Narrows selected skills to metadata owned by a plugin bundled into the distribution. */
+function isBundledSkillSelection(skill: SelectedSkill): skill is BundledSkillSelection {
   return skill.source.startsWith("plugin:");
 }
 
-/** Per-check severity counts for every check that produced findings. */
-function findingsByCheck(report: CheckReportV1): readonly TelemetryCheckFindings[] {
-  const byCheck = new Map<string, { errors: number; informational: number; warnings: number }>();
-  for (const finding of report.findings) {
+/** Final instruction handling only; paths, sources, and duplicate choices stop here. */
+function instructionActions(
+  selections: SetupSelections["instructions"],
+): NonNullable<TelemetrySetupActions["instructions"]> {
+  if (selections === undefined) {
+    return [];
+  }
+  return [selections.global, ...(selections.project === undefined ? [] : [selections.project])].map(
+    ({ action, scope }) => ({ action, scope }),
+  );
+}
+
+interface SeverityCounts {
+  errors: number;
+  informational: number;
+  warnings: number;
+}
+
+/**
+ * Per-check state and severity counts for every executed check, ordered by check ID.
+ *
+ * Read entirely off the report rather than off the check list beside it. The report is already
+ * built from that list and partitions it three ways — a check that threw is dropped from
+ * `passedChecks` and produces no findings — so taking the executed set from anywhere else would
+ * let `counts.passed` and these states disagree inside one event.
+ */
+function checkStates(report: CheckReportV1): readonly TelemetryCheckState[] {
+  const withFindings = countsByCheck(report.findings);
+  const failed = new Set(
+    report.diagnostics
+      .filter((diagnostic) => diagnostic.phase === "check")
+      .map((diagnostic) => diagnostic.id),
+  );
+  const states: TelemetryCheckState[] = [
+    ...report.passedChecks.map(({ id }) => state(id, ZERO_COUNTS, "passed")),
+    ...[...withFindings].map(([checkId, counts]) => state(checkId, counts, "findings")),
+    ...[...failed].map((checkId) => state(checkId, ZERO_COUNTS, "failed")),
+  ];
+  return states.sort((left, right) => left.checkId.localeCompare(right.checkId));
+}
+
+const ZERO_COUNTS: SeverityCounts = Object.freeze({ errors: 0, informational: 0, warnings: 0 });
+
+function state(
+  checkId: string,
+  counts: SeverityCounts,
+  state: TelemetryCheckState["state"],
+): TelemetryCheckState {
+  return { checkId, ...counts, state };
+}
+
+/** Findings tallied by severity, keyed by the check that reported them. */
+function countsByCheck(findings: CheckReportV1["findings"]): ReadonlyMap<string, SeverityCounts> {
+  const byCheck = new Map<string, SeverityCounts>();
+  for (const finding of findings) {
     const counts = byCheck.get(finding.checkId) ?? { errors: 0, informational: 0, warnings: 0 };
     if (finding.severity === "error") {
       counts.errors += 1;
@@ -191,5 +253,5 @@ function findingsByCheck(report: CheckReportV1): readonly TelemetryCheckFindings
     }
     byCheck.set(finding.checkId, counts);
   }
-  return [...byCheck.entries()].map(([checkId, counts]) => ({ checkId, ...counts }));
+  return byCheck;
 }

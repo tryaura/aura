@@ -70,6 +70,7 @@ export const instructionsStep: SetupStep = {
   compactTitle: "Instr",
   id: "instructions",
   needsFindings: true,
+  telemetryCategory: "instructions",
   title: "Instructions",
 };
 
