@@ -140,11 +140,14 @@ try {
     { appId: "acme-agent", installed: true },
   );
   assert.equal(
-    checkRun.findings.some(({ checkId, errors }) => checkId === "acme/ACME-001" && errors === 1),
+    checkRun.checks.some(
+      ({ checkId, errors, state }) =>
+        checkId === "acme/ACME-001" && errors === 1 && state === "findings",
+    ),
     true,
   );
   assert.equal(setupRun.outcome, "dry-run");
-  assert.ok(setupRun.manifest, "a dry-run setup event should carry the planned manifest summary");
+  assert.ok(setupRun.actions, "a dry-run setup event should carry the planned setup actions");
   assert.equal(undoRun.outcome, "listed");
 
   // The user's opt-out beats the distribution's sink: nothing new may arrive.

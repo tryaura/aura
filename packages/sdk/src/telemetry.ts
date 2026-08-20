@@ -26,11 +26,17 @@ export interface TelemetryAppState {
   readonly installed: boolean;
 }
 
-/** Findings one check produced, counted by severity. Clean checks appear in `passedCheckIds`. */
-export interface TelemetryCheckFindings {
+/**
+ * The result of one executed check, counted by severity.
+ *
+ * `failed` means the check threw and produced nothing, which is why every count is zero there and
+ * cannot be told apart from `passed` by the counts alone.
+ */
+export interface TelemetryCheckState {
   readonly checkId: string;
   readonly errors: number;
   readonly informational: number;
+  readonly state: "failed" | "findings" | "passed";
   readonly warnings: number;
 }
 
@@ -56,14 +62,14 @@ export interface TelemetryCheckFlags {
 export interface CheckRunEvent extends TelemetryEnvelope {
   readonly apps: readonly TelemetryAppState[];
   readonly command: "check";
+  /** Every executed check, ordered by check ID, including ones that passed or failed to run. */
+  readonly checks: readonly TelemetryCheckState[];
   readonly counts: TelemetryCheckCounts;
   readonly diagnosticCount: number;
   readonly durationMs: number;
   readonly exitCode: number;
-  readonly findings: readonly TelemetryCheckFindings[];
   readonly flags: TelemetryCheckFlags;
   readonly kind: "check-run";
-  readonly passedCheckIds: readonly string[];
 }
 
 /** How one finding's fix ended, identified by the check that owns it. */
@@ -83,27 +89,47 @@ export interface FixRunEvent extends TelemetryEnvelope {
 }
 
 /**
- * The desired state a setup run planned or applied.
+ * The privacy-safe choices one setup run planned or applied.
  *
  * Catalog MCP servers and bundled skills use distribution-owned identifiers. Custom servers and
  * externally sourced skills are counted rather than named because their metadata is user- or
  * service-authored text.
+ *
+ * Absent and empty mean different things, and the distinction is the point of every field being
+ * optional: an absent field means the run never offered that category — the step did not run, or
+ * ran with nothing to show — while an empty one means the user was asked and chose nothing. Only
+ * the second belongs in the denominator of an adoption rate.
  */
-export interface TelemetryManifestSummary {
-  readonly managedAppIds: readonly string[];
-  readonly mcpServers: {
-    readonly catalogIds: readonly string[];
-    readonly customCount: number;
-  };
-  readonly skills: {
-    readonly bundled: readonly {
-      readonly id: string;
-      readonly source: `plugin:${string}`;
-      readonly version: string;
-    }[];
-    readonly externalCount: number;
-  };
-  readonly snippets: readonly { readonly id: string; readonly version: string }[];
+export interface TelemetrySetupActions {
+  /** Adapter ids selected in the Applications step. */
+  readonly applications?: readonly string[] | undefined;
+  /** Handling selected for each instruction scope the Instructions step offered. */
+  readonly instructions?: readonly TelemetryInstructionAction[] | undefined;
+  /** Servers selected in the MCP step: catalog ids by name, everything else counted. */
+  readonly mcpServers?:
+    | {
+        readonly catalogIds: readonly string[];
+        readonly customCount: number;
+      }
+    | undefined;
+  /** Skills selected in the Skills step: bundled plugin skills by id, external ones counted. */
+  readonly skills?:
+    | {
+        readonly bundled: readonly {
+          readonly id: string;
+          readonly source: `plugin:${string}`;
+        }[];
+        readonly externalCount: number;
+      }
+    | undefined;
+  /** Distribution-owned ids selected in the Snippets step. */
+  readonly snippets?: readonly string[] | undefined;
+}
+
+/** One instruction scope and the handling selected for it during setup. */
+export interface TelemetryInstructionAction {
+  readonly action: "blocked" | "consolidate" | "keep" | "skip" | "template";
+  readonly scope: "global" | "project";
 }
 
 /** How a completed setup flow ended. Unexpected throws emit `command-failed` instead. */
@@ -125,14 +151,14 @@ export type SetupRunOutcome =
 
 /** One completed `setup` run. */
 export interface SetupRunEvent extends TelemetryEnvelope {
+  /** Final privacy-safe choices. Present only after setup produced a plan. */
+  readonly actions?: TelemetrySetupActions | undefined;
   /** Operations written to disk. Present only when the outcome is `applied`. */
   readonly appliedOperationCount?: number | undefined;
   readonly command: "setup";
   readonly durationMs: number;
   readonly exitCode: number;
   readonly kind: "setup-run";
-  /** Present whenever the run produced a plan, including outcomes that wrote nothing. */
-  readonly manifest?: TelemetryManifestSummary | undefined;
   readonly outcome: SetupRunOutcome;
 }
 

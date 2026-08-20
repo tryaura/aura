@@ -567,8 +567,9 @@ describe("runSetup", () => {
       );
     });
     const before = await snapshot(fixture.homeDir);
+    const { events, telemetry } = capturingTelemetry();
 
-    const exitCode = await runSetup(fixture.request());
+    const exitCode = await runSetup(fixture.request({}, { telemetry }));
 
     expect(exitCode).toBe(2);
     expect(fixture.stdout()).toContain("cannot configure shared instructions");
@@ -579,6 +580,9 @@ describe("runSetup", () => {
     expect(fixture.stdout()).toContain("The Aura manifest is already in place.");
     expect(fixture.stdout()).not.toContain("Already converged");
     expect(fixture.stderr()).toContain("the plan is blocked");
+    expect(events).toEqual([
+      expect.objectContaining({ actions: expect.any(Object), exitCode: 2, outcome: "blocked" }),
+    ]);
     await expect(snapshot(fixture.homeDir)).resolves.toEqual(before);
   });
   it("stores the app selection in the manifest and lists install instructions", async () => {
@@ -637,11 +641,14 @@ describe("runSetup", () => {
     await runSetup(fixture.request({}, { telemetry: applied.telemetry }));
 
     expect(applied.events).toHaveLength(1);
+    // The bare fixture registers no adapters, snippets, skills, or MCP-capable app, so Instructions
+    // is the only step that asked anything. The four it never asked stay out of the event entirely
+    // rather than reporting an empty answer nobody gave.
     expect(applied.events[0]).toMatchObject({
+      actions: { instructions: [{ action: "template", scope: "global" }] },
       command: "setup",
       exitCode: 0,
       kind: "setup-run",
-      manifest: { managedAppIds: [], mcpServers: { catalogIds: [], customCount: 0 } },
       outcome: "applied",
     });
     expect(applied.events[0]).toHaveProperty("appliedOperationCount");
@@ -657,21 +664,73 @@ describe("runSetup", () => {
 
     const dryRun = capturingTelemetry();
     await runSetup(fixture.request({}, { dryRun: true, telemetry: dryRun.telemetry }));
-    expect(dryRun.events).toEqual([expect.objectContaining({ exitCode: 0, outcome: "dry-run" })]);
+    expect(dryRun.events).toEqual([
+      expect.objectContaining({ actions: expect.any(Object), exitCode: 0, outcome: "dry-run" }),
+    ]);
 
     const declined = capturingTelemetry();
     await runSetup(
       fixture.request({ confirmations: ["declined"] }, { telemetry: declined.telemetry }),
     );
     expect(declined.events).toEqual([
-      expect.objectContaining({ exitCode: 0, outcome: "declined" }),
+      expect.objectContaining({ actions: expect.any(Object), exitCode: 0, outcome: "declined" }),
     ]);
 
     const aborted = capturingTelemetry();
     await runSetup(
       fixture.request({ confirmations: ["aborted"] }, { telemetry: aborted.telemetry }),
     );
-    expect(aborted.events).toEqual([expect.objectContaining({ exitCode: 1, outcome: "aborted" })]);
+    expect(aborted.events).toEqual([
+      expect.objectContaining({ actions: expect.any(Object), exitCode: 1, outcome: "aborted" }),
+    ]);
+  });
+
+  it("omits actions when the wizard aborts before producing a plan", async () => {
+    const fixture = await createFixture();
+    const { events, telemetry } = capturingTelemetry();
+
+    await runSetup(
+      fixture.request({ forms: ["aborted"] }, { steps: [stubStep("first")], telemetry }),
+    );
+
+    expect(events).toEqual([expect.objectContaining({ exitCode: 1, outcome: "aborted" })]);
+    expect(events[0]).not.toHaveProperty("actions");
+  });
+
+  it("reports empty choices only for setup categories that ran", async () => {
+    const fixture = await createFixture();
+    const { events, telemetry } = capturingTelemetry();
+    const applications: SetupStep = {
+      gather: (context) => Promise.resolve({ ...context.selections, apps: { managed: [] } }),
+      id: "apps",
+      telemetryCategory: "applications",
+      title: "Applications",
+    };
+
+    await runSetup(fixture.request({}, { steps: [applications], telemetry }));
+
+    expect(events).toEqual([
+      expect.objectContaining({ actions: { applications: [] }, outcome: "converged" }),
+    ]);
+  });
+
+  it("omits a category whose step ran with nothing to offer", async () => {
+    const fixture = await createFixture();
+    const { events, telemetry } = capturingTelemetry();
+    const applications: SetupStep = {
+      gather: (context) =>
+        Promise.resolve({
+          selections: { ...context.selections, apps: { managed: [] } },
+          unoffered: true,
+        }),
+      id: "apps",
+      telemetryCategory: "applications",
+      title: "Applications",
+    };
+
+    await runSetup(fixture.request({}, { steps: [applications], telemetry }));
+
+    expect(events).toEqual([expect.objectContaining({ actions: {}, outcome: "converged" })]);
   });
 
   it("emits an unusable setup-run event when the manifest cannot be used", async () => {
@@ -684,7 +743,7 @@ describe("runSetup", () => {
     await runSetup(fixture.request({ forms: [{}] }, { telemetry }));
 
     expect(events).toEqual([expect.objectContaining({ exitCode: 2, outcome: "unusable" })]);
-    expect(events[0]).not.toHaveProperty("manifest");
+    expect(events[0]).not.toHaveProperty("actions");
   });
 });
 

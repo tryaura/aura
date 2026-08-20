@@ -8,7 +8,12 @@ import type { AppCatalogEntry } from "../catalog.js";
 import { SETUP_ABORTED, type SetupStepContext } from "../types.js";
 import { createScriptedWizardIo, type ScriptedWizardScript } from "../wizard-scripted.js";
 import type { WizardIo, WizardQuestion } from "../wizard-types.js";
-import { emptyMcpCatalog, emptySkillCatalog, emptySnippetCatalog } from "../testing.js";
+import {
+  emptyMcpCatalog,
+  emptySkillCatalog,
+  emptySnippetCatalog,
+  settledStep,
+} from "../testing.js";
 import { appsStep } from "./apps.js";
 
 describe("appsStep", () => {
@@ -178,7 +183,7 @@ describe("appsStep", () => {
     const outcome = await appsStep.gather(context([]), harness.io);
 
     expect(harness.asked).toEqual([]);
-    expect(outcome).toEqual({});
+    expect(settledStep(outcome)).toEqual({ offered: false, selections: {} });
   });
 });
 

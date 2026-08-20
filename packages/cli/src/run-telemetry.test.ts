@@ -34,15 +34,22 @@ describe("runCli telemetry", () => {
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({
       at: "2026-08-18T12:00:00.000Z",
+      checks: [
+        {
+          checkId: "fixture-info/INFO",
+          errors: 0,
+          informational: 0,
+          state: "passed",
+          warnings: 0,
+        },
+      ],
       command: "check",
       counts: { errors: 0, informational: 0, passed: 1, warnings: 0 },
       distroVersion: "1.2.3",
       durationMs: 0,
       exitCode: 0,
-      findings: [],
       flags: { dryRun: false, fix: false, interactive: false, json: false, online: false },
       kind: "check-run",
-      passedCheckIds: ["fixture-info/INFO"],
     });
   });
 
@@ -64,6 +71,24 @@ describe("runCli telemetry", () => {
       dryRun: true,
       exitCode: 0,
       kind: "fix-run",
+    });
+  });
+
+  it("reports only checks selected and enabled for execution", async () => {
+    const { events, sink } = capturingSink();
+    const capture = createCapture(["check", "--only", "fixture-info/INFO"]);
+
+    await runCli(
+      {
+        ...distro([findingPlugin("info", []), findingPlugin("warn", [])]),
+        telemetry: sink,
+      },
+      { ...capture.runtime, now: CLOCK },
+    );
+
+    expect(events[0]).toMatchObject({
+      checks: [expect.objectContaining({ checkId: "fixture-info/INFO", state: "passed" })],
+      kind: "check-run",
     });
   });
 
@@ -96,7 +121,19 @@ describe("runCli telemetry", () => {
 
     expect(exitCode).toBe(3);
     expect(events).toHaveLength(1);
-    expect(events[0]).toMatchObject({ exitCode: 3, kind: "check-run" });
+    expect(events[0]).toMatchObject({
+      checks: [
+        {
+          checkId: "throwing/CHECK",
+          errors: 0,
+          informational: 0,
+          state: "failed",
+          warnings: 0,
+        },
+      ],
+      exitCode: 3,
+      kind: "check-run",
+    });
   });
 
   it("changes nothing about the run when the sink throws everywhere", async () => {
