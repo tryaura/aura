@@ -51,6 +51,41 @@ describe("planSharedInstructionLink convergence", () => {
     expect(operations(outcome)).toMatchObject([{ target: SHARED_PATH, type: "symlink" }]);
   });
 
+  /*
+   * The migration an app makes when it stops declaring an import line and starts declaring a link.
+   * Every machine already wired the old way holds a real file at the entry, and it is Aura's own:
+   * consolidation has no source to offer for it, so refusing it as user-owned would strand the app
+   * on that machine for good. Text of the user's around the block is still refused.
+   */
+  it("replaces an entry holding only a managed block", () => {
+    const outcome = plan({
+      content: [
+        "<!-- aura:begin -->",
+        `<!-- aura:begin id=shared-instructions sha256=${"0".repeat(64)} -->`,
+        "@~/agents/AGENTS.md",
+        "<!-- aura:end id=shared-instructions -->",
+        "<!-- aura:end -->",
+        "",
+      ].join("\n"),
+      pathKind: "file",
+    });
+
+    expect(operations(outcome)).toMatchObject([{ target: SHARED_PATH, type: "symlink" }]);
+  });
+
+  it("refuses an entry carrying the user's own text beside the block", () => {
+    const outcome = plan({
+      content:
+        "# Mine\n\nKeep this.\n<!-- aura:begin -->\n@~/agents/AGENTS.md\n<!-- aura:end -->\n",
+      pathKind: "file",
+    });
+
+    expect(outcome).toEqual({
+      blocked:
+        "The existing file is user-owned. Consolidate its content before replacing it with a symlink.",
+    });
+  });
+
   it("still plans the write when a matching native copy is being replaced", () => {
     const link: ResolvedSharedLink = {
       content: "# shared\n",
@@ -81,7 +116,11 @@ describe("planSharedInstructionLink convergence", () => {
 });
 
 function plan(
-  source: { readonly pathKind: AdapterPathKind; readonly symlinkTarget: string },
+  source: {
+    readonly pathKind: AdapterPathKind;
+    readonly symlinkTarget?: string | undefined;
+    readonly content?: string | undefined;
+  },
   options: { readonly sourceContent?: string } = {},
 ) {
   const link: ResolvedSharedLink = { entryPath: ENTRY_PATH, kind: "symlink", scope: "global" };
@@ -102,13 +141,25 @@ function app(
     readonly exists: boolean;
     readonly pathKind?: AdapterPathKind | undefined;
     readonly symlinkTarget?: string | undefined;
+    readonly content?: string | undefined;
   },
 ): AppModel {
   return {
     adapterId: "codex",
     detection: { installed: true, version: "1.0.0" },
     displayName: "Codex",
-    instructionFiles: [],
+    instructionFiles:
+      source.content === undefined
+        ? []
+        : [
+            {
+              content: source.content,
+              links: [],
+              path: link.entryPath,
+              scope: "global",
+              sourceId: "codex.instructions",
+            },
+          ],
     mcpServers: [],
     sharedLink: link,
     skills: [],

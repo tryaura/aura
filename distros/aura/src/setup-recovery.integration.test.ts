@@ -24,12 +24,14 @@ describe("aura setup recovery", () => {
     await using seed = await createRecoverySeed();
     const sharedPath = join(seed.homeDir, "agents", "AGENTS.md");
     const codexEntry = join(seed.homeDir, ".codex", "AGENTS.md");
+    const claudeEntry = join(seed.homeDir, ".claude", "CLAUDE.md");
 
     const first = await runSetup({ distro: AURA_DISTRO, seed });
     expect(first.exitCode, first.stdout).toBe(0);
     expect((await lstat(codexEntry)).isSymbolicLink()).toBe(true);
-    await expect(readFile(join(seed.homeDir, ".claude", "CLAUDE.md"), "utf8")).resolves.toContain(
-      "@~/agents/AGENTS.md",
+    expect((await lstat(claudeEntry)).isSymbolicLink()).toBe(true);
+    await expect(readFile(claudeEntry, "utf8")).resolves.toContain(
+      "# Instructions from ~/.claude/CLAUDE.md",
     );
 
     await writeFile(

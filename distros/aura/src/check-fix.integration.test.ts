@@ -39,7 +39,7 @@ describe("aura check --fix", () => {
     expect(first.stdout).toContain("0 errors · 0 warnings · 3 suggestions");
     expect(first.stdout).toContain("✓ 23 checks passed · 3 applications detected");
     await expect(readFile(sharedPath, "utf8")).resolves.toBe(SHARED_TEMPLATE);
-    await expect(readFile(claudePath, "utf8")).resolves.toContain("@~/agents/AGENTS.md");
+    await expect(readlink(claudePath)).resolves.toBe(sharedPath);
     await expect(readlink(codexPath)).resolves.toBe(sharedPath);
     // Cursor is detected and wired to nothing: it keeps its global rules in its own settings. A
     // fix run from inside a repository leaves that repository byte-for-byte alone.

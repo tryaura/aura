@@ -13,6 +13,24 @@ interface MergeSection {
   readonly text: string;
 }
 
+/** An ATX heading, up to the three leading spaces CommonMark still counts as one. */
+const HEADING_LINE = /^ {0,3}#{1,6}(?:\s|$)/u;
+
+/**
+ * Whether a section still says something once its duplicate ranges are gone.
+ *
+ * INS-003 clusters paragraphs, so a source that lost every paragraph to a copy kept under another
+ * file's heading still arrives here holding its own `#` lines: no cluster claimed them, so
+ * {@link removeRanges} never took them. Asking only for a non-blank character reads that skeleton as
+ * content, and writes a provenance heading over a file that contributed nothing — which is exactly
+ * what the two callers below are each trying not to do.
+ */
+function hasSubstance(text: string): boolean {
+  return [...splitSourceLines(text)].some(
+    (line) => line.text.trim().length > 0 && !HEADING_LINE.test(line.text),
+  );
+}
+
 /**
  * Merges the selected sources into what the target should contain.
  *
@@ -35,7 +53,7 @@ export function composeConsolidatedInstructions(
   const sections = mergeSections(sources, selection, clusters, model)
     // A source can lose every paragraph to copies kept elsewhere; a heading with nothing under it
     // would say the file contributed something it did not.
-    .filter((section) => section.text.trim().length > 0)
+    .filter((section) => hasSubstance(section.text))
     // Matched with its line ending, so a merged `~/a.md.bak` cannot pass for a merged `~/a.md`.
     .filter((section) => !base.includes(`${section.heading}\n`))
     .map((section) => `${section.heading}\n\n${section.text}`);
@@ -65,7 +83,7 @@ export function unmergedSources(
   return mergeSections(sources, selection, clusters, model)
     .filter(
       (section) =>
-        section.text.trim().length > 0 &&
+        hasSubstance(section.text) &&
         base.includes(`${section.heading}\n`) &&
         !base.includes(`${section.heading}\n\n${section.text}`),
     )

@@ -4,6 +4,7 @@ import type { ArchiveFileReplacement, FileOperation, Scope } from "@tryaura/aura
 import { SHARED_INSTRUCTIONS_TEMPLATE } from "@tryaura/content-official";
 
 import { planLinks } from "./instruction-links.js";
+import { requiredEntries, withMandatorySources } from "./instruction-mandatory.js";
 import { composeConsolidatedInstructions, unmergedSources } from "./instruction-merge.js";
 import {
   archiveRelativePath,
@@ -93,11 +94,26 @@ export function planInstructions(context: SetupStepContext): InstructionPlan {
 /** Plans one scope's target, returning whether it ended up with content apps may be linked to. */
 function planScope(
   context: SetupStepContext,
-  selection: InstructionScopeSelection,
+  requested: InstructionScopeSelection,
   inventory: ReturnType<typeof instructionInventory>,
   clusters: ReturnType<typeof duplicateClusters>,
   state: InstructionPlanState,
 ): boolean {
+  const required = requiredEntries(context, requested, inventory);
+  const selection = withMandatorySources(requested, required);
+  if (selection.action === "keep" && required.length > 0) {
+    // "Keep" leaves every file where it is, which a symbolic link cannot honour: it stands in for
+    // the whole entry. Merging those entries here first is what keeps their guidance loaded once
+    // the originals are archived — the alternative, archiving alone, would quietly stop applying
+    // instructions the user asked to keep.
+    return planScope(
+      context,
+      { ...selection, action: "consolidate", selectedSources: required.map((entry) => entry.path) },
+      inventory,
+      clusters,
+      state,
+    );
+  }
   const selected = new Set(selection.selectedSources.map((path) => resolve(path)));
   const chosen = inventory.filter(
     (source) => source.scope === selection.scope && selected.has(resolve(source.path)),
@@ -116,6 +132,11 @@ function planScope(
         type: "write",
       });
     }
+    // The starter template keeps none of what these entries held, but a symbolic link still cannot
+    // stand at a path carrying the user's own text. Archiving is what makes the link wirable, and
+    // it preserves the text rather than dropping it: the run names the backup, and `aura undo`
+    // puts every one of them back.
+    planOriginals(context, selection, required, new Set(), state);
     return true;
   }
   if (selection.action !== "consolidate") {
