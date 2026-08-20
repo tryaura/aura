@@ -14,6 +14,7 @@ import {
   file,
   missingManifest,
   readyManifest,
+  readyManifestIds,
 } from "./snippets.test-support.js";
 
 afterEach(cleanupFixtures);
@@ -81,7 +82,49 @@ describe("snippets step", () => {
     expect(asked[0]?.initial).toEqual(["official/installed", "official/preset"]);
     expect(row?.disabled).toBeUndefined();
     expect(row?.locked).toBe(true);
-    expect(row?.label).toContain("(installed)");
+    // The heading says installed, so the label states the snippet and the note its category.
+    expect(row?.label).not.toContain("(installed)");
+    expect(row?.group).toBe("Already installed");
+    expect(row?.note).toBe("workflow");
+    // The cursor never reaches a locked row, so `p` could not open one; the plugin's text today is
+    // not the bytes that were appended anyway.
+    expect(row?.preview).toBeUndefined();
+  });
+
+  it("leads with the record block, leaving no category behind for an installed snippet", async () => {
+    const root = await createRoot();
+    const registry = [
+      await file(root, "official/commit", "git"),
+      await file(root, "official/pull-request", "git"),
+      await file(root, "official/jira", "atlassian"),
+    ];
+    const stepContext = context(
+      registry,
+      readyManifestIds("official/commit", "official/pull-request"),
+    );
+
+    const options = await askedOptions(stepContext);
+
+    expect(options.map((option) => [option.group, option.value])).toEqual([
+      ["Already installed", "official/commit"],
+      ["Already installed", "official/pull-request"],
+      ["atlassian", "official/jira"],
+    ]);
+    // One shared line for the block, carried by its last row rather than repeated on every one.
+    expect(options[0]?.description).toBeUndefined();
+    expect(options[1]?.description).toBe("Aura keeps the record; the text stays where it is.");
+  });
+
+  it("says so plainly when every snippet the plugins provide is already installed", async () => {
+    const root = await createRoot();
+    const installed = await file(root, "official/installed", "workflow");
+    const stepContext = context([installed], readyManifest("official/installed"));
+
+    const { asked } = await askedQuestions(stepContext);
+
+    expect(asked[0]?.prompt).toBe(
+      "Every snippet the installed plugins provide is already in your instructions.",
+    );
   });
 
   it("keeps an untouched installed id out of both halves of the answer", async () => {
@@ -134,6 +177,24 @@ describe("snippets step", () => {
     expect(options.map((option) => option.value)).toEqual(["retired/rules"]);
     expect(options[0]?.disabled).toBeUndefined();
     expect(options[0]?.locked).toBe(true);
+    // No installed plugin publishes the text any more, so there is no category left to report —
+    // only the reason it is missing.
+    expect(options[0]?.note).toBe("plugin unavailable");
+    expect(options[0]?.preview).toBeUndefined();
+  });
+
+  it("says nothing can be added when what is left is only rows no plugin provides", async () => {
+    const root = await createRoot();
+    const installed = await file(root, "official/installed", "workflow");
+    const stepContext = context([installed], readyManifest("official/installed"), ["ghost/rules"]);
+
+    const { asked } = await askedQuestions(stepContext);
+
+    // One locked row and one disabled one: nothing here is installed-and-done, and nothing here
+    // can be ticked either, so the prompt says that rather than asking for an answer.
+    expect(asked[0]?.prompt).toBe(
+      "Nothing here can be added: every snippet is either installed already or unavailable.",
+    );
   });
 
   // A disabled row that opens ticked is an answer `--yes` has no way to take back, and the planner

@@ -14,9 +14,10 @@ import { selectedValues, type WizardOption, type WizardQuestion } from "../wizar
  * The snippets step: one picker over every snippet the installed plugins register.
  *
  * Ticking an unticked row appends its Markdown to the shared instructions once. Installed rows
- * open ticked and locked: Aura planted the text unmarked and cannot tell it from the user's own
- * guidance any more, so there is no byte the picker could take back and nothing an untick would
- * honestly mean.
+ * lead the picker as a locked record block: Aura planted the text unmarked and cannot tell it from
+ * the user's own guidance any more, so there is no byte the picker could take back and nothing an
+ * untick would honestly mean. Holding them apart from the offered rows is what keeps the numbers
+ * below counting only what a tick would change.
  */
 export const snippetsStep: SetupStep = {
   addKind: "snippet",
@@ -40,7 +41,7 @@ export const snippetsStep: SetupStep = {
       kind: "multiselect",
       label: "Snippets",
       options,
-      prompt: "Which snippets should Aura add to the shared instructions?",
+      prompt: snippetsPrompt(options),
     };
     const result = await io.ask([question], context.flow);
     if (result === "aborted") {
@@ -75,48 +76,97 @@ export const snippetsStep: SetupStep = {
   title: "Snippets",
 };
 
+/** Heading over the record block; the rows under it left their own categories to get there. */
+const INSTALLED_GROUP = "Already installed";
+
+/** The block's one shared line, carried by its last row so it reads as the section's footer. */
+const RECORD_NOTE = "Aura keeps the record; the text stays where it is.";
+
 /**
- * One row per snippet, disabled only where there is nothing Aura could do with a tick.
+ * The record block first, then one numbered row per snippet Aura could still add.
  *
  * An installed row is locked whether or not its plugin is still around. Its text is already in the
  * file, unmarked and indistinguishable from the user's own guidance, so neither direction of the
  * checkbox has anything to do — the row is there to report the record, not to be answered with.
+ * Gathering those rows under one heading is what lets the numbers below start at 1 and count only
+ * what a tick would change, and it empties out any category whose every snippet is installed.
  */
 function snippetOptions(
   catalog: readonly SnippetCatalogEntry[],
   installed: ReadonlySet<string>,
   preset: ReadonlySet<string>,
 ): readonly WizardOption[] {
-  return sortForDisplay(catalog, (entry) => [entry.category, entry.name, entry.id]).map((entry) => {
-    const alreadyInstalled = installed.has(entry.id);
-    const suffix = alreadyInstalled ? " (installed)" : preset.has(entry.id) ? " (from preset)" : "";
-    const base = {
-      group: entry.category,
-      label: `${entry.name}${suffix}`,
-      value: entry.id,
-      ...(entry.status === "available" ? { preview: entry.content } : {}),
-    };
-    const description =
-      entry.status === "available" ? entry.description : `${entry.description} ${entry.reason}`;
-    if (alreadyInstalled) {
-      return {
+  const sorted = sortForDisplay(catalog, (entry) => [entry.category, entry.name, entry.id]);
+  return [
+    ...recordBlock(sorted.filter((entry) => installed.has(entry.id))),
+    ...sorted
+      .filter((entry) => !installed.has(entry.id))
+      .map((entry) => offeredOption(entry, preset)),
+  ];
+}
+
+/**
+ * The installed rows, with the shared note appended to the last of them.
+ *
+ * They carry no preview: the cursor never lands on a locked row, so `p` could not reach one, and
+ * what it would have shown is the plugin's text today rather than the bytes that were appended —
+ * the record note already points at where the installed text actually lives.
+ */
+function recordBlock(entries: readonly SnippetCatalogEntry[]): readonly WizardOption[] {
+  return entries.map((entry, index) => ({
+    group: INSTALLED_GROUP,
+    label: entry.name,
+    locked: true,
+    // The heading no longer says where the row came from, and a snippet whose plugin is gone has
+    // no category left to report.
+    note: entry.status === "available" ? entry.category : "plugin unavailable",
+    value: entry.id,
+    ...(index === entries.length - 1 ? { description: RECORD_NOTE } : {}),
+  }));
+}
+
+/** A row a tick would act on, or one disabled because no installed plugin publishes its text. */
+function offeredOption(entry: SnippetCatalogEntry, preset: ReadonlySet<string>): WizardOption {
+  const base = {
+    group: entry.category,
+    label: `${entry.name}${preset.has(entry.id) ? " (from preset)" : ""}`,
+    value: entry.id,
+    ...(entry.status === "available" ? { preview: entry.content } : {}),
+  };
+  return entry.status === "available"
+    ? { ...base, description: entry.description }
+    : {
         ...base,
-        description: `${description} Aura keeps the record; the text stays where it is.`,
-        locked: true,
+        description: `${entry.description} ${entry.reason}`,
+        disabled: true,
+        disabledNote: "source unavailable",
       };
-    }
-    return entry.status === "available"
-      ? { ...base, description }
-      : { ...base, description, disabled: true, disabledNote: "source unavailable" };
-  });
+}
+
+/**
+ * Says so plainly when the catalog holds nothing left to add rather than asking for an answer.
+ *
+ * A locked row and a disabled one are both past asking about, so what makes this a question is a
+ * row that is neither. "Already installed" and "no installed plugin provides it" are different
+ * facts, though, and the wording names which one the screen is actually reporting.
+ */
+function snippetsPrompt(options: readonly WizardOption[]): string {
+  if (options.some((option) => option.locked !== true && option.disabled !== true)) {
+    return "Which snippets should Aura add to the shared instructions?";
+  }
+  return options.every((option) => option.locked === true)
+    ? "Every snippet the installed plugins provide is already in your instructions."
+    : "Nothing here can be added: every snippet is either installed already or unavailable.";
 }
 
 /**
  * What the picker opens with: every installed id, plus this run's answer or the preset.
  *
- * Installed rows are locked, so they open ticked on every visit — there is no earlier answer that
- * could have dropped one. The preset adds only what it can actually contribute: a disabled row
- * opening ticked is an answer `--yes` has no way to take back.
+ * Installed rows are locked, so they are seeded on every visit — there is no earlier answer that
+ * could have dropped one. Their `✔` comes from the lock rather than from this seeding, so what it
+ * settles is the answer the form reports back, not the checkbox the picker draws. The preset adds
+ * only what it can actually contribute: a disabled row opening ticked is an answer `--yes` has no
+ * way to take back.
  */
 function initialSelection(
   context: SetupStepContext,

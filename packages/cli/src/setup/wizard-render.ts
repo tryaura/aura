@@ -2,8 +2,9 @@ import { safe } from "../safe-text.js";
 import { createStyle, type Style } from "../style.js";
 import { wrapPreviewLines } from "../text-width.js";
 import { clipBody } from "./wizard-clip.js";
+import { markable, numberedRows } from "./wizard-keys.js";
 import { searchLines } from "./wizard-render-search.js";
-import { groupHeadingLines, optionLines } from "./wizard-render-options.js";
+import { groupHeadingLines, optionLines, rowGutter } from "./wizard-render-options.js";
 import { DONE, renderTabBar, UNANSWERED } from "./wizard-tabs.js";
 import type { WizardFlowContext, WizardOption, WizardQuestion } from "./wizard-types.js";
 
@@ -106,7 +107,7 @@ export function renderWizardFrame(
     ),
   );
 
-  lines.push("", style.dim(renderHint(active?.question, submitLocked, active?.searching === true)));
+  lines.push("", style.dim(renderHint(active, submitLocked)));
   return `${lines.join("\n")}\n`;
 }
 
@@ -145,6 +146,9 @@ function renderQuestionBody(
   lines.push(...searchLines(view, style));
   const pinnedLines = lines.length;
 
+  // Numbers come from the same list digits address, so a locked row costs no number and the free
+  // text row picks up after the last one the options actually spent.
+  const numbers = new Map(numberedRows(view.question).map((row, order) => [row, order + 1]));
   let previousGroup: string | undefined;
   view.question.options.forEach((option, index) => {
     lines.push(...groupHeadingLines(option.group, index, previousGroup, style));
@@ -152,7 +156,7 @@ function renderQuestionBody(
     if (index === cursorRow) {
       focus = lines.length;
     }
-    lines.push(...optionLines(option, index, view, cursorRow, style));
+    lines.push(...optionLines(option, index, view, cursorRow, style, numbers.get(index)));
   });
 
   if (view.question.search !== undefined && view.question.options.length === 0) {
@@ -167,7 +171,7 @@ function renderQuestionBody(
       focus = lines.length;
     }
     const draft = view.text === "" ? style.dim("Type something.") : safe(view.text);
-    lines.push(`${cursor} ${String(view.question.options.length + 1)}. ${draft}`);
+    lines.push(`${cursor} ${rowGutter(numbers.get(view.question.options.length))}${draft}`);
   }
 
   return { focus, lines, pinnedLines };
@@ -190,29 +194,31 @@ function renderSubmitBody(
   return lines;
 }
 
-function renderHint(
-  question: WizardQuestion | undefined,
-  submitLocked: boolean,
-  searching: boolean,
-): string {
-  if (question === undefined) {
+function renderHint(view: WizardQuestionView | undefined, submitLocked: boolean): string {
+  if (view === undefined) {
     return submitLocked ? " ←/→ steps · esc cancel" : " ↵ submit · ←/→ steps · esc cancel";
   }
   // While the query has focus the two keys the hint leads with mean something else: ↵ hands focus
   // back to the rows and esc clears the query instead of cancelling the form. Naming the standing
   // bindings here would be naming the wrong ones.
-  if (searching) {
+  if (view.searching === true) {
     return " type to filter · ↑/↓ move · ↵ results · esc clear search";
   }
-  return standingHint(question);
+  return standingHint(view);
 }
 
 /** The default binding hint; segments appear only where the key would do something. */
-function standingHint(question: WizardQuestion): string {
+function standingHint(view: WizardQuestionView): string {
+  const question = view.question;
   // Space only marks the row, so ↵ is what commits and moves on — a select names the two apart
-  // rather than calling both "select".
+  // rather than calling both "select". A screen with no row left to mark names neither: the
+  // segment would promise a key that does nothing.
   const multi = question.kind === "multiselect";
-  const mark = multi ? " · space toggle" : " · space select";
+  const mark = markable(question.options, view.selected)
+    ? multi
+      ? " · space toggle"
+      : " · space select"
+    : "";
   const commit = multi ? "↵ select" : "↵ confirm";
   const preview = question.options.some(
     (option) => option.preview !== undefined || option.loadPreview !== undefined,
@@ -251,8 +257,10 @@ function summarizeAnswer(view: WizardQuestionView): string {
   if (view.text !== "" && view.answered && view.selected.size === 0) {
     return safe(view.text);
   }
+  // A locked row is seeded into the selection so it opens marked, but it is a record rather than
+  // an answer: listing it here would report text already in the file as something this run chose.
   const labels = (view.allOptions ?? view.question.options)
-    .filter((option) => view.selected.has(option.value))
+    .filter((option) => option.locked !== true && view.selected.has(option.value))
     .map((option) => safe(option.label));
   return labels.length === 0 ? "(none)" : labels.join(", ");
 }

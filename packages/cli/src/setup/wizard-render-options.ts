@@ -2,7 +2,7 @@ import { safe } from "../safe-text.js";
 import type { Style } from "../style.js";
 import { queryTerms } from "./wizard-render-search.js";
 import { highlightLabel } from "./wizard-search.js";
-import { UNANSWERED } from "./wizard-tabs.js";
+import { DONE, UNANSWERED } from "./wizard-tabs.js";
 import type { WizardOption, WizardQuestion } from "./wizard-types.js";
 import type { WizardQuestionView } from "./wizard-render.js";
 
@@ -11,6 +11,19 @@ const CURSOR = "\u276f";
 const PARTIAL = "\u25ea";
 const SELECTED = "\u25cf";
 const UNSELECTED = "\u25cb";
+
+/** Holds an unnumbered row's marker under the numbered ones, where `N. ` would have sat. */
+const UNNUMBERED_GUTTER = "   ";
+
+/**
+ * The `N. ` a numbered row leads with, or the blank that lines an unnumbered one up under it.
+ *
+ * One definition for both the option rows and the free-text row below them, so a row that spends
+ * no number can never be rendered as one that does.
+ */
+export function rowGutter(rowNumber: number | undefined): string {
+  return rowNumber === undefined ? UNNUMBERED_GUTTER : `${String(rowNumber)}. `;
+}
 
 export function groupHeadingLines(
   group: string | undefined,
@@ -30,8 +43,10 @@ export function optionLines(
   view: WizardQuestionView,
   cursorRow: number,
   style: Style,
+  rowNumber?: number | undefined,
 ): readonly string[] {
   const cursor = index === cursorRow ? CURSOR : " ";
+  const gutter = rowGutter(rowNumber);
   // A select marks what currently stands — the `initial` a fresh form proposes (which is what
   // `--yes` accepts) or a re-seeded answer — since unlike a multiselect it has no checkboxes.
   const marker =
@@ -40,9 +55,10 @@ export function optionLines(
       : `${view.selected.has(option.value) ? SELECTED : UNSELECTED} `;
   const unavailable =
     option.disabled === true ? style.dim(` — ${safe(option.disabledNote ?? "unavailable")}`) : "";
+  const note = option.note === undefined ? "" : style.dim(` · ${safe(option.note)}`);
   const label = highlightLabel(safe(option.label), queryTerms(view), style.bold);
   const rows = [
-    `${cursor} ${String(index + 1)}. ${marker}${label}${memberCount(option, view.selected, style)}${unavailable}`,
+    `${cursor} ${gutter}${marker}${label}${note}${memberCount(option, view.selected, style)}${unavailable}`,
   ];
   if (option.description !== undefined) {
     rows.push(style.dim(`      ${safe(option.description)}`));
@@ -52,6 +68,11 @@ export function optionLines(
 
 /** A pack row's checkbox carries derived state: none, some (`◪`), or all of its members. */
 function multiselectMarker(option: WizardOption, selected: ReadonlySet<string>): string {
+  // A locked row is a record, not a question, so it reports `✔` — the same glyph the tab bar
+  // spends on what is already settled. An empty box there would invite a space that does nothing.
+  if (option.locked === true) {
+    return DONE;
+  }
   if (option.members === undefined) {
     return selected.has(option.value) ? ANSWERED : UNANSWERED;
   }

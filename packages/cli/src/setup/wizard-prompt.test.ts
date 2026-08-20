@@ -1027,7 +1027,7 @@ describe("interactive wizard", () => {
     });
   });
 
-  it("never moves a locked checkbox, and opens the cursor past it", async () => {
+  it("never moves a locked checkbox, and spends no number on it", async () => {
     const session = createSession();
     const io = createInteractiveWizardIo({
       colorDepth: 0,
@@ -1041,21 +1041,129 @@ describe("interactive wizard", () => {
         kind: "multiselect",
         label: "Snippets",
         options: [
-          { label: "Installed (installed)", locked: true, value: "official/installed" },
+          { label: "Installed", locked: true, value: "official/installed" },
           { label: "Available", value: "official/available" },
+          { label: "Also available", value: "official/also" },
         ],
         prompt: "Choose snippets",
       },
     ]);
 
-    // Space lands on the row the cursor actually opened on — the first one it can act on — and the
-    // locked row's digit is inert rather than a way around the lock.
-    session.press("space", { sequence: " " });
+    // The locked row leads but carries no number, so `1` is the first row a tick would change and
+    // `2` the one after it. Neither digit is a way around the lock, and the record still stands.
     session.press("1", { sequence: "1" });
+    session.press("2", { sequence: "2" });
     session.press("return");
 
     await expect(form).resolves.toEqual({
-      snippets: { kind: "options", values: ["official/installed", "official/available"] },
+      snippets: {
+        kind: "options",
+        values: ["official/installed", "official/available", "official/also"],
+      },
+    });
+  });
+
+  it("renders a locked row as a settled record rather than an empty checkbox", async () => {
+    const session = createSession();
+    const io = createInteractiveWizardIo({
+      colorDepth: 0,
+      stdin: session.stdin,
+      stdout: session.stdout,
+    });
+    const form = io.ask([
+      {
+        id: "snippets",
+        initial: ["official/installed"],
+        kind: "multiselect",
+        label: "Snippets",
+        options: [
+          {
+            group: "Already installed",
+            label: "Installed",
+            locked: true,
+            note: "git",
+            value: "official/installed",
+          },
+          { group: "atlassian", label: "Available", value: "official/available" },
+        ],
+        prompt: "Choose snippets",
+      },
+    ]);
+    session.press("return");
+    await form;
+
+    const frames = session.output();
+    expect(frames).toContain("   ✔ Installed · git");
+    expect(frames).toContain("❯ 1. ☐ Available");
+    // The record is not this run's answer, so the collapsed summary never claims it.
+    expect(frames).toContain("✔ Snippets  (none)");
+  });
+
+  it("steps the cursor over a locked row instead of resting on it", async () => {
+    const session = createSession();
+    const io = createInteractiveWizardIo({
+      colorDepth: 0,
+      stdin: session.stdin,
+      stdout: session.stdout,
+    });
+    const form = io.ask([
+      {
+        id: "snippets",
+        initial: ["official/installed"],
+        kind: "multiselect",
+        label: "Snippets",
+        options: [
+          { label: "Installed", locked: true, value: "official/installed" },
+          { label: "Available", value: "official/available" },
+          { label: "Also available", value: "official/also" },
+        ],
+        prompt: "Choose snippets",
+      },
+    ]);
+
+    // The cursor opens past the lock and ↑ wraps to the last offered row rather than settling on
+    // the record; space there is what proves where it landed.
+    session.press("up");
+    session.press("space", { sequence: " " });
+    // ↓ from the last row wraps over the lock to the first offered row, not onto it.
+    session.press("down");
+    session.press("space", { sequence: " " });
+    session.press("return");
+
+    await expect(form).resolves.toEqual({
+      snippets: {
+        kind: "options",
+        values: ["official/installed", "official/available", "official/also"],
+      },
+    });
+  });
+
+  it("keeps the cursor put when every row is a locked record", async () => {
+    const session = createSession();
+    const io = createInteractiveWizardIo({
+      colorDepth: 0,
+      stdin: session.stdin,
+      stdout: session.stdout,
+    });
+    const form = io.ask([
+      {
+        id: "snippets",
+        initial: ["official/installed"],
+        kind: "multiselect",
+        label: "Snippets",
+        options: [{ label: "Installed", locked: true, value: "official/installed" }],
+        prompt: "Every snippet the installed plugins provide is already in your instructions.",
+      },
+    ]);
+
+    // There is nowhere to step to; ↑/↓ must not spin looking for a row that does not exist.
+    session.press("up");
+    session.press("down");
+    session.press("space", { sequence: " " });
+    session.press("return");
+
+    await expect(form).resolves.toEqual({
+      snippets: { kind: "options", values: ["official/installed"] },
     });
   });
 });
