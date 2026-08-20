@@ -63,6 +63,14 @@ export interface SkillCatalogListing {
   /** First-visit `io.note` lines: preset problems, index problems, listing failures. */
   readonly notes: readonly string[];
   readonly unavailableSources: readonly UnavailableSkillSource[];
+  /** Advisory background checks that can disable stale rows while the picker is open. */
+  readonly verification?: SkillCatalogVerification | undefined;
+}
+
+export interface SkillCatalogVerification {
+  readonly isMissing: (identity: string) => boolean;
+  readonly settled: Promise<void>;
+  readonly subscribe: (listener: () => void) => () => void;
 }
 
 export interface SkillResolution {

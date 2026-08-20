@@ -8,9 +8,8 @@ export type AgenticRequestOutcome =
 /**
  * Performs one bounded GET, retrying once on a transient failure unless the caller opts out.
  *
- * `retry` is off for existence probes: a listing sweep runs one probe per catalog entry, so a
- * second attempt on every failure doubles the worst-case wait the user sits through for an answer
- * that is only advisory.
+ * `retry` is off for advisory repository verification: a failed tree keeps trusting the feed, so
+ * retrying would spend another request without changing the safe fallback.
  */
 export async function getAgenticResource(
   environment: Environment,

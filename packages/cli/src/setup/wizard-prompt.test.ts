@@ -275,6 +275,56 @@ describe("interactive wizard", () => {
     });
   });
 
+  it("repaints live option state and unsubscribes when the form closes", async () => {
+    const session = createSession();
+    const io = createInteractiveWizardIo({
+      colorDepth: 0,
+      stdin: session.stdin,
+      stdout: session.stdout,
+    });
+    let stale = false;
+    let repaint: (() => void) | undefined;
+    let unsubscribed = false;
+    const form = io.ask([
+      {
+        id: "skills",
+        kind: "multiselect",
+        label: "Skills",
+        options: [
+          {
+            get disabled() {
+              return stale;
+            },
+            get disabledNote() {
+              return stale ? "source no longer publishes this skill" : undefined;
+            },
+            label: "Jira projects",
+            value: "jira-projects",
+          },
+        ],
+        prompt: "Choose skills",
+        subscribe: (listener) => {
+          repaint = listener;
+          return () => {
+            unsubscribed = true;
+          };
+        },
+      },
+    ]);
+
+    expect(lastFrame(session)).not.toContain("source no longer publishes this skill");
+    stale = true;
+    if (repaint === undefined) {
+      throw new Error("expected live repaint subscription");
+    }
+    repaint();
+
+    expect(lastFrame(session)).toContain("Jira projects — source no longer publishes this skill");
+    session.press("return");
+    await expect(form).resolves.toEqual({ skills: { kind: "options", values: [] } });
+    expect(unsubscribed).toBe(true);
+  });
+
   it("collects free text typed on the trailing row", async () => {
     const session = createSession();
     const io = createInteractiveWizardIo({

@@ -425,6 +425,16 @@ A picker over every allowed skill source, then one Review form per selected remo
   memoized listing skips this frame entirely when navigating back through the flow. The frame holds
   the terminal the way a form does — raw mode, cursor hidden — so keys struck while waiting are
   discarded rather than echoed into the animation or replayed into the picker behind it.
+- AgenticSkills listings trust the provider feed at list time; Aura never holds the picker behind
+  one `SKILL.md` request per advertised row. Once the feed is available, Aura groups its entries by
+  GitHub `(owner, repository, ref)` and starts one bounded recursive-tree request per repository in
+  the background. A complete tree that lacks an advertised root `SKILL.md` repaints that row in
+  place as disabled with `— source no longer publishes this skill`. Tree results that land before
+  the picker subscribes are retained and reflected in its first frame.
+- Repository-tree verification is advisory. A request that fails, exceeds the response bound,
+  returns malformed data, or carries GitHub's `truncated: true` marker keeps trusting the feed for
+  that repository; it never falls back to per-entry probes. Resolution remains authoritative, so
+  selecting a row before it is disabled still produces one failed Review row for that skill.
 - The picker groups rows by source (`option.group`); a source that cannot be listed renders one
   disabled row with the reason in place (`Acme Skills — unavailable (set ACME_SKILLS_TOKEN)`),
   ahead of the installable rows so the initial row window can never hide it, and a manifest entry

@@ -52,6 +52,8 @@ export interface WizardQuestion {
         readonly placeholder: string;
       }
     | undefined;
+  /** Repaints the open form when externally owned option state changes. */
+  readonly subscribe?: ((repaint: () => void) => () => void) | undefined;
 }
 
 export type WizardAnswer =

@@ -15,6 +15,10 @@ export function contentsApiUrl(location: GitHubLocation, remotePath: string): st
   return `${repositoryApiUrl(location)}/contents${suffix}?ref=${encodeURIComponent(location.ref)}`;
 }
 
+export function repositoryTreeApiUrl(location: GitHubLocation): string {
+  return `${repositoryApiUrl(location)}/git/trees/${encodeURIComponent(location.ref)}?recursive=1`;
+}
+
 export function rawFileUrl(location: GitHubLocation, remotePath: string): string {
   return (
     `https://raw.githubusercontent.com/${encodeURIComponent(location.owner)}/` +

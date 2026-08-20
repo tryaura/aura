@@ -120,7 +120,11 @@ async function runForm(
     stdin.resume();
 
     return await new Promise<WizardFormResult>((resolveForm) => {
+      const unsubscribe: (() => void)[] = [];
       const finish = (result: WizardFormResult): void => {
+        for (const stop of unsubscribe) {
+          stop();
+        }
         stdin.off("keypress", onKeypress);
         stdin.off("end", onEnd);
         stdout.off("resize", onResize);
@@ -178,6 +182,11 @@ async function runForm(
       stdin.on("keypress", onKeypress);
       stdin.once("end", onEnd);
       stdout.on("resize", onResize);
+      for (const question of questions) {
+        if (question.subscribe !== undefined) {
+          unsubscribe.push(question.subscribe(paint));
+        }
+      }
       paint();
     });
   } finally {

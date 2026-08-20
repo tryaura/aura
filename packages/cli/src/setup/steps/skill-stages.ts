@@ -103,6 +103,9 @@ function pickerStage(inputs: SkillStageInputs): ChainStage<SkillsChainState> {
           label: "Skills",
           options,
           prompt: pickerPrompt(inputs),
+          ...(inputs.listing.verification === undefined
+            ? {}
+            : { subscribe: inputs.listing.verification.subscribe }),
           // Counted over every row the query reaches, not just the installable ones: search also
           // matches the preserved, blocked, and unavailable rows, and a smaller number here would
           // promise less than `/` delivers.

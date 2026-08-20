@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { skillIdentity } from "../skill-planner-paths.js";
+import { createScriptedWizardIo } from "../wizard-scripted.js";
+import type { WizardQuestion } from "../wizard-types.js";
 import { fakeCatalog, recordingIo, REMOTE_ENTRY, skillStepContext } from "./skills.test-support.js";
 import { skillsStep } from "./skills.js";
 
@@ -22,5 +24,67 @@ describe("skillsStep search", () => {
       initialLimit: 10,
       placeholder: "Search all 11 skills",
     });
+  });
+
+  it("opens before repository verification settles and disables a stale row in place", async () => {
+    const verification = Promise.withResolvers<void>();
+    const opened = Promise.withResolvers<WizardQuestion>();
+    const repainted = Promise.withResolvers<void>();
+    const submit = Promise.withResolvers<void>();
+    const listeners = new Set<() => void>();
+    let missing = false;
+    const catalog = fakeCatalog({
+      entries: [REMOTE_ENTRY],
+      verification: {
+        isMissing: () => missing,
+        settled: verification.promise,
+        subscribe: (listener) => {
+          listeners.add(listener);
+          return () => {
+            listeners.delete(listener);
+          };
+        },
+      },
+    });
+    const base = createScriptedWizardIo();
+    const gathering = skillsStep.gather(skillStepContext(catalog), {
+      ...base,
+      ask: async (questions) => {
+        const question = questions[0];
+        if (question === undefined) {
+          throw new Error("expected skills picker");
+        }
+        const stop = question.subscribe?.(() => repainted.resolve());
+        if (stop === undefined) {
+          throw new Error("expected live picker subscription");
+        }
+        opened.resolve(question);
+        await submit.promise;
+        stop();
+        return base.ask(questions);
+      },
+    });
+
+    const question = await opened.promise;
+    expect(question.options[0]?.disabled).toBe(false);
+    let settled = false;
+    const settlement = verification.promise.then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    missing = true;
+    for (const listener of listeners) {
+      listener();
+    }
+    verification.resolve();
+    await repainted.promise;
+
+    expect(question.options[0]?.disabled).toBe(true);
+    expect(question.options[0]?.disabledNote).toBe("source no longer publishes this skill");
+    submit.resolve();
+    await expect(gathering).resolves.toEqual({});
+    await settlement;
   });
 });

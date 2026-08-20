@@ -3,9 +3,9 @@ import type { DirectorySkillSource, Environment, ResolvedSkillPack } from "@trya
 import type { ScanDiagnostic } from "../workspace/diagnostics.js";
 import { createLimiter } from "../workspace/concurrency.js";
 import { loadAgenticCatalog } from "./agenticskills-catalog.js";
-import { resolveAgenticEntry, verifyAgenticEntries } from "./agenticskills-github.js";
+import type { DirectorySkillListingResult } from "./directory-listing.js";
+import { resolveAgenticEntry, startAgenticVerification } from "./agenticskills-github.js";
 import { AGENTICSKILLS_DIAGNOSTIC_ID, type AgenticCatalogEntry } from "./agenticskills-types.js";
-import type { DirectorySkillListingResult } from "./directory-client.js";
 import { MAX_CONCURRENT_SKILL_REQUESTS } from "./limits.js";
 import { skillIdProblem } from "./path-guards.js";
 
@@ -24,26 +24,15 @@ export async function listAgenticSkills(
       status: { hint: "unreachable", kind: "unavailable" },
     };
   }
-  const verified = await verifyAgenticEntries(environment, catalog.entries);
-  const verificationDiagnostics =
-    verified.failures === 0
-      ? []
-      : [
-          diagnostic(
-            `Skill source "${source.id}" could not verify ${String(verified.failures)} GitHub entries, so they are listed but may fail to install.`,
-          ),
-        ];
   return {
-    diagnostics: [
-      ...catalog.problems.map((problem) =>
-        diagnostic(`Skill source "${source.id}" catalog ${problem}, so some of it is unavailable.`),
-      ),
-      ...verificationDiagnostics,
-    ],
+    diagnostics: catalog.problems.map((problem) =>
+      diagnostic(`Skill source "${source.id}" catalog ${problem}, so some of it is unavailable.`),
+    ),
     listings: Object.freeze(
-      verified.entries.map(({ listing }) => Object.freeze({ ...listing, source })),
+      catalog.entries.map(({ listing }) => Object.freeze({ ...listing, source })),
     ),
     status: { kind: "available" },
+    verification: startAgenticVerification(environment, catalog.entries),
   };
 }
 

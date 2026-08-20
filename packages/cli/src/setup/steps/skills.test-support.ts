@@ -12,6 +12,7 @@ import type {
   PendingSkillSource,
   SkillCatalog,
   SkillCatalogEntry,
+  SkillCatalogVerification,
   UnavailableSkillSource,
 } from "../skills-catalog.js";
 import { emptyMcpCatalog, emptySkillCatalog } from "../testing.js";
@@ -82,6 +83,7 @@ interface CatalogOptions {
   readonly privateSources?: readonly PrivateDirectorySkillSource[];
   readonly problems?: ReadonlyMap<string, string>;
   readonly unavailableSources?: readonly UnavailableSkillSource[];
+  readonly verification?: SkillCatalogVerification | undefined;
 }
 
 export function fakeCatalog(options: CatalogOptions = {}): SkillCatalog {
@@ -95,6 +97,7 @@ export function fakeCatalog(options: CatalogOptions = {}): SkillCatalog {
         entries: options.entries ?? [],
         notes: options.notes ?? [],
         unavailableSources: options.unavailableSources ?? [],
+        ...(options.verification === undefined ? {} : { verification: options.verification }),
       });
     },
     pendingSources: () => options.pendingSources ?? [],

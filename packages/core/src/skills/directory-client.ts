@@ -2,7 +2,6 @@ import type {
   DirectorySkillSource,
   Environment,
   HttpGetResult,
-  ResolvedSkillListing,
   ResolvedSkillPack,
 } from "@tryaura/aura-sdk";
 
@@ -12,6 +11,7 @@ import { createLimiter } from "../workspace/concurrency.js";
 import { failedResolution, partitionResolutions } from "../workspace/resolution.js";
 import { treeHash } from "../workspace/skill-tree-walk.js";
 import { listAgenticSkills, resolveAgenticSkills } from "./agenticskills-client.js";
+import type { DirectorySkillListingResult } from "./directory-listing.js";
 import { parseDirectoryIndex } from "./index-schema.js";
 import {
   MAX_CONCURRENT_SKILL_REQUESTS,
@@ -22,16 +22,6 @@ import { parseDirectorySkillPack } from "./pack-schema.js";
 import { skillIdProblem } from "./path-guards.js";
 
 const DIRECTORY_DIAGNOSTIC_ID = "core/skill-directory";
-
-/** Everything one directory listing produced, including why it produced nothing. */
-export interface DirectorySkillListingResult {
-  readonly diagnostics: readonly ScanDiagnostic[];
-  readonly listings: readonly ResolvedSkillListing[];
-  /** How the source should appear in a picker when it cannot be listed. */
-  readonly status:
-    | { readonly kind: "available" }
-    | { readonly hint: string; readonly kind: "unavailable" };
-}
 
 /**
  * Fetches a directory's index.

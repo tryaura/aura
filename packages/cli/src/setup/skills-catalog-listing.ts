@@ -16,6 +16,7 @@ import type {
   SkillCatalogEntry,
   SkillCatalogInputs,
   SkillCatalogListing,
+  SkillCatalogVerification,
   SkillSourceLoadUpdate,
   UnavailableSkillSource,
 } from "./skills-catalog.js";
@@ -104,6 +105,48 @@ export async function loadListing(request: SkillListingRequest): Promise<SkillCa
     entries: Object.freeze(entries),
     notes: Object.freeze(notes),
     unavailableSources: Object.freeze(unavailableSources),
+    ...verificationFields(directoryResults),
+  };
+}
+
+function verificationFields(
+  results: readonly {
+    readonly result: Awaited<ReturnType<typeof listDirectorySkills>>;
+    readonly source: DirectorySkillSource;
+  }[],
+): { readonly verification?: SkillCatalogVerification | undefined } {
+  const checks = results.flatMap(({ result, source }) =>
+    result.verification === undefined ? [] : [{ source, verification: result.verification }],
+  );
+  if (checks.length === 0) {
+    return {};
+  }
+  const identities = new Map(
+    results.flatMap(({ result, source }) =>
+      result.listings.map((listing) => [
+        skillIdentity(source.id, listing.id),
+        { id: listing.id, verification: result.verification },
+      ]),
+    ),
+  );
+  return {
+    verification: Object.freeze({
+      isMissing: (identity: string) => {
+        const candidate = identities.get(identity);
+        return candidate?.verification?.isMissing(candidate.id) === true;
+      },
+      settled: Promise.all(checks.map(({ verification }) => verification.settled)).then(
+        () => undefined,
+      ),
+      subscribe: (listener: () => void) => {
+        const unsubscribe = checks.map(({ verification }) => verification.subscribe(listener));
+        return () => {
+          for (const stop of unsubscribe) {
+            stop();
+          }
+        };
+      },
+    }),
   };
 }
 

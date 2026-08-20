@@ -38,7 +38,17 @@ export function pickerOptions(inputs: SkillStageInputs): readonly WizardOption[]
     entry.id,
   ]).map((entry): WizardOption => ({
     description: `${entry.description} · v${entry.version}`,
-    ...(unsupported ? { disabled: true, disabledNote: "no selected app supports skills" } : {}),
+    get disabled() {
+      return unsupported || inputs.listing.verification?.isMissing(entry.identity) === true;
+    },
+    get disabledNote() {
+      if (unsupported) {
+        return "no selected app supports skills";
+      }
+      return inputs.listing.verification?.isMissing(entry.identity) === true
+        ? "source no longer publishes this skill"
+        : undefined;
+    },
     group: entry.sourceName,
     label: `${entry.name}${preset.has(entry.identity) ? " (from preset)" : ""}`,
     ...(entry.preview === undefined ? {} : { preview: entry.preview }),
