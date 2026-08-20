@@ -98,18 +98,18 @@ describe("INS-002", () => {
     expect(sharedInstructionLinksCheck.fix(finding, model)).toBeUndefined();
   });
 
-  it("creates an absent Cursor wrapper but preserves changed content", () => {
+  it("creates an absent native-copy wrapper but preserves changed content", () => {
     const link: ResolvedSharedLink = {
       content: "---\nalwaysApply: true\n---\n\n@file /home/dev/agents/AGENTS.md\n",
       entryPath: "/workspace/.cursor/rules/aura.mdc",
       kind: "native-copy",
       scope: "project",
     };
-    const absentModel = workspace([app({ adapterId: "cursor", link })], "# Shared\n");
+    const absentModel = workspace([app({ adapterId: "native-copy-app", link })], "# Shared\n");
     const changedModel = workspace(
       [
         app({
-          adapterId: "cursor",
+          adapterId: "native-copy-app",
           instructionFiles: [
             {
               ...linkedDocument(link.entryPath, false),
@@ -162,32 +162,13 @@ describe("INS-002", () => {
     expect(sharedInstructionLinksCheck.fix(finding, model)).toBeUndefined();
   });
 
-  it("tells the user to keep a project-scoped wrapper out of version control", () => {
-    const link: ResolvedSharedLink = {
-      content: "@file /home/dev/agents/AGENTS.md\n",
-      entryPath: "/workspace/.cursor/rules/aura.mdc",
-      kind: "native-copy",
-      scope: "project",
-    };
-    const model = workspace([app({ adapterId: "cursor", link })], "# Shared\n");
-    const finding = onlyFinding(sharedInstructionLinksCheck, model);
+  it("says nothing about an application with no global instruction file", () => {
+    // Cursor's shape: its global guidance lives in its own settings, so the adapter declares no
+    // link. Reporting it would be an error whose only remedy is writing a file into whichever
+    // repository the user ran `check` from — which is what this check used to ask for.
+    const application = app({ adapterId: "cursor", displayName: "Cursor" });
 
-    expect(sharedInstructionLinksCheck.fix(finding, model)?.manualSteps).toEqual([
-      `${link.entryPath} points at the shared source by absolute path, which is specific to this machine and this user. Keep it out of version control — add it to .gitignore or .git/info/exclude.`,
-    ]);
-  });
-
-  it("leaves a global entry without a version-control warning", () => {
-    const link: ResolvedSharedLink = {
-      content: "@~/agents/AGENTS.md",
-      entryPath: "/home/dev/.claude/CLAUDE.md",
-      kind: "import-line",
-      scope: "global",
-    };
-    const model = workspace([app({ adapterId: "claude-code", link })], "# Shared\n");
-    const finding = onlyFinding(sharedInstructionLinksCheck, model);
-
-    expect(sharedInstructionLinksCheck.fix(finding, model)?.manualSteps).toBeUndefined();
+    expect(sharedInstructionLinksCheck.detect(workspace([application], "# Shared\n"))).toEqual([]);
   });
 
   it("keeps unsupported versions and undeclared mechanisms report-only", () => {

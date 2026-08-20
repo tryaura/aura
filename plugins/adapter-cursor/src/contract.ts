@@ -9,12 +9,12 @@ import { isConfigRecord, type AppModel, type InstructionDocument } from "@tryaur
  * silently stop finding anything, so the contract is exported and imported rather than retyped.
  *
  * `rulesProject` names the `.cursor/rules` directory slot; each discovered child file gets a
- * derived id of the form `cursor.rules.project/<encoded-name>`, and `aura` is the derived id
- * reserved for the rule Aura itself maintains there.
+ * derived id of the form `cursor.rules.project/<encoded-name>`. No id is reserved for a rule Aura
+ * writes, because Aura writes none: a rule left behind by an older version is read as the ordinary
+ * project rule it is.
  */
 export const CURSOR_SOURCE_IDS = Object.freeze({
   agents: "cursor.rules.project.agents",
-  aura: "cursor.rules.project/aura-owned",
   legacyRules: "cursor.rules.project.legacy",
   mcpGlobal: "cursor.mcp.global",
   mcpProject: "cursor.mcp.project",

@@ -179,18 +179,35 @@ export function collectAdapterViolations(
           `letter or digit.`,
       );
     }
-    for (const [name, link] of [
-      ["sharedLink", adapter.sharedLink],
-      ["projectSharedLink", adapter.projectSharedLink],
+    collectSharedLinkCapabilityViolations(state, adapter, plugin);
+    for (const [name, scope, link] of [
+      ["sharedLink", "global", adapter.sharedLink],
+      ["projectSharedLink", "project", adapter.projectSharedLink],
     ] as const) {
       if (link !== undefined) {
-        for (const violation of sharedLinkViolations(link)) {
+        for (const violation of sharedLinkViolations(link, scope)) {
           state.violations.push(
             `${formatPlugin(plugin)} adapter "${adapter.id}" declares invalid ${name}: ${violation}.`,
           );
         }
       }
     }
+  }
+}
+
+function collectSharedLinkCapabilityViolations(
+  state: RegistryState,
+  adapter: Adapter,
+  plugin: AuraPlugin,
+): void {
+  if (
+    adapter.capabilities?.instructions?.globalSharedLink === "not-applicable" &&
+    adapter.sharedLink !== undefined
+  ) {
+    state.violations.push(
+      `${formatPlugin(plugin)} adapter "${adapter.id}" declares both sharedLink and ` +
+        `capabilities.instructions.globalSharedLink "not-applicable"; remove one declaration.`,
+    );
   }
 }
 

@@ -50,10 +50,10 @@ export function planSharedInstructionLink(
 
   switch (link.kind) {
     case "import-line": {
-      return planImportLine(app, model, link, status, options.sourceContent);
+      return planImportLine(app, link, status, options.sourceContent);
     }
     case "native-copy": {
-      return planNativeCopy(app, model, link, status, options.sourceContent);
+      return planNativeCopy(app, link, status, options.sourceContent);
     }
     case "symlink": {
       return planSymlink(app, model, link, status, options);
@@ -63,7 +63,6 @@ export function planSharedInstructionLink(
 
 function planImportLine(
   app: AppModel,
-  model: WorkspaceModel,
   link: ResolvedSharedLink,
   status: AdapterFileStatus | undefined,
   sourceContent: string | undefined,
@@ -85,7 +84,7 @@ function planImportLine(
   if (reconciled.status === "unchanged" && observedStateHolds(sourceContent)) {
     return { plan: convergedPlan(app) };
   }
-  return { plan: writePlan(app, link, reconciled.content, model.homeDir) };
+  return { plan: writePlan(app, link, reconciled.content) };
 }
 
 /**
@@ -117,7 +116,6 @@ function selectedContent(
 
 function planNativeCopy(
   app: AppModel,
-  model: WorkspaceModel,
   link: ResolvedSharedLink,
   status: AdapterFileStatus | undefined,
   sourceContent: string | undefined,
@@ -130,7 +128,7 @@ function planNativeCopy(
   if (status?.exists === true && content === link.content && observedStateHolds(sourceContent)) {
     return { plan: convergedPlan(app) };
   }
-  return { plan: writePlan(app, link, link.content ?? "", model.homeDir) };
+  return { plan: writePlan(app, link, link.content ?? "") };
 }
 
 function nativeCopyRefusal(
@@ -213,20 +211,16 @@ function refuseBefore(app: AppModel, status: AdapterFileStatus | undefined): str
     : undefined;
 }
 
-function writePlan(
-  app: AppModel,
-  link: ResolvedSharedLink,
-  content: string,
-  homeDir: string,
-): FixPlan {
+/**
+ * Writes one entry, with nothing to warn the user about afterwards.
+ *
+ * There used to be a manual step here telling the user to keep a project entry out of version
+ * control, because a project entry could name the shared source by absolute path. It cannot any
+ * more: a project entry names it relatively, and a home entry through `~`. Both are committable or
+ * personal by construction rather than by advice the user has to remember to follow.
+ */
+function writePlan(app: AppModel, link: ResolvedSharedLink, content: string): FixPlan {
   return {
-    ...(link.scope === "project" && content.includes(homeDir)
-      ? {
-          manualSteps: [
-            `${link.entryPath} points at the shared source by absolute path, which is specific to this machine and this user. Keep it out of version control — add it to .gitignore or .git/info/exclude.`,
-          ],
-        }
-      : {}),
     operations: [{ content, mode: 0o644, path: link.entryPath, type: "write" }],
     summary: `Link ${app.displayName} to the shared instruction source.`,
   };

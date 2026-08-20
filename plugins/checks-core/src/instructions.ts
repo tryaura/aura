@@ -80,7 +80,7 @@ export const sharedInstructionLinksCheck = defineCheck({
   detect(model) {
     return model.apps.flatMap((app) => detectMissingLink(app, model));
   },
-  explain: `Each detected agent application must load the canonical shared instructions through a mechanism its adapter understands. A missing import, native copy, or symlink leaves that application working from different rules even when the shared source is correct.
+  explain: `Each detected agent application must load the canonical shared instructions through a mechanism its adapter understands. A missing import, native copy, or symlink leaves that application working from different rules even when the shared source is correct. Applications with no instruction file of their own in the home directory are out of scope: Cursor, for one, keeps its global User Rules inside its own settings, where Aura cannot write.
 
 Re-run the check with \`--fix\` to add the adapter-supported link without replacing unrelated instructions. Inspect the preview first, apply it, then restart the affected application if it caches instruction files.`,
   findingGroup: SHARED_INSTRUCTION_GROUP,
@@ -103,6 +103,17 @@ function detectMissingLink(app: AppModel, model: WorkspaceModel): readonly Detec
   if (app.synthetic === true) {
     return [];
   }
+  // Some applications have no global instruction file at all — Cursor keeps its User Rules inside
+  // its own settings. That is a fact about the application, not a defect in the user's setup, and
+  // this check is scoped to the home directory: the alternative is an error whose only remedy is
+  // writing a file into whatever repository the user happened to run `check` from.
+  if (app.capabilities?.instructions?.globalSharedLink === "not-applicable") {
+    return [];
+  }
+  return detectRequiredLink(app, model);
+}
+
+function detectRequiredLink(app: AppModel, model: WorkspaceModel): readonly DetectedFinding[] {
   const shared = app.sharedLink;
   const sharedPath = resolve(model.sharedInstructions.path);
   if (shared !== undefined && linksToShared(app, shared, sharedPath)) {
@@ -122,7 +133,7 @@ function detectMissingLink(app: AppModel, model: WorkspaceModel): readonly Detec
     {
       details: blocked ? outcome.blocked : READY,
       // A blocked outcome has no plan behind it — an unverifiable version, an undeclared
-      // mechanism, a file Aura will not overwrite. `fix` returns nothing for those, so the
+      // mechanism, or a file Aura will not overwrite. `fix` returns nothing for those, so the
       // finding must not carry the check's `auto` fixability into a report that then offers a
       // remediation which never arrives.
       ...(blocked ? { fixability: "manual" as const } : {}),

@@ -2,7 +2,6 @@ import { join } from "node:path";
 
 import {
   defineAdapter,
-  SHARED_INSTRUCTIONS_TEMPLATE_TOKEN,
   type AdapterFileMap,
   type AdapterFileSpec,
   type AdapterFilesInput,
@@ -19,7 +18,11 @@ export const cursorAdapter = defineAdapter({
   capabilities: {
     // Rules and AGENTS.md are roots; `@` references pull further files in. Which rules are roots
     // at all is per-document knowledge, published as `isConditionalCursorRule` in the contract.
-    instructions: { importStyle: "at-import", loading: "import-graph" },
+    instructions: {
+      globalSharedLink: "not-applicable",
+      importStyle: "at-import",
+      loading: "import-graph",
+    },
   },
   detect: detectCursor,
   detectionScope: "the cursor shell command on PATH (the editor itself is not checked)",
@@ -47,18 +50,12 @@ export const cursorAdapter = defineAdapter({
       unusableMcpServers: mcpFiles.flatMap(({ config }) => config.unusable),
     };
   },
-  sharedLink: {
-    entryPath: "./.cursor/rules/aura.mdc",
-    kind: "native-copy",
-    lineTemplate: [
-      "---",
-      "alwaysApply: true",
-      "---",
-      "",
-      `@file ${SHARED_INSTRUCTIONS_TEMPLATE_TOKEN}`,
-      "",
-    ].join("\n"),
-  },
+  // No `sharedLink` or `projectSharedLink`. The explicit capability above says why the global link
+  // is not applicable: Cursor keeps User Rules inside its own settings, so there is no home entry
+  // to write. Earlier versions borrowed a project path for that global link, making a home-scoped
+  // check demand a file in whichever repository the user happened to run it from. At project scope
+  // there is nothing to write either: Cursor reads the root AGENTS.md directly.
+  //
   // Cursor's MCP and rules formats have been stable across major releases, so a wide verified
   // range costs little. Codex's adapter takes the opposite bet: its configuration format churns
   // per minor release, so it pins a narrow verified window instead.
@@ -121,13 +118,6 @@ function cursorFiles({ environment, files }: AdapterFilesInput): readonly Adapte
       scope: "project",
     },
     {
-      id: SOURCE_IDS.aura,
-      kind: "instructions",
-      optional: true,
-      path: join(environment.cwd, ".cursor", "rules", "aura.mdc"),
-      scope: "project",
-    },
-    {
       id: SOURCE_IDS.mcpGlobal,
       kind: "mcp",
       optional: true,
@@ -153,9 +143,6 @@ function discoveredRuleSpecs(files: AdapterFileMap): readonly AdapterFileSpec[] 
       continue;
     }
     for (const entry of file.entries) {
-      if (file.spec.id === SOURCE_IDS.rulesProject && entry === "aura.mdc") {
-        continue;
-      }
       specs.push({
         id: `${file.spec.id}/${encodeURIComponent(entry)}`,
         kind: "instructions",
