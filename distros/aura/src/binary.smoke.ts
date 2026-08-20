@@ -132,7 +132,6 @@ describe("compiled Aura distribution", () => {
           title: "Managed MCP servers match the manifest definition",
         },
         { id: "MCP-003", title: "Configured MCP servers can be reached" },
-        { id: "MCP-004", title: "MCP credentials use environment references" },
         { id: "MCP-005", title: "Managed MCP servers use their manifest scope" },
         { id: "SKL-001", title: "Shared skills have valid definitions and references" },
         { id: "SKL-002", title: "Managed applications deploy manifest skills" },
@@ -145,7 +144,7 @@ describe("compiled Aura distribution", () => {
         categories: {
           ENV: { errors: 0, informational: 0, passed: 4, warnings: 0 },
           INS: { errors: 1, informational: 0, passed: 7, warnings: 0 },
-          MCP: { errors: 0, informational: 0, passed: 5, warnings: 0 },
+          MCP: { errors: 0, informational: 0, passed: 4, warnings: 0 },
           MGD: { errors: 0, informational: 0, passed: 2, warnings: 0 },
           SKL: { errors: 0, informational: 0, passed: 4, warnings: 0 },
         },
@@ -153,7 +152,7 @@ describe("compiled Aura distribution", () => {
         errors: 1,
         exitCode: 0,
         informational: 0,
-        passed: 22,
+        passed: 21,
         warnings: 0,
       },
     });

@@ -17,7 +17,6 @@ import { unmanagedDetectedAppCheck } from "./mgd-003.js";
 import { mcp001 } from "./mcp-001.js";
 import { mcp002 } from "./mcp-002.js";
 import { mcp003 } from "./mcp-003.js";
-import { mcp004 } from "./mcp-004.js";
 import { mcp005 } from "./mcp-005.js";
 import { skl001 } from "./skl-001.js";
 import { skl002 } from "./skl-002.js";
@@ -45,7 +44,7 @@ export default definePlugin({
     mcp001,
     mcp002,
     mcp003,
-    mcp004,
+    // MCP-004 is temporarily disabled while its guided rewrite is redesigned.
     mcp005,
     skl001,
     skl002,
