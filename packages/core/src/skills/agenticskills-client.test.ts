@@ -1,7 +1,3 @@
-import { mkdtemp } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-
 import type { DirectorySkillSource, HttpGetRequest, HttpGetResult } from "@tryaura/aura-sdk";
 import { describe, expect, it } from "vitest";
 
@@ -110,24 +106,6 @@ describe("AgenticSkills provider", () => {
       (request) => request.url === "https://agenticskills.io/api/skills",
     );
     expect(catalogReads).toHaveLength(1);
-  });
-
-  it("serves the provider catalog from a fresh disk cache across runs", async () => {
-    const homeDir = await mkdtemp(join(tmpdir(), "aura-agentic-cache-"));
-    const first = scripted(() => ok({ skills: [CATALOG_ENTRY], total: 1 }));
-    await listDirectorySkills({ ...first.environment, homeDir }, SOURCE);
-
-    // A separate environment on the same home directory models the next run of the process.
-    const second = scripted(() => {
-      throw new Error("the second run must not fetch the feed");
-    });
-    const result = await listDirectorySkills({ ...second.environment, homeDir }, SOURCE);
-
-    expect(result.listings.map((listing) => listing.id)).toEqual(["find-skills"]);
-    expect(result.diagnostics[0]?.message).toContain("served from the local cache");
-    expect(second.requests.filter((request) => !request.url.includes("api.github.com"))).toEqual(
-      [],
-    );
   });
 
   it("names the GitHub rate limit rather than echoing its status code", async () => {

@@ -2,6 +2,8 @@ import { safe } from "../safe-text.js";
 import { createStyle, type Style } from "../style.js";
 import { wrapPreviewLines } from "../text-width.js";
 import { clipBody } from "./wizard-clip.js";
+import { highlightLabel } from "./wizard-search.js";
+import { queryTerms, searchLines } from "./wizard-render-search.js";
 import { DONE, renderTabBar, UNANSWERED } from "./wizard-tabs.js";
 import type { WizardFlowContext, WizardOption, WizardQuestion } from "./wizard-types.js";
 
@@ -13,10 +15,14 @@ export interface WizardQuestionView {
   readonly question: WizardQuestion;
   /** Whether printable keys currently belong to the search field. */
   readonly searching?: boolean | undefined;
+  /** How many rows the live query matched before the render cap, for the search status line. */
+  readonly searchTotal?: number | undefined;
   /** The live local search query. */
   readonly searchText?: string | undefined;
   /** Values currently selected, before or after the question is answered. */
   readonly selected: ReadonlySet<string>;
+  /** Whether the `s` filter is narrowing the rows to the checked ones. */
+  readonly showSelectedOnly?: boolean | undefined;
   /** Draft on the free-text row. */
   readonly text: string;
 }
@@ -168,23 +174,6 @@ function renderQuestionBody(
   return { focus, lines };
 }
 
-function searchLines(view: WizardQuestionView, style: Style): readonly string[] {
-  const search = view.question.search;
-  if (search === undefined) {
-    return [];
-  }
-  const query = view.searchText ?? "";
-  if (view.searching === true) {
-    const draft = query === "" ? style.dim(search.placeholder) : safe(query);
-    return [` ${CURSOR} / Search: ${draft}`, ""];
-  }
-  if (query !== "") {
-    const count = view.question.options.length;
-    return [`   / Search: ${safe(query)} · ${String(count)} match${count === 1 ? "" : "es"}`, ""];
-  }
-  return [`   / ${safe(search.placeholder)}`, ""];
-}
-
 function groupHeadingLines(
   group: string | undefined,
   index: number,
@@ -213,7 +202,8 @@ function optionLines(
       : `${view.selected.has(option.value) ? SELECTED : UNSELECTED} `;
   const unavailable =
     option.disabled === true ? style.dim(` — ${safe(option.disabledNote ?? "unavailable")}`) : "";
-  const rows = [`${cursor} ${String(index + 1)}. ${marker}${safe(option.label)}${unavailable}`];
+  const label = highlightLabel(safe(option.label), queryTerms(view), style.bold);
+  const rows = [`${cursor} ${String(index + 1)}. ${marker}${label}${unavailable}`];
   if (option.description !== undefined) {
     rows.push(style.dim(`      ${safe(option.description)}`));
   }
@@ -251,6 +241,11 @@ function renderHint(
   if (searching) {
     return " type to filter · ↑/↓ move · ↵ results · esc clear search";
   }
+  return standingHint(question);
+}
+
+/** The default binding hint; segments appear only where the key would do something. */
+function standingHint(question: WizardQuestion): string {
   // Space only marks the row, so ↵ is what commits and moves on — a select names the two apart
   // rather than calling both "select".
   const multi = question.kind === "multiselect";
@@ -260,7 +255,8 @@ function renderHint(
     ? " · p preview"
     : "";
   const search = question.search === undefined ? "" : " · / search";
-  return ` ↑/↓ move${mark}${preview}${search} · ←/→ steps · ${commit} · esc cancel`;
+  const selectedFilter = question.search !== undefined && multi ? " · s selected" : "";
+  return ` ↑/↓ move${mark}${preview}${search}${selectedFilter} · ←/→ steps · ${commit} · esc cancel`;
 }
 
 /**

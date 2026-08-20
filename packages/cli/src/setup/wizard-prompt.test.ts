@@ -267,11 +267,89 @@ describe("interactive wizard", () => {
       },
     ]);
 
-    expect(session.output()).toContain("11. ☑ Skill 12");
+    expect(session.output()).toContain("Selected (1)");
+    expect(session.output()).toContain("1. ☑ Skill 12");
+    expect(session.output()).toContain("· 1 selected");
     session.press("return");
 
     await expect(form).resolves.toEqual({
       skills: { kind: "options", values: ["skill-12"] },
+    });
+  });
+
+  it("keeps checked rows visible under an active query that does not match them", async () => {
+    const session = createSession();
+    const io = createInteractiveWizardIo({
+      colorDepth: 0,
+      stdin: session.stdin,
+      stdout: session.stdout,
+    });
+    const options = Array.from({ length: 12 }, (_, index) => ({
+      label: `Skill ${String(index + 1)}`,
+      value: `skill-${String(index + 1)}`,
+    }));
+    const form = io.ask([
+      {
+        id: "skills",
+        initial: ["skill-12"],
+        kind: "multiselect",
+        label: "Skills",
+        options,
+        prompt: "Choose skills",
+        search: { initialLimit: 10, placeholder: "Search all 12 skills" },
+      },
+    ]);
+
+    session.press("slash", { sequence: "/" });
+    session.type("Skill 3");
+    session.press("return");
+
+    expect(session.output()).toContain("/ Search: Skill 3 · 1 match · 1 selected");
+    expect(session.output()).toContain("Selected, not matching this filter (1)");
+    expect(session.output()).toContain("☑ Skill 12");
+    session.press("return");
+
+    await expect(form).resolves.toEqual({
+      skills: { kind: "options", values: ["skill-12"] },
+    });
+  });
+
+  it("narrows to the checked rows on s and back on a second press", async () => {
+    const session = createSession();
+    const io = createInteractiveWizardIo({
+      colorDepth: 0,
+      stdin: session.stdin,
+      stdout: session.stdout,
+    });
+    const options = Array.from({ length: 12 }, (_, index) => ({
+      label: `Skill ${String(index + 1)}`,
+      value: `skill-${String(index + 1)}`,
+    }));
+    const form = io.ask([
+      {
+        id: "skills",
+        initial: ["skill-11", "skill-12"],
+        kind: "multiselect",
+        label: "Skills",
+        options,
+        prompt: "Choose skills",
+        search: { initialLimit: 10, placeholder: "Search all 12 skills" },
+      },
+    ]);
+
+    const beforeFilter = session.output().length;
+    session.press("s", { sequence: "s" });
+    const filtered = session.output().slice(beforeFilter);
+    expect(filtered).toContain("s Showing only selected rows · s show all · 2 selected");
+    expect(filtered).not.toContain("☐ Skill 1");
+
+    const beforeRestore = session.output().length;
+    session.press("s", { sequence: "s" });
+    expect(session.output().slice(beforeRestore)).toContain("/ Search all 12 skills · 2 selected");
+    session.press("return");
+
+    await expect(form).resolves.toEqual({
+      skills: { kind: "options", values: ["skill-11", "skill-12"] },
     });
   });
 

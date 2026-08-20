@@ -453,13 +453,24 @@ A picker over every allowed skill source, then one Review form per selected remo
 entries — the rest cannot be listed until the catalog narrows upstream`). Truncation is never
   only a diagnostic note: a catalog quietly missing its tail reads as a catalog with nothing more
   to offer.
-- A picker with more than ten rows initially renders only its first ten, plus any preselected rows
-  outside that window so an installed or preset choice never disappears. Its `/` action, labelled
-  `Search all <n> skills`, filters locally across names, ids, descriptions, and sources; while a
-  query is active every matching row is rendered, with no ten-row cap. `↵` leaves search editing
-  for result navigation, and `esc` clears an active search before it can cancel the form. While the
-  query has focus the hint line names those bindings instead of the standing ones:
-  `type to filter · ↑/↓ move · ↵ results · esc clear search`.
+- A picker with more than ten rows opens on the user's own selection, not an alphabetical page:
+  every checked row leads under one `Selected (N)` heading, followed by the first ten unchecked
+  rows. A multiselect's search status line always carries a live `· N selected` count while
+  anything is checked, so the size of the basket is never off screen.
+- The `/` action, labelled `Search all <n> skills`, filters locally across names, ids,
+  descriptions, and sources — ranked, not merely filtered: a term starting a word of the label
+  beats a substring inside it, which beats a hit in the id, the source, or the description, and
+  ties keep display order. Matched spans render bold. At most fifty matches render per query; the
+  status line then reads `showing 50 of <n> matches — keep typing to narrow`, so the cap is never
+  silent. Checked rows the query does not match stay on screen under a trailing
+  `Selected, not matching this filter (K)` heading — marking a row must never make it disappear.
+  `↵` leaves search editing for result navigation, and `esc` clears an active search before it can
+  cancel the form. While the query has focus the hint line names those bindings instead of the
+  standing ones: `type to filter · ↑/↓ move · ↵ results · esc clear search`.
+- On a searchable multiselect, `s` narrows the rows to the checked ones (status line
+  `s Showing only selected rows · s show all`), a second press restores the full view, and
+  opening `/` clears the filter — the two narrowings never compose. The standing hint carries an
+  `s selected` segment exactly where the filter is available.
 - A remote skill's Review row names the source, version, and origin of its bytes, not the directory
   that advertised it: a catalog indexing content elsewhere reports that origin
   (`https://github.com/<owner>/<repo>/tree/<ref>/<dir>`), because approving a skill is approving

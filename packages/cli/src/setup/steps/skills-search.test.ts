@@ -26,6 +26,25 @@ describe("skillsStep search", () => {
     });
   });
 
+  it("offers a 1117-entry catalog whole, with search over every row", async () => {
+    const entries = Array.from({ length: 1_117 }, (_, index) => ({
+      ...REMOTE_ENTRY,
+      id: `skill-${String(index + 1)}`,
+      identity: skillIdentity("directory:acme", `skill-${String(index + 1)}`),
+      name: `Skill ${String(index + 1)}`,
+    }));
+    const scripted = recordingIo([]);
+
+    await skillsStep.gather(skillStepContext(fakeCatalog({ entries })), scripted);
+
+    const question = scripted.asked[0]?.[0];
+    expect(question?.options).toHaveLength(1_117);
+    expect(question?.search).toEqual({
+      initialLimit: 10,
+      placeholder: "Search all 1117 skills",
+    });
+  });
+
   it("renders a truncated source as one leading disabled row naming both numbers", async () => {
     const scripted = recordingIo([]);
     const catalog = fakeCatalog({

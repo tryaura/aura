@@ -1,5 +1,6 @@
 import { printable } from "./wizard-keys.js";
 import type { WizardQuestionView } from "./wizard-render.js";
+import { searchOptions } from "./wizard-search.js";
 import type { Keypress, WizardAnswer, WizardAnswers, WizardQuestion } from "./wizard-types.js";
 
 /** One question's mutable state while its form is on screen; the session in `wizard-form.ts` owns it. */
@@ -13,6 +14,8 @@ export interface QuestionState {
   /** The live local filter for a searchable question. */
   searchText: string;
   readonly selected: Set<string>;
+  /** Whether the `s` filter is narrowing a searchable multiselect to its checked rows. */
+  showSelectedOnly: boolean;
   text: string;
 }
 
@@ -24,6 +27,7 @@ export function createQuestionState(question: WizardQuestion): QuestionState {
     searching: false,
     searchText: "",
     selected: new Set(question.initial ?? []),
+    showSelectedOnly: false,
     text: question.initialText ?? "",
   };
 }
@@ -168,42 +172,73 @@ export function collectAnswers(states: readonly QuestionState[]): WizardAnswers 
 }
 
 export function toView(state: QuestionState): WizardQuestionView {
-  const options = visibleOptions(state);
+  const visible = computeVisible(state);
+  const options = visible.options;
   return {
     allOptions: state.question.options,
     answered: state.answered,
     question: options === state.question.options ? state.question : { ...state.question, options },
     searching: state.searching,
+    ...(visible.searchTotal === undefined ? {} : { searchTotal: visible.searchTotal }),
     searchText: state.searchText,
     selected: state.answeredWithText ? new Set() : state.selected,
+    showSelectedOnly: state.showSelectedOnly,
     text: state.text,
   };
 }
 
 /** Options currently on screen: a small first page, or every row matching the live query. */
 export function visibleOptions(state: QuestionState): readonly WizardQuestion["options"][number][] {
+  return computeVisible(state).options;
+}
+
+/**
+ * The rows a searchable question shows, and — under a query — how many matched before the cap.
+ *
+ * With no query the checked rows lead under one `Selected (N)` heading, so the first frame is the
+ * user's own selection rather than an alphabetical page; the browse window below it never repeats
+ * them. Under a query the ranked matches lead and every checked row the query hides follows under
+ * its own heading — marking a row must never make it disappear.
+ */
+function computeVisible(state: QuestionState): {
+  readonly options: readonly WizardQuestion["options"][number][];
+  readonly searchTotal?: number | undefined;
+} {
   const search = state.question.search;
   if (search === undefined) {
-    return state.question.options;
+    return { options: state.question.options };
   }
-  const query = state.searchText.trim().toLocaleLowerCase();
+  const chosen = state.question.options.filter((option) => state.selected.has(option.value));
+  if (state.showSelectedOnly) {
+    return { options: regroup(chosen, `Selected (${String(chosen.length)})`) };
+  }
+  const query = state.searchText.trim();
   if (query !== "") {
-    const terms = query.split(/\s+/u);
-    return state.question.options.filter((option) => {
-      const haystack = [option.label, option.description, option.group, option.value]
-        .filter((value) => value !== undefined)
-        .join(" ")
-        .toLocaleLowerCase();
-      return terms.every((term) => haystack.includes(term));
-    });
+    const outcome = searchOptions(state.question.options, query);
+    const matched = new Set(outcome.matched.map((option) => option.value));
+    const hidden = chosen.filter((option) => !matched.has(option.value));
+    return {
+      options: [
+        ...regroup(outcome.matched, undefined),
+        ...regroup(hidden, `Selected, not matching this filter (${String(hidden.length)})`),
+      ],
+      searchTotal: outcome.total,
+    };
   }
 
-  const initial = state.question.options.slice(0, search.initialLimit);
-  const visibleValues = new Set(initial.map((option) => option.value));
-  return [
-    ...initial,
-    ...state.question.options.filter(
-      (option) => state.selected.has(option.value) && !visibleValues.has(option.value),
-    ),
-  ];
+  const chosenValues = new Set(chosen.map((option) => option.value));
+  const window = state.question.options
+    .filter((option) => !chosenValues.has(option.value))
+    .slice(0, search.initialLimit);
+  return {
+    options: [...regroup(chosen, `Selected (${String(chosen.length)})`), ...window],
+  };
+}
+
+/** The same rows under one synthetic heading — or none, for a ranked list that mixes sources. */
+function regroup(
+  options: readonly WizardQuestion["options"][number][],
+  group: string | undefined,
+): readonly WizardQuestion["options"][number][] {
+  return options.map((option) => ({ ...option, group }));
 }
