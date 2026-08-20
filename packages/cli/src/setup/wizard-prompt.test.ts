@@ -314,6 +314,40 @@ describe("interactive wizard", () => {
     });
   });
 
+  it("opens a lazy preview on a loading notice and repaints with the fetched body", async () => {
+    const session = createSession();
+    const io = createInteractiveWizardIo({
+      colorDepth: 0,
+      stdin: session.stdin,
+      stdout: session.stdout,
+    });
+    const fetched = Promise.withResolvers<string>();
+    const form = io.ask([
+      {
+        id: "skills",
+        kind: "multiselect",
+        label: "Skills",
+        options: [
+          { label: "jira-triage", loadPreview: () => fetched.promise, value: "jira-triage" },
+        ],
+        prompt: "Choose skills",
+      },
+    ]);
+
+    session.press("p", { sequence: "p" });
+    expect(session.output()).toContain("Loading the preview…");
+
+    fetched.resolve("# Jira triage\n\nRead this first.");
+    await new Promise((resolve) => {
+      setImmediate(resolve);
+    });
+    expect(session.output()).toContain("Read this first.");
+
+    session.press("escape");
+    session.press("return");
+    await expect(form).resolves.toEqual({ skills: { kind: "options", values: [] } });
+  });
+
   it("narrows to the checked rows on s and back on a second press", async () => {
     const session = createSession();
     const io = createInteractiveWizardIo({

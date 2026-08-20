@@ -23,6 +23,42 @@ export function pickerPrompt(inputs: SkillStageInputs): string {
   );
 }
 
+/**
+ * A bundled skill previews its packaged SKILL.md; a remote one fetches its own on demand.
+ *
+ * Reading a skill is exactly how someone decides whether to check its row, so the decision point
+ * gets the same `p` overlay the Review form has — one bounded fetch, memoized into the run's pack
+ * cache, which is the same cache the Review resolution reads. A fetch that fails shows its
+ * validated reason in the overlay; nothing about the row changes.
+ */
+function previewField(
+  inputs: SkillStageInputs,
+  entry: SkillStageInputs["listing"]["entries"][number],
+): Partial<WizardOption> {
+  if (entry.preview !== undefined) {
+    return { preview: entry.preview };
+  }
+  if (!entry.remote) {
+    return {};
+  }
+  return {
+    loadPreview: async () => {
+      const resolution = await inputs.catalog.resolve(
+        [{ id: entry.id, source: entry.sourceId }],
+        inputs.approvedPrivateSourceIds,
+      );
+      const pack = resolution.resolved.get(entry.identity);
+      if (pack === undefined) {
+        return resolution.problems.get(entry.identity) ?? "This skill could not be fetched.";
+      }
+      return (
+        pack.files.find((file) => file.path === "SKILL.md")?.content ??
+        "This skill carries no SKILL.md."
+      );
+    },
+  };
+}
+
 export function pickerOptions(inputs: SkillStageInputs): readonly WizardOption[] {
   const covered = new Set(inputs.listing.entries.map((entry) => entry.identity));
   const unavailableById = new Map(
@@ -51,7 +87,7 @@ export function pickerOptions(inputs: SkillStageInputs): readonly WizardOption[]
     },
     group: entry.sourceName,
     label: `${entry.name}${preset.has(entry.identity) ? " (from preset)" : ""}`,
-    ...(entry.preview === undefined ? {} : { preview: entry.preview }),
+    ...previewField(inputs, entry),
     value: entry.identity,
   }));
 

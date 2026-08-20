@@ -18,6 +18,15 @@ export interface WizardOption {
   /** Optional heading rendered before the first adjacent option in this group. */
   readonly group?: string | undefined;
   readonly label: string;
+  /**
+   * Fetches the preview content on demand, for rows whose content is remote.
+   *
+   * Consulted only when `preview` is absent and only when the user presses `p` on the row: the
+   * overlay opens on a loading notice and repaints with what this resolves. The provider is
+   * expected to memoize, so reading a preview here never costs the later install a second fetch.
+   * A rejection renders a generic failure notice — never raw error text.
+   */
+  readonly loadPreview?: (() => Promise<string>) | undefined;
   /** Full multi-line content shown by the interactive preview action. */
   readonly preview?: string | undefined;
   readonly value: string;

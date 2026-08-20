@@ -37,6 +37,7 @@ export interface FormSession {
 export function createFormSession(
   questions: readonly WizardQuestion[],
   flow?: WizardFlowContext,
+  onAsyncUpdate?: () => void,
 ): FormSession {
   const states: readonly QuestionState[] = questions.map(createQuestionState);
   // With a flow the trailing Submit belongs to the whole wizard, not this form, so the form's
@@ -217,11 +218,36 @@ export function createFormSession(
 
   const openRowPreview = (options: readonly WizardQuestion["options"][number][]): boolean => {
     const option = options[cursorRow];
-    if (option?.preview === undefined || option.disabled === true) {
+    if (option === undefined || option.disabled === true) {
       return false;
     }
-    preview = openPreview(option.preview, option.label);
+    if (option.preview !== undefined) {
+      preview = openPreview(option.preview, option.label);
+      return true;
+    }
+    if (option.loadPreview === undefined) {
+      return false;
+    }
+    const pending = openPreview("Loading the preview…", option.label);
+    preview = pending;
+    void option.loadPreview().then(
+      (content) => {
+        replacePendingPreview(pending, content, option.label);
+      },
+      () => {
+        replacePendingPreview(pending, "The preview could not be fetched.", option.label);
+      },
+    );
     return true;
+  };
+
+  /** Swaps the loading notice for the fetched body — unless the reader already closed it. */
+  const replacePendingPreview = (pending: PreviewState, content: string, title: string): void => {
+    if (preview !== pending) {
+      return;
+    }
+    preview = openPreview(content, title);
+    onAsyncUpdate?.();
   };
 
   /**

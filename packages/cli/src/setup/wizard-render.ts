@@ -251,7 +251,9 @@ function standingHint(question: WizardQuestion): string {
   const multi = question.kind === "multiselect";
   const mark = multi ? " · space toggle" : " · space select";
   const commit = multi ? "↵ select" : "↵ confirm";
-  const preview = question.options.some((option) => option.preview !== undefined)
+  const preview = question.options.some(
+    (option) => option.preview !== undefined || option.loadPreview !== undefined,
+  )
     ? " · p preview"
     : "";
   const search = question.search === undefined ? "" : " · / search";

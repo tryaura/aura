@@ -97,7 +97,11 @@ async function runForm(
   summarize?: SummaryGate,
 ): Promise<WizardFormResult> {
   const { stdin, stdout } = options;
-  const session = createFormSession(questions, flow);
+  // Async preview content lands between keypresses, so the session gets its own way to repaint;
+  // `paint` is initialized below and only ever called after the first frame is up.
+  const session = createFormSession(questions, flow, () => {
+    paint();
+  });
   let renderedLines = 0;
   let lastFrame = "";
 

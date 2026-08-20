@@ -471,6 +471,13 @@ entries — the rest cannot be listed until the catalog narrows upstream`). Trun
   `s Showing only selected rows · s show all`), a second press restores the full view, and
   opening `/` clears the filter — the two narrowings never compose. The standing hint carries an
   `s selected` segment exactly where the filter is available.
+- `p` works at the picker, not only at Review: a remote row fetches its own SKILL.md on demand —
+  the overlay opens on `Loading the preview…` and repaints with the body — because reading a
+  skill is exactly how someone decides whether to check its row. The fetch is bounded, memoized
+  into the same pack cache the Review resolution reads (so previewing never costs the install a
+  second download), and a fetch that fails shows its validated reason in the overlay without
+  changing the row. A bundled row keeps its packaged content; `--yes` and scripted runs never
+  press `p`, so nothing is ever fetched for them.
 - A remote skill's Review row names the source, version, and origin of its bytes, not the directory
   that advertised it: a catalog indexing content elsewhere reports that origin
   (`https://github.com/<owner>/<repo>/tree/<ref>/<dir>`), because approving a skill is approving

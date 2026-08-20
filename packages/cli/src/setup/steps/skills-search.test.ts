@@ -45,6 +45,40 @@ describe("skillsStep search", () => {
     });
   });
 
+  it("gives a remote row a lazy preview that resolves through the shared pack cache", async () => {
+    const scripted = recordingIo([]);
+    const packs = new Map([
+      [
+        REMOTE_ENTRY.identity,
+        {
+          description: "Review changes before landing.",
+          files: [{ content: "# Review skill\n", path: "SKILL.md" }],
+          id: "review",
+          name: "Review",
+          source: {
+            id: "directory:acme",
+            kind: "directory",
+            name: "Acme Skills",
+            url: "https://skills.acme.example",
+          },
+          treeHash: "3".repeat(64),
+          version: "1.0.0",
+        } as const,
+      ],
+    ]);
+
+    await skillsStep.gather(
+      skillStepContext(fakeCatalog({ entries: [REMOTE_ENTRY], packs })),
+      scripted,
+    );
+
+    const row = scripted.asked[0]?.[0]?.options.find(
+      (option) => option.value === REMOTE_ENTRY.identity,
+    );
+    expect(row?.preview).toBeUndefined();
+    await expect(row?.loadPreview?.()).resolves.toBe("# Review skill\n");
+  });
+
   it("renders a truncated source as one leading disabled row naming both numbers", async () => {
     const scripted = recordingIo([]);
     const catalog = fakeCatalog({
