@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { Readable, Writable } from "node:stream";
 
 import { runCli, type CliRuntime } from "@tryaura/aura-cli";
-import { claudeCodePlugin, checksCorePlugin } from "@tryaura/aura-cli/plugins";
+import { claudeCodePlugin } from "@tryaura/aura-cli/plugins";
 import {
   applyFixPlan,
   buildWorkspaceModel,
@@ -11,9 +11,8 @@ import {
   planManifestMcpConvergence,
   planMcpSecretRemediation,
   prepareFixPlan,
-  runChecks,
 } from "@tryaura/core";
-import type { Check, Finding, FixPlan, WorkspaceModel } from "@tryaura/aura-sdk";
+import type { FixPlan, WorkspaceModel } from "@tryaura/aura-sdk";
 import { createSeedBuilder, runCheck, type TestSeed } from "@tryaura/aura-testkit";
 import { describe, expect, it } from "vitest";
 
@@ -22,14 +21,13 @@ import { AURA_DISTRO } from "./distro.js";
 const SENTINEL = "sk-aura-permanent-integration-sentinel-7Qx9Lm2Np4Rs6Tv8";
 const NOW = () => new Date("2026-08-18T00:00:00.000Z");
 
-describe("MCP-004 permanent sentinel audit", () => {
+describe("MCP secret permanent sentinel audit", () => {
   it("keeps the sentinel out of every report and permits it only in the protected undo payload", async () => {
     await using seed = await secretSeed().build();
     const configPath = join(seed.homeDir, ".claude.json");
 
     const human = await run(seed, ["check"]);
     const detail = await run(seed, ["check", "--detail"]);
-    const explain = await run(seed, ["check", "--explain", "MCP-004"]);
     const redirected = await run(seed, ["check", "--fix"]);
     const json = await runCheck({ distro: AURA_DISTRO, seed });
     for (const output of [
@@ -37,8 +35,6 @@ describe("MCP-004 permanent sentinel audit", () => {
       human.stderr,
       detail.stdout,
       detail.stderr,
-      explain.stdout,
-      explain.stderr,
       redirected.stdout,
       redirected.stderr,
       json.stdout,
@@ -46,18 +42,13 @@ describe("MCP-004 permanent sentinel audit", () => {
     ]) {
       expect(output).not.toContain(SENTINEL);
     }
-    expect(human.stdout).toContain("MCP-004");
-    expect(explain.stdout).toContain("Aura never displays or stores those values");
-    // A shell with no terminal may preview unrelated automatic fixes, but it cannot answer the
-    // credential rewrite questions and must leave the protected source untouched.
-    expect(redirected.stdout).toContain("Fix preview: Apply 1 fix.");
-    expect(redirected.stdout).toContain("2 guided");
+    // No registered check offers to rewrite the credential while MCP-004 is withdrawn, but the
+    // scan still reads the file holding it, and every other fix must leave that source untouched.
     await expect(readFile(configPath, "utf8")).resolves.toContain(SENTINEL);
     expect(JSON.stringify(json.report)).not.toContain(SENTINEL);
 
     const model = await scan(seed);
-    const finding = mcp004Finding(model);
-    const plan = mcp004Plan(finding, model);
+    const plan = sentinelPlan(model);
     const prepared = await prepareFixPlan({ model, plan });
     const serializedPreview = JSON.stringify(prepared.preview);
     expect(serializedPreview).not.toContain(SENTINEL);
@@ -78,7 +69,7 @@ describe("MCP-004 permanent sentinel audit", () => {
     expect(rewritten).not.toContain(SENTINEL);
     expect(rewritten).toContain("${API_TOKEN}");
     expect(rewritten).toContain("${DOCS_ARGS_1}");
-    expect(runChecks([mcp004()], await scan(seed)).findings).toEqual([]);
+    expect((await scan(seed)).mcpSecretSightings).toEqual([]);
 
     const journalRoot = join(seed.homeDir, "agents", ".backups");
     const journalFiles = await recursiveFiles(journalRoot);
@@ -97,7 +88,7 @@ describe("MCP-004 permanent sentinel audit", () => {
     expect(await readFile(manifests[0] ?? "", "utf8")).not.toContain(SENTINEL);
   });
 
-  it("redacts a coalesced MCP-002 and MCP-004 write on both diff sides", async () => {
+  it("redacts a coalesced convergence and secret-remediation write on both diff sides", async () => {
     await using seed = await managedSecretSeed().build();
     const model = await scan(seed);
     const sighting = model.mcpSecretSightings[0];
@@ -211,30 +202,21 @@ async function scan(seed: TestSeed): Promise<WorkspaceModel> {
   return built.model;
 }
 
-function mcp004(): Check {
-  const check = checksCorePlugin.checks?.find((candidate) => candidate.id === "MCP-004");
-  if (check === undefined) {
-    throw new Error("MCP-004 is missing.");
+/**
+ * Plans the sentinel's remediation from core rather than through the check that used to own it.
+ *
+ * The audit protects the redaction, backup, and undo path around a credential rewrite, and that
+ * path belongs to core. Reaching it through MCP-004's registration entry tied the guarantee to
+ * whether the check happens to be registered, which is exactly the thing that changed.
+ */
+function sentinelPlan(model: WorkspaceModel): FixPlan {
+  const sighting = model.mcpSecretSightings[0];
+  if (sighting === undefined) {
+    throw new Error("Expected the permanent MCP sentinel sighting.");
   }
-  return check;
-}
-
-function mcp004Finding(model: WorkspaceModel): Finding {
-  const finding = runChecks([mcp004()], model).findings[0];
-  if (finding === undefined) {
-    throw new Error("MCP-004 did not report the permanent sentinel.");
-  }
-  return finding;
-}
-
-function mcp004Plan(finding: Finding, model: WorkspaceModel): FixPlan {
-  const check = mcp004();
-  if (check.fixability !== "guided") {
-    throw new Error("MCP-004 must remain guided.");
-  }
-  const plan = check.fix(finding, model);
+  const plan = planMcpSecretRemediation(model, sighting);
   if (plan === undefined) {
-    throw new Error("MCP-004 did not produce its whole-file plan.");
+    throw new Error("MCP secret remediation did not produce its whole-file plan.");
   }
   return plan;
 }

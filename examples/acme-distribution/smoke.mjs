@@ -99,7 +99,7 @@ try {
   );
   assert.equal(
     finding?.message,
-    "The Acme distribution loaded its agent, snippet, skill, and MCP definition.",
+    "The Acme distribution loaded its agent, skill, and MCP definition.",
   );
   assert.equal(app?.detection.version, "1.2.3");
   assert.deepEqual(result.report.diagnostics, []);

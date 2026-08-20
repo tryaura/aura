@@ -159,6 +159,41 @@ describe("sources that lose every paragraph to a duplicate", () => {
   });
 });
 
+describe("a source the user wrote as headings alone", () => {
+  const headings: InstructionSource = {
+    content: "# Acme instructions\n",
+    path: "/home/dev/.acme-agent/AGENTS.md",
+    scope: "global",
+  };
+
+  // Nothing took those lines from it, so they are the whole of what the file contributes. Dropping
+  // them empties the scope, and setup answers an empty global merge by blocking the run.
+  it("merges what it says rather than reading it as a duplicate's skeleton", () => {
+    const output = composeConsolidatedInstructions(
+      [headings],
+      selection([headings.path]),
+      [],
+      model(),
+    );
+
+    expect(output).toContain("# Instructions from ~/.acme-agent/AGENTS.md");
+    expect(output).toContain("# Acme instructions");
+  });
+
+  it("reports it unmerged once the target that holds it is edited away", () => {
+    const chosen = selection([headings.path]);
+    const target: InstructionSource = {
+      content: composeConsolidatedInstructions([headings], chosen, [], model()),
+      path: "/home/dev/agents/AGENTS.md",
+      scope: "global",
+    };
+    const edited: InstructionSource = { ...headings, content: "# Acme instructions, revised\n" };
+
+    expect(unmergedSources([headings], chosen, [], model(), target)).toEqual([]);
+    expect(unmergedSources([edited], chosen, [], model(), target)).toEqual([headings.path]);
+  });
+});
+
 function selection(selectedSources: readonly string[]): InstructionScopeSelection {
   return {
     action: "consolidate",
