@@ -111,8 +111,12 @@ describe("instruction consolidation setup", () => {
       readFile(join(fixture.homeDir, ".claude", "CLAUDE.md"), "utf8"),
     ).resolves.toContain("@~/agents/AGENTS.md");
     const shared = await readFile(join(fixture.homeDir, "agents", "AGENTS.md"), "utf8");
-    expect(shared).toContain("# Instructions from ~/.cursorrules");
-    expect(shared.match(/# Instructions from/gu)).toHaveLength(2);
+    // `~/.cursorrules` loses its only paragraph to the copy kept under CLAUDE.md's heading, and its
+    // surviving `# Cursor` line is not content the file contributed. Same rule as the byte-identical
+    // case above, which held before only because those fixtures carried no heading to leave behind.
+    expect(shared).not.toContain("# Instructions from ~/.cursorrules");
+    expect(shared.match(/# Instructions from/gu)).toHaveLength(1);
+    expect(shared.match(new RegExp(duplicate, "gu"))).toHaveLength(1);
 
     // Re-running must not merge the same sources into the target a second time.
     const before = await snapshot(fixture.homeDir);

@@ -10,6 +10,7 @@ import type {
 } from "@tryaura/aura-sdk";
 
 import { reconcileManagedBlock } from "../managed-block/reconcile.js";
+import { stripManagedBlock } from "../managed-block/strip.js";
 
 const SHARED_LINK_SNIPPET_ID = "shared-instructions";
 
@@ -152,7 +153,8 @@ function planSymlink(
   if (
     status?.exists === true &&
     status.pathKind !== "symlink" &&
-    options.sourceContent === undefined
+    options.sourceContent === undefined &&
+    !holdsOnlyManagedBlock(app, link.entryPath)
   ) {
     return {
       blocked:
@@ -224,6 +226,18 @@ function writePlan(app: AppModel, link: ResolvedSharedLink, content: string): Fi
     operations: [{ content, mode: 0o644, path: link.entryPath, type: "write" }],
     summary: `Link ${app.displayName} to the shared instruction source.`,
   };
+}
+
+/**
+ * Whether a real file at this entry holds nothing but a managed block Aura itself wrote.
+ *
+ * The refusal above guards the user's own guidance, and an entry Aura wired as an import line holds
+ * none. Without this, an app switching from an import line to a link strands every machine already
+ * wired the old way: consolidation has no source to offer for a file that is Aura's.
+ */
+function holdsOnlyManagedBlock(app: AppModel, path: string): boolean {
+  const content = instructionEntry(app, path)?.content;
+  return content !== undefined && stripManagedBlock(content).trim().length === 0;
 }
 
 function instructionEntry(app: AppModel, path: string): InstructionDocument | undefined {

@@ -87,8 +87,7 @@ export const claudeCodeAdapter = defineAdapter({
   },
   sharedLink: {
     entryPath: "~/.claude/CLAUDE.md",
-    kind: "import-line",
-    lineTemplate: `@${SHARED_INSTRUCTIONS_TEMPLATE_TOKEN}`,
+    kind: "symlink",
   },
   supportedRange: ">=2.1.0 <3.0.0",
 });

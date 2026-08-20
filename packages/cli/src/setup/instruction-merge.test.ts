@@ -71,6 +71,53 @@ describe("managed blocks in consolidation", () => {
   });
 });
 
+describe("sources that lose every paragraph to a duplicate", () => {
+  const BODY = "# Global Preferences\n\n## Workflow\n\n- Be brief.\n";
+  const winner: InstructionSource = {
+    content: BODY,
+    path: "/home/dev/.claude/CLAUDE.md",
+    scope: "global",
+  };
+  // Byte-identical to the winner, the way a hand-synced pair of global instruction files is.
+  const loser: InstructionSource = { ...winner, path: "/home/dev/.codex/AGENTS.md" };
+  const sources = [winner, loser];
+  // INS-003 claims the bullet, which is all either file says; neither file's headings are in it.
+  const clusters = [
+    {
+      id: "cluster-1",
+      identical: true,
+      members: [
+        { endLine: 5, id: "winner", path: winner.path, startLine: 5 },
+        { endLine: 5, id: "loser", path: loser.path, startLine: 5 },
+      ],
+      similarity: 1,
+    },
+  ];
+  const chosen: InstructionScopeSelection = {
+    ...selection([winner.path, loser.path]),
+    duplicateWinners: { "cluster-1": "winner" },
+  };
+
+  it("writes no provenance heading for the skeleton the winner left behind", () => {
+    const output = composeConsolidatedInstructions(sources, chosen, clusters, model());
+
+    expect(output).toContain("- Be brief.");
+    // The headings survive `removeRanges` untouched, so a bare non-blank test would emit them twice.
+    expect(output.match(/## Workflow/gu)).toHaveLength(1);
+    expect(output).not.toContain(".codex/AGENTS.md");
+  });
+
+  it("still calls the emptied source safe to archive", () => {
+    const target: InstructionSource = {
+      content: composeConsolidatedInstructions(sources, chosen, clusters, model()),
+      path: "/home/dev/agents/AGENTS.md",
+      scope: "global",
+    };
+
+    expect(unmergedSources(sources, chosen, clusters, model(), target)).toEqual([]);
+  });
+});
+
 function selection(selectedSources: readonly string[]): InstructionScopeSelection {
   return {
     action: "consolidate",

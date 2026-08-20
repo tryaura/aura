@@ -96,9 +96,18 @@ describe("Claude Code candidate search", () => {
 });
 
 describe("Claude Code file specifications", () => {
-  it("declares the managed shared-instructions import", () => {
+  it("links the home entry at the shared source instead of importing it", () => {
     expect(claudeCodeAdapter.sharedLink).toEqual({
       entryPath: "~/.claude/CLAUDE.md",
+      kind: "symlink",
+    });
+  });
+
+  // The two slots differ on purpose: only the project entry is committed, so only it has to be a
+  // file every checkout can read without the author's filesystem.
+  it("keeps the committed project entry an import line", () => {
+    expect(claudeCodeAdapter.projectSharedLink).toEqual({
+      entryPath: "./CLAUDE.md",
       kind: "import-line",
       lineTemplate: "@{{sharedInstructions}}",
     });
