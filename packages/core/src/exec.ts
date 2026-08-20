@@ -30,9 +30,12 @@ export function createExec(options: ExecOptions): Environment["exec"] {
 }
 
 function execute(request: ExecRequest, options: ExecOptions): Promise<ExecResult> {
+  if (request.signal?.aborted === true) {
+    return Promise.reject(abortReason(request.signal));
+  }
   const timeoutMs = normalizeTimeout(request.timeoutMs);
 
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const plan = planSpawn(request.command, request.args ?? [], options.platform);
     const child = spawn(plan.command, [...plan.args], {
       cwd: request.cwd ?? options.cwd,
@@ -47,8 +50,41 @@ function execute(request: ExecRequest, options: ExecOptions): Promise<ExecResult
     let settled = false;
     let stderr = "";
     let stdout = "";
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    let abortOnSignal: (() => void) | undefined;
 
-    const timeout = setTimeout(() => {
+    const cleanUp = (): void => {
+      if (timeout !== undefined) {
+        clearTimeout(timeout);
+      }
+      if (abortOnSignal !== undefined) {
+        request.signal?.removeEventListener("abort", abortOnSignal);
+      }
+      child.stdout.destroy();
+      child.stderr.destroy();
+    };
+
+    const finish = (result: ExecResult): void => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      cleanUp();
+      resolve(result);
+    };
+
+    const fail = (error: unknown): void => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      cleanUp();
+      reject(error);
+    };
+
+    timeout = setTimeout(() => {
       terminate(child, options.platform);
       // Settle here rather than waiting for `close`. A grandchild that inherited the pipes holds
       // them open after its parent dies, and `close` would never fire.
@@ -59,16 +95,9 @@ function execute(request: ExecRequest, options: ExecOptions): Promise<ExecResult
       });
     }, timeoutMs);
 
-    const finish = (result: ExecResult): void => {
-      if (settled) {
-        return;
-      }
-
-      settled = true;
-      clearTimeout(timeout);
-      child.stdout.destroy();
-      child.stderr.destroy();
-      resolve(result);
+    abortOnSignal = () => {
+      terminate(child, options.platform);
+      fail(abortReason(request.signal));
     };
 
     const abortOnOverflow = (): void => {
@@ -115,7 +144,16 @@ function execute(request: ExecRequest, options: ExecOptions): Promise<ExecResult
       });
     });
     child.stdin.end(request.input);
+    request.signal?.addEventListener("abort", abortOnSignal, { once: true });
+    if (request.signal?.aborted === true) {
+      abortOnSignal();
+    }
   });
+}
+
+/** The caller-selected reason, with the platform-standard fallback for a bare abort. */
+function abortReason(signal: AbortSignal | undefined): unknown {
+  return signal?.reason ?? new DOMException("The command was aborted.", "AbortError");
 }
 
 /**

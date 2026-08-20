@@ -147,6 +147,29 @@ describe("Environment.exec", () => {
     expect(result.stderr).toContain("Command timed out after 25ms.");
   });
 
+  it("kills a command and its descendants when the caller aborts", async () => {
+    const marker = `aura-aborted-probe-${process.pid}`;
+    const environment = createTestEnvironment();
+    const controller = new AbortController();
+    const pending = environment.exec({
+      args: [
+        "-e",
+        `require("child_process").spawn(process.execPath, ["-e", "/*${marker}*/setInterval(() => {}, 1_000)"], { stdio: "inherit" }); setInterval(() => {}, 1_000);`,
+      ],
+      command: process.execPath,
+      signal: controller.signal,
+      timeoutMs: 30_000,
+    });
+    const rejected = expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    await setTimeoutPromise(250);
+
+    controller.abort();
+
+    await rejected;
+    await setTimeoutPromise(500);
+    expect(await countProcessesMatching(marker)).toBe(0);
+  }, 10_000);
+
   it("times out even when a grandchild inherits the pipes and outlives its parent", async () => {
     // A child that leaves a grandchild holding stdout never emits `close`, so a timeout that
     // waits for `close` hangs forever instead of returning.
