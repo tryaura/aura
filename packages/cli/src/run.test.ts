@@ -24,6 +24,17 @@ const ESCAPE = String.fromCharCode(27);
 const RIGHT_TO_LEFT_OVERRIDE = "\u202e";
 const ZERO_WIDTH_SPACE = "\u200b";
 
+/**
+ * Rejoins the report's hard-wrapped rows into the text they were laid out from.
+ *
+ * The report wraps to the terminal's width, so a value long enough to test a length limit is also
+ * long enough to be split across rows. Rejoining keeps these assertions about how much text
+ * survives sanitizing rather than about where the layout happened to break it.
+ */
+function rejoinWrapped(text: string): string {
+  return text.replaceAll(/\n +/gu, "");
+}
+
 describe("runCli", () => {
   it("refuses to call a run with no checks clean", async () => {
     const capture = createCapture(["check"]);
@@ -571,7 +582,7 @@ describe("runCli", () => {
     const error = createCapture(["check"]);
 
     expect(await runCli(distro([findingPlugin("warn")]), warning.runtime)).toBe(0);
-    expect(warning.stdout.text).toContain("Manual attention (1)");
+    expect(warning.stdout.text).toContain("1 warning");
     expect(warning.stdout.text).toContain("! warn finding");
     expect(await runCli(distro([findingPlugin("error")]), error.runtime)).toBe(0);
     expect(error.stdout.text).toContain("✗ error finding");
@@ -664,7 +675,7 @@ describe("runCli", () => {
     );
 
     expect(exitCode).toBe(3);
-    expect(capture.stdout.text).toContain("Manual attention (1)");
+    expect(capture.stdout.text).toContain("1 warning");
     expect(capture.stdout.text).toContain("! warn finding");
     expect(capture.stdout.text).toContain("Run errors (1)");
     expect(capture.stdout.text).toContain("[throwing/CHECK:check]");
@@ -783,10 +794,11 @@ describe("runCli", () => {
 
     await runCli(distro([plugin]), capture.runtime);
 
-    expect(capture.stdout.text).toContain(`${"m".repeat(500)}…`);
-    expect(capture.stdout.text).toContain(`${"d".repeat(500)}…`);
-    expect(capture.stdout.text).not.toContain(message);
-    expect(capture.stdout.text).not.toContain(details);
+    const text = rejoinWrapped(capture.stdout.text);
+    expect(text).toContain(`${"m".repeat(500)}…`);
+    expect(text).toContain(`${"d".repeat(500)}…`);
+    expect(text).not.toContain(message);
+    expect(text).not.toContain(details);
   });
 
   it("does not split a surrogate pair at the finding-text limit", async () => {
@@ -795,7 +807,7 @@ describe("runCli", () => {
 
     await runCli(distro([findingPlugin("warn", [{ id: "unicode", message }])]), capture.runtime);
 
-    expect(capture.stdout.text).toContain(`${"m".repeat(499)}🙂…`);
+    expect(rejoinWrapped(capture.stdout.text)).toContain(`${"m".repeat(499)}🙂…`);
     expect(capture.stdout.text).not.toContain("�");
   });
 

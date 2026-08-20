@@ -5,12 +5,13 @@ import { pluralize } from "@tryaura/core/pluralize";
 
 import { notFoundLine } from "./not-found-line.js";
 import {
-  FINDING_SECTIONS,
   findingsExceedHumanLimits,
   findingsHaveHiddenDetail,
   humanFindings,
-  renderFindingSection,
 } from "./render-human-findings.js";
+import { pinnedRow, reportColumns } from "./render-human-layout.js";
+import { renderSettledApp, renderSubject } from "./render-human-subject-block.js";
+import { reportSubjects } from "./render-human-subject.js";
 import type { HumanCheckRenderOptions, HumanRenderContext } from "./render-human-types.js";
 import type { CheckReport } from "./report.js";
 import type { ReportApp, ReportFinding } from "./report-shapes.js";
@@ -24,7 +25,11 @@ export function renderHumanCheckReport(
   output: Writable,
   options: HumanCheckRenderOptions,
 ): void {
-  const context = { options, style: createStyle(options.colorDepth) };
+  const context = {
+    columns: reportColumns(output),
+    options,
+    style: createStyle(options.colorDepth),
+  };
   output.write(`${branding.displayName} check — ${humanVerdict(report)}\n`);
   renderHeadline(report, output, context);
 
@@ -46,16 +51,18 @@ export function renderHumanCheckReport(
 
   const checks = new Map(options.checks.map((check) => [check.id, check]));
   const shown = humanFindings(report.findings);
-  for (const section of FINDING_SECTIONS) {
-    renderFindingSection(
-      section.title,
-      shown.filter(section.match),
-      report.findings.filter(section.match).length,
-      checks,
-      output,
-      context,
-    );
+  const subjects = reportSubjects({
+    all: report.findings,
+    apps: report.apps,
+    checks,
+    roots: options.roots,
+    shown,
+  });
+  for (const subject of subjects) {
+    renderSubject(subject, checks, output, context);
   }
+  renderSettled(report, output, context);
+
   const hidden = report.findings.length - shown.length;
   if (hidden > 0) {
     output.write(`\n… and ${String(hidden)} more ${pluralize(hidden, "finding")} not shown\n`);
@@ -90,7 +97,7 @@ function renderMore(
   // dropped is not something the flag can show, so offering it there would be a dead end.
   if (!context.options.verbose && hasHiddenDetail(report, shown, checks)) {
     lines.push(
-      `Expand occurrences and locations; add passed checks and applications: ${branding.command} check --verbose`,
+      `Expand occurrences and locations; add passed checks: ${branding.command} check --verbose`,
     );
   }
   if (findingsExceedHumanLimits(report.findings)) {
@@ -122,6 +129,13 @@ function renderHeadline(report: CheckReport, output: Writable, context: HumanRen
   output.write(`${passed ? context.style.green(line) : line}\n`);
 }
 
+/**
+ * The one command that addresses every fixable finding, on one line.
+ *
+ * The split between automatic and guided is what tells the user whether the run will stop to ask
+ * them anything, so it travels with the command rather than in prose below it. Where the terminal
+ * cannot hold both, the summary wraps beneath instead of the command losing its place.
+ */
 function renderRecommendation(
   report: CheckReport,
   branding: CliBranding,
@@ -137,22 +151,23 @@ function renderRecommendation(
   }
   const automatic = fixable.filter((finding) => finding.fixability === "auto").length;
   const guided = fixable.length - automatic;
-  const command = `${branding.command} check --fix`;
   const modes = [
     ...(automatic > 0 ? [`${String(automatic)} automatic`] : []),
     ...(guided > 0 ? [`${String(guided)} guided`] : []),
   ];
-  renderSection(
-    "▶",
-    "Recommended next step",
-    [
-      command,
-      `Review ${String(fixable.length)} available ${pluralize(fixable.length, "fix", "fixes")}: ${modes.join(" · ")}.`,
-      "Aura previews every change before writing and checks your setup again afterward.",
-    ],
-    output,
-    context.style.bold,
-  );
+  const command = `▶ ${branding.command} check --fix`;
+  const summary = `${String(fixable.length)} ${pluralize(fixable.length, "fix", "fixes")}: ${modes.join(" · ")}, previewed first`;
+
+  output.write("\n");
+  for (const line of pinnedRow({
+    decorate: context.style.bold,
+    indent: "",
+    pinned: context.style.dim(summary),
+    text: command,
+    width: context.columns,
+  })) {
+    output.write(`${line}\n`);
+  }
 }
 
 function renderDiagnostics(
@@ -178,6 +193,27 @@ function renderDiagnostics(
   );
 }
 
+/** Detected applications no finding spoke for, closing the list as settled. */
+function renderSettled(report: CheckReport, output: Writable, context: HumanRenderContext): void {
+  // The human ceiling may remove every visible finding for one application. Derive this from the
+  // complete report so an omitted subject can never turn into a green "no findings" claim.
+  const affected = new Set<string>();
+  for (const finding of report.findings) {
+    const appId = finding.metadata?.["appId"];
+    if (typeof appId === "string") {
+      affected.add(appId);
+    }
+  }
+  const settled = report.apps.filter((app) => app.detection.installed && !affected.has(app.appId));
+  if (settled.length === 0) {
+    return;
+  }
+  output.write("\n");
+  for (const app of settled) {
+    renderSettledApp(app, output, context);
+  }
+}
+
 function renderInventory(
   report: CheckReport,
   branding: CliBranding,
@@ -195,42 +231,18 @@ function renderInventory(
       context.style.green,
     );
   }
-  const detected = report.apps.filter((app) => app.detection.installed);
-  if (detected.length > 0) {
-    renderSection("·", `Detected (${String(detected.length)})`, detected.map(detectedLine), output);
-  }
   const missing = report.apps.filter((app) => !app.detection.installed);
   if (missing.length > 0) {
     renderSection(
       "·",
       `Not found (${String(missing.length)})`,
       [
-        ...missing.map((app) => notFoundLine(app.displayName, app.detectionScope)),
+        ...missing.map((app: ReportApp) => notFoundLine(app.displayName, app.detectionScope)),
         `Run ${branding.command} setup to install and manage any of them`,
       ],
       output,
     );
   }
-}
-
-function detectedLine(app: ReportApp): string {
-  const version = app.detection.version === undefined ? "" : ` ${safe(app.detection.version)}`;
-  const auth =
-    app.detection.authenticated === undefined
-      ? ""
-      : app.detection.authenticated
-        ? ", signed in"
-        : ", not signed in";
-  return `${safe(app.displayName)}${version} — ${supportText(app)}${auth}`;
-}
-
-function supportText(app: ReportApp): string {
-  if (app.support === undefined || app.support.status === "unknown") {
-    return "support unknown";
-  }
-  return app.support.status === "unsupported"
-    ? `unsupported (supports ${safe(app.support.supportedRange)})`
-    : "supported";
 }
 
 function renderSection(
@@ -283,9 +295,5 @@ function hasHiddenDetail(
   shown: readonly ReportFinding[],
   checks: ReadonlyMap<string, Check>,
 ): boolean {
-  return (
-    report.passedChecks.length > 0 ||
-    report.apps.length > 0 ||
-    findingsHaveHiddenDetail(shown, checks)
-  );
+  return report.passedChecks.length > 0 || findingsHaveHiddenDetail(shown, checks);
 }

@@ -69,9 +69,30 @@ describe("consolidation archival", () => {
     const shared = await readFile(join(fixture.homeDir, "agents", "AGENTS.md"), "utf8");
     expect(shared.match(/# Instructions from ~\/\.windsurfrules/gu)).toHaveLength(1);
   });
+
+  it("adds to a populated target on the answer it proposes, rather than rewriting it", async () => {
+    const fixture = await createFixture();
+    const shared = join(fixture.homeDir, "agents", "AGENTS.md");
+    const original = "# Hand written\n\nKeep this.\n";
+    await mkdir(join(fixture.homeDir, "agents"), { recursive: true });
+    await mkdir(join(fixture.homeDir, ".claude"), { recursive: true });
+    await writeFile(shared, original, "utf8");
+    await writeFile(join(fixture.homeDir, ".claude", "CLAUDE.md"), "# Claude\n\nGlobal.\n", "utf8");
+    const registry = createPluginRegistry([consolidationPlugin()], {
+      bareCheckIdPlugins: ["checks-core"],
+    });
+
+    // No scripted answer: the menu's own proposal drives this run, which is what `--yes` takes.
+    // Recommending a migration stays honest only while an unattended one cannot lose text.
+    await expect(runSetup(fixture.request(registry))).resolves.toBe(0);
+
+    const merged = await readFile(shared, "utf8");
+    expect(merged.startsWith(original)).toBe(true);
+    expect(merged).toContain("# Instructions from ~/.claude/CLAUDE.md");
+  });
 });
 
-/** Picks `Combine found instructions`, which a target with content no longer proposes. */
+/** Picks `Combine found instructions`, the answer the action menu recommends and proposes. */
 function combine(): readonly WizardAnswers[] {
   const answer: WizardAnswers = {
     "global-instruction-action": { kind: "options", values: ["consolidate"] },

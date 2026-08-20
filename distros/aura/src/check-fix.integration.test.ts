@@ -88,7 +88,10 @@ describe("aura check --fix", () => {
     const result = await run(seed, ["check", "--fix", "--yes"]);
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("Run `aura setup` and choose instruction consolidation");
+    // The report wraps prose at spaces, so the sentence is matched with its layout flattened back.
+    expect(result.stdout.replaceAll(/\s+/gu, " ")).toContain(
+      "Run `aura setup` and choose instruction consolidation",
+    );
     await expect(readFile(codexPath, "utf8")).resolves.toBe(original);
     expect((await lstat(codexPath)).isSymbolicLink()).toBe(false);
   });

@@ -57,7 +57,9 @@ export function renderOperationPreviews(
       continue;
     }
 
-    output.write(`${indent}${operation.effect} ${operation.paths.map(safe).join(" -> ")}\n`);
+    output.write(
+      `${indent}${displayEffect(operation)} ${operation.paths.map(safe).join(" -> ")}\n`,
+    );
     if (operation.conflict !== undefined) {
       output.write(`${indent}  blocked: ${safe(operation.conflict)}\n`);
     }
@@ -65,6 +67,15 @@ export function renderOperationPreviews(
       output.write(`\n${safeMultiline(operation.diff)}\n`);
     }
   }
+}
+
+/** An archive with a replacement updates its path; the archive is only its rollback mechanism. */
+function displayEffect(operation: FixOperationPreview): string {
+  return operation.effect === "archive" &&
+    operation.operation.type === "archive" &&
+    operation.operation.replacement !== undefined
+    ? "update"
+    : operation.effect;
 }
 
 /** Prints what the plan cannot do for the user, which is otherwise lost between preview and report. */

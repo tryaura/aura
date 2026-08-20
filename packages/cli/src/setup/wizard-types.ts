@@ -62,6 +62,18 @@ export interface WizardOption {
   readonly note?: string | undefined;
   /** Full multi-line content shown by the interactive preview action. */
   readonly preview?: string | undefined;
+  /**
+   * Dim ` (Recommended)` trailing the label: the answer Aura would pick if it picked for you.
+   *
+   * Only ever the row this question already proposes — the one {@link WizardQuestion.initial}
+   * selects, which is also what `--yes` takes. Marking any other row would advertise an answer no
+   * unattended run would reach, and would leave the open form recommending one row while standing
+   * on another.
+   *
+   * A recommended row leads its menu, which {@link recommendedFirst} is how callers get; row `1.`
+   * is where a reader looks first and where the cursor already sits.
+   */
+  readonly recommended?: boolean | undefined;
   readonly value: string;
 }
 
@@ -204,6 +216,23 @@ export function defaultAnswer(question: WizardQuestion): WizardAnswer {
     return { kind: "options", values: first === undefined ? [] : [first.value] };
   }
   return { kind: "options", values: [] };
+}
+
+/**
+ * The same rows with any recommended one hoisted to the top, keeping the rest in order.
+ *
+ * The advice and the row it sits on move together: a menu that recommends row 3 makes the reader
+ * find what it already decided for them, and reads as an afterthought next to the option it
+ * ordered first. Hoisting rather than sorting keeps whatever ordering the caller built underneath
+ * — least invasive first, opt-out last — intact for every other row.
+ */
+export function recommendedFirst(options: readonly WizardOption[]): readonly WizardOption[] {
+  const index = options.findIndex((option) => option.recommended === true);
+  const lead = index <= 0 ? undefined : options[index];
+  if (lead === undefined) {
+    return options;
+  }
+  return [lead, ...options.filter((_, at) => at !== index)];
 }
 
 /** The option values one answer selected, empty for free text or a missing answer. */

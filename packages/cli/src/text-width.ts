@@ -11,7 +11,7 @@
 
 import stringWidth from "string-width";
 
-import { GRAPHEME_SEGMENTER, safeMultiline } from "./safe-text.js";
+import { GRAPHEME_SEGMENTER, safe, safeMultiline } from "./safe-text.js";
 
 export function displayWidth(text: string): number {
   return stringWidth(text);
@@ -22,6 +22,39 @@ export function wrapPreviewLines(content: string, columns: number): readonly str
   return safeMultiline(content)
     .split("\n")
     .flatMap((line) => wrapLine(line, columns));
+}
+
+/**
+ * Wraps prose at word boundaries, so a report line breaks where a reader would break it.
+ *
+ * File previews wrap hard because every column of a quoted line is content; a finding's message is
+ * a sentence, and breaking `credential` across two rows costs more legibility than the ragged right
+ * edge saves. A single word too wide for the column still has to break somewhere, and there it
+ * falls back to the same grapheme-accurate hard wrap — a 90-character path cannot be worded around.
+ */
+export function wrapWords(text: string, columns: number): readonly string[] {
+  const lines: string[] = [];
+  let current = "";
+  for (const word of safe(text).split(" ")) {
+    if (word === "") {
+      continue;
+    }
+    const candidate = current === "" ? word : `${current} ${word}`;
+    if (displayWidth(candidate) <= columns) {
+      current = candidate;
+      continue;
+    }
+    if (current !== "") {
+      lines.push(current);
+    }
+    const hard = wrapLine(word, columns);
+    lines.push(...hard.slice(0, -1));
+    current = hard.at(-1) ?? "";
+  }
+  if (current !== "") {
+    lines.push(current);
+  }
+  return lines.length > 0 ? lines : [""];
 }
 
 /**

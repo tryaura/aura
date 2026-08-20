@@ -56,9 +56,12 @@ export function optionLines(
   const unavailable =
     option.disabled === true ? style.dim(` — ${safe(option.disabledNote ?? "unavailable")}`) : "";
   const note = option.note === undefined ? "" : style.dim(` · ${safe(option.note)}`);
+  // Sits outside the label so it never lands in a search highlight or an answer summary: it says
+  // what Aura would pick, which stops being news the moment the user has picked.
+  const advice = option.recommended === true ? style.dim(" (Recommended)") : "";
   const label = highlightLabel(safe(option.label), queryTerms(view), style.bold);
   const rows = [
-    `${cursor} ${gutter}${marker}${label}${note}${memberCount(option, view.selected, style)}${unavailable}`,
+    `${cursor} ${gutter}${marker}${label}${advice}${note}${memberCount(option, view.selected, style)}${unavailable}`,
   ];
   if (option.description !== undefined) {
     rows.push(style.dim(`      ${safe(option.description)}`));
