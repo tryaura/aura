@@ -1,7 +1,6 @@
 import type {
   Adapter,
   AdapterDetection,
-  AdapterFileMap,
   AdapterFileSpec,
   AdapterSourceFile,
   Environment,
@@ -31,7 +30,8 @@ export interface DiscoveryOptions {
 /** What one adapter's file declarations resolved to, and what went wrong resolving them. */
 export interface AdapterFileDiscovery {
   readonly diagnostics: readonly ScanDiagnostic[];
-  readonly files: AdapterFileMap;
+  /** Concrete so a registered MCP refresher can replace entries with freshly read bytes. */
+  readonly files: Map<string, AdapterSourceFile>;
 }
 
 /**

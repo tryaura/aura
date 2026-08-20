@@ -24,7 +24,9 @@ import { resolveAdapterProjectSharedLink, resolveAdapterSharedLink } from "./sha
 import { evaluateSupport, isComparableRange } from "./support.js";
 import { createAppMcpConvergence } from "./mcp-convergence.js";
 import { rememberMcpConvergence } from "./mcp-plan.js";
+import { createMcpSourceRefresher, rememberMcpSourceRefresher } from "./mcp-refresh.js";
 import { createAppMcpSecretPlanner, rememberMcpSecretPlanner } from "./mcp-secret-plan.js";
+import { sharedSkillsRoot } from "./skill-deployment-plan.js";
 
 /** What one adapter needs from the surrounding scan to run its lifecycle. */
 export interface ScanContext {
@@ -79,12 +81,13 @@ export async function scanAdapter(adapter: Adapter, context: ScanContext): Promi
     };
   }
 
+  const projectBoundary = await context.projectBoundary;
   let discovery: AdapterFileDiscovery;
   try {
     discovery = await discoverAdapterFiles(adapter, {
       detection,
       environment: context.environment,
-      projectBoundary: await context.projectBoundary,
+      projectBoundary,
       projectRoot: await context.projectRoot,
       reader: context.reader,
     });
@@ -167,6 +170,15 @@ export async function scanAdapter(adapter: Adapter, context: ScanContext): Promi
   );
   if (secretPlanner !== undefined) {
     rememberMcpSecretPlanner(app, secretPlanner);
+  }
+  if (convergence !== undefined || secretPlanner !== undefined) {
+    rememberMcpSourceRefresher(
+      app,
+      createMcpSourceRefresher(adapter, discovery.files, {
+        projectBoundary,
+        sharedSkillsRoot: sharedSkillsRoot(context.environment.homeDir),
+      }),
+    );
   }
 
   return { app, diagnostics };

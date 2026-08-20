@@ -128,6 +128,7 @@ export {
   canPlanMcpSecretRemediation,
   planMcpSecretRemediation,
 } from "./workspace/mcp-secret-plan.js";
+export { refreshMcpSources } from "./workspace/mcp-refresh.js";
 export type { ScanDiagnostic, ScanPhase } from "./workspace/diagnostics.js";
 export { createFileReader, MAX_FILE_BYTES } from "./workspace/reader.js";
 export { isEmbeddedAssetPath } from "./workspace/embedded-assets.js";

@@ -56,9 +56,10 @@ export function createAppMcpConvergence(
   if (writer === undefined) {
     return undefined;
   }
-  const targets = [...files.values()].filter((file) => file.spec.kind === "mcp");
-
   return (desired, ledgerNames) => {
+    // Read per invocation, not at creation: a registered refresher may have replaced entries with
+    // freshly read bytes, and a plan built now must carry preconditions for the file that is there.
+    const targets = [...files.values()].filter((file) => file.spec.kind === "mcp");
     const classified = classifyDesired(desired, ledgerNames, state);
     if (classified.blockers.length > 0) {
       return blocked(classified.blockers);

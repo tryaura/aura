@@ -563,6 +563,20 @@ degradation, and back navigation are implemented in `wizard-render.ts` / `wizard
 internal chain, a step resolving `SETUP_BACK` re-runs the previous step seeded from this run's
 selections, and the confirmation's back re-runs the last step before re-planning.
 
+Accepting the confirmation applies the plan against the file contents planning read moments
+earlier. When a configuration file changed during the pause — another process rewriting
+`~/.claude.json` is the common case — the apply fails safe, and setup re-plans the same
+selections from a fresh read and applies again (at most twice) without re-asking, printing
+exactly one line on that path:
+
+```
+A configuration file changed while you were confirming; re-planning against its current contents.
+```
+
+The normal path prints nothing new, so captured output stays byte-stable. When the retries are
+exhausted, or the re-plan itself comes back blocked, the run fails exactly as it did before the
+retry existed.
+
 Frames are also windowed to the terminal: a question body taller than the viewport is clipped
 around the cursor with dim `↑/↓ N more` markers (capacity is the viewport minus four chrome rows
 minus one per bar line), because the engine repaints by cursor-up erasure and an overflowing

@@ -7,10 +7,11 @@ import type {
   Environment,
   SetupRunOutcome,
 } from "@tryaura/aura-sdk";
-import { applyFixPlan, buildWorkspaceModel, type PluginRegistry } from "@tryaura/core";
+import { buildWorkspaceModel, type PluginRegistry } from "@tryaura/core";
 import { pluralize } from "@tryaura/core/pluralize";
 
 import { safe } from "../safe-text.js";
+import { applySetupPlan, type ApplySetupPlanOptions } from "./apply-retry.js";
 import { bootSetup, projectRescan } from "./boot.js";
 import { runPass, type PreparedPlan } from "./pass.js";
 import { elapsedMs, setupRunEvent } from "../telemetry-events.js";
@@ -150,7 +151,11 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
   // The confirmation can send the user ← back into the last step, so gather → plan → confirm
   // repeats until the plan is accepted, declined, or aborted. Nothing is written inside the loop.
   let start: GatherStart = { index: 0, selections: {} };
-  let ready: { readonly manifest: AuraManifest; readonly prepared: PreparedPlan };
+  let ready: {
+    readonly manifest: AuraManifest;
+    readonly planInputs: ApplySetupPlanOptions["planInputs"];
+    readonly prepared: PreparedPlan;
+  };
   for (;;) {
     const pass = await runPass(
       request,
@@ -172,9 +177,10 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
     break;
   }
 
-  const result = await applyFixPlan(ready.prepared, {
-    now: environment.now,
-    stateHomeDir: request.stateHomeDir,
+  const result = await applySetupPlan({
+    planInputs: ready.planInputs,
+    prepared: ready.prepared,
+    request,
   });
   stdout.write(
     `\nApplied ${String(result.appliedOperationCount)} ${pluralize(result.appliedOperationCount, "operation")}.\n`,
