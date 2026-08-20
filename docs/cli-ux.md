@@ -80,49 +80,88 @@ without a terminal attached.
 
 ### Report body
 
-Human check output is action-first. The concise default renders the human verdict and severity
-counts, the one command that can address the available fixes, then Available fixes, Manual
-attention, and Suggestions. Informational findings are suggestions, never manual work. Passed
-checks and detected applications collapse into one summary line.
+Human check output is action-first and grouped by subject. The concise default renders the human
+verdict and severity counts, the one command that can address the available fixes, then one block
+per subject — the application, file, or shared content the findings concern — ordered worst first.
+Severity rides on each row and in the subject's own count line, while fixability rides on each
+finding row, instead of either splitting the report into sections. A check that fires against two
+applications therefore reads as one problem in two places rather than two unrelated ones.
+Informational findings are suggestions, never manual work. Passed checks collapse into one summary
+line.
+
+A subject is derived, never declared, because a finding carries no first-class one. Aura takes the
+first of: the plugin-supplied `metadata.appId`, honoured only when it names an application the scan
+actually detected and then rendered as that adapter's own display name; the first of the finding's
+locations; the producing check's title. The detection guard is what makes reading plugin metadata
+safe — an unrecognized id falls through to a path, which is sanitized and shortened like any other
+location. Every finding belongs to exactly one subject, so subject counts sum to the severity counts
+in the headline; a finding naming several files is filed under the first and names the rest in its
+body, because appearing twice would make those two totals disagree. Subjects order by highest
+severity, then finding count, then label. Detected applications with no findings close the list on
+one line each, so the report states the condition of the machine rather than only its problems.
 
 Checks may declare a plugin-namespaced `findingGroup` with an action-oriented title and
-description. Findings sharing that group render under one heading that states the remediation
-once — but a group summarizes the _fix_, never the _evidence_: every member is still named on its
-own line beneath it, with its own detail and locations, so no run reports a count where it could
-report a file. The concise default caps that list at three occurrences and two locations each and
-says how many more are waiting. A grouped heading always carries its member count, including at one member, so
-the halves of a group split across remediation sections stay recognizable as one problem. Checks
-without a group remain individual, so an older plugin never loses its message. Check IDs appear
-below the human copy as secondary metadata rather than leading a line, and the closing More section
-carries the `--explain <id>` that turns one into a full explanation.
+description. Findings sharing that group render within their subject under one heading that states
+the remediation once — but a group summarizes the _fix_, never the _evidence_: every member is
+still named individually beneath it, with its detail and locations, either inline on the group's
+own line or on a line of its own. Which of the two a group takes is a layout choice; naming every
+member is not, so no run reports a count where it could report a file. The concise default caps
+that list at three occurrences and two locations each and says how many more are waiting. A grouped
+heading always carries its member count, including at one member, so a group whose findings differ
+in fixability stays recognizable as one problem. Checks without a group remain individual, so an
+older plugin never loses its message. Check IDs sit in a right-aligned column as secondary metadata
+rather than leading a line, and the closing More section carries the `--explain <id>` that turns one
+into a full explanation. Each finding row also names whether its remediation is automatic, guided,
+or manual; a per-finding manual downgrade therefore remains visible inside a fixable group.
 
 Human output has a hard ceiling of 100 findings total, selected errors first, then warnings, then
-suggestions while preserving plugin order within a severity. It names any omitted tail, and a
-truncated section heading carries both numbers (`Suggestions (98 of 100)`) so it never contradicts
-the fix count in the recommended next step, which always speaks for the whole run. Each shown
-finding likewise has a hard ceiling of 100 locations, and one location line is bounded in length
-the same way a finding's message is. Whenever either ceiling truncates, the More section points at
-`--json`, which remains untruncated — no report offers `--verbose` for detail the ceiling has
-already dropped.
+suggestions while preserving plugin order within a severity. Selection happens before grouping, so
+the ceiling can leave a subject holding fewer findings than it counts. It names any omitted tail,
+and a truncated subject heading carries both numbers (`Claude Code — 8 of 11 errors · 2 warnings`)
+so it never contradicts the fix count in the recommended next step, which always speaks for the
+whole run. A subject the ceiling emptied entirely does not print. Each shown finding likewise has a
+hard ceiling of 100 locations, and one location line is bounded in length the same way a finding's
+message is. Whenever either ceiling truncates, the More section points at `--json`, which remains
+untruncated — no report offers `--verbose` for detail the ceiling has already dropped.
 
 `--verbose` lifts the concise three-occurrence and two-location caps up to those safety ceilings and
-adds metadata tables, passed checks, and applications. It does not restore a severity-first ledger.
-Indentation carries the
-hierarchy: group heading at two spaces, its shared description and check ids at four, each
-occurrence at four, and that occurrence's own detail and locations at six. Project paths render
-relative to the project root (the invocation directory outside a repository), home paths use `~/`,
-and other paths remain absolute — one shared helper (`@tryaura/core/display-path`) serves both the
-CLI's location lines and the paths checks bake into their messages, so a report cannot name the
-same file two ways. `--verbose` works with scans and fixes but not with `--json` or `--explain`;
+adds metadata tables, passed checks, and the applications Aura looked for but did not find. It does
+not restore a severity-first ledger, and it does not change the grouping: detected applications are
+already subjects, so the flag has no inventory left to reveal for them. Indentation carries the
+hierarchy: subject heading at zero spaces, each group heading or lone finding at two, its shared
+description and occurrences at four, and an occurrence's own detail and locations at six. Project
+paths render relative to the project root (the invocation directory outside a repository), home
+paths use `~/`, and other paths remain absolute — one shared helper (`@tryaura/core/display-path`)
+serves both the CLI's location lines and the paths checks bake into their messages, so a report
+cannot name the same file two ways. `--verbose` works with scans and fixes but not with `--json` or
+`--explain`;
 `--detail` remains the separate gate for potentially sensitive plugin failure text.
 
-The summary line above the sections reports what was inspected, not a verdict: it takes a green `✓`
+The summary line above the subjects reports what was inspected, not a verdict: it takes a green `✓`
 only when at least one check passed, and a plain `·` when the run inspected nothing.
 
-The report recommends `aura check --fix` for every fixable finding, automatic and guided alike, and
-names the split ("Review 5 available fixes: 5 guided") so the user knows whether the run will ask
-them anything. An operationally incomplete scan recommends neither because its findings may be
-incomplete.
+The report recommends `aura check --fix` for every fixable finding, automatic and guided alike, on
+one line that names the split ("16 fixes: 11 automatic · 5 guided, previewed first") so the user
+knows whether the run will ask them anything and that nothing is written unseen. An operationally
+incomplete scan recommends neither because its findings may be incomplete.
+
+### Report width
+
+The report lays out against the terminal's own width, clamped to between 40 and 100 columns. A
+stream that reports no width — a pipe, a file, a captured test stream — takes 80, so redirected
+output stays byte-identical with or without a terminal attached, exactly as the scan frame's absence
+does. The floor is the width below which no alignment survives; the ceiling exists because a
+right-aligned column drifting a hundred columns from the text it belongs to has stopped being
+scannable.
+
+Two columns are right-aligned to that width: a subject heading's severity counts, and a finding
+row's check id. Text that would collide with the right column wraps at a word boundary rather than
+truncating with `…` — a finding's message is bounded to 500 characters and can carry several rows —
+and the right-hand value stays on the first row, with continuation rows indented to their own level.
+A single word too wide for the column falls back to a grapheme-accurate hard break, because a long
+path cannot be worded around. A row whose pinned value would leave its text too narrow to read keeps
+the text and drops the value to its own line, right-aligned: a check id is secondary metadata, and
+squeezing the message to hold a column straight costs more than the column is worth.
 
 `--fix` asks the guided questions itself; there is no second flag to reach them. What separates a
 run that asks from one that does not is capability, not intent: `--yes` forbids questions, `--json`
@@ -217,12 +256,23 @@ When the active step runs a sequence of internal forms (a chain step like Instru
 - The same reasoning binds the answers a scope can settle on, not just the ones it is shown: an
   action that was not on that scope's menu falls back to the proposed one, and a Global scope whose
   Sources form ends up empty is a blocker rather than a silent decline through the back door.
+- **A recommended row leads its menu.** Wherever a question recommends an answer, that row is `1.`,
+  carries a dim `(Recommended)` after its label, and is the row the form opens marked and with the
+  cursor on it — the advice, the mark and the cursor never sit on different rows. At most one row
+  per question is recommended; the rest keep the order they were built in underneath. The label is
+  a promise about the form's own proposal: it may only sit on the row a question already selects,
+  which is also the row `--yes` takes and the one a missing answer falls back to. No surface
+  recommends an answer an unattended run would not reach.
+- On the instruction action menu that row is `Combine found instructions`, wherever the scan found
+  anything to combine — the answer the step exists to give. It leads even where a target exists to
+  keep, so `Keep existing shared file` follows it; the remaining order is unchanged, least invasive
+  first with the opt-out last. A scope with nothing to combine recommends nothing, and its menu is
+  that build order as it stands.
 - **Consolidating is a migration, not a copy**, and every surface that offers it says so: the
   option's description, and a footer line on `setup --help`. The sources it merges are backed up
-  and taken off disk in the same plan, and `undo` restores them. `Keep existing shared file` leads
-  the menu wherever there is a target to keep, so this is what `--yes` takes only on a machine that
-  has no shared file yet — the run that has nothing to overwrite, and the one whose plan summary
-  lists every move before applying it.
+  and taken off disk in the same plan, and `undo` restores them. Because it is also what the menu
+  proposes, this is what `--yes` takes on any machine whose scan found sources — the run whose plan
+  summary still lists every move before applying it, and whose every move `undo` reverses.
 - A source the merge could not place is the exception: its provenance heading is already in the
   target, so nothing new was appended, and the file has changed since. Archiving it would delete
   the only copy of what it now says, so it stays where it is and the run names it under _Steps to

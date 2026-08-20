@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { runCli } from "./run.boundary.js";
-import { createCapture, distro, findingPlugin } from "./testing.js";
+import { appsPlugin, createCapture, distro, findingPlugin } from "./testing.js";
 import { parseCheckReport } from "./test-support/check-output-schema.js";
 
 describe("human report safety limits", () => {
@@ -28,10 +28,35 @@ describe("human report safety limits", () => {
     expect(human.stdout.text).toContain(
       "Show every finding without human output limits: acme check --json",
     );
-    // The truncated section states both numbers; the untruncated one still states only its own.
-    expect(human.stdout.text).toContain("Suggestions (98 of 100)");
-    expect(human.stdout.text).toContain("Manual attention (2)");
+    // The truncated subject states both numbers; the untruncated one still states only its own.
+    expect(human.stdout.text).toContain("98 of 100 suggestions");
+    expect(human.stdout.text).toContain("2 errors");
     expect(parseCheckReport(json.stdout.text).findings).toHaveLength(102);
+  });
+
+  it("does not call an application settled when all of its findings are beyond the ceiling", async () => {
+    const errors = Array.from({ length: 100 }, (_unused, index) => ({
+      id: `error-${String(index)}`,
+      message: `error occurrence ${String(index)}`,
+    }));
+    const hiddenAppFinding = {
+      id: "hidden-app-finding",
+      message: "The installed application needs attention.",
+      metadata: { appId: "installed-app" },
+    };
+    const capture = createCapture(["check"]);
+
+    await runCli(
+      distro([
+        appsPlugin(),
+        findingPlugin("error", errors),
+        findingPlugin("info", [hiddenAppFinding]),
+      ]),
+      capture.runtime,
+    );
+
+    expect(capture.stdout.text).toContain("… and 1 more finding not shown");
+    expect(capture.stdout.text).not.toContain("Installed App 1.2.3 — no findings");
   });
 
   it("caps verbose locations and reports the omitted tail", async () => {

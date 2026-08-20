@@ -14,6 +14,8 @@ export interface HumanCheckRenderOptions {
 }
 
 export interface HumanRenderContext {
+  /** The width the report lays out against, taken from the stream it is being written to. */
+  readonly columns: number;
   readonly options: HumanCheckRenderOptions;
   readonly style: Style;
 }

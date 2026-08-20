@@ -8,7 +8,12 @@ import {
   type InstructionSource,
 } from "../instructions.js";
 import type { ChainStage } from "../wizard-chain.js";
-import { selectedValues, type WizardAnswer, type WizardOption } from "../wizard-types.js";
+import {
+  recommendedFirst,
+  selectedValues,
+  type WizardAnswer,
+  type WizardOption,
+} from "../wizard-types.js";
 import {
   duplicateQuestions,
   parseDuplicateWinners,
@@ -57,12 +62,13 @@ export function scopeStages(input: ScopeInput): readonly ChainStage<ChainState>[
   }
   const options = actionOptions(input);
   const offered = new Set(options.map((option) => option.value));
-  // The least invasive offered answer that still configures the scope, which is what option order
-  // encodes up to the opt-out. Doubles as the fallback, so a missing answer can never be an action
-  // that was not on the menu — "keep" is absent when there is no target to keep, and choosing it
-  // would wire apps to nothing. The opt-out sits outside that ordering deliberately: it is the
-  // least invasive answer of all, and first place is also what `--yes` accepts, so putting it there
-  // would make every non-interactive run silently decline the scope.
+  // The leading row, which is one value behind all four of: what the menu recommends, what it
+  // proposes, what `--yes` accepts, and what a missing answer falls back to. `recommendedFirst`
+  // is what keeps them one value — combining leads wherever there is anything to combine, and
+  // where there is not, first place is the least invasive answer that still configures the scope.
+  // Never the opt-out: it is ordered last deliberately, since proposing it would make every
+  // non-interactive run silently decline the scope. "keep" is absent when there is no target to
+  // keep, so falling back can never wire applications to nothing.
   const fallback = options[0]?.value ?? TEMPLATE_VALUE;
   const actionId = `${input.scope}-instruction-action`;
   const sourcesId = `${input.scope}-instruction-sources`;
@@ -170,8 +176,12 @@ function settled(
 }
 
 /**
- * Ordered least invasive first, which is what the action stage proposes and `--yes` accepts, with
- * the opt-out last.
+ * Built least invasive first with the opt-out last, then led by the recommended row.
+ *
+ * Combining is recommended wherever the scan found anything to combine: it is what the step exists
+ * to do, and the answer that leaves one instruction file instead of several. Hoisting it puts the
+ * advice, the mark and the cursor on row `1.` together, and leaves the rest of the menu in the
+ * order it was built. A scope with nothing to combine recommends nothing and keeps that order.
  *
  * The opt-out is offered on the project scope only. Declining the global scope would leave INS-001
  * and INS-002 firing at error severity, so setup could not end on green — an answer the wizard
@@ -191,6 +201,7 @@ function actionOptions(input: ScopeInput): readonly WizardOption[] {
     options.push({
       description: `Move instructions from the files you select into this ${basename(input.targetPath)} file. Aura backs up the originals for undo.`,
       label: "Combine found instructions",
+      recommended: true,
       value: CONSOLIDATE_VALUE,
     });
   }
@@ -211,7 +222,7 @@ function actionOptions(input: ScopeInput): readonly WizardOption[] {
       value: SKIP_VALUE,
     });
   }
-  return options;
+  return recommendedFirst(options);
 }
 
 function hasTargetContent(input: ScopeInput): boolean {

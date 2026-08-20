@@ -9,7 +9,14 @@ import type {
   WizardIo,
   WizardQuestion,
 } from "../wizard-types.js";
-import { scopeStages, SKIP_VALUE, type ChainState, type ScopeInput } from "./instruction-stages.js";
+import {
+  CONSOLIDATE_VALUE,
+  scopeStages,
+  SKIP_VALUE,
+  TEMPLATE_VALUE,
+  type ChainState,
+  type ScopeInput,
+} from "./instruction-stages.js";
 
 const GLOBAL: ScopeInput = {
   blocked: false,
@@ -69,6 +76,15 @@ async function runScopes(
   return { asks, state };
 }
 
+/** The action form one scope opens with, before any answer has been given to it. */
+async function actionQuestion(input: ScopeInput): Promise<WizardQuestion> {
+  const question = (await scopeStages(input)[0]?.questions({ global: {}, project: {} }))?.[0];
+  if (question?.kind !== "select") {
+    throw new Error("Expected the action form.");
+  }
+  return question;
+}
+
 describe("scopeStages", () => {
   it("gives a declined scope its action tab and nothing after it", async () => {
     const { asks, state } = await runScopes({
@@ -123,6 +139,40 @@ describe("scopeStages", () => {
     // Still asked while either half of that holds: a source to merge, or an empty target.
     expect(scopeStages({ ...GLOBAL, targetContentValue: "# Hand written\n" })).not.toEqual([]);
     expect(scopeStages({ ...GLOBAL, sources: [], targetContentValue: "  \n" })).not.toEqual([]);
+  });
+
+  it("leads the menu with the recommended answer, marked, even where a target exists to keep", async () => {
+    const question = await actionQuestion({ ...GLOBAL, targetContentValue: "# Hand written\n" });
+
+    // Combining is hoisted over `keep`, which the build order puts first; everything under it
+    // stays in that order.
+    expect(question.options.map((option) => option.value)).toEqual([
+      CONSOLIDATE_VALUE,
+      "keep",
+      TEMPLATE_VALUE,
+    ]);
+    // What `--yes` takes, what a missing answer falls back to, and what wears the label — one row.
+    expect(question.initial).toEqual([CONSOLIDATE_VALUE]);
+    expect(question.options.filter((option) => option.recommended === true)).toHaveLength(1);
+
+    const frame: WizardFrame = {
+      activeTab: 0,
+      cursorRow: 0,
+      questions: [{ answered: false, question, selected: new Set([CONSOLIDATE_VALUE]), text: "" }],
+    };
+    const rows = renderWizardFrame(frame, 0).split("\n");
+
+    expect(rows).toContain("❯ 1. ● Combine found instructions (Recommended)");
+    expect(rows).toContain("  2. ○ Keep existing shared file");
+  });
+
+  it("keeps the recommendation off a scope with nothing to combine", async () => {
+    // Nothing to combine leaves the leading row standing, and no row claims to be recommended:
+    // the label is advice about combining, not decoration on whichever row happens to be proposed.
+    const question = await actionQuestion({ ...GLOBAL, sources: [], targetContentValue: "" });
+
+    expect(question.initial).toEqual([TEMPLATE_VALUE]);
+    expect(question.options.some((option) => option.recommended === true)).toBe(false);
   });
 
   it("says on the action menu that combining moves the files it merges", async () => {

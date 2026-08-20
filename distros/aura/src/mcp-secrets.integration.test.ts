@@ -46,7 +46,7 @@ describe("MCP-004 permanent sentinel audit", () => {
     ]) {
       expect(output).not.toContain(SENTINEL);
     }
-    expect(human.stdout).toContain("Check: MCP-004");
+    expect(human.stdout).toContain("MCP-004");
     expect(explain.stdout).toContain("Aura never displays or stores those values");
     // A shell with no terminal may preview unrelated automatic fixes, but it cannot answer the
     // credential rewrite questions and must leave the protected source untouched.
