@@ -14,10 +14,19 @@ export interface AgenticCatalogEntry {
   readonly listing: SkillListing;
 }
 
+/** One curated selection the catalog itself advertises; data, never a policy layer. */
+export interface AgenticCollection {
+  readonly description: string;
+  readonly id: string;
+  readonly name: string;
+  readonly skillIds: readonly string[];
+}
+
 export type AgenticCatalogOutcome =
   | {
       /** Set when the body came from the on-disk cache: how old that copy is. */
       readonly cacheAgeMs?: number | undefined;
+      readonly collections: readonly AgenticCollection[];
       readonly entries: readonly AgenticCatalogEntry[];
       readonly kind: "catalog";
       readonly problems: readonly string[];

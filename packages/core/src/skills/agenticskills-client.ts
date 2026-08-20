@@ -27,6 +27,7 @@ export async function listAgenticSkills(
     };
   }
   return {
+    collections: catalog.collections,
     diagnostics: [
       ...cacheDiagnostics(source, catalog),
       ...catalog.problems.map((problem) =>

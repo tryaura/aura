@@ -2,10 +2,20 @@ import type { DirectorySkillSource, Environment } from "@tryaura/aura-sdk";
 
 import { isRecord } from "../values.js";
 import { agenticRequestFailure, getAgenticResource } from "./agenticskills-http.js";
-import type { AgenticCatalogEntry, AgenticCatalogOutcome } from "./agenticskills-types.js";
+import type {
+  AgenticCatalogEntry,
+  AgenticCatalogOutcome,
+  AgenticCollection,
+} from "./agenticskills-types.js";
 import { parseCatalogEntry, UNSUPPORTED_COLLECTION } from "./agenticskills-entry.js";
 import { readCatalogCache, writeCatalogCache, type CachedCatalog } from "./catalog-cache.js";
-import { MAX_DIRECTORY_INDEX_BYTES, MAX_DIRECTORY_INDEX_ENTRIES } from "./limits.js";
+import {
+  MAX_CATALOG_COLLECTIONS,
+  MAX_COLLECTION_MEMBERS,
+  MAX_DIRECTORY_INDEX_BYTES,
+  MAX_DIRECTORY_INDEX_ENTRIES,
+} from "./limits.js";
+import { skillIdProblem } from "./path-guards.js";
 
 /**
  * The feed each endpoint served, scoped to the environment that fetched it.
@@ -175,6 +185,7 @@ function parseCatalog(body: string): AgenticCatalogOutcome {
     problems.push(`contains ${String(malformed)} malformed or duplicate entries`);
   }
   return {
+    collections: parseCollections(parsed["collections"], seen),
     entries: Object.freeze(entries),
     kind: "catalog",
     problems: Object.freeze(problems),
@@ -182,4 +193,63 @@ function parseCatalog(body: string): AgenticCatalogOutcome {
       ? { truncation: { advertised: advertised.length, read: MAX_DIRECTORY_INDEX_ENTRIES } }
       : {}),
   };
+}
+
+/**
+ * The catalog's own curated selections, silently reduced to what this run can honor.
+ *
+ * Collections are convenience data from a remote host, never policy: a malformed one, a duplicate
+ * id, or a member the feed does not advertise is dropped without a diagnostic, because nothing a
+ * collection says can make a skill installable that the catalog itself does not offer.
+ */
+function parseCollections(
+  value: unknown,
+  advertisedIds: ReadonlySet<string>,
+): readonly AgenticCollection[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const collections: AgenticCollection[] = [];
+  const seen = new Set<string>();
+  for (const candidate of value.slice(0, MAX_CATALOG_COLLECTIONS)) {
+    const collection = parseCollection(candidate, advertisedIds);
+    if (collection !== undefined && !seen.has(collection.id)) {
+      seen.add(collection.id);
+      collections.push(collection);
+    }
+  }
+  return Object.freeze(collections);
+}
+
+// fallow-ignore-next-line complexity -- every branch rejects one incomplete advertised collection.
+function parseCollection(
+  value: unknown,
+  advertisedIds: ReadonlySet<string>,
+): AgenticCollection | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const description = value["description"];
+  const id = value["id"];
+  const name = value["name"];
+  const skillIds = value["skillIds"];
+  if (
+    typeof description !== "string" ||
+    description.length > 256 ||
+    typeof id !== "string" ||
+    skillIdProblem(id) !== undefined ||
+    typeof name !== "string" ||
+    name.trim().length === 0 ||
+    name.length > 128 ||
+    !Array.isArray(skillIds)
+  ) {
+    return undefined;
+  }
+  const members = skillIds
+    .slice(0, MAX_COLLECTION_MEMBERS)
+    .filter((member): member is string => typeof member === "string" && advertisedIds.has(member));
+  if (members.length === 0) {
+    return undefined;
+  }
+  return Object.freeze({ description, id, name, skillIds: Object.freeze([...new Set(members)]) });
 }

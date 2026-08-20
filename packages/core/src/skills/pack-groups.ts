@@ -17,9 +17,11 @@ import { createFileReader } from "../workspace/reader.js";
  */
 export interface SkillPackGroup {
   readonly description: string;
-  /** The plugin-namespaced preset id, such as `official/starter`. */
+  /** The plugin-namespaced preset id, or `<source id>/<collection id>` for a catalog's own. */
   readonly id: string;
   readonly name: string;
+  /** Whether the pack ships with a plugin or is advertised by the catalog it selects from. */
+  readonly origin: "catalog" | "plugin";
   readonly skills: readonly AuraPresetSkillSelection[];
 }
 
@@ -76,6 +78,7 @@ async function loadGroup(
     description: preset.description,
     id: preset.id,
     name: preset.name,
+    origin: "plugin" as const,
     skills,
   });
 }

@@ -149,7 +149,7 @@ export function pickerOptions(inputs: SkillStageInputs): readonly WizardOption[]
           ? { disabled: true, disabledNote: "no selected app supports skills" }
           : {};
     return {
-      description: pack.description,
+      description: `${pack.description} · ${pack.origin === "catalog" ? "catalog collection" : "plugin preset"}`,
       ...unavailable,
       group: "Skill packs",
       label: `${pack.name} — ${String(members.length)} skills`,

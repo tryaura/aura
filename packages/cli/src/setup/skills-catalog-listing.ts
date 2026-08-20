@@ -10,6 +10,7 @@ import {
   listDriverSkills,
   loadSkillPackGroups,
   type DriverSkillListingResult,
+  type SkillPackGroup,
 } from "@tryaura/core";
 
 import { skillIdentity } from "./skill-planner-paths.js";
@@ -114,11 +115,35 @@ export async function loadListing(request: SkillListingRequest): Promise<SkillCa
   return {
     entries: Object.freeze(entries),
     notes: Object.freeze(notes),
-    packs: packOutcome.groups,
+    packs: Object.freeze([...packOutcome.groups, ...collectionPacks(directoryResults)]),
     truncatedSources: Object.freeze(truncatedSources),
     unavailableSources: Object.freeze(unavailableSources),
     ...verificationFields(directoryResults),
   };
+}
+
+/**
+ * The catalogs' own advertised collections, as packs with catalog provenance.
+ *
+ * A collection is data from a remote host, so it can only ever pre-check rows that host already
+ * serves — the parser has confined its members to advertised ids, and the picker confines them
+ * again to the rows it offers. The review boundary is what makes that safe.
+ */
+function collectionPacks(
+  results: readonly {
+    readonly result: Awaited<ReturnType<typeof listDirectorySkills>>;
+    readonly source: DirectorySkillSource;
+  }[],
+): readonly SkillPackGroup[] {
+  return results.flatMap(({ result, source }) =>
+    (result.collections ?? []).map((collection): SkillPackGroup => ({
+      description: collection.description,
+      id: `${source.id}/${collection.id}`,
+      name: collection.name,
+      origin: "catalog",
+      skills: collection.skillIds.map((id) => ({ id, source: source.id })),
+    })),
+  );
 }
 
 function verificationFields(

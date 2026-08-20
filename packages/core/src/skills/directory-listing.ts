@@ -1,6 +1,7 @@
 import type { ResolvedSkillListing } from "@tryaura/aura-sdk";
 
 import type { ScanDiagnostic } from "../workspace/diagnostics.js";
+import type { AgenticCollection } from "./agenticskills-types.js";
 import type { DirectoryTruncation } from "./index-schema.js";
 import type { DirectorySkillVerification } from "./listing-verification.js";
 
@@ -12,6 +13,8 @@ export interface DirectoryListingOptions {
 
 /** Everything one directory listing produced, including why it produced nothing. */
 export interface DirectorySkillListingResult {
+  /** Curated selections the catalog itself advertises; suggestions only, never policy. */
+  readonly collections?: readonly AgenticCollection[] | undefined;
   readonly diagnostics: readonly ScanDiagnostic[];
   readonly listings: readonly ResolvedSkillListing[];
   /** How the source should appear in a picker when it cannot be listed. */

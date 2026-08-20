@@ -22,6 +22,12 @@ export const MAX_TEAM_PRESET_DIRECTORIES = 32;
 /** The most source ids one workspace team preset allowlist may carry. */
 export const MAX_TEAM_PRESET_ALLOWED_SOURCES = 256;
 
+/** The most curated collections one catalog may advertise; entries beyond the cap are dropped. */
+export const MAX_CATALOG_COLLECTIONS = 32;
+
+/** The most member ids one advertised collection may carry. */
+export const MAX_COLLECTION_MEMBERS = 200;
+
 /** The most remote skill or repository requests Aura runs concurrently for one directory. */
 export const MAX_CONCURRENT_SKILL_REQUESTS = 8;
 

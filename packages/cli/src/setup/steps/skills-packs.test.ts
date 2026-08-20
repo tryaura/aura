@@ -21,6 +21,7 @@ describe("skillsStep packs", () => {
           description: "The everyday starter set.",
           id: "official/starter",
           name: "Starter",
+          origin: "plugin" as const,
           skills: [
             { id: "review", source: "directory:acme" },
             { id: "triage", source: "directory:acme" },
@@ -39,6 +40,27 @@ describe("skillsStep packs", () => {
     expect(row?.members).toEqual([REMOTE_ENTRY.identity, SECOND_ENTRY.identity]);
   });
 
+  it("names a catalog collection's provenance apart from a plugin preset's", async () => {
+    const scripted = recordingIo([]);
+    const catalog = fakeCatalog({
+      entries: [REMOTE_ENTRY],
+      listingPacks: [
+        {
+          description: "Curated upstream.",
+          id: "directory:acme/starter",
+          name: "Starter",
+          origin: "catalog" as const,
+          skills: [{ id: "review", source: "directory:acme" }],
+        },
+      ],
+    });
+
+    await skillsStep.gather(skillStepContext(catalog), scripted);
+
+    const row = scripted.asked[0]?.[0]?.options.find((option) => option.value.startsWith("pack:"));
+    expect(row?.description).toBe("Curated upstream. · catalog collection");
+  });
+
   it("disables a pack none of whose members are offered this run", async () => {
     const scripted = recordingIo([]);
     const catalog = fakeCatalog({
@@ -48,6 +70,7 @@ describe("skillsStep packs", () => {
           description: "Nothing here applies.",
           id: "official/elsewhere",
           name: "Elsewhere",
+          origin: "plugin" as const,
           skills: [{ id: "not-listed", source: "directory:acme" }],
         },
       ],

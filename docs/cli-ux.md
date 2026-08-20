@@ -484,6 +484,12 @@ entries — the rest cannot be listed until the catalog narrows upstream`). Trun
   with no skill selection is a policy document, not a pack, and is skipped silently. The pack
   reads only the preset's `skills` list — directories, checks, and required servers apply only
   when the preset is configured as the run's policy layer.
+- A provider catalog may advertise its own curated selections (`collections` in its feed), which
+  render in the same `Skill packs` group with their provenance in the description
+  (`· catalog collection` vs `· plugin preset`). A collection is data from a remote host, never
+  policy: it can only pre-check rows that catalog already serves — members it does not advertise
+  are dropped at parse time, malformed collections vanish without a diagnostic, and every member
+  still passes its own Review. At most 32 collections of 200 members each are read.
 - `p` works at the picker, not only at Review: a remote row fetches its own SKILL.md on demand —
   the overlay opens on `Loading the preview…` and repaints with the body — because reading a
   skill is exactly how someone decides whether to check its row. The fetch is bounded, memoized

@@ -44,6 +44,7 @@ describe("loadSkillPackGroups", () => {
         description: "The everyday starter set.",
         id: "official/starter",
         name: "Starter",
+        origin: "plugin",
         skills: [
           { id: "review", source: "directory:acme" },
           { id: "triage", source: "directory:acme" },
