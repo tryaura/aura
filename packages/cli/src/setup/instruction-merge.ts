@@ -8,6 +8,8 @@ import type { InstructionScopeSelection } from "./types.js";
 
 /** One selected source reduced to the block a merge would write for it. */
 interface MergeSection {
+  /** Whether a duplicate winner elsewhere claimed lines of this source. */
+  readonly deduped: boolean;
   readonly heading: string;
   readonly path: string;
   readonly text: string;
@@ -24,9 +26,20 @@ const HEADING_LINE = /^ {0,3}#{1,6}(?:\s|$)/u;
  * {@link removeRanges} never took them. Asking only for a non-blank character reads that skeleton as
  * content, and writes a provenance heading over a file that contributed nothing — which is exactly
  * what the two callers below are each trying not to do.
+ *
+ * That is a rule about what dedup left behind, so it is asked only of a section dedup touched. A
+ * file the user wrote as nothing but headings gave up none of it to a winner elsewhere: those lines
+ * are the whole of what it contributes, and dropping them would leave the scope with nothing to
+ * write while the archive still takes the original off disk.
  */
-function hasSubstance(text: string): boolean {
-  return [...splitSourceLines(text)].some(
+function hasSubstance(section: MergeSection): boolean {
+  if (section.text.trim().length === 0) {
+    return false;
+  }
+  if (!section.deduped) {
+    return true;
+  }
+  return [...splitSourceLines(section.text)].some(
     (line) => line.text.trim().length > 0 && !HEADING_LINE.test(line.text),
   );
 }
@@ -53,7 +66,7 @@ export function composeConsolidatedInstructions(
   const sections = mergeSections(sources, selection, clusters, model)
     // A source can lose every paragraph to copies kept elsewhere; a heading with nothing under it
     // would say the file contributed something it did not.
-    .filter((section) => hasSubstance(section.text))
+    .filter((section) => hasSubstance(section))
     // Matched with its line ending, so a merged `~/a.md.bak` cannot pass for a merged `~/a.md`.
     .filter((section) => !base.includes(`${section.heading}\n`))
     .map((section) => `${section.heading}\n\n${section.text}`);
@@ -83,7 +96,7 @@ export function unmergedSources(
   return mergeSections(sources, selection, clusters, model)
     .filter(
       (section) =>
-        hasSubstance(section.text) &&
+        hasSubstance(section) &&
         base.includes(`${section.heading}\n`) &&
         !base.includes(`${section.heading}\n\n${section.text}`),
     )
@@ -103,17 +116,21 @@ function mergeSections(
   return sources
     .filter((source) => selected.has(resolve(source.path)))
     .sort((left, right) => left.path.localeCompare(right.path))
-    .map((source) => ({
-      heading: provenanceHeading(source.path, selection.scope, model),
-      path: resolve(source.path),
-      // Duplicate ranges first — INS-003 measured its lines against the original file — then Aura's
-      // legacy or plain shared import. What survives both is the text the user actually wrote.
-      text: stripAuraInstructionArtifacts(
-        removeRanges(source.content, removals.get(resolve(source.path)) ?? []),
-        source.path,
-        links,
-      ),
-    }));
+    .map((source) => {
+      const ranges = removals.get(resolve(source.path)) ?? [];
+      return {
+        deduped: ranges.length > 0,
+        heading: provenanceHeading(source.path, selection.scope, model),
+        path: resolve(source.path),
+        // Duplicate ranges first — INS-003 measured its lines against the original file — then
+        // Aura's legacy or plain shared import. What survives both is the text the user wrote.
+        text: stripAuraInstructionArtifacts(
+          removeRanges(source.content, ranges),
+          source.path,
+          links,
+        ),
+      };
+    });
 }
 
 /**
