@@ -8,7 +8,7 @@
     },
     "thresholds": {
       "acme/ACME-001": {
-        "minimumContributions": 4
+        "minimumContributions": 3
       }
     }
   },
