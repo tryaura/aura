@@ -65,6 +65,7 @@ export {
   hashManagedSnippet,
 } from "./managed-block/protocol.js";
 export { readManagedBlock } from "./managed-block/read.js";
+export { stripManagedBlock } from "./managed-block/strip.js";
 export { diffManagedSnippet, reconcileManagedSnippet } from "./managed-block/reconcile-snippet.js";
 export { reconcileManagedBlock, reconcileParsedManagedBlock } from "./managed-block/reconcile.js";
 export {
