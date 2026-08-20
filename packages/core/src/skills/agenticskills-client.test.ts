@@ -25,10 +25,11 @@ const CATALOG_ENTRY = {
 };
 
 describe("AgenticSkills provider", () => {
-  it("translates the live catalog shape into versioned Aura listings", async () => {
+  it("translates the live catalog shape and verifies its repository without raw-file probes", async () => {
     const { environment, requests } = scripted(() => ok({ skills: [CATALOG_ENTRY], total: 1 }));
 
     const result = await listDirectorySkills(environment, SOURCE);
+    await requireVerification(result).settled;
 
     expect(result.status).toEqual({ kind: "available" });
     expect(result.diagnostics).toEqual([]);
@@ -44,11 +45,33 @@ describe("AgenticSkills provider", () => {
     ]);
     expect(requests[0]?.url).toBe("https://agenticskills.io/api/skills");
     expect(requests.map((request) => request.url)).toContain(
-      "https://raw.githubusercontent.com/vercel-labs/skills/main/skills/find-skills/SKILL.md",
+      "https://api.github.com/repos/vercel-labs/skills/git/trees/main?recursive=1",
+    );
+    expect(requests.some((request) => request.url.includes("raw.githubusercontent.com"))).toBe(
+      false,
     );
   });
 
-  it("keeps an entry listed when its probe failed for anything but a 404", async () => {
+  it("reports structured truncation for an oversized provider catalog", async () => {
+    const advertised = Array.from({ length: 10_001 }, (_, index) => ({
+      ...CATALOG_ENTRY,
+      githubUrl: `https://github.com/vercel-labs/skills/tree/main/skills/skill-${String(index)}`,
+      slug: `skill-${String(index)}`,
+    }));
+    const { environment } = scripted((request) =>
+      request.url === "https://agenticskills.io/api/skills"
+        ? ok({ skills: advertised, total: advertised.length })
+        : { kind: "failure", reason: "timeout" },
+    );
+
+    const result = await listDirectorySkills(environment, SOURCE);
+
+    expect(result.listings).toHaveLength(10_000);
+    expect(result.truncation).toEqual({ advertised: 10_001, read: 10_000 });
+    expect(result.diagnostics[0]?.message).toContain("only the first 10000 are read");
+  });
+
+  it("keeps trusting the feed when repository verification fails", async () => {
     const { environment } = scripted((request) => {
       if (request.url === "https://agenticskills.io/api/skills") {
         return ok({ skills: [CATALOG_ENTRY], total: 1 });
@@ -57,12 +80,14 @@ describe("AgenticSkills provider", () => {
     });
 
     const result = await listDirectorySkills(environment, SOURCE);
+    await requireVerification(result).settled;
 
     expect(result.listings.map((listing) => listing.id)).toEqual(["find-skills"]);
-    expect(result.diagnostics[0]?.message).toContain("listed but may fail to install");
+    expect(result.diagnostics).toEqual([]);
+    expect(result.verification?.isMissing("find-skills")).toBe(false);
   });
 
-  it("probes each entry once and reads the catalog once across listing and resolving", async () => {
+  it("reads the catalog once across background verification and resolving", async () => {
     const skill = "---\nname: find-skills\ndescription: Find skills.\n---\n";
     const { environment, requests } = scripted((request) => {
       if (request.url === "https://agenticskills.io/api/skills") {
@@ -146,28 +171,6 @@ describe("AgenticSkills provider", () => {
     expect(result.diagnostics).toEqual([]);
     expect(result.listings).toEqual([]);
     expect(requests).toHaveLength(1);
-  });
-
-  it("does not propose stale GitHub directories without a SKILL.md", async () => {
-    const stale = {
-      ...CATALOG_ENTRY,
-      githubUrl: "https://github.com/acme/skills/tree/main/skills/stale",
-      slug: "stale",
-    };
-    const { environment } = scripted((request) => {
-      if (request.url === "https://agenticskills.io/api/skills") {
-        return ok({ skills: [CATALOG_ENTRY, stale], total: 2 });
-      }
-      if (request.url.includes("/stale/SKILL.md")) {
-        return { body: new Uint8Array(), kind: "binary-response", status: 404 };
-      }
-      return bytes("---\nname: find-skills\ndescription: Find skills.\n---\n");
-    });
-
-    const result = await listDirectorySkills(environment, SOURCE);
-
-    expect(result.diagnostics).toEqual([]);
-    expect(result.listings.map((listing) => listing.id)).toEqual(["find-skills"]);
   });
 
   it("drops malformed entries without exposing their values", async () => {
@@ -272,4 +275,13 @@ function responseForTree(request: HttpGetRequest, skill: string, guide: string):
 
 function bytes(content: string): HttpGetResult {
   return { body: new TextEncoder().encode(content), kind: "binary-response", status: 200 };
+}
+
+function requireVerification(
+  result: Awaited<ReturnType<typeof listDirectorySkills>>,
+): NonNullable<Awaited<ReturnType<typeof listDirectorySkills>>["verification"]> {
+  if (result.verification === undefined) {
+    throw new Error("expected AgenticSkills repository verification");
+  }
+  return result.verification;
 }

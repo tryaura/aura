@@ -80,6 +80,11 @@ function pickerStage(inputs: SkillStageInputs): ChainStage<SkillsChainState> {
     ),
   );
 
+  // Built once per gather, not per questions() call: back navigation and re-planning re-ask the
+  // stage, and rebuilding a thousand rows (plus their sort) on every visit is pure waste. Row
+  // availability stays live regardless — the disabled state is a getter over the verification.
+  let cachedOptions: ReturnType<typeof pickerOptions> | undefined;
+
   return {
     apply: (state, answers) => ({
       ...state,
@@ -91,7 +96,8 @@ function pickerStage(inputs: SkillStageInputs): ChainStage<SkillsChainState> {
     }),
     label: "Skills",
     questions: (state) => {
-      const options = pickerOptions(inputs);
+      cachedOptions ??= pickerOptions(inputs);
+      const options = cachedOptions;
       if (options.length === 0) {
         return undefined;
       }
@@ -103,6 +109,9 @@ function pickerStage(inputs: SkillStageInputs): ChainStage<SkillsChainState> {
           label: "Skills",
           options,
           prompt: pickerPrompt(inputs),
+          ...(inputs.listing.verification === undefined
+            ? {}
+            : { subscribe: inputs.listing.verification.subscribe }),
           // Counted over every row the query reaches, not just the installable ones: search also
           // matches the preserved, blocked, and unavailable rows, and a smaller number here would
           // promise less than `/` delivers.

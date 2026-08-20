@@ -18,6 +18,24 @@ export interface WizardOption {
   /** Optional heading rendered before the first adjacent option in this group. */
   readonly group?: string | undefined;
   readonly label: string;
+  /**
+   * Fetches the preview content on demand, for rows whose content is remote.
+   *
+   * Consulted only when `preview` is absent and only when the user presses `p` on the row: the
+   * overlay opens on a loading notice and repaints with what this resolves. The provider is
+   * expected to memoize, so reading a preview here never costs the later install a second fetch.
+   * A rejection renders a generic failure notice — never raw error text.
+   */
+  readonly loadPreview?: (() => Promise<string>) | undefined;
+  /**
+   * Values this row checks and clears as a group instead of selecting its own.
+   *
+   * Makes the row a gesture over other rows — a skill pack — rather than an answer: its own
+   * `value` never enters the selection, marking it adds every member (or clears them all when
+   * every one is already checked), and each member row remains individually toggleable
+   * afterwards. Its checkbox renders derived state: none, some (`◪`), or all of its members.
+   */
+  readonly members?: readonly string[] | undefined;
   /** Full multi-line content shown by the interactive preview action. */
   readonly preview?: string | undefined;
   readonly value: string;
@@ -52,6 +70,8 @@ export interface WizardQuestion {
         readonly placeholder: string;
       }
     | undefined;
+  /** Repaints the open form when externally owned option state changes. */
+  readonly subscribe?: ((repaint: () => void) => () => void) | undefined;
 }
 
 export type WizardAnswer =

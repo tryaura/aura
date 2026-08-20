@@ -5,6 +5,7 @@ import type {
   Finding,
   ResolvedSkillPack,
   Scope,
+  TelemetrySetupActions,
   WorkspaceModel,
 } from "@tryaura/aura-sdk";
 
@@ -103,6 +104,21 @@ export interface SetupSelections {
   readonly skills?: SkillSelections | undefined;
 }
 
+/** The telemetry field a step's choices are reported under; see {@link TelemetrySetupActions}. */
+export type SetupTelemetryCategory = keyof TelemetrySetupActions;
+
+/**
+ * What one gather pass settled: its selections, and which categories it actually put on screen.
+ *
+ * The two are not the same question. A step that runs with an empty catalog still returns
+ * selections, and reporting that as "the user chose none" would count a distribution that ships no
+ * snippets the same way as a user who was shown ten and ticked none.
+ */
+export interface GatheredSetup {
+  readonly offered: ReadonlySet<SetupTelemetryCategory>;
+  readonly selections: SetupSelections;
+}
+
 export interface SetupStepContext {
   /** Every registered adapter, detected or not, in registry order. */
   readonly appCatalog: readonly AppCatalogEntry[];
@@ -180,7 +196,23 @@ export const SETUP_ABORTED: unique symbol = Symbol("aura.setup.aborted");
 /** The user navigated ← past the step's first form; the orchestrator re-runs the previous step. */
 export const SETUP_BACK: unique symbol = Symbol("aura.setup.back");
 
-type SetupStepOutcome = SetupSelections | typeof SETUP_ABORTED | typeof SETUP_BACK;
+/**
+ * A step that ran without asking anything, because it had nothing to offer.
+ *
+ * The selections still pass through — a step with an empty catalog often has to record that
+ * emptiness for the planner — but the step's telemetry category stays unoffered, so an answer
+ * nobody was asked for is never counted as one they gave.
+ */
+export interface SetupStepUnoffered {
+  readonly selections: SetupSelections;
+  readonly unoffered: true;
+}
+
+export type SetupStepOutcome =
+  | SetupSelections
+  | SetupStepUnoffered
+  | typeof SETUP_ABORTED
+  | typeof SETUP_BACK;
 
 /** State another setup step must have established before this one can run by itself. */
 interface SetupStepPrerequisite {
@@ -203,6 +235,14 @@ interface SetupStepBase {
    * --add snippet`, for one — should not pay for a scan nothing reads.
    */
   readonly needsFindings?: boolean | undefined;
+  /**
+   * The {@link TelemetrySetupActions} field this step's choices are reported under.
+   *
+   * Absent for a step whose answers telemetry does not carry. Naming the field here rather than
+   * matching on step ids downstream is what stops a renamed step from silently dropping its
+   * category out of every event.
+   */
+  readonly telemetryCategory?: SetupTelemetryCategory | undefined;
   readonly title: string;
 }
 

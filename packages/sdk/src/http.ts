@@ -131,6 +131,14 @@ export type HttpGetResult =
   | {
       /** Response body decoded as UTF-8, complete and within the byte cap. */
       readonly body: string;
+      /**
+       * The response's entity tag, verbatim, when the server sent one.
+       *
+       * Carried so a caller that caches the body can revalidate it later with `If-None-Match`
+       * instead of re-downloading. Response headers are otherwise dropped, and this one is safe to
+       * surface: it names the representation, never the request.
+       */
+      readonly etag?: string | undefined;
       readonly kind: "response";
       /** HTTP status code as received; a non-2xx status is a response, not a failure. */
       readonly status: number;

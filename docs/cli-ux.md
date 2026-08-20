@@ -154,6 +154,7 @@ any other code to 2.
 | `✔`   | Completed step                                   |
 | `☐`   | Pending step, or an unchecked multiselect option |
 | `☑`   | A checked multiselect option                     |
+| `◪`   | A pack row with some, not all, members checked   |
 | `●`   | The currently selected option of a select        |
 | `○`   | An unselected select option                      |
 | `❯`   | Cursor row inside a question body                |
@@ -293,6 +294,9 @@ bar, so compact tabs lose no information.
   moves its `●`. Marking never answers the step by itself — the tab stays `☐` until ↵ answers it
   (or → commits the form as it stands). A disabled option can never be marked; a multiselect's
   already-marked one can still be cleared. Digits jump to a row and mark it the same way.
+- A form opens with the cursor on the row its answer stands on, and failing that on the first row
+  that can be marked — leading disabled rows are read, not answered with, so the first space
+  struck is never a no-op.
 - Footer hint line: `↑/↓ move · space toggle · ←/→ steps · ↵ select · esc cancel` on a
   multiselect, `↑/↓ move · space select · ←/→ steps · ↵ confirm · esc cancel` on a select
   (segments appear only when applicable; a locked Submit drops `↵ submit`).
@@ -425,18 +429,81 @@ A picker over every allowed skill source, then one Review form per selected remo
   memoized listing skips this frame entirely when navigating back through the flow. The frame holds
   the terminal the way a form does — raw mode, cursor hidden — so keys struck while waiting are
   discarded rather than echoed into the animation or replayed into the picker behind it.
+- AgenticSkills listings trust the provider feed at list time; Aura never holds the picker behind
+  one `SKILL.md` request per advertised row. Once the feed is available, Aura groups its entries by
+  GitHub `(owner, repository, ref)` and starts one bounded recursive-tree request per repository in
+  the background. A complete tree that lacks an advertised root `SKILL.md` repaints that row in
+  place as disabled with `— source no longer publishes this skill`. Tree results that land before
+  the picker subscribes are retained and reflected in its first frame.
+- Repository-tree verification is advisory. A request that fails, exceeds the response bound,
+  returns malformed data, or carries GitHub's `truncated: true` marker keeps trusting the feed for
+  that repository; it never falls back to per-entry probes. Resolution remains authoritative, so
+  selecting a row before it is disabled still produces one failed Review row for that skill.
+- Directory catalogs read through an on-disk cache (`~/agents/.cache/skill-catalogs`). A copy
+  fresher than an hour serves with no request and says so in a first-visit note naming its age
+  and `--no-cache`; a staler copy revalidates with `If-None-Match` and serves silently on a 304;
+  and an unreachable source falls back to the newest copy under a week old, with a note naming
+  its age — a dated listing beats an empty picker. Every cached body passes the same validation
+  as a live one. Private directories are never cached: their listings are credential-gated
+  content, and the cache is not. `--no-cache` bypasses reads and writes for catalogs and presets
+  alike.
 - The picker groups rows by source (`option.group`); a source that cannot be listed renders one
   disabled row with the reason in place (`Acme Skills — unavailable (set ACME_SKILLS_TOKEN)`),
   ahead of the installable rows so the initial row window can never hide it, and a manifest entry
   whose source is gone or disallowed renders disabled as `<id> (preserved)` / `<id> (blocked)` —
   clearing it is how the skill is removed.
-- A picker with more than ten rows initially renders only its first ten, plus any preselected rows
-  outside that window so an installed or preset choice never disappears. Its `/` action, labelled
-  `Search all <n> skills`, filters locally across names, ids, descriptions, and sources; while a
-  query is active every matching row is rendered, with no ten-row cap. `↵` leaves search editing
-  for result navigation, and `esc` clears an active search before it can cancel the form. While the
-  query has focus the hint line names those bindings instead of the standing ones:
-  `type to filter · ↑/↓ move · ↵ results · esc clear search`.
+- A source that advertises more entries than the listing cap renders one disabled row in the same
+  leading position naming both numbers (`Acme Skills (truncated)` — `showing 10000 of 12000
+entries — the rest cannot be listed until the catalog narrows upstream`). Truncation is never
+  only a diagnostic note: a catalog quietly missing its tail reads as a catalog with nothing more
+  to offer.
+- A picker with more than ten rows opens on the user's own selection, not an alphabetical page:
+  every checked row leads under one `Selected (N)` heading, followed by a browse window of the
+  next unchecked rows. That window carries up to ten rows the reader can check and up to ten
+  disabled rows alongside them, both in display order — a disabled row costs its own position and
+  never someone else's, so a catalog whose alphabetical head is a run of unavailable or no-longer
+  published rows can never open on a frame where nothing can be checked. A multiselect's search
+  status line always carries a live `· N selected` count while anything is checked, so the size of
+  the basket is never off screen.
+- The `/` action, labelled `Search all <n> skills`, filters locally across names, ids,
+  descriptions, and sources — ranked, not merely filtered: a term starting a word of the label
+  beats a substring inside it, which beats a hit in the id, the source, or the description, and
+  ties keep display order. Matched spans render bold. At most fifty matches render per query; the
+  status line then reads `showing 50 of <n> matches — keep typing to narrow`, so the cap is never
+  silent. Checked rows the query does not match stay on screen under a trailing
+  `Selected, not matching this filter (K)` heading — marking a row must never make it disappear.
+  `↵` leaves search editing for result navigation, and `esc` clears an active search before it can
+  cancel the form. While the query has focus the hint line names those bindings instead of the
+  standing ones: `type to filter · ↑/↓ move · ↵ results · esc clear search`.
+- On a searchable multiselect, `s` narrows the rows to the checked ones (status line
+  `s Showing only selected rows · s show all`), a second press restores the full view, and
+  opening `/` clears the filter — the two narrowings never compose. The standing hint carries an
+  `s selected` segment exactly where the filter is available.
+- Plugin-shipped presets that declare a skill selection appear as **skill packs**: one row per
+  preset under a `Skill packs` group ahead of the catalog rows, labelled
+  `<name> — <n> skills`. A pack is a selection gesture, not a lock or a policy layer: space on it
+  checks every member row the catalog offers this run (or clears them all when every one is
+  checked), each member stays individually toggleable, a partially checked pack renders `◪` with
+  `(K of N selected)` in place, and its own value never enters the answer. Every remote member
+  still passes its own Review with Skip standing, so `--yes` takes nothing from a pack. A pack
+  none of whose members are offered renders disabled (`— no member is available in this run`);
+  a preset that fails to read or validate is dropped with a first-visit note naming it; a preset
+  with no skill selection is a policy document, not a pack, and is skipped silently. The pack
+  reads only the preset's `skills` list — directories, checks, and required servers apply only
+  when the preset is configured as the run's policy layer.
+- A provider catalog may advertise its own curated selections (`collections` in its feed), which
+  render in the same `Skill packs` group with their provenance in the description
+  (`· catalog collection` vs `· plugin preset`). A collection is data from a remote host, never
+  policy: it can only pre-check rows that catalog already serves — members it does not advertise
+  are dropped at parse time, malformed collections vanish without a diagnostic, and every member
+  still passes its own Review. At most 32 collections of 200 members each are read.
+- `p` works at the picker, not only at Review: a remote row fetches its own SKILL.md on demand —
+  the overlay opens on `Loading the preview…` and repaints with the body — because reading a
+  skill is exactly how someone decides whether to check its row. The fetch is bounded, memoized
+  into the same pack cache the Review resolution reads (so previewing never costs the install a
+  second download), and a fetch that fails shows its validated reason in the overlay without
+  changing the row. A bundled row keeps its packaged content; `--yes` and scripted runs never
+  press `p`, so nothing is ever fetched for them.
 - A remote skill's Review row names the source, version, and origin of its bytes, not the directory
   that advertised it: a catalog indexing content elsewhere reports that origin
   (`https://github.com/<owner>/<repo>/tree/<ref>/<dir>`), because approving a skill is approving

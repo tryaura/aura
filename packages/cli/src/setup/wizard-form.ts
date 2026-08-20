@@ -1,4 +1,5 @@
-import { digitRow, printable, rowCount, tabDelta } from "./wizard-keys.js";
+import { digitRow, rowCount, tabDelta } from "./wizard-keys.js";
+import { applySearchKeypress } from "./wizard-form-search.js";
 import { handlePreviewKeypress, openPreview, type PreviewState } from "./wizard-preview.js";
 import {
   answerActive,
@@ -36,6 +37,7 @@ export interface FormSession {
 export function createFormSession(
   questions: readonly WizardQuestion[],
   flow?: WizardFlowContext,
+  onAsyncUpdate?: () => void,
 ): FormSession {
   const states: readonly QuestionState[] = questions.map(createQuestionState);
   // With a flow the trailing Submit belongs to the whole wizard, not this form, so the form's
@@ -196,12 +198,10 @@ export function createFormSession(
     options: readonly WizardQuestion["options"][number][],
   ): boolean => {
     if (keypress.sequence === "p") {
-      const option = options[cursorRow];
-      if (option?.preview === undefined || option.disabled === true) {
-        return false;
-      }
-      preview = openPreview(option.preview, option.label);
-      return true;
+      return openRowPreview(options);
+    }
+    if (keypress.sequence === "s") {
+      return toggleSelectedFilter(state);
     }
     if (keypress.name === "space") {
       return markRow(state, cursorRow, options);
@@ -216,50 +216,60 @@ export function createFormSession(
     return true;
   };
 
+  const openRowPreview = (options: readonly WizardQuestion["options"][number][]): boolean => {
+    const option = options[cursorRow];
+    if (option === undefined || option.disabled === true) {
+      return false;
+    }
+    if (option.preview !== undefined) {
+      preview = openPreview(option.preview, option.label);
+      return true;
+    }
+    if (option.loadPreview === undefined) {
+      return false;
+    }
+    const pending = openPreview("Loading the preview…", option.label);
+    preview = pending;
+    void option.loadPreview().then(
+      (content) => {
+        replacePendingPreview(pending, content, option.label);
+      },
+      () => {
+        replacePendingPreview(pending, "The preview could not be fetched.", option.label);
+      },
+    );
+    return true;
+  };
+
+  /** Swaps the loading notice for the fetched body — unless the reader already closed it. */
+  const replacePendingPreview = (pending: PreviewState, content: string, title: string): void => {
+    if (preview !== pending) {
+      return;
+    }
+    preview = openPreview(content, title);
+    onAsyncUpdate?.();
+  };
+
+  /**
+   * A review of everything checked, without hunting each row down: `s` narrows a searchable
+   * multiselect to its checked rows and back. Inert elsewhere, and while the query has focus `s`
+   * still types into it — search takes keys first.
+   */
+  const toggleSelectedFilter = (state: QuestionState): boolean => {
+    if (state.question.search === undefined || state.question.kind !== "multiselect") {
+      return false;
+    }
+    state.showSelectedOnly = !state.showSelectedOnly;
+    cursorRow = 0;
+    return true;
+  };
+
   return {
     answers: () => collectAnswers(states),
     frame: () => ({ activeTab, cursorRow, flow, questions: states.map(toView), preview }),
     handle,
     views: () => states.map(toView),
   };
-}
-
-/** Gives a searchable question first refusal over keys used to enter, edit, or clear its query. */
-function applySearchKeypress(keypress: Keypress, state: QuestionState | undefined): boolean {
-  if (state === undefined) {
-    return false;
-  }
-  if (!state.searching) {
-    if (state.question.search === undefined || keypress.sequence !== "/") {
-      return false;
-    }
-    state.searching = true;
-    return true;
-  }
-  if (keypress.name === "escape") {
-    state.searching = false;
-    state.searchText = "";
-    return true;
-  }
-  if (keypress.name === "return" || keypress.name === "enter") {
-    state.searching = false;
-    return true;
-  }
-  return editSearch(keypress, state);
-}
-
-/** Edits the live search field while search mode owns printable keys. */
-function editSearch(keypress: Keypress, state: QuestionState): boolean {
-  if (keypress.name === "backspace") {
-    state.searchText = [...state.searchText].slice(0, -1).join("");
-    return true;
-  }
-  const typed = printable(keypress);
-  if (typed === undefined) {
-    return false;
-  }
-  state.searchText += typed;
-  return true;
 }
 
 /** The next unanswered question after `activeTab`, or the Submit tab. */

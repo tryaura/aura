@@ -95,7 +95,7 @@ async function readBody(
   if (reader === undefined) {
     return binary
       ? { body: new Uint8Array(), kind: "binary-response", status: response.status }
-      : { body: "", kind: "response", status: response.status };
+      : { body: "", ...responseEtag(response), kind: "response", status: response.status };
   }
 
   const chunks: Uint8Array[] = [];
@@ -116,7 +116,18 @@ async function readBody(
   const body = concatenate(chunks, received);
   return binary
     ? { body, kind: "binary-response", status: response.status }
-    : { body: new TextDecoder().decode(body), kind: "response", status: response.status };
+    : {
+        body: new TextDecoder().decode(body),
+        ...responseEtag(response),
+        kind: "response",
+        status: response.status,
+      };
+}
+
+/** The entity tag as an optional field, so absence stays absent rather than `undefined`-valued. */
+function responseEtag(response: Response): { readonly etag?: string } {
+  const etag = response.headers.get("etag");
+  return etag === null ? {} : { etag };
 }
 
 function concatenate(chunks: readonly Uint8Array[], length: number): Uint8Array {

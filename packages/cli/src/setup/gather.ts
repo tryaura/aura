@@ -1,9 +1,12 @@
 import {
   SETUP_ABORTED,
   SETUP_BACK,
+  type GatheredSetup,
   type SetupSelections,
   type SetupStep,
   type SetupStepContext,
+  type SetupStepUnoffered,
+  type SetupTelemetryCategory,
 } from "./types.js";
 import type { WizardFlowContext, WizardFlowStep, WizardIo } from "./wizard-types.js";
 
@@ -14,14 +17,18 @@ type GatherSelectionsResult =
       readonly status: "invalid-dependency";
       readonly stepTitle: string;
     }
-  | { readonly selections: SetupSelections; readonly status: "ready" };
+  | (GatheredSetup & { readonly status: "ready" });
 
-/** Where a gather pass starts: step index plus the selections already made before it. */
-export interface GatherStart {
+/**
+ * Where a gather pass starts: step index plus everything the passes before it settled.
+ *
+ * A pass can open on the last step alone, so what was offered accumulates across passes exactly as
+ * the selections do; rebuilding it per pass would forget every earlier step.
+ */
+export interface GatherStart extends GatheredSetup {
   /** Set when the pass opens by backing into its first step, e.g. from the confirmation. */
   readonly entered?: "backward" | undefined;
   readonly index: number;
-  readonly selections: SetupSelections;
 }
 
 export async function gatherSelections(
@@ -31,6 +38,7 @@ export async function gatherSelections(
   start: GatherStart,
 ): Promise<GatherSelectionsResult> {
   const flowSteps = steps.map(toFlowStep);
+  const offeredCategories = new Set<SetupTelemetryCategory>(start.offered);
   let selections = start.selections;
   // Steps before the start index completed in an earlier pass of this same run.
   const completedSteps = new Set(steps.slice(0, start.index).map((step) => step.id));
@@ -78,12 +86,46 @@ export async function gatherSelections(
       index = Math.max(0, index - 1);
       continue;
     }
-    selections = outcome;
+    const settled = readStepOutcome(outcome);
+    selections = settled.selections;
+    trackOffered(offeredCategories, step, settled.offered);
     completedSteps.add(step.id);
     enteredBackward = false;
     index += 1;
   }
-  return { selections, status: "ready" };
+  return { offered: offeredCategories, selections, status: "ready" };
+}
+
+/**
+ * Records whether this visit put the step's telemetry category on screen.
+ *
+ * A revisit re-decides it in both directions: the step is the only thing that knows whether it had
+ * anything to ask this time, and the answer can differ once an earlier step changed what it draws
+ * from — an Apps answer that drops every skills-capable application, for one.
+ */
+function trackOffered(
+  categories: Set<SetupTelemetryCategory>,
+  step: SetupStep,
+  offered: boolean,
+): void {
+  if (step.telemetryCategory === undefined) {
+    return;
+  }
+  if (offered) {
+    categories.add(step.telemetryCategory);
+  } else {
+    categories.delete(step.telemetryCategory);
+  }
+}
+
+/** Splits a completed step's outcome into what it settled and whether it asked anything to do it. */
+export function readStepOutcome(outcome: SetupSelections | SetupStepUnoffered): {
+  readonly offered: boolean;
+  readonly selections: SetupSelections;
+} {
+  return "unoffered" in outcome
+    ? { offered: false, selections: outcome.selections }
+    : { offered: true, selections: outcome };
 }
 
 export function toFlowStep(step: SetupStep): WizardFlowStep {

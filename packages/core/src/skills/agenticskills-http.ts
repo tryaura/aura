@@ -1,16 +1,17 @@
 import type { Environment, HttpGetRequest, HttpGetResult } from "@tryaura/aura-sdk";
 
 export type AgenticRequestOutcome =
-  | { readonly body: string; readonly kind: "text" }
+  | { readonly body: string; readonly etag?: string | undefined; readonly kind: "text" }
   | { readonly body: Uint8Array; readonly kind: "bytes" }
-  | { readonly kind: "failure"; readonly reason: string };
+  | { readonly kind: "failure"; readonly reason: string }
+  /** A 304 answer to a conditional request; only callers sending `If-None-Match` see one. */
+  | { readonly kind: "not-modified" };
 
 /**
  * Performs one bounded GET, retrying once on a transient failure unless the caller opts out.
  *
- * `retry` is off for existence probes: a listing sweep runs one probe per catalog entry, so a
- * second attempt on every failure doubles the worst-case wait the user sits through for an answer
- * that is only advisory.
+ * `retry` is off for advisory repository verification: a failed tree keeps trusting the feed, so
+ * retrying would spend another request without changing the safe fallback.
  */
 export async function getAgenticResource(
   environment: Environment,
@@ -22,11 +23,18 @@ export async function getAgenticResource(
   if (result.kind === "failure") {
     return result;
   }
+  if (result.status === 304) {
+    return { kind: "not-modified" };
+  }
   if (result.status !== 200) {
     return { kind: "failure", reason: `responded with HTTP ${String(result.status)}` };
   }
   return result.kind === "response"
-    ? { body: result.body, kind: "text" }
+    ? {
+        body: result.body,
+        ...(result.etag === undefined ? {} : { etag: result.etag }),
+        kind: "text",
+      }
     : { body: result.body, kind: "bytes" };
 }
 

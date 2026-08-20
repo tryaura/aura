@@ -137,6 +137,7 @@ export { MAX_SNIPPET_BYTES } from "./workspace/reader-limits.js";
 export { createHttpGet, vetHttpUrl } from "./http.boundary.js";
 export { createHttpPost } from "./http-post.boundary.js";
 export { listDirectorySkills, resolveDirectorySkills } from "./skills/directory-client.js";
+export { loadSkillPackGroups, type SkillPackGroup } from "./skills/pack-groups.js";
 export { collectSkillDirectorySources, isSkillSourceAllowed } from "./skills/sources.js";
 export { listDriverSkills, resolveDriverSkills } from "./skills/driver-client.js";
 export type { DriverSkillListingResult } from "./skills/driver-client.js";

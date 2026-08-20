@@ -1,6 +1,7 @@
 import type { AuraManifestSkill } from "@tryaura/aura-sdk";
 import { describe, expect, it } from "vitest";
 
+import { settledStep } from "../testing.js";
 import { SETUP_ABORTED, SETUP_BACK } from "../types.js";
 import { createScriptedWizardIo } from "../wizard-scripted.js";
 import {
@@ -24,7 +25,7 @@ describe("skillsStep", () => {
 
     const outcome = await skillsStep.gather(context(fakeCatalog()), scripted);
 
-    expect(outcome).toEqual({});
+    expect(settledStep(outcome)).toEqual({ offered: false, selections: {} });
     expect(scripted.notes).toContain(
       "No skills are available from the installed plugins or directories.",
     );
@@ -99,7 +100,7 @@ describe("skillsStep", () => {
     if (typeof kept === "symbol") {
       throw new Error("expected selections");
     }
-    expect(kept.skills?.updates).toBeUndefined();
+    expect(settledStep(kept).selections.skills?.updates).toBeUndefined();
     expect(updated).toMatchObject({ skills: { updates: [BUNDLED_IDENTITY] } });
   });
 

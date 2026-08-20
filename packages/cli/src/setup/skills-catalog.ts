@@ -3,6 +3,7 @@ import type {
   DirectorySkillSource,
   DriverSkillSource,
   Environment,
+  Preset,
   PrivateDirectorySkillSource,
   ResolvedSkillPack,
   SkillSourceId,
@@ -14,6 +15,7 @@ import {
   collectSkillDirectorySources,
   isSkillSourceAllowed,
   type DriverSkillListingResult,
+  type SkillPackGroup,
 } from "@tryaura/core";
 
 import { resolveSkillSelections } from "./skill-catalog-resolution.js";
@@ -58,11 +60,31 @@ export interface UnavailableSkillSource {
   readonly name: string;
 }
 
+/** A source whose catalog overflowed the listing cap, rendered as a disabled picker row. */
+export interface TruncatedSkillSource {
+  readonly advertised: number;
+  readonly id: SkillSourceId;
+  readonly name: string;
+  readonly read: number;
+}
+
 export interface SkillCatalogListing {
   readonly entries: readonly SkillCatalogEntry[];
   /** First-visit `io.note` lines: preset problems, index problems, listing failures. */
   readonly notes: readonly string[];
+  /** Plugin-shipped skill packs, offered as checkable groups ahead of the catalog rows. */
+  readonly packs: readonly SkillPackGroup[];
+  /** Sources that advertise more entries than the cap; each renders a leading disabled row. */
+  readonly truncatedSources: readonly TruncatedSkillSource[];
   readonly unavailableSources: readonly UnavailableSkillSource[];
+  /** Advisory background checks that can disable stale rows while the picker is open. */
+  readonly verification?: SkillCatalogVerification | undefined;
+}
+
+export interface SkillCatalogVerification {
+  readonly isMissing: (identity: string) => boolean;
+  readonly settled: Promise<void>;
+  readonly subscribe: (listener: () => void) => () => void;
 }
 
 export interface SkillResolution {
@@ -117,6 +139,8 @@ export interface SkillCatalogInputs {
    */
   readonly interactive: boolean;
   readonly model: WorkspaceModel;
+  /** Bypass catalog cache reads and writes, mirroring the preset loader's `--no-cache`. */
+  readonly noCache?: boolean | undefined;
   readonly preset: AuraTeamPreset | undefined;
   /** Messages from reading the preset file, surfaced with the catalog's own notes. */
   readonly presetNotes: readonly string[];
@@ -124,6 +148,8 @@ export interface SkillCatalogInputs {
   readonly presetOrigin?: string | undefined;
   readonly registryDirectories: readonly DirectorySkillSource[];
   readonly registryDrivers?: readonly SkillSourceDriver[] | undefined;
+  /** Plugin-shipped presets, offered as skill packs when they declare a skill selection. */
+  readonly registryPresets?: readonly Preset[] | undefined;
 }
 
 export function createSkillCatalog(inputs: SkillCatalogInputs): SkillCatalog {

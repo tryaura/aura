@@ -23,6 +23,42 @@ export function pickerPrompt(inputs: SkillStageInputs): string {
   );
 }
 
+/**
+ * A bundled skill previews its packaged SKILL.md; a remote one fetches its own on demand.
+ *
+ * Reading a skill is exactly how someone decides whether to check its row, so the decision point
+ * gets the same `p` overlay the Review form has — one bounded fetch, memoized into the run's pack
+ * cache, which is the same cache the Review resolution reads. A fetch that fails shows its
+ * validated reason in the overlay; nothing about the row changes.
+ */
+function previewField(
+  inputs: SkillStageInputs,
+  entry: SkillStageInputs["listing"]["entries"][number],
+): Partial<WizardOption> {
+  if (entry.preview !== undefined) {
+    return { preview: entry.preview };
+  }
+  if (!entry.remote) {
+    return {};
+  }
+  return {
+    loadPreview: async () => {
+      const resolution = await inputs.catalog.resolve(
+        [{ id: entry.id, source: entry.sourceId }],
+        inputs.approvedPrivateSourceIds,
+      );
+      const pack = resolution.resolved.get(entry.identity);
+      if (pack === undefined) {
+        return resolution.problems.get(entry.identity) ?? "This skill could not be fetched.";
+      }
+      return (
+        pack.files.find((file) => file.path === "SKILL.md")?.content ??
+        "This skill carries no SKILL.md."
+      );
+    },
+  };
+}
+
 export function pickerOptions(inputs: SkillStageInputs): readonly WizardOption[] {
   const covered = new Set(inputs.listing.entries.map((entry) => entry.identity));
   const unavailableById = new Map(
@@ -38,10 +74,20 @@ export function pickerOptions(inputs: SkillStageInputs): readonly WizardOption[]
     entry.id,
   ]).map((entry): WizardOption => ({
     description: `${entry.description} · v${entry.version}`,
-    ...(unsupported ? { disabled: true, disabledNote: "no selected app supports skills" } : {}),
+    get disabled() {
+      return unsupported || inputs.listing.verification?.isMissing(entry.identity) === true;
+    },
+    get disabledNote() {
+      if (unsupported) {
+        return "no selected app supports skills";
+      }
+      return inputs.listing.verification?.isMissing(entry.identity) === true
+        ? "source no longer publishes this skill"
+        : undefined;
+    },
     group: entry.sourceName,
     label: `${entry.name}${preset.has(entry.identity) ? " (from preset)" : ""}`,
-    ...(entry.preview === undefined ? {} : { preview: entry.preview }),
+    ...previewField(inputs, entry),
     value: entry.identity,
   }));
 
@@ -88,6 +134,43 @@ export function pickerOptions(inputs: SkillStageInputs): readonly WizardOption[]
       value: `source:${source.id}`,
     }));
 
+  // A pack is a selection gesture over catalog rows: checking it checks its members, every remote
+  // member still passes its own Review with Skip standing, and a non-interactive run takes nothing
+  // from it. Members the catalog does not offer this run are simply absent from the gesture; a
+  // pack with none left renders disabled rather than vanishing.
+  const packRows = inputs.listing.packs.map((pack): WizardOption => {
+    const members = pack.skills
+      .map((skill) => skillIdentity(skill.source, skill.id))
+      .filter((identity) => covered.has(identity));
+    const unavailable =
+      members.length === 0
+        ? { disabled: true, disabledNote: "no member is available in this run" }
+        : unsupported
+          ? { disabled: true, disabledNote: "no selected app supports skills" }
+          : {};
+    return {
+      description: `${pack.description} · ${pack.origin === "catalog" ? "catalog collection" : "plugin preset"}`,
+      ...unavailable,
+      group: "Skill packs",
+      label: `${pack.name} — ${String(members.length)} skills`,
+      members,
+      value: `pack:${pack.id}`,
+    };
+  });
+
+  // Truncation leads for the same reason an unavailable source does: nothing preselects this row,
+  // so anywhere later the initial window could hide it — and a catalog quietly missing its tail is
+  // exactly what must be visible without searching for it.
+  const truncatedRows = inputs.listing.truncatedSources.map((source): WizardOption => ({
+    description:
+      `showing ${String(source.read)} of ${String(source.advertised)} entries — ` +
+      "the rest cannot be listed until the catalog narrows upstream",
+    disabled: true,
+    group: source.name,
+    label: `${source.name} (truncated)`,
+    value: `truncated:${source.id}`,
+  }));
+
   const represented = new Set([
     ...inputs.listing.entries.map((entry) => entry.identity),
     ...inputs.manifestSkills.map((skill) => skillIdentity(skill.source, skill.id)),
@@ -103,8 +186,16 @@ export function pickerOptions(inputs: SkillStageInputs): readonly WizardOption[]
       value: skillIdentity(skill.source, skill.id),
     }));
 
-  // Unavailable sources lead. They are the only rows nothing preselects, so behind the picker's
-  // initial row window they would be the one class of row that can fall off the first frame
-  // entirely — and a source being down is exactly what has to be visible without searching for it.
-  return [...sourceRows, ...entryRows, ...manifestRows, ...presetRows];
+  // Unavailable and truncated sources lead. They are the only rows nothing preselects, so behind
+  // the picker's initial row window they would be the one class of row that can fall off the first
+  // frame entirely — and a source being down or cut short is exactly what has to be visible
+  // without searching for it. Packs come next: most users check one pack and never open search.
+  return [
+    ...sourceRows,
+    ...truncatedRows,
+    ...packRows,
+    ...entryRows,
+    ...manifestRows,
+    ...presetRows,
+  ];
 }

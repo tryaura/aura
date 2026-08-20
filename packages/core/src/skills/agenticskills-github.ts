@@ -6,67 +6,158 @@ import type {
 } from "@tryaura/aura-sdk";
 
 import { createLimiter } from "../workspace/concurrency.js";
+import { isRecord } from "../values.js";
 import { treeHash } from "../workspace/skill-tree-walk.js";
 import { agenticRequestFailure, getAgenticResource } from "./agenticskills-http.js";
 import { listRemoteFiles, type RemoteFile } from "./agenticskills-tree.js";
-import { type AgenticCatalogEntry, type GitHubLocation } from "./agenticskills-types.js";
-import { rawFileUrl } from "./agenticskills-urls.js";
 import {
-  MAX_CONCURRENT_SKILL_PROBES,
+  GITHUB_API_HEADERS,
+  type AgenticCatalogEntry,
+  type GitHubLocation,
+} from "./agenticskills-types.js";
+import { rawFileUrl, repositoryTreeApiUrl } from "./agenticskills-urls.js";
+import {
   MAX_CONCURRENT_SKILL_REQUESTS,
+  MAX_REPO_TREE_BYTES,
   MAX_SKILL_FILE_BYTES,
 } from "./limits.js";
+import type { DirectorySkillVerification } from "./listing-verification.js";
 import { parseDirectorySkillPack } from "./pack-schema.js";
 
-export interface VerifiedAgenticEntries {
-  readonly entries: readonly AgenticCatalogEntry[];
-  readonly failures: number;
-}
-
 /**
- * Drops picker rows for GitHub directories that no longer publish a root SKILL.md.
+ * Starts one advisory recursive-tree check per repository without holding up the catalog listing.
  *
- * Only a definite 404 removes an entry. A probe that failed for any other reason — a timeout, a
- * rate limit, a network blip — keeps its entry listed: the sweep is advisory, and dropping a real
- * skill because one request lost a race leaves the user with no row to select and no way to ask
- * again. Such an entry resolves like any other, and says why on its review row if it truly cannot
- * be fetched.
+ * A complete tree can prove that an advertised root SKILL.md is absent. A failed, malformed,
+ * oversized, or GitHub-truncated tree proves nothing, so that repository keeps trusting the feed.
+ * Results are retained before any picker subscribes and notify live pickers as each repository
+ * settles. Resolution remains authoritative and reports a per-skill failure for stale selections.
  */
-export async function verifyAgenticEntries(
+export function startAgenticVerification(
   environment: Environment,
   entries: readonly AgenticCatalogEntry[],
-): Promise<VerifiedAgenticEntries> {
-  const limit = createLimiter(MAX_CONCURRENT_SKILL_PROBES);
-  const outcomes = await Promise.all(
-    entries.map((entry) =>
-      limit(async () => ({ entry, result: await probeDefinition(environment, entry.github) })),
+): DirectorySkillVerification {
+  const missing = new Set<string>();
+  const listeners = new Set<() => void>();
+  const repositories = groupByRepository(entries);
+  const limit = createLimiter(MAX_CONCURRENT_SKILL_REQUESTS);
+  const settled = Promise.all(
+    repositories.map((repository) =>
+      limit(async () => {
+        let result: readonly string[];
+        try {
+          result = await verifyRepository(environment, repository);
+        } catch {
+          return;
+        }
+        if (result.length === 0) {
+          return;
+        }
+        for (const id of result) {
+          missing.add(id);
+        }
+        for (const listener of listeners) {
+          listener();
+        }
+      }),
     ),
-  );
+  ).then(() => undefined);
+
   return Object.freeze({
-    entries: Object.freeze(
-      outcomes.flatMap(({ entry, result }) => (result === "missing" ? [] : [entry])),
-    ),
-    failures: outcomes.filter(({ result }) => result === "failure").length,
+    isMissing: (skillId: string) => missing.has(skillId),
+    settled,
+    subscribe: (listener: () => void) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
   });
 }
 
-async function probeDefinition(
+interface AgenticRepository {
+  readonly entries: readonly AgenticCatalogEntry[];
+  readonly location: GitHubLocation;
+}
+
+function groupByRepository(entries: readonly AgenticCatalogEntry[]): readonly AgenticRepository[] {
+  const grouped = new Map<
+    string,
+    { readonly entries: AgenticCatalogEntry[]; readonly location: GitHubLocation }
+  >();
+  for (const entry of entries) {
+    const location = entry.github;
+    const key = `${location.owner}\0${location.repository}\0${location.ref}`;
+    const repository = grouped.get(key);
+    if (repository === undefined) {
+      grouped.set(key, { entries: [entry], location });
+    } else {
+      repository.entries.push(entry);
+    }
+  }
+  return [...grouped.values()].map((repository) => ({
+    entries: Object.freeze(repository.entries),
+    location: repository.location,
+  }));
+}
+
+async function verifyRepository(
   environment: Environment,
-  location: GitHubLocation,
-): Promise<"available" | "failure" | "missing"> {
+  repository: AgenticRepository,
+): Promise<readonly string[]> {
   const outcome = await getAgenticResource(
     environment,
     {
-      maxResponseBytes: 64_000,
-      responseType: "bytes",
-      url: rawFileUrl(location, `${location.directory}/SKILL.md`),
+      headers: GITHUB_API_HEADERS,
+      maxResponseBytes: MAX_REPO_TREE_BYTES,
+      url: repositoryTreeApiUrl(repository.location),
     },
     false,
   );
-  if (outcome.kind !== "failure" || outcome.reason === "response-too-large") {
-    return "available";
+  if (outcome.kind !== "text") {
+    return [];
   }
-  return outcome.reason === "responded with HTTP 404" ? "missing" : "failure";
+  const published = parseRepositoryTree(outcome.body);
+  if (published === undefined) {
+    return [];
+  }
+  return repository.entries
+    .filter((entry) => !published.has(`${entry.github.directory}/SKILL.md`))
+    .map((entry) => entry.listing.id);
+}
+
+function parseRepositoryTree(body: string): ReadonlySet<string> | undefined {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    return undefined;
+  }
+  if (!isRecord(parsed) || parsed["truncated"] !== false || !Array.isArray(parsed["tree"])) {
+    return undefined;
+  }
+  const paths = new Set<string>();
+  for (const value of parsed["tree"]) {
+    const entry = parseRepositoryTreeEntry(value);
+    if (entry === undefined) {
+      return undefined;
+    }
+    if (entry.type === "blob") {
+      paths.add(entry.path);
+    }
+  }
+  return paths;
+}
+
+interface RepositoryTreeEntry {
+  readonly path: string;
+  readonly type: string;
+}
+
+function parseRepositoryTreeEntry(value: unknown): RepositoryTreeEntry | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const path = value["path"];
+  const type = value["type"];
+  return typeof path === "string" && typeof type === "string" ? { path, type } : undefined;
 }
 
 export async function resolveAgenticEntry(

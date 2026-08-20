@@ -5,13 +5,17 @@ import { agenticRequestFailure, getAgenticResource } from "./agenticskills-http.
 import type {
   AgenticCatalogEntry,
   AgenticCatalogOutcome,
-  GitHubLocation,
+  AgenticCollection,
 } from "./agenticskills-types.js";
-import { MAX_DIRECTORY_INDEX_BYTES, MAX_DIRECTORY_INDEX_ENTRIES } from "./limits.js";
+import { parseCatalogEntry, UNSUPPORTED_COLLECTION } from "./agenticskills-entry.js";
+import { readCatalogCache, writeCatalogCache, type CachedCatalog } from "./catalog-cache.js";
+import {
+  MAX_CATALOG_COLLECTIONS,
+  MAX_COLLECTION_MEMBERS,
+  MAX_DIRECTORY_INDEX_BYTES,
+  MAX_DIRECTORY_INDEX_ENTRIES,
+} from "./limits.js";
 import { skillIdProblem } from "./path-guards.js";
-
-const GITHUB_SEGMENT = /^[A-Za-z0-9._-]+$/u;
-const UNSUPPORTED_COLLECTION = Symbol("unsupported-collection");
 
 /**
  * The feed each endpoint served, scoped to the environment that fetched it.
@@ -26,6 +30,7 @@ const catalogs = new WeakMap<Environment, Map<string, Promise<AgenticCatalogOutc
 export function loadAgenticCatalog(
   environment: Environment,
   source: DirectorySkillSource,
+  noCache = false,
 ): Promise<AgenticCatalogOutcome> {
   const endpoint = providerEndpoint(source.url);
   if (endpoint === undefined) {
@@ -37,26 +42,98 @@ export function loadAgenticCatalog(
   if (memoized !== undefined) {
     return memoized;
   }
-  const pending = fetchCatalog(environment, endpoint);
+  const pending = fetchCatalog(environment, endpoint, noCache);
   byEndpoint.set(endpoint, pending);
   return pending;
 }
 
+/**
+ * The feed body, through the on-disk catalog cache.
+ *
+ * Fresh entries serve with no request; stale ones revalidate with `If-None-Match` and serve on a
+ * 304; and an unreachable provider falls back to the stale copy, because a dated catalog beats an
+ * empty picker. Both bodies validate through the same {@link parseCatalog}, so a cached document
+ * is never trusted further than a live one.
+ */
 async function fetchCatalog(
   environment: Environment,
   endpoint: string,
+  noCache: boolean,
 ): Promise<AgenticCatalogOutcome> {
+  const cached = noCache ? undefined : await readUsableCatalog(environment, endpoint);
+  if (cached !== undefined && cached.entry.fresh) {
+    return { ...cached.catalog, cacheAgeMs: cached.entry.ageMs };
+  }
   const outcome = await getAgenticResource(environment, {
+    ...(cached?.entry.etag === undefined
+      ? {}
+      : { headers: { "If-None-Match": cached.entry.etag } }),
     maxResponseBytes: MAX_DIRECTORY_INDEX_BYTES,
     url: endpoint,
   });
-  if (outcome.kind === "failure") {
-    return { kind: "failure", reason: agenticRequestFailure(outcome.reason) };
+  return settleCatalogOutcome(environment, endpoint, noCache, outcome, cached);
+}
+
+interface UsableCachedCatalog {
+  readonly catalog: AgenticCatalogOutcome & { readonly kind: "catalog" };
+  readonly entry: CachedCatalog;
+}
+
+/**
+ * The cached entry together with its parse, or `undefined` when there is nothing usable.
+ *
+ * A cached body that no longer parses is a miss outright, including for revalidation: a 304 would
+ * confirm bytes this run cannot use.
+ */
+async function readUsableCatalog(
+  environment: Environment,
+  endpoint: string,
+): Promise<UsableCachedCatalog | undefined> {
+  const entry = await readCatalogCache(environment, endpoint);
+  if (entry === undefined) {
+    return undefined;
+  }
+  const catalog = parseCatalog(entry.body);
+  return catalog.kind === "catalog" ? { catalog, entry } : undefined;
+}
+
+/** Folds one feed response — a body, a revalidating 304, or a failure — into the outcome. */
+async function settleCatalogOutcome(
+  environment: Environment,
+  endpoint: string,
+  noCache: boolean,
+  outcome: Awaited<ReturnType<typeof getAgenticResource>>,
+  cached: UsableCachedCatalog | undefined,
+): Promise<AgenticCatalogOutcome> {
+  if (outcome.kind === "not-modified" && cached !== undefined) {
+    await writeCatalogCache(environment, endpoint, cached.entry.body, cached.entry.etag);
+    return cached.catalog;
+  }
+  if (outcome.kind === "failure" || outcome.kind === "not-modified") {
+    return catalogFallback(outcome, cached);
   }
   if (outcome.kind !== "text") {
     return { kind: "failure", reason: "returned a non-text catalog" };
   }
-  return parseCatalog(outcome.body);
+  const parsed = parseCatalog(outcome.body);
+  if (!noCache && parsed.kind === "catalog") {
+    await writeCatalogCache(environment, endpoint, outcome.body, outcome.etag);
+  }
+  return parsed;
+}
+
+/** The stale copy when one is usable, else the failure in the words the picker will show. */
+function catalogFallback(
+  outcome:
+    | { readonly kind: "failure"; readonly reason: string }
+    | { readonly kind: "not-modified" },
+  cached: UsableCachedCatalog | undefined,
+): AgenticCatalogOutcome {
+  if (cached !== undefined) {
+    return { ...cached.catalog, cacheAgeMs: cached.entry.ageMs, staleAfterFailure: true };
+  }
+  const reason = outcome.kind === "failure" ? outcome.reason : "responded with HTTP 304";
+  return { kind: "failure", reason: agenticRequestFailure(reason) };
 }
 
 function providerEndpoint(baseUrl: string): string | undefined {
@@ -98,7 +175,8 @@ function parseCatalog(body: string): AgenticCatalogOutcome {
     entries.push(entry);
   }
   const problems: string[] = [];
-  if (advertised.length > MAX_DIRECTORY_INDEX_ENTRIES) {
+  const truncated = advertised.length > MAX_DIRECTORY_INDEX_ENTRIES;
+  if (truncated) {
     problems.push(
       `advertises ${String(advertised.length)} entries; only the first ${String(MAX_DIRECTORY_INDEX_ENTRIES)} are read`,
     );
@@ -107,132 +185,71 @@ function parseCatalog(body: string): AgenticCatalogOutcome {
     problems.push(`contains ${String(malformed)} malformed or duplicate entries`);
   }
   return {
+    collections: parseCollections(parsed["collections"], seen),
     entries: Object.freeze(entries),
     kind: "catalog",
     problems: Object.freeze(problems),
+    ...(truncated
+      ? { truncation: { advertised: advertised.length, read: MAX_DIRECTORY_INDEX_ENTRIES } }
+      : {}),
   };
 }
 
-// fallow-ignore-next-line complexity -- every branch rejects one incomplete provider entry.
-function parseCatalogEntry(
+/**
+ * The catalog's own curated selections, silently reduced to what this run can honor.
+ *
+ * Collections are convenience data from a remote host, never policy: a malformed one, a duplicate
+ * id, or a member the feed does not advertise is dropped without a diagnostic, because nothing a
+ * collection says can make a skill installable that the catalog itself does not offer.
+ */
+function parseCollections(
   value: unknown,
-): AgenticCatalogEntry | typeof UNSUPPORTED_COLLECTION | undefined {
+  advertisedIds: ReadonlySet<string>,
+): readonly AgenticCollection[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const collections: AgenticCollection[] = [];
+  const seen = new Set<string>();
+  for (const candidate of value.slice(0, MAX_CATALOG_COLLECTIONS)) {
+    const collection = parseCollection(candidate, advertisedIds);
+    if (collection !== undefined && !seen.has(collection.id)) {
+      seen.add(collection.id);
+      collections.push(collection);
+    }
+  }
+  return Object.freeze(collections);
+}
+
+// fallow-ignore-next-line complexity -- every branch rejects one incomplete advertised collection.
+function parseCollection(
+  value: unknown,
+  advertisedIds: ReadonlySet<string>,
+): AgenticCollection | undefined {
   if (!isRecord(value)) {
     return undefined;
   }
   const description = value["description"];
-  const githubUrl = value["githubUrl"];
-  const id = value["slug"];
-  const lastUpdated = value["lastUpdated"];
+  const id = value["id"];
   const name = value["name"];
+  const skillIds = value["skillIds"];
   if (
     typeof description !== "string" ||
-    typeof githubUrl !== "string" ||
+    description.length > 256 ||
     typeof id !== "string" ||
-    typeof lastUpdated !== "string" ||
+    skillIdProblem(id) !== undefined ||
     typeof name !== "string" ||
-    skillIdProblem(id) !== undefined
+    name.trim().length === 0 ||
+    name.length > 128 ||
+    !Array.isArray(skillIds)
   ) {
     return undefined;
   }
-  const github = parseGitHubUrl(githubUrl);
-  const version = dateVersion(lastUpdated);
-  if (github === UNSUPPORTED_COLLECTION) {
-    return github;
-  }
-  if (github === undefined || version === undefined) {
+  const members = skillIds
+    .slice(0, MAX_COLLECTION_MEMBERS)
+    .filter((member): member is string => typeof member === "string" && advertisedIds.has(member));
+  if (members.length === 0) {
     return undefined;
   }
-  return Object.freeze({
-    github,
-    listing: Object.freeze({ description, id, name, originUrl: githubOrigin(github), version }),
-  });
-}
-
-/**
- * The exact GitHub directory a listing installs from, rebuilt from the vetted components.
- *
- * Rebuilt rather than echoed: the feed's own string has already been through
- * {@link parseGitHubUrl}, and re-printing the parts that survived it is what keeps a rejected
- * userinfo, query, or fragment from reappearing on screen as if Aura had accepted it.
- */
-function githubOrigin(location: GitHubLocation): string {
-  return `https://github.com/${location.owner}/${location.repository}/tree/${location.ref}/${location.directory}`;
-}
-
-// fallow-ignore-next-line complexity -- every branch confines one untrusted URL component.
-function parseGitHubUrl(value: string): GitHubLocation | typeof UNSUPPORTED_COLLECTION | undefined {
-  let url: URL;
-  try {
-    url = new URL(value);
-  } catch {
-    return undefined;
-  }
-  if (
-    url.protocol !== "https:" ||
-    url.hostname !== "github.com" ||
-    url.username !== "" ||
-    url.password !== "" ||
-    url.search !== "" ||
-    url.hash !== ""
-  ) {
-    return undefined;
-  }
-  const segments = url.pathname.split("/").filter((segment) => segment !== "");
-  const owner = segments[0];
-  const repository = segments[1];
-  if (
-    owner === undefined ||
-    repository === undefined ||
-    !GITHUB_SEGMENT.test(owner) ||
-    !GITHUB_SEGMENT.test(repository)
-  ) {
-    return undefined;
-  }
-  if (segments.length === 2) {
-    return UNSUPPORTED_COLLECTION;
-  }
-  const ref = segments[3];
-  const directorySegments = segments.slice(4);
-  if (
-    segments[2] !== "tree" ||
-    ref === undefined ||
-    !GITHUB_SEGMENT.test(ref) ||
-    directorySegments.length === 0 ||
-    directorySegments.some((segment) => !GITHUB_SEGMENT.test(segment))
-  ) {
-    return undefined;
-  }
-  return Object.freeze({
-    directory: directorySegments.join("/"),
-    owner,
-    ref,
-    repository,
-  });
-}
-
-function dateVersion(value: string): string | undefined {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/u.exec(value);
-  if (match === null) {
-    return undefined;
-  }
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  const days = daysInMonth(year, month);
-  if (year === 0 || days === undefined || day < 1 || day > days) {
-    return undefined;
-  }
-  return `${String(year)}.${String(month)}.${String(day)}`;
-}
-
-function daysInMonth(year: number, month: number): number | undefined {
-  if (month === 2) {
-    const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
-    return leap ? 29 : 28;
-  }
-  if ([4, 6, 9, 11].includes(month)) {
-    return 30;
-  }
-  return month >= 1 && month <= 12 ? 31 : undefined;
+  return Object.freeze({ description, id, name, skillIds: Object.freeze([...new Set(members)]) });
 }

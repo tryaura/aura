@@ -69,7 +69,7 @@ describe("help screens", () => {
           --disable <check>             Disable a check; repeatable
           --severity <check>=<level>    Override info, warn, or error; repeatable
           --threshold <check>=<JSON>    Override a check's threshold object; repeatable
-          --no-cache                    Bypass remote preset cache reads and writes
+          --no-cache                    Bypass remote preset and skill-catalog cache reads and writes
 
         Fixing behavior
           --yes                         Apply automatic fixes without asking; required when stdin is not a terminal
@@ -107,7 +107,7 @@ describe("help screens", () => {
           --disable <check>             Disable a check; repeatable
           --severity <check>=<level>    Override info, warn, or error; repeatable
           --threshold <check>=<JSON>    Override a check's threshold object; repeatable
-          --no-cache                    Bypass remote preset cache reads and writes
+          --no-cache                    Bypass remote preset and skill-catalog cache reads and writes
 
         Advanced
           --home <dir>                  Override the home directory

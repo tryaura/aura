@@ -5,6 +5,17 @@ import { MAX_DIRECTORY_INDEX_ENTRIES } from "./limits.js";
 import { skillIdProblem } from "./path-guards.js";
 
 /**
+ * How much of an oversized catalog was actually read.
+ *
+ * Structured rather than folded into a problem string: the picker renders truncation as its own
+ * disabled row naming both numbers, and a row cannot be built back out of prose.
+ */
+export interface DirectoryTruncation {
+  readonly advertised: number;
+  readonly read: number;
+}
+
+/**
  * The parsed `index.json` of a skill directory.
  *
  * A malformed entry drops that entry with a problem naming its position, never the whole index:
@@ -14,6 +25,7 @@ import { skillIdProblem } from "./path-guards.js";
 export interface DirectoryIndex {
   readonly listings: readonly SkillListing[];
   readonly problems: readonly string[];
+  readonly truncation?: DirectoryTruncation | undefined;
 }
 
 /** Parses a directory's `index.json` body: a JSON array of listing objects. */
@@ -31,7 +43,8 @@ export function parseDirectoryIndex(body: string): DirectoryIndex {
   const listings: SkillListing[] = [];
   const problems: string[] = [];
   const seen = new Set<string>();
-  if (parsed.length > MAX_DIRECTORY_INDEX_ENTRIES) {
+  const truncated = parsed.length > MAX_DIRECTORY_INDEX_ENTRIES;
+  if (truncated) {
     problems.push(
       `advertises ${String(parsed.length)} entries; only the first ` +
         `${String(MAX_DIRECTORY_INDEX_ENTRIES)} are read`,
@@ -48,7 +61,13 @@ export function parseDirectoryIndex(body: string): DirectoryIndex {
     listings.push(listing);
   }
 
-  return { listings: Object.freeze(listings), problems: Object.freeze(problems) };
+  return {
+    listings: Object.freeze(listings),
+    problems: Object.freeze(problems),
+    ...(truncated
+      ? { truncation: { advertised: parsed.length, read: MAX_DIRECTORY_INDEX_ENTRIES } }
+      : {}),
+  };
 }
 
 /** One frozen listing, or the problem that drops this entry. */
