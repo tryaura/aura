@@ -20,6 +20,18 @@ const SHARED_INSTRUCTIONS_HOME_REFERENCE = "~/agents/AGENTS.md";
 const PROJECT_SHARED_INSTRUCTIONS_FILE = "AGENTS.md";
 const SHARED_LINK_KINDS = new Set(["import-line", "native-copy", "symlink"]);
 
+/** Which adapter field a declaration came from, and therefore where its entry is allowed to live. */
+interface SharedLinkSlot {
+  readonly name: string;
+  readonly scope: Scope;
+}
+
+const GLOBAL_SLOT: SharedLinkSlot = Object.freeze({ name: "sharedLink", scope: "global" });
+const PROJECT_SLOT: SharedLinkSlot = Object.freeze({
+  name: "projectSharedLink",
+  scope: "project",
+});
+
 /** Canonical shared-instruction path for one captured environment. */
 export function sharedInstructionsPath(environment: Environment): string {
   return join(environment.homeDir, ...SHARED_INSTRUCTIONS_SEGMENTS);
@@ -38,17 +50,27 @@ export function projectSharedInstructionsPath(
   return join(projectRoot ?? cwd, PROJECT_SHARED_INSTRUCTIONS_FILE);
 }
 
-/** Returns every declarative problem in a shared-link contribution. */
-export function sharedLinkViolations(link: AdapterSharedLink): readonly string[] {
+/**
+ * Returns every declarative problem in a shared-link contribution to the given scope.
+ *
+ * The prefix is checked against the slot rather than merely being one of the two: a global
+ * declaration naming `./something` is what let a home-scoped check demand a file inside whichever
+ * repository the user was standing in, written with their home directory spelled out absolutely.
+ * Which slot an adapter fills is the whole statement of where the file lives.
+ */
+export function sharedLinkViolations(link: AdapterSharedLink, scope: Scope): readonly string[] {
   const violations: string[] = [];
   if (!SHARED_LINK_KINDS.has(link.kind)) {
     violations.push(`kind "${String(link.kind)}" is not supported`);
   }
 
+  const prefix = entryPrefix(scope);
   const relative =
-    typeof link.entryPath === "string" ? relativeEntryPath(link.entryPath) : undefined;
+    typeof link.entryPath === "string" && link.entryPath.startsWith(prefix)
+      ? link.entryPath.slice(prefix.length)
+      : undefined;
   if (relative === undefined) {
-    violations.push('entryPath must begin with "~/" or "./"');
+    violations.push(`entryPath must begin with "${prefix}" at ${scope} scope`);
   } else if (
     relative.length === 0 ||
     relative.includes("\\") ||
@@ -81,11 +103,13 @@ export function resolveAdapterSharedLink(
   environment: Environment,
   files: AdapterFileMap,
 ): ResolvedSharedLink | undefined {
-  return resolveSharedLink(adapter.sharedLink, "sharedLink", adapter, environment, files, {
-    path: sharedInstructionsPath(environment),
-    portable: false,
-    reference: SHARED_INSTRUCTIONS_HOME_REFERENCE,
-  });
+  return resolveSharedLink(
+    adapter.sharedLink,
+    GLOBAL_SLOT,
+    environment,
+    files,
+    () => SHARED_INSTRUCTIONS_HOME_REFERENCE,
+  );
 }
 
 export function resolveAdapterProjectSharedLink(
@@ -97,75 +121,71 @@ export function resolveAdapterProjectSharedLink(
   const target = projectSharedInstructionsPath(projectRoot, environment.cwd);
   return resolveSharedLink(
     adapter.projectSharedLink,
-    "projectSharedLink",
-    adapter,
+    PROJECT_SLOT,
     environment,
     files,
-    {
-      path: target,
-      portable: true,
-      reference: target,
-    },
+    (entryPath) => portableRelativePath(entryPath, target),
   );
 }
 
+/**
+ * Resolves one declaration, naming the shared source the way its own scope can survive.
+ *
+ * A home entry names the source through `~`, which is the same string on every machine the user
+ * owns. A project entry names it relative to itself, so the file it produces is one the whole team
+ * can commit. Nothing here can write a machine-specific absolute path into a repository, because
+ * the slot decides both halves at once.
+ */
 function resolveSharedLink(
   declaration: AdapterSharedLink | undefined,
-  name: string,
-  adapter: Adapter,
+  slot: SharedLinkSlot,
   environment: Environment,
   files: AdapterFileMap,
-  target: { readonly path: string; readonly portable: boolean; readonly reference: string },
+  targetReference: (entryPath: string) => string,
 ): ResolvedSharedLink | undefined {
   if (declaration === undefined) {
     return undefined;
   }
 
-  const entry = resolveSharedEntry(declaration, name, environment, files);
+  const entryPath = resolveSharedEntry(declaration, slot, environment, files);
   if (declaration.kind === "symlink") {
-    return { entryPath: entry.path, kind: declaration.kind, scope: entry.scope };
+    return { entryPath, kind: declaration.kind, scope: slot.scope };
   }
 
-  const targetReference = entry.global
-    ? target.reference
-    : target.portable
-      ? portableRelativePath(entry.path, target.path)
-      : target.path;
   return {
-    content: declaration.lineTemplate?.replace(SHARED_INSTRUCTIONS_TEMPLATE_TOKEN, targetReference),
-    entryPath: entry.path,
+    content: declaration.lineTemplate?.replace(
+      SHARED_INSTRUCTIONS_TEMPLATE_TOKEN,
+      targetReference(entryPath),
+    ),
+    entryPath,
     kind: declaration.kind,
-    scope: entry.scope,
+    scope: slot.scope,
   };
 }
 
 function resolveSharedEntry(
   declaration: AdapterSharedLink,
-  name: string,
+  slot: SharedLinkSlot,
   environment: Environment,
   files: AdapterFileMap,
-): { readonly global: boolean; readonly path: string; readonly scope: Scope } {
-  const violations = sharedLinkViolations(declaration);
+): string {
+  const violations = sharedLinkViolations(declaration, slot.scope);
   if (violations.length > 0) {
-    throw new Error(`declares an invalid ${name}: ${violations.join("; ")}`);
+    throw new Error(`declares an invalid ${slot.name}: ${violations.join("; ")}`);
   }
 
-  const global = declaration.entryPath.startsWith(GLOBAL_PREFIX);
-  const relative = relativeEntryPath(declaration.entryPath);
-  if (relative === undefined) {
-    throw new Error("declares an invalid sharedLink entryPath");
-  }
+  const global = slot.scope === "global";
+  const relative = declaration.entryPath.slice(entryPrefix(slot.scope).length);
   const entryPath = join(global ? environment.homeDir : environment.cwd, ...relative.split("/"));
-  const expectedScope: Scope = global ? "global" : "project";
   const declared = [...files.values()].some(
-    (file) => resolve(file.spec.path) === resolve(entryPath) && file.spec.scope === expectedScope,
+    (file) => resolve(file.spec.path) === resolve(entryPath) && file.spec.scope === slot.scope,
   );
   if (!declared) {
     throw new Error(
-      `declares sharedLink entry ${entryPath}, but its files() result did not declare that path at ${expectedScope} scope`,
+      `declares ${slot.name} entry ${entryPath}, but its files() result did not declare that path at ${slot.scope} scope`,
     );
   }
-  return { global, path: entryPath, scope: expectedScope };
+  return entryPath;
 }
 
 function portableRelativePath(entryPath: string, targetPath: string): string {
@@ -173,11 +193,8 @@ function portableRelativePath(entryPath: string, targetPath: string): string {
   return path.startsWith(".") ? path : `./${path}`;
 }
 
-function relativeEntryPath(entryPath: string): string | undefined {
-  if (entryPath.startsWith(GLOBAL_PREFIX) || entryPath.startsWith(PROJECT_PREFIX)) {
-    return entryPath.slice(2);
-  }
-  return undefined;
+function entryPrefix(scope: Scope): string {
+  return scope === "global" ? GLOBAL_PREFIX : PROJECT_PREFIX;
 }
 
 function countToken(template: string): number {

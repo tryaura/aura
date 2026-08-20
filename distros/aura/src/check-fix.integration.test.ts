@@ -12,13 +12,12 @@ import { AURA_DISTRO } from "./distro.js";
 const SHARED_TEMPLATE = "# Shared agent instructions\n";
 
 describe("aura check --fix", () => {
-  it("atomically wires Claude Code, Codex, and Cursor and is idempotent", async () => {
+  it("atomically wires Claude Code and Codex and is idempotent", async () => {
     await using seed = await threeAppSeed().build();
     const sharedPath = join(seed.homeDir, "agents", "AGENTS.md");
     const claudePath = join(seed.homeDir, ".claude", "CLAUDE.md");
     const codexPath = join(seed.homeDir, ".codex", "AGENTS.md");
-    const cursorPath = join(seed.workspaceDir, ".cursor", "rules", "aura.mdc");
-    const destinations = [sharedPath, claudePath, codexPath, cursorPath];
+    const destinations = [sharedPath, claudePath, codexPath];
     let changedBeforeEveryPreviewFinished = false;
     let previewCount = 0;
     const firstOutput = new CapturedOutput((chunk) => {
@@ -32,23 +31,20 @@ describe("aura check --fix", () => {
 
     expect(first.exitCode).toBe(0);
     expect(first.stderr).toBe("");
-    expect(previewCount).toBe(4);
+    expect(previewCount).toBe(3);
     expect(changedBeforeEveryPreviewFinished).toBe(false);
     expect(first.stdout.indexOf("Fix preview")).toBeLessThan(
-      first.stdout.indexOf("Applied 4 fix operations."),
+      first.stdout.indexOf("Applied 3 fix operations."),
     );
     expect(first.stdout).toContain("0 errors · 0 warnings · 3 suggestions");
     expect(first.stdout).toContain("✓ 23 checks passed · 3 applications detected");
     await expect(readFile(sharedPath, "utf8")).resolves.toBe(SHARED_TEMPLATE);
     await expect(readFile(claudePath, "utf8")).resolves.toContain("@~/agents/AGENTS.md");
     await expect(readlink(codexPath)).resolves.toBe(sharedPath);
-    await expect(readFile(cursorPath, "utf8")).resolves.toBe(
-      `---\nalwaysApply: true\n---\n\n@file ${sharedPath}\n`,
-    );
-    // The Cursor wrapper is the only entry that has to name the source absolutely, so it is the
-    // only one the user must be told not to commit.
-    expect(first.stdout).toContain("Steps to take yourself:");
-    expect(first.stdout).toContain(`${cursorPath} points at the shared source by absolute path`);
+    // Cursor is detected and wired to nothing: it keeps its global rules in its own settings. A
+    // fix run from inside a repository leaves that repository byte-for-byte alone.
+    expect(existsSync(join(seed.workspaceDir, ".cursor"))).toBe(false);
+    expect(first.stdout).not.toContain("Steps to take yourself:");
 
     const second = await runCheck({ args: ["--fix", "--yes"], distro: AURA_DISTRO, seed });
 
@@ -60,16 +56,16 @@ describe("aura check --fix", () => {
 
   it("shows the shape of each change without quoting file contents", async () => {
     await using seed = await threeAppSeed().build();
-    const cursorPath = join(seed.workspaceDir, ".cursor", "rules", "aura.mdc");
+    const sharedPath = join(seed.homeDir, "agents", "AGENTS.md");
 
     const result = await run(seed, ["check", "--fix", "--dry-run"]);
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain(`create ${cursorPath}`);
+    expect(result.stdout).toContain(`create ${sharedPath}`);
     expect(result.stdout).not.toContain("diff --aura");
     expect(result.stdout).toContain("Re-run with --detail to see the full diff of every change.");
     expect(result.stdout).toContain("Dry run: nothing was written.");
-    expect(existsSync(cursorPath)).toBe(false);
+    expect(existsSync(sharedPath)).toBe(false);
   });
 
   it("refuses to write when there is nobody to ask", async () => {

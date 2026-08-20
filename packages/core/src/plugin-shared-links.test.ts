@@ -7,7 +7,7 @@ describe("shared-link plugin validation", () => {
   it("rejects unsafe or incomplete declarations", () => {
     const traversal: Adapter = {
       ...createAdapter("traversal"),
-      sharedLink: {
+      projectSharedLink: {
         entryPath: "./../AGENTS.md",
         kind: "native-copy",
         lineTemplate: "@file {{sharedInstructions}}",
@@ -48,5 +48,51 @@ describe("shared-link plugin validation", () => {
     expect(error.message).toContain("import-line declarations require lineTemplate");
     expect(error.message).toContain("must contain exactly one {{sharedInstructions}} token");
     expect(error.message).toContain("symlink declarations must not provide lineTemplate");
+  });
+
+  it("refuses a declaration whose entry does not live in its slot's scope", () => {
+    // The shape that made a home-scoped check demand a file in whichever repository the user was
+    // standing in, and write their home directory into it absolutely.
+    const projectEntryGlobalSlot: Adapter = {
+      ...createAdapter("global-slot"),
+      sharedLink: {
+        entryPath: "./.agent/rules.md",
+        kind: "native-copy",
+        lineTemplate: "@file {{sharedInstructions}}",
+      },
+    };
+    const homeEntryProjectSlot: Adapter = {
+      ...createAdapter("project-slot"),
+      projectSharedLink: {
+        entryPath: "~/.agent/rules.md",
+        kind: "native-copy",
+        lineTemplate: "@file {{sharedInstructions}}",
+      },
+    };
+
+    const error = captureRegistryError([
+      createPlugin("scopes", { adapters: [projectEntryGlobalSlot, homeEntryProjectSlot] }),
+    ]);
+
+    expect(error.message).toContain(
+      'adapter "global-slot" declares invalid sharedLink: entryPath must begin with "~/" at global scope',
+    );
+    expect(error.message).toContain(
+      'adapter "project-slot" declares invalid projectSharedLink: entryPath must begin with "./" at project scope',
+    );
+  });
+
+  it("refuses a global link that is also declared not applicable", () => {
+    const contradictory: Adapter = {
+      ...createAdapter("contradictory"),
+      capabilities: { instructions: { globalSharedLink: "not-applicable" } },
+      sharedLink: { entryPath: "~/.agent/AGENTS.md", kind: "symlink" },
+    };
+
+    const error = captureRegistryError([createPlugin("links", { adapters: [contradictory] })]);
+
+    expect(error.message).toContain(
+      'declares both sharedLink and capabilities.instructions.globalSharedLink "not-applicable"',
+    );
   });
 });

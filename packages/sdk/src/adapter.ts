@@ -257,9 +257,22 @@ export interface Adapter {
    * snapshot rather than throwing.
    */
   readonly parse: (input: AdapterParseInput) => AdapterSnapshot;
-  /** Optional mechanism for linking this app to the repository's shared `AGENTS.md`. */
+  /**
+   * Optional mechanism for linking this app to the repository's shared `AGENTS.md`, at `./...`.
+   *
+   * Omit it when the application already reads `AGENTS.md` at the project root: an entry that
+   * only points at a file the application would have loaded anyway is one more file in somebody
+   * else's repository, earning nothing.
+   */
   readonly projectSharedLink?: AdapterSharedLink | undefined;
-  /** Optional declarative mechanism for linking this app to the shared instruction source. */
+  /**
+   * Optional mechanism for linking this app to the shared instruction source, at `~/...`.
+   *
+   * When the application keeps its global guidance somewhere Aura cannot write, omit this field
+   * and declare `capabilities.instructions.globalSharedLink` as `"not-applicable"`. A bare omission
+   * preserves the backward-compatible fallback: checks report that the adapter has no declared
+   * mechanism instead of silently losing coverage.
+   */
   readonly sharedLink?: AdapterSharedLink | undefined;
   /** Semver range of application versions this adapter understands, for example `">=1 <2"`. */
   readonly supportedRange: string;
