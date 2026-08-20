@@ -16,7 +16,7 @@ Every slot is optional.
 | `adapters`                     | Detect an agent application, declare files for core to read, parse contents into a normalized snapshot. |
 | `checks`                       | Synchronously inspect the `WorkspaceModel` and optionally return a `FixPlan`.                           |
 | `disabledSkillSources`         | Remove exact bundled, directory, or driver source IDs when those sources are present.                   |
-| `snippets`                     | Reference Markdown files.                                                                               |
+| `snippets`                     | Reference Markdown fragments users can append once to shared instructions.                              |
 | `skills`                       | Reference skill directories.                                                                            |
 | `skillDirectories`             | Remote directories served through Aura's bounded HTTP client or a built-in provider adapter.            |
 | `skillSources`                 | Lazy drivers that list and resolve non-standard external skills during interactive setup.               |
@@ -83,8 +83,14 @@ const url = new URL("./content/preset.json", import.meta.url).href;
 
 Working-directory-relative paths do not work. The registry validates declared shapes — IDs,
 semver versions, the API version, and shared-link declarations — but it does not open content
-URLs. Snippet sources are read during a workspace scan, where unreadable or malformed content
-becomes a diagnostic; other content sources are not read until the contribution is used.
+URLs. Snippet sources are read lazily when setup opens the snippet picker; unreadable or oversized
+content becomes a disabled row. Other content sources are not read until the contribution is used.
+
+Installing a snippet appends its Markdown without markers and records its ID plus a content hash.
+Later setup runs show that ID as installed in an enabled, ticked row so users can clear the record;
+Aura never updates, removes, or pins the text. The hash only lets setup note that the source changed
+or that the installed text is missing. The `version` field remains required canonical semver
+metadata for the contribution but is not stored in the manifest after installation.
 
 Plugin authors need `@types/node` in their `tsconfig` for the `import.meta.url` idiom above.
 

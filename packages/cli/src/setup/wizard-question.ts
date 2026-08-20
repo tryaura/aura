@@ -60,7 +60,7 @@ export function initialCursorRow(state: QuestionState | undefined): number {
     return marked;
   }
   return Math.max(
-    options.findIndex((option) => option.disabled !== true),
+    options.findIndex((option) => option.disabled !== true && option.locked !== true),
     0,
   );
 }
@@ -110,7 +110,9 @@ export function markRow(
  * Toggles the multi-select option on `row`.
  *
  * A disabled option can be cleared but never selected. Refusing both directions would strand any
- * selection that was seeded before the option became unavailable, with no way to give it up.
+ * selection that was seeded before the option became unavailable, with no way to give it up. A
+ * locked option is the case where there is nothing to strand: neither direction means anything, so
+ * both are refused.
  */
 function toggle(
   state: QuestionState,
@@ -118,7 +120,10 @@ function toggle(
   options: readonly WizardQuestion["options"][number][],
 ): boolean {
   const option = options[row];
-  if (option === undefined || (option.disabled === true && !state.selected.has(option.value))) {
+  if (option === undefined || option.locked === true) {
+    return false;
+  }
+  if (option.disabled === true && !state.selected.has(option.value)) {
     return false;
   }
   if (option.members !== undefined) {
@@ -148,14 +153,14 @@ function toggleMembers(state: QuestionState, members: readonly string[]): boolea
   return true;
 }
 
-/** Moves a select's single mark to `row`; a disabled option can never take it. */
+/** Moves a select's single mark to `row`; a disabled or locked option can never take it. */
 function choose(
   state: QuestionState,
   row: number,
   options: readonly WizardQuestion["options"][number][],
 ): boolean {
   const option = options[row];
-  if (option === undefined || option.disabled === true) {
+  if (option === undefined || option.disabled === true || option.locked === true) {
     return false;
   }
   state.selected.clear();
@@ -176,7 +181,7 @@ export function answerActive(
   }
   if (state.question.kind === "select") {
     const option = options[row];
-    if (option === undefined || option.disabled === true) {
+    if (option === undefined || option.disabled === true || option.locked === true) {
       return;
     }
     state.selected.clear();

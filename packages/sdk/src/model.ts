@@ -15,18 +15,6 @@ import type { McpSecretSighting } from "./mcp-secret.js";
 import type { AdapterSharedLinkKind } from "./shared-link.js";
 import type { InstalledSkill, ResolvedSkillDirectory } from "./skill-model.js";
 
-/** A plugin snippet whose bundled source was resolved during the workspace scan. */
-export interface ResolvedSnippet {
-  /** Canonical Markdown contents used by the managed-block protocol. */
-  readonly content: string;
-  readonly description: string;
-  /** SHA-256 of {@link content}. */
-  readonly hash: string;
-  readonly id: string;
-  readonly name: string;
-  readonly version: string;
-}
-
 /** How one instruction document pulls in another. */
 export type InstructionLinkKind = "import" | "native" | "symlink";
 
@@ -229,7 +217,7 @@ export interface AdapterSnapshot {
 
 /** One adapter's shared-link declaration after core resolves its entry path and template. */
 export interface ResolvedSharedLink {
-  /** Rendered managed snippet or whole-file content. Absent for `symlink`. */
+  /** Rendered import line or whole-file content. Absent for `symlink`. */
   readonly content?: string | undefined;
   /** Absolute instruction entry path the mechanism owns or updates. */
   readonly entryPath: string;

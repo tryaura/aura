@@ -207,6 +207,9 @@ When the active step runs a sequence of internal forms (a chain step like Instru
   so setup could not end on green. A declined scope contributes only its action tab — no Sources or
   Duplicates tabs follow it, by the same honest-map rule:
   `✔ Global │ ✔ Sources │ ▶ Project ☐`.
+- A scope whose target already holds instructions and whose scan found nothing to merge into it is
+  settled: it contributes no tabs to the sub-row, and the step states what it found instead of
+  asking a question whose every answer either changes nothing or overwrites text Aura did not write.
 - Declining is not undoing, and the option says so where it matters: when the project target already
   has content, the option's description names the file and states that it, and anything linking to
   it, stay as they are. Otherwise the only thing a skip-only run would say about an earlier run's
@@ -227,11 +230,9 @@ When the active step runs a sequence of internal forms (a chain step like Instru
 - The Skills step is the second chain precedent: its Review stage exists only while a directory
   skill is selected or a recorded skill's source revision moved, one review question per skill —
   `└ ✔ Skills │ ▶ Review claude-md ☐ │ Review commit-style ☐`.
-- The Snippets step follows the same shape: a picker, then a Review stage carrying one question per
-  selected snippet whose source revision no longer matches the recorded one —
-  `└ ✔ Snippets │ ▶ Review official/rules ☐`. ← from a review returns to the picker with that
-  pass's ticks intact; it leaves the step only from the picker itself, because backing out of a
-  review would discard both the selection just made and every review already answered.
+- The Snippets step is one picker. Installed IDs render with `(installed)` and open ticked and
+  locked, so the step only ever adds; it has no Review stage because Aura never revises installed
+  snippet text.
 - Before the picker, private directories appear in an explicit connection form naming the URL and
   token variable. Its initial selection is empty, including under `--yes`; no credential is read
   until the user opts in for that run.
@@ -293,10 +294,12 @@ bar, so compact tabs lose no information.
 - Space marks the row under the cursor and stays put: a multiselect toggles its `☑`, a select
   moves its `●`. Marking never answers the step by itself — the tab stays `☐` until ↵ answers it
   (or → commits the form as it stands). A disabled option can never be marked; a multiselect's
-  already-marked one can still be cleared. Digits jump to a row and mark it the same way.
+  already-marked one can still be cleared. A **locked** option refuses both directions — its
+  checkbox reports a fact the form is not asking about — and states what it is in its label and
+  description rather than a `—` note. Digits jump to a row and mark it the same way.
 - A form opens with the cursor on the row its answer stands on, and failing that on the first row
-  that can be marked — leading disabled rows are read, not answered with, so the first space
-  struck is never a no-op.
+  that can be marked — leading disabled and locked rows are read, not answered with, so the first
+  space struck is never a no-op.
 - Footer hint line: `↑/↓ move · space toggle · ←/→ steps · ↵ select · esc cancel` on a
   multiselect, `↑/↓ move · space select · ←/→ steps · ↵ confirm · esc cancel` on a select
   (segments appear only when applicable; a locked Submit drops `↵ submit`).
@@ -400,6 +403,38 @@ its probe runs, then `✔`). Progress made before the frame opened is replayed i
 that settled before the wizard needed it skips the frame entirely. Aborting the trust prompt
 still means no adapter ever ran, and configuration that resolves invalid cancels every speculative
 adapter command before setup reports the problem.
+
+### Snippets step
+
+One multiselect over the snippets registered by installed plugins.
+
+- An uninstalled available row can be selected and previewed. A preset ticks it by default only
+  while its ID is absent from the manifest and a plugin actually provides it: a disabled row that
+  opened ticked would be an answer `--yes` has no way to take back.
+- A row no installed plugin provides renders disabled with `— source unavailable` and can never be
+  ticked. Selecting one anyway — from a preset, a scripted answer — leaves it out of the install
+  and reports it under "Selections Aura could not apply"; every other selection is still applied.
+- A manifest-recorded ID renders as a locked `<name> (installed)` row that opens ticked, whether or
+  not its plugin source is still available. Space and its digit are inert on it and the cursor does
+  not open on it; its description says `Aura keeps the record; the text stays where it is.`
+- Applying the plan appends each newly ticked Markdown fragment directly to `~/agents/AGENTS.md`,
+  in picker order, with one blank line between fragments and the file's line endings. Aura writes
+  no ownership markers and records each ID with a hash of the text it appended.
+- The manifest is install history, not desired instruction text. Aura never rewrites an installed
+  snippet, and plugin changes, missing sources, and manual edits never trigger reconciliation or
+  drift findings.
+- The step is add-only: an install record is never dropped, and no answer removes a byte of the
+  shared file. Aura planted the text unmarked and cannot tell it from the user's own guidance, so
+  guessing which bytes to remove would take their edits with it — and forgetting the record instead
+  would only offer to append the same text a second time. Dropping the entry from `~/agents/aura.json`
+  by hand is the one way back to an offered row.
+- The recorded hash is the only handle left on unmarked text, and the step spends it on two notes
+  before the picker: that an installed snippet's source has moved on from the text in the file, and
+  that a snippet recorded as installed is no longer in the file at all — the second naming
+  `~/agents/aura.json` as where to drop the record. Neither is reported for a record written without
+  a hash or for a snippet whose plugin is absent — there is nothing to compare, and reporting it as
+  drift would cry wolf on every run.
+- Legacy marked blocks remain byte-for-byte untouched and have no role in the picker.
 
 ### Skills step
 
@@ -606,6 +641,7 @@ heading and one `·` bullet per line:
 Hand edits Aura is replacing:
 Preserved content Aura does not own:
 Managed content kept at its recorded revision:
+Selections Aura could not apply:
 Effective check policy from preset <name> (not copied into your manifest):
 Effective check policy from the repository preset .aura/preset.json (not copied into your manifest):
 Repository preset held (not trusted on this machine):
@@ -613,9 +649,13 @@ Repository preset held (not trusted on this machine):
 
 - A group naming a shared source names it once, in the heading. Repeating "(from preset acme)" on
   every line hides the settings the line is actually there to show.
-- The held group is what keeps a non-interactive run honest: every snippet and skill left at its
-  recorded revision is listed with the version that is waiting, so a `--yes` run that declined a
-  dozen updates cannot read as a run with nothing to do.
+- The held group keeps a non-interactive run honest: every skill left at its recorded revision is
+  listed with the version that is waiting, so a `--yes` run that declined a dozen skill updates
+  cannot read as a run with nothing to do.
+- The skipped group is where a selection Aura could not act on lands — a snippet whose plugin no
+  installed build provides, above all. It is a notice and not a blocker on purpose: nothing about
+  the state of a file is refusing the write, and failing the run would strand every selection that
+  did resolve alongside the one that did not.
 
 ### Implementation status
 

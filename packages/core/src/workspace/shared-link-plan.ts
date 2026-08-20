@@ -9,10 +9,8 @@ import type {
   WorkspaceModel,
 } from "@tryaura/aura-sdk";
 
-import { reconcileManagedBlock } from "../managed-block/reconcile.js";
-import { stripManagedBlock } from "../managed-block/strip.js";
-
-const SHARED_LINK_SNIPPET_ID = "shared-instructions";
+import { stripLegacyManagedBlock } from "../managed-block/strip.js";
+import { appendInstructionFragments } from "./append-instructions.js";
 
 export type SharedInstructionLinkPlan = { readonly blocked: string } | { readonly plan: FixPlan };
 
@@ -74,18 +72,25 @@ function planImportLine(
       blocked: `Something is at ${link.entryPath} that the adapter could not read as an instruction file, so Aura will not replace it. Check whether it is a broken symbolic link.`,
     };
   }
-  const reconciled = reconcileManagedBlock(selectedContent(sourceContent, source), [
-    { content: link.content ?? "", id: SHARED_LINK_SNIPPET_ID },
-  ]);
-  if (reconciled.status === "invalid") {
-    return {
-      blocked: `The Aura-managed block in ${link.entryPath} is malformed, so Aura will not rewrite the file. Repair or delete the block and run check --fix again.`,
-    };
-  }
-  if (reconciled.status === "unchanged" && observedStateHolds(sourceContent)) {
+  const current = selectedContent(sourceContent, source);
+  const desired = link.content ?? "";
+  if (observedStateHolds(sourceContent) && containsImport(current, desired)) {
     return { plan: convergedPlan(app) };
   }
-  return { plan: writePlan(app, link, reconciled.content) };
+  return { plan: writePlan(app, link, appendInstructionFragments(current, [desired])) };
+}
+
+/** Legacy marked imports and new plain imports both contain the exact adapter-rendered line. */
+function containsImport(source: string, desired: string): boolean {
+  const normalized = desired.replace(/\r\n?/gu, "\n");
+  // Resolved import-line declarations are one line without an ending. Tolerate the historical
+  // hand-built shape that included one, but preserve every other trailing byte: trimming spaces
+  // here makes a line Aura wrote with those spaces fail its own convergence check forever.
+  const normalizedDesired = normalized.endsWith("\n") ? normalized.slice(0, -1) : normalized;
+  return source
+    .replace(/\r\n?/gu, "\n")
+    .split("\n")
+    .some((line) => line === normalizedDesired);
 }
 
 /**
@@ -150,18 +155,18 @@ function planSymlink(
   status: AdapterFileStatus | undefined,
   options: SharedInstructionLinkPlanOptions,
 ): SharedInstructionLinkPlan {
+  const target = options.symlinkTarget ?? model.sharedInstructions.path;
   if (
     status?.exists === true &&
     status.pathKind !== "symlink" &&
     options.sourceContent === undefined &&
-    !holdsOnlyManagedBlock(app, link.entryPath)
+    !holdsOnlySharedReference(app, link.entryPath, target)
   ) {
     return {
       blocked:
         "The existing file is user-owned. Consolidate its content before replacing it with a symlink.",
     };
   }
-  const target = options.symlinkTarget ?? model.sharedInstructions.path;
   if (observedStateHolds(options.sourceContent) && pointsAt(status, target)) {
     return { plan: convergedPlan(app) };
   }
@@ -229,15 +234,28 @@ function writePlan(app: AppModel, link: ResolvedSharedLink, content: string): Fi
 }
 
 /**
- * Whether a real file at this entry holds nothing but a managed block Aura itself wrote.
+ * Whether a real file at this entry holds nothing but a legacy block or plain link Aura wrote.
  *
  * The refusal above guards the user's own guidance, and an entry Aura wired as an import line holds
  * none. Without this, an app switching from an import line to a link strands every machine already
  * wired the old way: consolidation has no source to offer for a file that is Aura's.
  */
-function holdsOnlyManagedBlock(app: AppModel, path: string): boolean {
-  const content = instructionEntry(app, path)?.content;
-  return content !== undefined && stripManagedBlock(content).trim().length === 0;
+function holdsOnlySharedReference(app: AppModel, path: string, target: string): boolean {
+  const document = instructionEntry(app, path);
+  if (document === undefined) {
+    return false;
+  }
+  if (stripLegacyManagedBlock(document.content).trim().length === 0) {
+    return true;
+  }
+  const nonemptyLines = document.content
+    .replace(/\r\n?/gu, "\n")
+    .split("\n")
+    .filter((line) => line.trim().length > 0);
+  return (
+    nonemptyLines.length === 1 &&
+    document.links.some((candidate) => resolve(candidate.targetPath) === resolve(target))
+  );
 }
 
 function instructionEntry(app: AppModel, path: string): InstructionDocument | undefined {

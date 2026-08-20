@@ -14,8 +14,10 @@ import {
   SETUP_ABORTED,
   SETUP_BACK,
   type InstructionScopeSelection,
+  type SetupSelections,
   type SetupStep,
   type SetupStepContext,
+  type SetupStepUnoffered,
 } from "../types.js";
 import { runFormChain } from "../wizard-chain.js";
 import type { WizardIo } from "../wizard-types.js";
@@ -23,6 +25,7 @@ import { relevantDuplicateClusters } from "./instruction-duplicates.js";
 import {
   CONSOLIDATE_VALUE,
   scopeStages,
+  settledTargetContent,
   SKIP_VALUE,
   TEMPLATE_VALUE,
   type ChainState,
@@ -40,15 +43,15 @@ import {
  */
 export const instructionsStep: SetupStep = {
   gather: async (context, io) => {
-    const { global, project } = scopeInputs(context);
+    const inputs = scopeInputs(context);
+    const scopes = scopeList(inputs);
     if (context.revisited !== true) {
-      emitScopeNotes(global, io);
-      if (project !== undefined) {
-        emitScopeNotes(project, io);
+      for (const input of scopes) {
+        emitScopeNotes(input, io);
       }
     }
 
-    const stages = [...scopeStages(global), ...(project === undefined ? [] : scopeStages(project))];
+    const stages = scopes.flatMap(scopeStages);
     const result = await runFormChain(stages, initialState(context), io, {
       entry: context.enteredBackward === true ? "end" : "start",
       flow: context.flow,
@@ -56,16 +59,7 @@ export const instructionsStep: SetupStep = {
     if (result === SETUP_ABORTED || result === SETUP_BACK) {
       return result;
     }
-
-    const projectSelection =
-      project === undefined ? undefined : scopeSelection(project, result.project);
-    return {
-      ...context.selections,
-      instructions: {
-        global: scopeSelection(global, result.global),
-        ...(projectSelection === undefined ? {} : { project: projectSelection }),
-      },
-    };
+    return settle(context, inputs, result, stages.length === 0);
   },
   compactTitle: "Instr",
   id: "instructions",
@@ -74,11 +68,39 @@ export const instructionsStep: SetupStep = {
   title: "Instructions",
 };
 
-/** Everything both scopes need from the workspace; project is absent when it has nothing to do. */
-function scopeInputs(context: SetupStepContext): {
+interface ScopeInputs {
   readonly global: ScopeInput;
   readonly project: ScopeInput | undefined;
-} {
+}
+
+/** Both scopes in flow order, which is the order notes are emitted and stages are chained in. */
+function scopeList(inputs: ScopeInputs): readonly ScopeInput[] {
+  return inputs.project === undefined ? [inputs.global] : [inputs.global, inputs.project];
+}
+
+/** Folds both scopes' drafts into the step's selections, unoffered when it asked nothing to do it. */
+function settle(
+  context: SetupStepContext,
+  inputs: ScopeInputs,
+  result: ChainState,
+  unoffered: boolean,
+): SetupSelections | SetupStepUnoffered {
+  const project =
+    inputs.project === undefined ? undefined : scopeSelection(inputs.project, result.project);
+  const selections: SetupSelections = {
+    ...context.selections,
+    instructions: {
+      global: scopeSelection(inputs.global, result.global),
+      ...(project === undefined ? {} : { project }),
+    },
+  };
+  // Every scope settled on its own, so the step recorded what it settled without asking: an answer
+  // nobody was asked for must not be counted as one they gave.
+  return unoffered ? { selections, unoffered: true } : selections;
+}
+
+/** Everything both scopes need from the workspace; project is absent when it has nothing to do. */
+function scopeInputs(context: SetupStepContext): ScopeInputs {
   const inventory = instructionInventory(context.model);
   const targets = instructionTargets(context.model);
   const clusters = duplicateClusters(context.findings ?? []);
@@ -179,6 +201,20 @@ function toDraft(selection: InstructionScopeSelection | undefined): ScopeDraft {
 function emitScopeNotes(input: ScopeInput, io: WizardIo): void {
   if (input.blocked) {
     io.note("Aura cannot configure shared instructions until their path can be read safely.");
+    return;
+  }
+  const settled = settledTargetContent(input);
+  if (settled !== undefined) {
+    // The state, in place of the question this scope no longer asks: without it, a converged scope
+    // would pass by in silence and the run would never say which file its applications now read.
+    const size = describeInstructionSource({
+      content: settled,
+      path: input.targetPath,
+      scope: input.scope,
+    });
+    io.note(
+      `${input.scope === "global" ? "Global" : "Project"} instructions already live in ${input.targetPath} (${size}); Aura found nothing else to consolidate and leaves the file as it is.`,
+    );
     return;
   }
   if (input.sources.length > 0) {

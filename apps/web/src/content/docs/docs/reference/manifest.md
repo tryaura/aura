@@ -27,9 +27,7 @@ Every top-level section is required, including sections that are still empty:
   "snippets": [
     {
       "id": "official/commit-conventions",
-      "version": "1.0.0",
-      "hash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-      "pinned": false
+      "hash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
     }
   ],
   "skills": [
@@ -91,13 +89,16 @@ per-user activation, severity, and threshold overrides. Both fields are optional
 with existing manifests, and `check` never persists either field automatically. `apps` records
 which detected applications Aura should manage. `ignoredApps` records detected applications the
 user deliberately left unselected, so later setup and MGD-003 runs do not ask about them again;
-selecting an app clears its ignore. Snippet versions and hashes record
-the exact selected content; a pinned snippet is kept at that revision. Each skill records its
-source-local, kebab-case `id`, stable source provenance, source version, deterministic tree hash,
-and pin state. Source provenance starts with `plugin:`, `directory:`, or `driver:`. A pinned skill
-keeps its recorded revision. Each `mcpServers` entry records one desired server, the applications
-that should receive it, and whether it belongs in global or project configuration. `catalogId`
-records provenance for a catalog selection and is omitted for a custom server.
+selecting an app clears its ignore. `snippets` is an ordered install history of snippet IDs and the
+content hashes Aura recorded when appending them. Aura never uses this list to update or remove
+instruction text; manual edits do not change the record. Clearing an installed row drops its record
+and makes the snippet available to add again. Each skill records its source-local, kebab-case `id`,
+stable source provenance, source version,
+deterministic tree hash, and pin state. Source provenance starts with `plugin:`, `directory:`, or
+`driver:`. A pinned skill keeps its recorded revision. Each `mcpServers` entry records one desired
+server, the applications that should receive it, and whether it belongs in global or project
+configuration. `catalogId` records provenance for a catalog selection and is omitted for a custom
+server.
 
 `overrides.requiredMcpServers` records an explicit decision to omit a server required by the active
 preset. Setup requires interactive confirmation before adding this override, clears it when the
@@ -129,6 +130,12 @@ cannot select both at once because they would share the same installation direct
 A driver source is recorded as `driver:<namespaced-driver-id>`. If that driver is offline, fails,
 or is disabled in the current distribution, setup preserves the existing entry and installed tree;
 it never treats temporary source unavailability as a request to remove desired state.
+
+For compatibility, schema version 1 also reads bare snippet ID strings and legacy objects containing
+`id`, `hash`, `pinned`, and `version`. Aura normalizes mixed entries to the first occurrence of each
+ID and writes objects with a required `id` and optional `hash` on the next manifest change. It leaves
+legacy marked instruction blocks untouched. Older Aura releases cannot read a manifest after this
+normalization is written.
 
 ## MCP credential safety
 

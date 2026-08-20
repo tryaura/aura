@@ -58,35 +58,16 @@ export type {
   FixPlanUndoOptions,
   FixPlanUndoResult,
 } from "./fix-plan/types.js";
-export {
-  AURA_MANAGED_BLOCK_BEGIN,
-  AURA_MANAGED_BLOCK_END,
-  AURA_MANAGED_BLOCK_NOTICE,
-  hashManagedSnippet,
-} from "./managed-block/protocol.js";
-export { readManagedBlock } from "./managed-block/read.js";
-export { stripManagedBlock } from "./managed-block/strip.js";
-export { diffManagedSnippet, reconcileManagedSnippet } from "./managed-block/reconcile-snippet.js";
-export { reconcileManagedBlock, reconcileParsedManagedBlock } from "./managed-block/reconcile.js";
+/** @internal Fingerprints Markdown Aura records but does not own. */
+export { hashContent } from "./content-hash.js";
+/** @internal Read-only compatibility for instruction links written by older Aura releases. */
+export { stripLegacyManagedBlock } from "./managed-block/strip.js";
 export {
   managedContentRevisionStatus,
   planSharedSkillTreeUpdate,
 } from "./managed-content/revision.js";
 /** @public */
 export type { ManagedContentRevisionStatus } from "./managed-content/revision.js";
-/** @public */
-export type {
-  DesiredManagedSnippet,
-  ManagedBlock,
-  ManagedBlockNote,
-  ManagedBlockProblem,
-  ManagedBlockProblemCode,
-  ManagedBlockReadResult,
-  ManagedBlockReconcileOptions,
-  ManagedBlockWriteResult,
-  ManagedSnippet,
-  ManagedSnippetResolution,
-} from "./managed-block/types.js";
 export { createPluginRegistry } from "./plugin-registry.js";
 /** @public */
 export type {
@@ -98,6 +79,8 @@ export { SUPPORTED_PLUGIN_API_VERSION } from "./plugin-validation.js";
 export type { ContributionKind, PluginCandidate } from "./plugin-validation.js";
 export { buildWorkspaceModel } from "./workspace/build.js";
 export type { SkippedApp, WorkspaceScan, WorkspaceScanOptions } from "./workspace/build.js";
+/** @internal Shared byte-preserving writer for setup-owned instruction fragments. */
+export { appendInstructionFragments } from "./workspace/append-instructions.js";
 export { createMcpUrlRequester } from "./workspace/mcp-url-request.js";
 export { planSharedInstructionLink } from "./workspace/shared-link-plan.js";
 export {

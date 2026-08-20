@@ -5,14 +5,14 @@ import {
   AURA_MANAGED_BLOCK_END,
   AURA_MANAGED_BLOCK_NOTICE,
   hashManagedSnippet,
-  type ManagedBlockReadResult,
-  readManagedBlock,
-  reconcileManagedBlock,
-} from "../index.js";
-import { AURA_MANAGED_SNIPPET_BEGIN_PREFIX, AURA_MANAGED_SNIPPET_END_PREFIX } from "./protocol.js";
+  AURA_MANAGED_SNIPPET_BEGIN_PREFIX,
+  AURA_MANAGED_SNIPPET_END_PREFIX,
+} from "./protocol.js";
+import { readManagedBlock } from "./read.js";
+import type { ManagedBlockReadResult } from "./types.js";
 
 describe("managed-block reader", () => {
-  it("exports stable HTML-comment protocol constants and result types", () => {
+  it("recognizes the legacy HTML-comment protocol", () => {
     expect(AURA_MANAGED_BLOCK_BEGIN).toBe("<!-- aura:begin -->");
     expect(AURA_MANAGED_BLOCK_END).toBe("<!-- aura:end -->");
     expect(AURA_MANAGED_SNIPPET_BEGIN_PREFIX).toBe("<!-- aura:begin id=");
@@ -34,11 +34,8 @@ describe("managed-block reader", () => {
   });
 
   it("reports snippet contents, hashes, and source lines", () => {
-    const written = reconcileManagedBlock("heading\n", [
-      { content: "first", id: "official/first" },
-      { content: "second", id: "official/second" },
-    ]);
-    const parsed = readManagedBlock(written.content);
+    const source = `heading\n${blockWithSnippets(snippet("official/first", "first"), snippet("official/second", "second"))}`;
+    const parsed = readManagedBlock(source);
 
     expect(parsed.status).toBe("present");
     if (parsed.status !== "present") {
@@ -58,8 +55,8 @@ describe("managed-block reader", () => {
   });
 
   it("exposes hand edits as hash mismatches without making the block malformed", () => {
-    const original = reconcileManagedBlock("", [{ content: "canonical", id: "official/rules" }]);
-    const edited = original.content.replace("canonical", "hand edited");
+    const original = blockWithSnippets(snippet("official/rules", "canonical"));
+    const edited = original.replace("canonical", "hand edited");
     const parsed = readManagedBlock(edited);
 
     expect(parsed.status).toBe("present");
@@ -109,8 +106,7 @@ describe("managed-block reader", () => {
       "<!-- aura:begin -->",
       "```",
     ].join("\n");
-    const written = reconcileManagedBlock("", [{ content, id: "official/rules" }]);
-    const parsed = readManagedBlock(written.content);
+    const parsed = readManagedBlock(blockWithSnippets(snippet("official/rules", content)));
 
     expect(parsed.status).toBe("present");
     if (parsed.status !== "present") {
@@ -172,7 +168,6 @@ describe("managed-block reader", () => {
     ["orphan-snippet-marker", "<!-- aura:end id=official/a -->\n"],
   ])("fails closed for %s", (expectedCode, source) => {
     const parsed = readManagedBlock(source);
-    const reconciled = reconcileManagedBlock(source, [{ content: "new", id: "official/new" }]);
 
     expect(parsed.status).toBe("invalid");
     if (parsed.status !== "invalid") {
@@ -180,7 +175,6 @@ describe("managed-block reader", () => {
     }
     expect(parsed.problems.map((problem) => problem.code)).toContain(expectedCode);
     expect(parsed.problems.every((problem) => problem.line !== undefined)).toBe(true);
-    expect(reconciled).toMatchObject({ content: source, status: "invalid" });
   });
 
   it("notes an unclosed fence that hid a marker instead of silently reporting absent", () => {
@@ -225,6 +219,10 @@ function snippetBegin(id: string, content: string): string {
 
 function snippet(id: string, content: string): string {
   return `${snippetBegin(id, content)}\n${content}\n<!-- aura:end id=${id} -->\n`;
+}
+
+function blockWithSnippets(...snippets: readonly string[]): string {
+  return `${AURA_MANAGED_BLOCK_BEGIN}\n${AURA_MANAGED_BLOCK_NOTICE}\n${snippets.join("")}${AURA_MANAGED_BLOCK_END}\n`;
 }
 
 function blockWith(begin: string, content: string, end: string): string {

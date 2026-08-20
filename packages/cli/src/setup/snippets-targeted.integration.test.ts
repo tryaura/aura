@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createPluginRegistry } from "@tryaura/core";
 
 import { runSetup } from "./setup.js";
-import { installedIds, manifestIds, snippet, snippetPlugin } from "./snippet-testing.js";
+import { manifestIds, snippet, snippetPlugin } from "./snippet-testing.js";
 import { snippetsStep } from "./steps/snippets.js";
 import { cleanupFixtures, createFixture, snapshot } from "./testing.js";
 
@@ -49,7 +49,7 @@ describe("targeted snippet setup integration", () => {
 
     const after = await snapshot(fixture.homeDir);
     expect(changedPaths(before, after)).toEqual(["agents/AGENTS.md", "agents/aura.json"]);
-    expect(await installedIds(fixture.homeDir)).toEqual(["fixture/targeted"]);
+    await expect(readFile(sharedPath, "utf8")).resolves.toBe("Targeted rules.\n");
     expect(await manifestIds(fixture.homeDir)).toEqual(["fixture/targeted"]);
   });
 

@@ -185,7 +185,6 @@ export type {
   McpServer,
   McpTransport,
   ResolvedSharedLink,
-  ResolvedSnippet,
   SharedInstructionsState,
   StdioMcpTransport,
   UnusableMcpReason,

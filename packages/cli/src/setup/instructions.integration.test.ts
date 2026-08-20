@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { createPluginRegistry } from "@tryaura/core";
 
-import type { WizardAnswers } from "./wizard-types.js";
+import type { WizardAnswers, WizardIo } from "./wizard-types.js";
 
 import { findingPlugin } from "../testing.js";
 import { consolidationPlugin, projectConsolidationPlugin } from "./testing-plugins.js";
@@ -218,6 +218,39 @@ describe("instruction consolidation setup", () => {
       "code",
       "ENOENT",
     );
+  });
+
+  it("reports the state instead of asking when the target is already the only instruction file", async () => {
+    const fixture = await createFixture();
+    const shared = join(fixture.homeDir, "agents", "AGENTS.md");
+    const original = "# Hand written\n\nKeep this.\n";
+    await mkdir(join(fixture.homeDir, "agents"), { recursive: true });
+    await writeFile(shared, original, "utf8");
+    const registry = createPluginRegistry([consolidationPlugin()], {
+      bareCheckIdPlugins: ["checks-core"],
+    });
+    const request = fixture.request(registry);
+    const asked: string[] = [];
+    const io: WizardIo = {
+      ...request.io,
+      ask: async (questions, flow) => {
+        asked.push(...questions.map((question) => question.id));
+        return request.io.ask(questions, flow);
+      },
+    };
+
+    await expect(runSetup({ ...request, io })).resolves.toBe(0);
+
+    // Neither answer the menu could carry is a decision left to make, so the form never opens.
+    expect(asked).not.toContain("global-instruction-action");
+    expect(fixture.output()).toMatch(
+      /Global instructions already live in \S*[/\\]agents[/\\]AGENTS\.md \(3 lines\); Aura found nothing else to consolidate and leaves the file as it is\./u,
+    );
+    // Settling on "keep" is not settling for nothing: the application still gets its link.
+    await expect(readFile(shared, "utf8")).resolves.toBe(original);
+    await expect(
+      readFile(join(fixture.homeDir, ".claude", "CLAUDE.md"), "utf8"),
+    ).resolves.toContain("@~/agents/AGENTS.md");
   });
 
   it("ignores an opt-out answered for a scope the menu never offered it on", async () => {

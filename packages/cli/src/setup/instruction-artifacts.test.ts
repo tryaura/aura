@@ -13,6 +13,7 @@ import { createWorkspaceModel } from "@tryaura/aura-sdk/testing";
 import { instructionInventory } from "./instructions.js";
 
 const TARGET = "/home/dev/agents/AGENTS.md";
+const PLAIN_IMPORT = "@~/agents/AGENTS.md\n";
 
 const MANAGED_BLOCK = [
   "<!-- aura:begin -->",
@@ -59,10 +60,25 @@ describe("instruction inventory and Aura's own artifacts", () => {
     expect(offered[0]?.content).toBe("longer content\n");
   });
 
-  it("excludes an import-line entry that is exactly Aura's managed block", () => {
+  it("excludes an import-line entry that is exactly Aura's legacy managed block", () => {
     const entry = document("/home/dev/.claude/CLAUDE.md", "global", MANAGED_BLOCK);
 
     expect(instructionInventory(model([entry], [app("claude-code", importLink())]))).toEqual([]);
+  });
+
+  it("excludes an exact plain import but still offers user text before its suffix", () => {
+    const exact = document("/home/dev/.claude/CLAUDE.md", "global", PLAIN_IMPORT);
+    const withUserText = document(
+      "/home/dev/.claude/CLAUDE.md",
+      "global",
+      `# Mine\n\nKeep this.\n\n${PLAIN_IMPORT}`,
+    );
+    const application = app("claude-code", importLink());
+
+    expect(instructionInventory(model([exact], [application]))).toEqual([]);
+    expect(instructionInventory(model([withUserText], [application]))).toEqual([
+      { content: withUserText.content, path: withUserText.path, scope: "global" },
+    ]);
   });
 
   it("still offers an import-line entry that carries user text beyond the block", () => {
@@ -93,7 +109,7 @@ describe("instruction inventory and Aura's own artifacts", () => {
 
 function importLink(): ResolvedSharedLink {
   return {
-    content: MANAGED_BLOCK,
+    content: PLAIN_IMPORT,
     entryPath: "/home/dev/.claude/CLAUDE.md",
     kind: "import-line",
     scope: "global",

@@ -119,11 +119,11 @@ The user always wins over the distribution: `DO_NOT_TRACK` (non-empty, other tha
 Branding can change presentation, not Aura's protocol. Retain:
 
 - canonical shared instructions at `~/agents/AGENTS.md`;
-- the manifest at `~/agents/aura.json`, schema version 1 and mode `0o600`;
-- outer markers `<!-- aura:begin -->` and `<!-- aura:end -->`;
-- snippet markers `<!-- aura:begin id=<id> sha256=<64 lowercase hex> -->` and `<!-- aura:end id=<id> -->`.
+- the manifest at `~/agents/aura.json`, schema version 1 and mode `0o600`; and
+- install-once snippet IDs serialized as ordered strings.
 
-Do not rename paths, translate markers, or replace `aura` in marker syntax with the branded command.
+Do not rename the protocol paths or reinterpret snippet IDs as desired-state content. Shared-link
+import lines and snippets are written as plain text without distribution-specific markers.
 
 ## Test with deterministic seeds
 

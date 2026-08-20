@@ -14,6 +14,43 @@ const SHARED_PATH = "/home/dev/agents/AGENTS.md";
 const ENTRY_PATH = "/home/dev/.codex/AGENTS.md";
 
 describe("planSharedInstructionLink convergence", () => {
+  it("appends a plain import without rewriting existing bytes", () => {
+    const source = "# Mine\r\n\r\n\r\n";
+    const outcome = planImport(source);
+
+    expect(operations(outcome)).toEqual([
+      expect.objectContaining({
+        content: `${source}@~/agents/AGENTS.md\r\n`,
+        path: ENTRY_PATH,
+        type: "write",
+      }),
+    ]);
+  });
+
+  it("converges on an existing plain or legacy marked import without duplication", () => {
+    expect(operations(planImport("# Mine\n\n@~/agents/AGENTS.md\n"))).toEqual([]);
+    expect(
+      operations(
+        planImport(
+          [
+            "<!-- aura:begin -->",
+            `<!-- aura:begin id=shared-instructions sha256=${"0".repeat(64)} -->`,
+            "@~/agents/AGENTS.md",
+            "<!-- aura:end id=shared-instructions -->",
+            "<!-- aura:end -->",
+            "",
+          ].join("\n"),
+        ),
+      ),
+    ).toEqual([]);
+  });
+
+  it("preserves trailing spaces when checking whether a plain import already exists", () => {
+    const rendered = "@~/agents/AGENTS.md   ";
+
+    expect(operations(planImport(`${rendered}\n`, rendered))).toEqual([]);
+  });
+
   it("plans nothing when a symlink already points at the target", () => {
     const outcome = plan({ pathKind: "symlink", symlinkTarget: SHARED_PATH });
 
@@ -73,6 +110,19 @@ describe("planSharedInstructionLink convergence", () => {
     expect(operations(outcome)).toMatchObject([{ target: SHARED_PATH, type: "symlink" }]);
   });
 
+  it("replaces an entry holding only a plain Aura import", () => {
+    const link: ResolvedSharedLink = { entryPath: ENTRY_PATH, kind: "symlink", scope: "global" };
+    const application = app(link, {
+      content: "@~/agents/AGENTS.md\n",
+      exists: true,
+      links: [{ kind: "import", targetPath: SHARED_PATH, valid: true }],
+      pathKind: "file",
+    });
+    const outcome = planSharedInstructionLink(application, workspace(application), { link });
+
+    expect(operations(outcome)).toMatchObject([{ target: SHARED_PATH, type: "symlink" }]);
+  });
+
   it("refuses an entry carrying the user's own text beside the block", () => {
     const outcome = plan({
       content:
@@ -128,6 +178,17 @@ function plan(
   return planSharedInstructionLink(application, workspace(application), { link, ...options });
 }
 
+function planImport(content: string, rendered = "@~/agents/AGENTS.md\n") {
+  const link: ResolvedSharedLink = {
+    content: rendered,
+    entryPath: ENTRY_PATH,
+    kind: "import-line",
+    scope: "global",
+  };
+  const application = app(link, { content, exists: true, pathKind: "file" });
+  return planSharedInstructionLink(application, workspace(application), { link });
+}
+
 function operations(outcome: ReturnType<typeof planSharedInstructionLink>) {
   if ("blocked" in outcome) {
     throw new Error(`Expected a plan, got: ${outcome.blocked}`);
@@ -142,6 +203,7 @@ function app(
     readonly pathKind?: AdapterPathKind | undefined;
     readonly symlinkTarget?: string | undefined;
     readonly content?: string | undefined;
+    readonly links?: InstructionDocument["links"] | undefined;
   },
 ): AppModel {
   return {
@@ -154,7 +216,7 @@ function app(
         : [
             {
               content: source.content,
-              links: [],
+              links: source.links ?? [],
               path: link.entryPath,
               scope: "global",
               sourceId: "codex.instructions",

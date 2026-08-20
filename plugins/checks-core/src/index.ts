@@ -12,7 +12,6 @@ import { instructionContextBudgetCheck } from "./ins-007/index.js";
 import { instructionPrecedenceCheck } from "./ins-008/index.js";
 import { sharedInstructionLinksCheck, sharedInstructionsCheck } from "./instructions.js";
 import { legacyInstructionsAdapter } from "./legacy-adapter.js";
-import { managedBlockHashCheck } from "./mgd-001.js";
 import { managedContentUpdateCheck } from "./mgd-002.js";
 import { unmanagedDetectedAppCheck } from "./mgd-003.js";
 import { mcp001 } from "./mcp-001.js";
@@ -41,7 +40,6 @@ export default definePlugin({
     instructionLinkIntegrityCheck,
     instructionContextBudgetCheck,
     instructionPrecedenceCheck,
-    managedBlockHashCheck,
     managedContentUpdateCheck,
     unmanagedDetectedAppCheck,
     mcp001,

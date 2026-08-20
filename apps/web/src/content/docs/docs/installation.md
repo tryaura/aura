@@ -98,28 +98,27 @@ aura check
 
 The current distribution includes these environment, instruction, and managed-content checks:
 
-| ID        | What it verifies                                                  |
-| --------- | ----------------------------------------------------------------- |
-| `ENV-001` | Agent applications use supported versions.                        |
-| `ENV-002` | Agent applications are authenticated.                             |
-| `ENV-003` | Repository ignore rules separate personal and shared agent state. |
-| `ENV-004` | Agent settings allow the current project to run normally.         |
-| `INS-001` | Shared instructions exist.                                        |
-| `INS-002` | Agent applications load shared instructions.                      |
-| `INS-003` | Instruction guidance is not duplicated.                           |
-| `INS-004` | Legacy instruction files are consolidated.                        |
-| `INS-005` | Instruction guidance does not contradict itself.                  |
-| `INS-006` | Instruction links are valid and supported.                        |
-| `INS-007` | Instruction context stays within a practical budget.              |
-| `INS-008` | Instruction guidance respects global and project precedence.      |
-| `MGD-001` | Aura-managed instruction blocks have not changed by hand.         |
-| `MGD-002` | Newer unpinned managed snippet and skill revisions are available. |
-| `MGD-003` | A detected application has not been managed or ignored.           |
+| ID        | What it verifies                                                   |
+| --------- | ------------------------------------------------------------------ |
+| `ENV-001` | Agent applications use supported versions.                         |
+| `ENV-002` | Agent applications are authenticated.                              |
+| `ENV-003` | Repository ignore rules separate personal and shared agent state.  |
+| `ENV-004` | Agent settings allow the current project to run normally.          |
+| `INS-001` | Shared instructions exist.                                         |
+| `INS-002` | Agent applications load shared instructions.                       |
+| `INS-003` | Instruction guidance is not duplicated.                            |
+| `INS-004` | Legacy instruction files are consolidated.                         |
+| `INS-005` | Instruction guidance does not contradict itself.                   |
+| `INS-006` | Instruction links are valid and supported.                         |
+| `INS-007` | Instruction context stays within a practical budget.               |
+| `INS-008` | Instruction guidance respects global and project precedence.       |
+| `MGD-002` | Newer or divergent unpinned managed skill revisions are available. |
+| `MGD-003` | A detected application has not been managed or ignored.            |
 
 MGD-002 and MGD-003 findings are informational and remain green. Every completed check exits with
 exit status `0`, including checks with warning or error findings; use report status or severity
-counts to gate automation on findings. Use `aura check --fix` to review an MGD-002 update or
-removal plan; MGD-003 points to `aura setup` and never starts a nested command.
+counts to gate automation on findings. Use `aura check --fix` to review an MGD-002 skill update;
+MGD-003 points to `aura setup` and never starts a nested command.
 
 To read why a check exists without scanning applications or repository state, use:
 

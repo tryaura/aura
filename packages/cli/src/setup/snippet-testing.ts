@@ -2,7 +2,6 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { readManagedBlock } from "@tryaura/core";
 import { defineCheck, definePlugin, type Snippet } from "@tryaura/aura-sdk";
 
 export function snippet(id: string, path: string, category: string, name: string): Snippet {
@@ -38,51 +37,40 @@ export function snippetPlugin(snippets: readonly Snippet[]) {
   });
 }
 
-export async function installedIds(homeDir: string): Promise<readonly string[]> {
-  const source = await readFile(join(homeDir, "agents", "AGENTS.md"), "utf8");
-  const parsed = readManagedBlock(source);
-  if (parsed.status !== "present") {
-    return [];
-  }
-  return parsed.block.snippets.map((entry) => entry.id);
-}
-
 export async function manifestIds(homeDir: string): Promise<readonly string[]> {
-  return (await manifestSnippets(homeDir)).map((entry) => entry.id);
+  return (await manifestSnippets(homeDir)).map((entry) => {
+    if (typeof entry["id"] !== "string") {
+      throw new Error("Expected a manifest snippet record.");
+    }
+    return entry["id"];
+  });
 }
 
-interface ManifestSnippetRecord {
-  readonly hash: string;
-  readonly id: string;
-  readonly pinned: boolean;
-  readonly version: string;
+/** The recorded fingerprints, for a test asserting Aura kept a handle on what it appended. */
+export async function manifestSnippetHashes(homeDir: string): Promise<ReadonlyMap<string, string>> {
+  return new Map(
+    (await manifestSnippets(homeDir)).flatMap((entry) =>
+      typeof entry["id"] === "string" && typeof entry["hash"] === "string"
+        ? [[entry["id"], entry["hash"]] as const]
+        : [],
+    ),
+  );
 }
 
-export async function manifestSnippets(homeDir: string): Promise<readonly ManifestSnippetRecord[]> {
+async function manifestSnippets(homeDir: string): Promise<readonly Record<string, unknown>[]> {
   const source = await readFile(join(homeDir, "agents", "aura.json"), "utf8");
   const parsed: unknown = JSON.parse(source);
   if (!isRecord(parsed) || !Array.isArray(parsed["snippets"])) {
     throw new Error("Expected manifest snippets.");
   }
   return parsed["snippets"].map((entry) => {
-    if (
-      !isRecord(entry) ||
-      typeof entry["hash"] !== "string" ||
-      typeof entry["id"] !== "string" ||
-      typeof entry["pinned"] !== "boolean" ||
-      typeof entry["version"] !== "string"
-    ) {
-      throw new Error("Expected a manifest snippet.");
+    if (!isRecord(entry)) {
+      throw new Error("Expected a manifest snippet record.");
     }
-    return {
-      hash: entry["hash"],
-      id: entry["id"],
-      pinned: entry["pinned"],
-      version: entry["version"],
-    };
+    return entry;
   });
 }
 
-export function isRecord(value: unknown): value is Record<string, unknown> {
+function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }

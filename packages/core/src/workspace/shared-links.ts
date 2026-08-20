@@ -92,6 +92,11 @@ export function sharedLinkViolations(link: AdapterSharedLink, scope: Scope): rea
     violations.push(
       `lineTemplate must contain exactly one ${SHARED_INSTRUCTIONS_TEMPLATE_TOKEN} token`,
     );
+  } else if (link.kind === "import-line" && /[\n\r]/u.test(link.lineTemplate)) {
+    // The write side recognizes an import it already added by matching the rendered line against
+    // the entry file's lines. A template spanning lines matches nothing it wrote, so every run
+    // would append another copy. A native-copy template is a whole file and is exempt.
+    violations.push("import-line lineTemplate must be a single line");
   }
 
   return Object.freeze(violations);

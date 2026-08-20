@@ -2,6 +2,7 @@ import type { Adapter } from "@tryaura/aura-sdk";
 import { describe, expect, it } from "vitest";
 
 import { captureRegistryError, createAdapter, createPlugin } from "./plugin-fixtures.js";
+import { createPluginRegistry } from "./plugin-registry.js";
 
 describe("shared-link plugin validation", () => {
   it("rejects unsafe or incomplete declarations", () => {
@@ -48,6 +49,38 @@ describe("shared-link plugin validation", () => {
     expect(error.message).toContain("import-line declarations require lineTemplate");
     expect(error.message).toContain("must contain exactly one {{sharedInstructions}} token");
     expect(error.message).toContain("symlink declarations must not provide lineTemplate");
+  });
+
+  // The write side recognizes an import it already added by matching the rendered line; a template
+  // spanning lines matches nothing it wrote, so every run would append another copy.
+  it("refuses a multi-line import-line template but allows one in a native-copy wrapper", () => {
+    const multiLineImport: Adapter = {
+      ...createAdapter("multi-line"),
+      sharedLink: {
+        entryPath: "~/.agent/AGENTS.md",
+        kind: "import-line",
+        lineTemplate: "# Shared\n@file {{sharedInstructions}}",
+      },
+    };
+
+    const error = captureRegistryError([createPlugin("multi", { adapters: [multiLineImport] })]);
+
+    expect(error.message).toContain("import-line lineTemplate must be a single line");
+  });
+
+  it("allows a native-copy wrapper whose template spans lines", () => {
+    const wrapper: Adapter = {
+      ...createAdapter("wrapper"),
+      sharedLink: {
+        entryPath: "~/.agent/rules.md",
+        kind: "native-copy",
+        lineTemplate: "---\nalwaysApply: true\n---\n\n@file {{sharedInstructions}}\n",
+      },
+    };
+
+    expect(() =>
+      createPluginRegistry([createPlugin("wrap", { adapters: [wrapper] })]),
+    ).not.toThrow();
   });
 
   it("refuses a declaration whose entry does not live in its slot's scope", () => {

@@ -31,6 +31,8 @@ export interface SetupBlocker {
  * `overwritten` means a hand edit inside a managed section is being replaced; `preserved` means a
  * tagged section Aura does not own was left where it stood. Both are grouped under their own
  * heading, because "we kept your text" and "we are about to discard it" are opposite messages.
+ * `skipped` is the third of that family: something the user chose that this run could not apply,
+ * reported so a `--yes` run cannot leave a selection out in silence.
  */
 export interface SetupNotice {
   /**
@@ -40,7 +42,7 @@ export interface SetupNotice {
    * every line of it. The first notice of the kind that carries one wins.
    */
   readonly heading?: string | undefined;
-  readonly kind: "held" | "overwritten" | "policy" | "preserved" | "repo";
+  readonly kind: "held" | "overwritten" | "policy" | "preserved" | "repo" | "skipped";
   readonly message: string;
 }
 
@@ -68,7 +70,6 @@ export function planSetup(context: SetupStepContext): SetupPlanOutcome {
   const instructionPlan = planInstructions(context);
   blockers.push(...instructionPlan.blockers);
   const snippetPlan = planSetupSnippets(context, instructionPlan.operations);
-  blockers.push(...snippetPlan.blockers);
   const skillPlan = planSkills(context);
   blockers.push(...skillPlan.blockers);
   const baseManifest = desiredManifest(

@@ -114,6 +114,17 @@ describe("scopeStages", () => {
     ]);
   });
 
+  it("asks nothing for a scope whose target is already the only instruction file", () => {
+    // Both answers such a menu could carry are no decisions: `keep` changes nothing, and the
+    // starter template overwrites text Aura did not write. The scope contributes no tabs at all.
+    expect(
+      scopeStages({ ...GLOBAL, sources: [], targetContentValue: "# Hand written\n\nKeep this.\n" }),
+    ).toEqual([]);
+    // Still asked while either half of that holds: a source to merge, or an empty target.
+    expect(scopeStages({ ...GLOBAL, targetContentValue: "# Hand written\n" })).not.toEqual([]);
+    expect(scopeStages({ ...GLOBAL, sources: [], targetContentValue: "  \n" })).not.toEqual([]);
+  });
+
   it("says on the action menu that combining moves the files it merges", async () => {
     const { asks } = await runScopes({});
 

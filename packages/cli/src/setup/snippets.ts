@@ -2,18 +2,20 @@ import type { FileHandle } from "node:fs/promises";
 import { open, readFile, stat } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
-import { isEmbeddedAssetPath, MAX_SNIPPET_BYTES } from "@tryaura/core";
+import { createLimiter, isEmbeddedAssetPath, MAX_SNIPPET_BYTES } from "@tryaura/core";
 
 import type { AuraManifestState, Snippet } from "@tryaura/aura-sdk";
 
 export type SnippetCatalogEntry = AvailableSnippetCatalogEntry | UnavailableSnippetCatalogEntry;
+
+/** Bounds simultaneous snippet handles independently of how many contributions a distro ships. */
+const MAX_CONCURRENT_SNIPPET_READS = 24;
 
 interface SnippetCatalogEntryBase {
   readonly category: string;
   readonly description: string;
   readonly id: string;
   readonly name: string;
-  readonly version: string;
 }
 
 interface AvailableSnippetCatalogEntry extends SnippetCatalogEntryBase {
@@ -66,22 +68,25 @@ export async function resolveSnippetCatalog(
   presetIds: readonly string[] = [],
 ): Promise<readonly SnippetCatalogEntry[]> {
   const registered = new Set(snippets.map((snippet) => snippet.id));
-  const resolved = await Promise.all(snippets.map(resolveSnippet));
+  const limit = createLimiter(MAX_CONCURRENT_SNIPPET_READS);
+  const resolved = await Promise.all(
+    snippets.map((snippet) => limit(() => resolveSnippet(snippet))),
+  );
   const previous = manifest.status === "ready" ? manifest.value.snippets : [];
-  const previousIds = new Set(previous.map((snippet) => snippet.id));
+  const previousIds = new Set(previous.map((entry) => entry.id));
   return Object.freeze([
     ...resolved,
     ...previous
-      .filter((snippet) => !registered.has(snippet.id))
-      .map((snippet): UnavailableSnippetCatalogEntry =>
+      .map((entry) => entry.id)
+      .filter((id) => !registered.has(id))
+      .map((id): UnavailableSnippetCatalogEntry =>
         Object.freeze({
           category: "general",
-          description: "Previously selected, but no installed plugin currently provides it.",
-          id: snippet.id,
-          name: snippet.id,
+          description: "Installed previously, but no installed plugin currently provides it.",
+          id,
+          name: id,
           reason: "The contributing plugin is unavailable.",
           status: "unavailable",
-          version: snippet.version,
         }),
       ),
     ...presetIds
@@ -94,7 +99,6 @@ export async function resolveSnippetCatalog(
           name: id,
           reason: "No installed plugin provides this preset selection.",
           status: "unavailable",
-          version: "unknown",
         }),
       ),
   ]);
@@ -106,7 +110,6 @@ async function resolveSnippet(snippet: Snippet): Promise<SnippetCatalogEntry> {
     description: snippet.description,
     id: snippet.id,
     name: snippet.name,
-    version: snippet.version,
   };
   try {
     const source = new URL(snippet.source.url);

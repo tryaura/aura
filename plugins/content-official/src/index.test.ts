@@ -2,12 +2,7 @@ import { access, readFile } from "node:fs/promises";
 import { dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import {
-  buildWorkspaceModel,
-  createEnvironment,
-  createPluginRegistry,
-  hashManagedSnippet,
-} from "@tryaura/core";
+import { buildWorkspaceModel, createEnvironment, createPluginRegistry } from "@tryaura/core";
 import type { Snippet } from "@tryaura/aura-sdk";
 import { describe, expect, it } from "vitest";
 
@@ -85,58 +80,6 @@ describe("official snippets", () => {
       }
       expect(snippet.description, snippet.id).toMatch(/^[^.!?\n]+[.!?]$/u);
     }
-  });
-
-  // Version is pinned beside the hash so a content edit that changes a hash without bumping the
-  // snippet's version is visible in the snapshot diff.
-  it("pins the canonical managed-block hashes", async () => {
-    const hashes = await Promise.all(
-      officialContent.snippets.map(async (snippet) => ({
-        hash: hashManagedSnippet(await readSnippet(snippet)),
-        id: snippet.id,
-        version: snippet.version,
-      })),
-    );
-
-    expect(hashes).toMatchInlineSnapshot(`
-      [
-        {
-          "hash": "840eaf13cce6ec01b080c8e70d2851bca90d4f08e9d35ad88ef41d46e89c01e9",
-          "id": "official/commit-conventions",
-          "version": "1.0.0",
-        },
-        {
-          "hash": "3ff0026db55f310cd79be0989f0880930cffdf42272d9dc3553e250ada161300",
-          "id": "official/ask-before-destructive",
-          "version": "1.0.0",
-        },
-        {
-          "hash": "b2b3e41a16a1392d7e31578339569d521121d097049b986ac97dadb1aec48803",
-          "id": "official/pr-descriptions",
-          "version": "1.0.0",
-        },
-        {
-          "hash": "6f477cbfda99014ffaf6028375232decca79f6fc485729c1bc9a46ef325668c0",
-          "id": "official/jira-linking",
-          "version": "1.0.0",
-        },
-        {
-          "hash": "8559206b40e6c69d3e0a8ed099c127f3fb0d2a7c3fae70d64c4a427fb35f7aa7",
-          "id": "official/confluence-references",
-          "version": "1.0.0",
-        },
-        {
-          "hash": "8c4b0731194dea7241669907bf06e508d3cee20e87325b37bfe3e43386e24152",
-          "id": "official/typescript-style",
-          "version": "1.0.0",
-        },
-        {
-          "hash": "88d1f83c7b7d6d8d826aff833d819ade435335b1fb515c8e34ced726b4e20f86",
-          "id": "official/python-style",
-          "version": "1.0.0",
-        },
-      ]
-    `);
   });
 });
 

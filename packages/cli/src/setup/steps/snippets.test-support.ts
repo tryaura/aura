@@ -4,7 +4,6 @@ import { pathToFileURL } from "node:url";
 
 import type { AuraManifestState, Snippet } from "@tryaura/aura-sdk";
 import { createWorkspaceModel } from "@tryaura/aura-sdk/testing";
-import { hashManagedSnippet, reconcileManagedBlock } from "@tryaura/core";
 
 import { createSnippetCatalog } from "../snippets.js";
 import { createTemporaryRoot, emptyMcpCatalog, emptySkillCatalog } from "../testing.js";
@@ -60,10 +59,17 @@ export async function file(
   };
 }
 
+export async function askedNotes(stepContext: SetupStepContext): Promise<readonly string[]> {
+  const scripted = createScriptedWizardIo();
+  await snippetsStep.gather(stepContext, scripted);
+  return scripted.notes;
+}
+
 export function context(
   snippets: readonly Snippet[],
   manifest: AuraManifestState,
   presetSnippets: readonly string[] = [],
+  sharedContent?: string,
 ): SetupStepContext {
   return {
     appCatalog: [],
@@ -74,7 +80,11 @@ export function context(
     mcpCatalog: emptyMcpCatalog(),
     model: createWorkspaceModel({
       manifest,
-      sharedInstructions: { exists: false, path: "/home/dev/agents/AGENTS.md" },
+      sharedInstructions: {
+        exists: sharedContent !== undefined,
+        path: "/home/dev/agents/AGENTS.md",
+        ...(sharedContent === undefined ? {} : { content: sharedContent }),
+      },
     }),
     ...(presetSnippets.length === 0
       ? {}
@@ -94,47 +104,11 @@ export function context(
   };
 }
 
-export function updateContext(snippet: Snippet, installedContent: string): SetupStepContext {
-  const id = snippet.id;
-  const manifest: AuraManifestState = {
-    exists: true,
-    path: "/home/dev/agents/aura.json",
-    status: "ready",
-    value: {
-      apps: {},
-      mcpServers: [],
-      ownership: {},
-      schemaVersion: 1,
-      skills: [],
-      snippets: [
-        {
-          hash: hashManagedSnippet(installedContent),
-          id,
-          pinned: false,
-          version: "1.0.0",
-        },
-      ],
-    },
-  };
-  const base = context([snippet], manifest);
-  return {
-    ...base,
-    model: createWorkspaceModel({
-      manifest,
-      sharedInstructions: {
-        content: reconcileManagedBlock("", [{ content: installedContent, id }]).content,
-        exists: true,
-        path: "/home/dev/agents/AGENTS.md",
-      },
-    }),
-  };
-}
-
 export function missingManifest(): AuraManifestState {
   return { exists: false, path: "/home/dev/agents/aura.json", status: "missing" };
 }
 
-export function readyManifest(id: string): AuraManifestState {
+export function readyManifest(id: string, hash?: string): AuraManifestState {
   return {
     exists: true,
     path: "/home/dev/agents/aura.json",
@@ -145,7 +119,7 @@ export function readyManifest(id: string): AuraManifestState {
       ownership: {},
       schemaVersion: 1,
       skills: [],
-      snippets: [{ hash: "a".repeat(64), id, pinned: false, version: "1.2.3" }],
+      snippets: [{ ...(hash === undefined ? {} : { hash }), id }],
     },
   };
 }

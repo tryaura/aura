@@ -53,7 +53,7 @@ The wizard:
 
 1. detects Claude Code, Codex, and Cursor and asks which applications Aura should manage;
 2. creates or consolidates global and project instructions, archiving migrated originals for undo;
-3. offers the seven bundled snippets for Git, safety, Atlassian, TypeScript, and Python guidance;
+3. offers seven install-once snippets for Git, safety, Atlassian, TypeScript, and Python guidance;
 4. records desired state and ownership in `~/agents/aura.json`; and
 5. previews one combined plan, asks once, applies it atomically, then rescans the machine.
 
@@ -75,6 +75,10 @@ aura setup --add snippet
 The shortcut still previews and applies one atomic plan and finishes by running the checks. It
 skips application selection, instruction consolidation, and baseline questions. An unchanged run
 prints `Already converged — nothing to do.` and does not rewrite the manifest or create a backup.
+Installed snippets remain visible as enabled, ticked rows. Aura appends a selected snippet's plain
+Markdown once, records its ID and content hash in the manifest, and never updates or removes that
+text on a later run. Edit the installed instructions directly; to reinstall deleted text, clear the
+installed row and run the picker again.
 
 An unchanged run is the one exception away from being a no-op: the manifest records which
 applications Aura manages, so it is held at mode `600`, and any run rewrites it when its
@@ -111,7 +115,8 @@ The bundled checks cover:
 | ------------- | ------------------------------------------------------------------------------------------------------ |
 | `ENV-001–004` | Supported app versions, authentication, repository ignore policy, and restrictive project settings.    |
 | `INS-001–008` | Shared links, duplicate or contradictory guidance, legacy files, link integrity, size, and precedence. |
-| `MGD-001`     | Hand edits inside Aura-managed instruction blocks.                                                     |
+| `MGD-002`     | Newer or divergent managed skill revisions.                                                            |
+| `MGD-003`     | Detected applications without an explicit management decision.                                         |
 
 ### Check flags
 
@@ -161,16 +166,16 @@ Use the report status or severity counts, rather than the process exit code, to 
 
 ## Repository layout
 
-| Path               | Contents                                                                  |
-| ------------------ | ------------------------------------------------------------------------- |
-| `packages/sdk`     | `@tryaura/aura-sdk` — the public plugin API. No runtime dependencies.     |
-| `packages/core`    | Environment, workspace model, checks, fix-plan execution, managed blocks. |
-| `packages/cli`     | `runCli(distro)` — the command shell a distribution is built on.          |
-| `packages/testkit` | Seeded machines and CLI harnesses for distro and plugin tests.            |
-| `plugins/*`        | Adapters (Claude Code, Codex, Cursor), core checks, official content.     |
-| `distros/aura`     | The `aura` binary: branding plus the plugin list, composed at build time. |
-| `apps/web`         | Marketing landing and Starlight docs, deployed on Cloudflare Workers.     |
-| `docs/cli-ux.md`   | The CLI UX contract: help screens, glyphs, and the setup wizard tab bar.  |
+| Path               | Contents                                                                   |
+| ------------------ | -------------------------------------------------------------------------- |
+| `packages/sdk`     | `@tryaura/aura-sdk` — the public plugin API. No runtime dependencies.      |
+| `packages/core`    | Environment, workspace model, checks, fix plans, and legacy compatibility. |
+| `packages/cli`     | `runCli(distro)` — the command shell a distribution is built on.           |
+| `packages/testkit` | Seeded machines and CLI harnesses for distro and plugin tests.             |
+| `plugins/*`        | Adapters (Claude Code, Codex, Cursor), core checks, official content.      |
+| `distros/aura`     | The `aura` binary: branding plus the plugin list, composed at build time.  |
+| `apps/web`         | Marketing landing and Starlight docs, deployed on Cloudflare Workers.      |
+| `docs/cli-ux.md`   | The CLI UX contract: help screens, glyphs, and the setup wizard tab bar.   |
 
 That separation makes every change previewable. A check cannot run a command, and a fix cannot
 make a network request. Fix plans use target locking, precondition checks, atomic replacement,

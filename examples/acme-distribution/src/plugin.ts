@@ -31,7 +31,7 @@ const distributionCheck = defineCheck({
         id: missing.length === 0 ? "configured" : "missing",
         message:
           missing.length === 0
-            ? "The Acme distribution loaded its agent, snippet, skill, and MCP definition."
+            ? "The Acme distribution loaded its agent, skill, and MCP definition."
             : `The Acme distribution is missing: ${missing.join(", ")}.`,
       },
     ];
@@ -46,7 +46,6 @@ const distributionCheck = defineCheck({
 function missingContributions(model: WorkspaceModel): readonly string[] {
   const contributions: readonly (readonly [loaded: boolean, name: string])[] = [
     [model.apps.some((app) => app.adapterId === ACME_AGENT_ID), "agent"],
-    [model.availableSnippets.some((snippet) => snippet.id === "acme/engineering"), "snippet"],
     [
       model.availableSkills?.some(
         (skill) => skill.source.id === "plugin:acme" && skill.id === "acme-release",

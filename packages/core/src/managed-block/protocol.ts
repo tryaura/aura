@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { CONTENT_HASH_PATTERN, hashContent } from "../content-hash.js";
 
 /** Distribution-independent outer marker opening Aura-managed content. */
 export const AURA_MANAGED_BLOCK_BEGIN = "<!-- aura:begin -->";
@@ -17,7 +17,7 @@ export const AURA_MANAGED_BLOCK_NOTICE =
   "Managed by Aura. Edit via the Aura CLI; manual edits to this block are overwritten.";
 
 const MANAGED_SNIPPET_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
-export const MANAGED_SNIPPET_HASH_PATTERN = /^[0-9a-f]{64}$/;
+export const MANAGED_SNIPPET_HASH_PATTERN = CONTENT_HASH_PATTERN;
 
 /** Whether an id is both line-safe and legal inside an HTML comment. */
 export function isManagedSnippetId(id: string): boolean {
@@ -25,26 +25,12 @@ export function isManagedSnippetId(id: string): boolean {
 }
 
 /**
- * Normalizes snippet text to the bytes covered by the managed-block hash protocol.
+ * Computes the protocol hash for a snippet's canonical UTF-8 contents.
  *
- * Trailing newlines are trimmed by scanning rather than with `/\n+$/`, whose backtracking is
- * quadratic when a long newline run does not reach the end of the string.
+ * The legacy block's hash is {@link hashContent} under another name: a marked section read back
+ * from an older file has to compare equal to the same text hashed anywhere else in Aura, or a
+ * migration would report drift on content nobody touched.
  */
-export function canonicalizeManagedSnippet(content: string): string {
-  const normalized = content.replace(/\r\n?/g, "\n");
-  let end = normalized.length;
-  while (end > 0 && normalized[end - 1] === "\n") {
-    end -= 1;
-  }
-  return `${normalized.slice(0, end)}\n`;
-}
-
-/** Computes the protocol hash for text already in {@link canonicalizeManagedSnippet} form. */
-export function hashCanonicalManagedSnippet(canonical: string): string {
-  return createHash("sha256").update(canonical, "utf8").digest("hex");
-}
-
-/** Computes the protocol hash for a snippet's canonical UTF-8 contents. */
 export function hashManagedSnippet(content: string): string {
-  return hashCanonicalManagedSnippet(canonicalizeManagedSnippet(content));
+  return hashContent(content);
 }
