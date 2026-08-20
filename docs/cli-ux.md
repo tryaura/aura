@@ -230,7 +230,7 @@ When the active step runs a sequence of internal forms (a chain step like Instru
 - The Skills step is the second chain precedent: its Review stage exists only while a directory
   skill is selected or a recorded skill's source revision moved, one review question per skill —
   `└ ✔ Skills │ ▶ Review claude-md ☐ │ Review commit-style ☐`.
-- The Snippets step is one picker. Installed IDs render with `(installed)` and open ticked and
+- The Snippets step is one picker. Installed IDs lead it under an `Already installed` heading,
   locked, so the step only ever adds; it has no Review stage because Aura never revises installed
   snippet text.
 - Before the picker, private directories appear in an explicit connection form naming the URL and
@@ -294,15 +294,32 @@ bar, so compact tabs lose no information.
 - Space marks the row under the cursor and stays put: a multiselect toggles its `☑`, a select
   moves its `●`. Marking never answers the step by itself — the tab stays `☐` until ↵ answers it
   (or → commits the form as it stands). A disabled option can never be marked; a multiselect's
-  already-marked one can still be cleared. A **locked** option refuses both directions — its
-  checkbox reports a fact the form is not asking about — and states what it is in its label and
-  description rather than a `—` note. Digits jump to a row and mark it the same way.
+  already-marked one can still be cleared. A **locked** option refuses both directions — it
+  reports a fact the form is not asking about — and states what it is in its label and group
+  heading rather than a `—` note. Digits jump to a row and mark it the same way.
+- Numbers run over the rows a digit can address, so a **locked** row carries none: the rows under
+  it are numbered `1.`, `2.`, … as if it were not there, and it renders `✔` in the checkbox column
+  (a box would invite the space press the lock then swallows), its marker held under the numbered
+  ones by a blank gutter. Its label can carry dim ` · <note>` context — where the row came from,
+  for a record block gathered out of several groups. A free-text row takes the number after the
+  last one the options spent.
+- A locked row is a record, not an answer: the Submit tab's review line and the collapsed
+  `✔ <step>  <answer>` line list only what this run chose, so a step that ticked nothing new reads
+  `(none)` however much the record above it holds.
 - A form opens with the cursor on the row its answer stands on, and failing that on the first row
   that can be marked — leading disabled and locked rows are read, not answered with, so the first
-  space struck is never a no-op.
+  space struck is never a no-op. ↑/↓ then step **over** every locked row and wrap past the block
+  entirely: `❯` points at a row the reader can act on or it is lying, and a lock refuses every key
+  that acts on a row. Disabled rows still take the cursor — a mark seeded before the source went
+  away can still be given up there, so there is something to point at. A screen with no markable
+  row at all opens on its first and ↑/↓ leave it there: there is nothing to skip ahead to, and the
+  footer drops the marking segment rather than promising a key that would do nothing.
 - Footer hint line: `↑/↓ move · space toggle · ←/→ steps · ↵ select · esc cancel` on a
   multiselect, `↑/↓ move · space select · ←/→ steps · ↵ confirm · esc cancel` on a select
-  (segments appear only when applicable; a locked Submit drops `↵ submit`).
+  (segments appear only when applicable; a locked Submit drops `↵ submit`, and a question with no
+  row left to mark drops the marking segment along with it — every row locked, or locked and
+  unavailable between them. A disabled row that opens marked still has a mark to give up, so it
+  keeps the segment.)
 - Once a form resolves, it collapses to one `✔ <step>  <answer>` line per step — printed on the
   form's first completion and again only when a re-answer changed it, so back-and-forth
   navigation never stacks duplicate lines and the scrollback's last word is never a stale answer.
@@ -406,7 +423,28 @@ adapter command before setup reports the problem.
 
 ### Snippets step
 
-One multiselect over the snippets registered by installed plugins.
+One multiselect over the snippets registered by installed plugins. What is already installed
+leads it as an unnumbered record block; the numbers below count only what a tick would change:
+
+```
+ Which snippets should Aura add to the shared instructions?
+
+ Already installed
+     ✔ Commit conventions · git
+     ✔ Pull request descriptions · git
+     ✔ TypeScript style · language
+      Aura keeps the record; the text stays where it is.
+
+ atlassian
+❯ 1. ☐ Confluence references
+      Reference Confluence without hiding execution-critical context.
+  2. ☐ Jira issue linking
+      Keep Jira issue references consistent across development artifacts.
+
+ language
+  3. ☐ Python style
+      Apply typed Python conventions with consistent Ruff validation.
+```
 
 - An uninstalled available row can be selected and previewed. A preset ticks it by default only
   while its ID is absent from the manifest and a plugin actually provides it: a disabled row that
@@ -414,9 +452,22 @@ One multiselect over the snippets registered by installed plugins.
 - A row no installed plugin provides renders disabled with `— source unavailable` and can never be
   ticked. Selecting one anyway — from a preset, a scripted answer — leaves it out of the install
   and reports it under "Selections Aura could not apply"; every other selection is still applied.
-- A manifest-recorded ID renders as a locked `<name> (installed)` row that opens ticked, whether or
-  not its plugin source is still available. Space and its digit are inert on it and the cursor does
-  not open on it; its description says `Aura keeps the record; the text stays where it is.`
+- A manifest-recorded ID renders as a locked, unnumbered `✔ <name>` row under the leading
+  `Already installed` heading, whether or not its plugin source is still available. It opens
+  ticked, space is inert on it, no digit addresses it, and the cursor neither opens on it nor can
+  be moved onto it — the whole block is read, never pointed at. It carries no `p` preview for the
+  same reason, and would have nothing honest to show anyway: the plugin's text today is not the
+  bytes that were appended, and the record line below says where the installed text now lives. Its
+  dim ` · <note>` reports the category it came from, or `plugin unavailable` where no installed
+  plugin publishes its text any more. The block carries one shared line, on its last row:
+  `Aura keeps the record; the text stays where it is.`
+- Pulling those rows out of their categories is what lets the offerable rows number from `1`, and
+  it empties any category whose every snippet is installed — no heading is printed for it. When
+  every registered snippet is installed the prompt itself says so:
+  `Every snippet the installed plugins provide is already in your instructions.` When what is left
+  below the record block is only rows no installed plugin publishes, the prompt reports that
+  instead — `Nothing here can be added: every snippet is either installed already or unavailable.`
+  — and the footer drops `space toggle`, because neither kind of row answers to it.
 - Applying the plan appends each newly ticked Markdown fragment directly to `~/agents/AGENTS.md`,
   in picker order, with one blank line between fragments and the file's line endings. Aura writes
   no ownership markers and records each ID with a hash of the text it appended.

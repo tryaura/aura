@@ -34,6 +34,53 @@ const MCP_QUESTION: WizardQuestion = {
   prompt: "Which MCP servers should every managed app get?",
 };
 
+const SNIPPETS_QUESTION: WizardQuestion = {
+  id: "snippets",
+  kind: "multiselect",
+  label: "Snippets",
+  options: [
+    {
+      group: "Already installed",
+      label: "Commit conventions",
+      locked: true,
+      note: "git",
+      value: "commit",
+    },
+    {
+      description: "Aura keeps the record; the text stays where it is.",
+      group: "Already installed",
+      label: "Pull request descriptions",
+      locked: true,
+      note: "git",
+      value: "pull-request",
+    },
+    {
+      description: "Keep Jira issue references consistent across development artifacts.",
+      group: "atlassian",
+      label: "Jira issue linking",
+      value: "jira",
+    },
+    { group: "language", label: "Python style", value: "python" },
+  ],
+  prompt: "Which snippets should Aura add to the shared instructions?",
+};
+
+/** Every row past asking about: the record block, then one no installed plugin publishes. */
+const BLOCKED_QUESTION: WizardQuestion = {
+  ...SNIPPETS_QUESTION,
+  options: [
+    ...SNIPPETS_QUESTION.options.filter((option) => option.locked === true),
+    {
+      disabled: true,
+      disabledNote: "source unavailable",
+      group: "general",
+      label: "ghost/rules",
+      value: "ghost",
+    },
+  ],
+  prompt: "Nothing here can be added: every snippet is either installed already or unavailable.",
+};
+
 function view(
   question: WizardQuestion,
   overrides: Partial<WizardQuestionView> = {},
@@ -115,6 +162,74 @@ describe("renderWizardFrame", () => {
        ↑/↓ move · space toggle · ←/→ steps · ↵ select · esc cancel
       "
     `);
+  });
+
+  it("leads with the locked record block and numbers only what a tick would change", () => {
+    const frame: WizardFrame = {
+      activeTab: 0,
+      cursorRow: 2,
+      questions: [view(SNIPPETS_QUESTION, { selected: new Set(["commit", "pull-request"]) })],
+    };
+
+    expect(renderWizardFrame(frame, 0)).toMatchInlineSnapshot(`
+      " ▶ Snippets ☐ │ Submit
+
+       Which snippets should Aura add to the shared instructions?
+
+       Already installed
+           ✔ Commit conventions · git
+           ✔ Pull request descriptions · git
+            Aura keeps the record; the text stays where it is.
+
+       atlassian
+      ❯ 1. ☐ Jira issue linking
+            Keep Jira issue references consistent across development artifacts.
+
+       language
+        2. ☐ Python style
+
+       ↑/↓ move · space toggle · ←/→ steps · ↵ select · esc cancel
+      "
+    `);
+  });
+
+  it("offers no marking key on a screen of nothing but locked rows", () => {
+    const question: WizardQuestion = {
+      ...SNIPPETS_QUESTION,
+      options: SNIPPETS_QUESTION.options.filter((option) => option.locked === true),
+      prompt: "Every snippet the installed plugins provide is already in your instructions.",
+    };
+    const frame: WizardFrame = { activeTab: 0, cursorRow: 0, questions: [view(question)] };
+
+    expect(renderWizardFrame(frame, 0)).toContain(" ↑/↓ move · ←/→ steps · ↵ select · esc cancel");
+  });
+
+  it("offers no marking key when the rows a lock spared are unavailable anyway", () => {
+    const frame: WizardFrame = { activeTab: 0, cursorRow: 0, questions: [view(BLOCKED_QUESTION)] };
+
+    expect(renderWizardFrame(frame, 0)).toContain(" ↑/↓ move · ←/→ steps · ↵ select · esc cancel");
+  });
+
+  it("keeps the marking key while a disabled row still has a mark to give up", () => {
+    const frame: WizardFrame = {
+      activeTab: 0,
+      cursorRow: 0,
+      questions: [view(BLOCKED_QUESTION, { selected: new Set(["ghost"]) })],
+    };
+
+    expect(renderWizardFrame(frame, 0)).toContain(" · space toggle");
+  });
+
+  it("keeps a locked record out of the answer summary it was never part of", () => {
+    const frame: WizardFrame = {
+      activeTab: 1,
+      cursorRow: 0,
+      questions: [
+        view(SNIPPETS_QUESTION, { answered: true, selected: new Set(["commit", "python"]) }),
+      ],
+    };
+
+    expect(renderWizardFrame(frame, 0)).toContain("✔ Snippets  Python style");
   });
 
   it("renders a locked Submit tab as the list of missing steps", () => {
@@ -510,6 +625,8 @@ describe("renderWizardFrame", () => {
       prompt: "Which skills should Aura install?",
     };
 
+    // The one row here is disabled and unmarked, so there is nothing for space to do and the
+    // footer says so — the marking segment is not a fixture of the multiselect.
     expect(renderWizardFrame({ activeTab: 0, cursorRow: 0, questions: [view(skills)] }, 0))
       .toMatchInlineSnapshot(`
       " ▶ Skills ☐ │ Submit
@@ -520,7 +637,7 @@ describe("renderWizardFrame", () => {
       ❯ 1. ☐ Jira projects — source no longer publishes this skill
             Manage Jira projects. · v2026.8.20
 
-       ↑/↓ move · space toggle · ←/→ steps · ↵ select · esc cancel
+       ↑/↓ move · ←/→ steps · ↵ select · esc cancel
       "
     `);
   });
