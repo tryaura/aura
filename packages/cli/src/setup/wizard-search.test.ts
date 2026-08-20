@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { highlightLabel, SEARCH_RESULT_CAP, searchOptions, searchTerms } from "./wizard-search.js";
+import {
+  browseWindow,
+  highlightLabel,
+  SEARCH_RESULT_CAP,
+  searchOptions,
+  searchTerms,
+} from "./wizard-search.js";
 import type { WizardOption } from "./wizard-types.js";
 
 function option(label: string, extras: Partial<WizardOption> = {}): WizardOption {
@@ -50,6 +56,45 @@ describe("searchOptions", () => {
     expect(outcome.total).toBe(1_117);
     expect(outcome.matched).toHaveLength(SEARCH_RESULT_CAP);
     expect(outcome.matched[0]?.label).toBe("jira-0");
+  });
+});
+
+describe("browseWindow", () => {
+  it("still offers its full budget of checkable rows behind a run of disabled ones", () => {
+    const options: readonly WizardOption[] = [
+      ...Array.from({ length: 14 }, (_, index) =>
+        option(`.NET ${String(index)}`, { disabled: true }),
+      ),
+      ...Array.from({ length: 20 }, (_, index) => option(`skill-${String(index)}`)),
+    ];
+
+    const window = browseWindow(options, 10);
+
+    expect(window.filter(({ disabled }) => disabled !== true)).toHaveLength(10);
+    expect(window.map(({ label }) => label)).toEqual([
+      ...Array.from({ length: 10 }, (_, index) => `.NET ${String(index)}`),
+      ...Array.from({ length: 10 }, (_, index) => `skill-${String(index)}`),
+    ]);
+  });
+
+  it("keeps disabled rows in display order and holds them to the same budget", () => {
+    const options: readonly WizardOption[] = [
+      option("Acme Skills", { disabled: true }),
+      ...Array.from({ length: 12 }, (_, index) => option(`skill-${String(index)}`)),
+    ];
+
+    expect(browseWindow(options, 3).map(({ label }) => label)).toEqual([
+      "Acme Skills",
+      "skill-0",
+      "skill-1",
+      "skill-2",
+    ]);
+    expect(
+      browseWindow(
+        Array.from({ length: 40 }, () => option("x", { disabled: true })),
+        10,
+      ),
+    ).toHaveLength(10);
   });
 });
 

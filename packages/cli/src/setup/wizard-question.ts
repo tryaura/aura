@@ -1,6 +1,6 @@
 import { printable } from "./wizard-keys.js";
 import type { WizardQuestionView } from "./wizard-render.js";
-import { searchOptions } from "./wizard-search.js";
+import { browseWindow, searchOptions } from "./wizard-search.js";
 import type { Keypress, WizardAnswer, WizardAnswers, WizardQuestion } from "./wizard-types.js";
 
 /** One question's mutable state while its form is on screen; the session in `wizard-form.ts` owns it. */
@@ -33,11 +33,16 @@ export function createQuestionState(question: WizardQuestion): QuestionState {
 }
 
 /**
- * Where the cursor opens on a question: its current answer, else the first row.
+ * Where the cursor opens on a question: its current answer, else the first row it can act on.
  *
  * A select renders no per-row checkbox, so the cursor doubles as the pointer at what stands —
  * a re-seeded answer, or the `initial` a fresh form proposes. A seeded free-text draft focuses
  * the free-text row for the same reason.
+ *
+ * Failing that the cursor skips any leading disabled rows. Unavailable sources and rows a source
+ * no longer publishes are deliberately listed ahead of the installable ones, and opening the
+ * cursor on one of them means the first space struck does nothing at all — the row is there to be
+ * read, not to be answered with.
  */
 export function initialCursorRow(state: QuestionState | undefined): number {
   if (state === undefined) {
@@ -47,11 +52,17 @@ export function initialCursorRow(state: QuestionState | undefined): number {
   if (state.question.freeText === true && state.selected.size === 0 && state.text !== "") {
     return options.length;
   }
-  if (state.question.kind !== "select") {
-    return 0;
+  const marked =
+    state.question.kind === "select"
+      ? options.findIndex((option) => state.selected.has(option.value))
+      : -1;
+  if (marked >= 0) {
+    return marked;
   }
-  const index = options.findIndex((option) => state.selected.has(option.value));
-  return index < 0 ? 0 : index;
+  return Math.max(
+    options.findIndex((option) => option.disabled !== true),
+    0,
+  );
 }
 
 /** Edits the free-text draft; space types a space here rather than toggling anything. */
@@ -215,9 +226,9 @@ export function visibleOptions(state: QuestionState): readonly WizardQuestion["o
  * The rows a searchable question shows, and — under a query — how many matched before the cap.
  *
  * With no query the checked rows lead under one `Selected (N)` heading, so the first frame is the
- * user's own selection rather than an alphabetical page; the browse window below it never repeats
- * them. Under a query the ranked matches lead and every checked row the query hides follows under
- * its own heading — marking a row must never make it disappear.
+ * user's own selection rather than an alphabetical page; the {@link browseWindow} below it never
+ * repeats them. Under a query the ranked matches lead and every checked row the query hides
+ * follows under its own heading — marking a row must never make it disappear.
  */
 function computeVisible(state: QuestionState): {
   readonly options: readonly WizardQuestion["options"][number][];
@@ -246,9 +257,10 @@ function computeVisible(state: QuestionState): {
   }
 
   const chosenValues = new Set(chosen.map((option) => option.value));
-  const window = state.question.options
-    .filter((option) => !chosenValues.has(option.value))
-    .slice(0, search.initialLimit);
+  const window = browseWindow(
+    state.question.options.filter((option) => !chosenValues.has(option.value)),
+    search.initialLimit,
+  );
   return {
     options: [...regroup(chosen, `Selected (${String(chosen.length)})`), ...window],
   };

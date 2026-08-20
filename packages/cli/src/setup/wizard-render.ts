@@ -90,7 +90,7 @@ export function renderWizardFrame(
   const active = frame.questions[frame.activeTab];
   const body =
     active === undefined
-      ? { focus: 0, lines: renderSubmitBody(frame.questions, submitLocked, style) }
+      ? { focus: 0, lines: renderSubmitBody(frame.questions, submitLocked, style), pinnedLines: 0 }
       : renderQuestionBody(active, frame.cursorRow, style);
   // The engine repaints by moving the cursor up as many rows as it last printed; a frame taller
   // than the terminal scrolls the buffer and the erasure lands short, leaking rows into the
@@ -102,6 +102,7 @@ export function renderWizardFrame(
       viewport.rows - FRAME_BASE_CHROME_ROWS - barLines.length,
       style,
       viewport.columns,
+      body.pinnedLines,
     ),
   );
 
@@ -137,11 +138,12 @@ function renderQuestionBody(
   view: WizardQuestionView,
   cursorRow: number,
   style: Style,
-): { readonly focus: number; readonly lines: readonly string[] } {
+): { readonly focus: number; readonly lines: readonly string[]; readonly pinnedLines: number } {
   const lines = [` ${style.bold(safe(view.question.prompt))}`, ""];
   let focus = 0;
 
   lines.push(...searchLines(view, style));
+  const pinnedLines = lines.length;
 
   let previousGroup: string | undefined;
   view.question.options.forEach((option, index) => {
@@ -168,7 +170,7 @@ function renderQuestionBody(
     lines.push(`${cursor} ${String(view.question.options.length + 1)}. ${draft}`);
   }
 
-  return { focus, lines };
+  return { focus, lines, pinnedLines };
 }
 
 function renderSubmitBody(

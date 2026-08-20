@@ -10,6 +10,41 @@ import type { WizardOption } from "./wizard-types.js";
  */
 export const SEARCH_RESULT_CAP = 50;
 
+/**
+ * The rows a searchable question shows before any query: up to `limit` rows the reader can act
+ * on, plus up to `limit` disabled rows riding along in display order.
+ *
+ * A disabled row costs its own position and never someone else's. A catalog whose alphabetical
+ * head happens to be a run of rows its source no longer publishes would otherwise fill the whole
+ * window with rows nothing can check — leaving a first frame where space does nothing and `/` is
+ * the only way to answer the question at all. Budgeting the two kinds apart keeps the leading
+ * unavailable-source and truncation rows on screen, since those are disabled by construction,
+ * while still guaranteeing `limit` actionable rows behind them.
+ */
+export function browseWindow(
+  options: readonly WizardOption[],
+  limit: number,
+): readonly WizardOption[] {
+  const window: WizardOption[] = [];
+  let actionable = 0;
+  let blocked = 0;
+  for (const option of options) {
+    if (option.disabled === true) {
+      if (blocked < limit) {
+        blocked += 1;
+        window.push(option);
+      }
+      continue;
+    }
+    if (actionable >= limit) {
+      break;
+    }
+    actionable += 1;
+    window.push(option);
+  }
+  return window;
+}
+
 /** The ranked rows a query keeps, and how many matched before the cap. */
 export interface SearchOutcome {
   readonly matched: readonly WizardOption[];

@@ -294,6 +294,9 @@ bar, so compact tabs lose no information.
   moves its `●`. Marking never answers the step by itself — the tab stays `☐` until ↵ answers it
   (or → commits the form as it stands). A disabled option can never be marked; a multiselect's
   already-marked one can still be cleared. Digits jump to a row and mark it the same way.
+- A form opens with the cursor on the row its answer stands on, and failing that on the first row
+  that can be marked — leading disabled rows are read, not answered with, so the first space
+  struck is never a no-op.
 - Footer hint line: `↑/↓ move · space toggle · ←/→ steps · ↵ select · esc cancel` on a
   multiselect, `↑/↓ move · space select · ←/→ steps · ↵ confirm · esc cancel` on a select
   (segments appear only when applicable; a locked Submit drops `↵ submit`).
@@ -455,9 +458,13 @@ entries — the rest cannot be listed until the catalog narrows upstream`). Trun
   only a diagnostic note: a catalog quietly missing its tail reads as a catalog with nothing more
   to offer.
 - A picker with more than ten rows opens on the user's own selection, not an alphabetical page:
-  every checked row leads under one `Selected (N)` heading, followed by the first ten unchecked
-  rows. A multiselect's search status line always carries a live `· N selected` count while
-  anything is checked, so the size of the basket is never off screen.
+  every checked row leads under one `Selected (N)` heading, followed by a browse window of the
+  next unchecked rows. That window carries up to ten rows the reader can check and up to ten
+  disabled rows alongside them, both in display order — a disabled row costs its own position and
+  never someone else's, so a catalog whose alphabetical head is a run of unavailable or no-longer
+  published rows can never open on a frame where nothing can be checked. A multiselect's search
+  status line always carries a live `· N selected` count while anything is checked, so the size of
+  the basket is never off screen.
 - The `/` action, labelled `Search all <n> skills`, filters locally across names, ids,
   descriptions, and sources — ranked, not merely filtered: a term starting a word of the label
   beats a substring inside it, which beats a hit in the id, the source, or the description, and

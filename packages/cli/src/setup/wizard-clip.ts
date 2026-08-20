@@ -16,12 +16,39 @@ export function clipBody(
   capacity: number,
   style: Style,
   columns: number,
+  pinnedLines: number = 0,
 ): readonly string[] {
   const spans = lines.map((line) => Math.max(1, Math.ceil(displayWidth(line) / columns)));
   const room = Math.max(1, capacity);
   if (spans.reduce((total, span) => total + span, 0) <= room) {
     return lines;
   }
+  const pinnedEnd = Math.min(Math.max(0, pinnedLines), lines.length);
+  const pinnedRows = spans.slice(0, pinnedEnd).reduce((total, span) => total + span, 0);
+  // A very short terminal still prioritizes the focused row over chrome that cannot fit beside it.
+  // At ordinary sizes, only the option rows move while the question context stays anchored.
+  if (pinnedEnd > 0 && pinnedRows < room) {
+    return [
+      ...lines.slice(0, pinnedEnd),
+      ...clipWindow(
+        lines.slice(pinnedEnd),
+        spans.slice(pinnedEnd),
+        focus - pinnedEnd,
+        room - pinnedRows,
+        style,
+      ),
+    ];
+  }
+  return clipWindow(lines, spans, focus, room, style);
+}
+
+function clipWindow(
+  lines: readonly string[],
+  spans: readonly number[],
+  focus: number,
+  room: number,
+  style: Style,
+): readonly string[] {
   // Two rows are reserved for the markers, so the window never grows past the capacity.
   const window = growWindow(spans, focus, Math.max(1, room - 2));
   const below = lines.length - window.end;
