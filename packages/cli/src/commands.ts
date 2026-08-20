@@ -3,11 +3,9 @@ import { Command, Option } from "clipanion/lib/advanced/index.js";
 
 import type { AuraCliContext } from "./cli-context.js";
 import {
-  buildWorkspaceModel,
   applyRequiredMcpServers,
   createEnvironment,
   createFileReader,
-  createMcpUrlRequester,
   enabledChecks,
   readAuraManifest,
   resolveAuraManifestPath,
@@ -24,6 +22,7 @@ import {
 import { repoPresetNote, reportConfiguration, resolveCheckConfiguration } from "./check-config.js";
 import { explainCheck } from "./check-explain.js";
 import { rejectInvalidCheckOptions } from "./check-option-rejection.js";
+import { createCheckScan } from "./check-scan.js";
 import {
   disableOption,
   enableOption,
@@ -194,18 +193,19 @@ export class CheckCommand extends Command<AuraCliContext> {
     const activeChecks = enabledChecks(selected.checks, configured.config);
 
     // Held across both scans, then closed once so pooled sockets do not keep the process alive.
-    const requester = this.online ? createMcpUrlRequester(this.context.env) : undefined;
+    const scanner = createCheckScan({
+      adapters: selected.adapters,
+      colorDepth: this.context.colorDepth,
+      env: this.context.env,
+      environment,
+      json: this.json,
+      online: this.online,
+      registry: this.context.registry,
+      stdout: this.context.stdout,
+    });
     try {
       const startedAt = environment.now();
-      const scanOptions = {
-        adapters: selected.adapters,
-        environment,
-        mcpCatalog: this.context.registry.mcpServers,
-        mcpProbes: requester === undefined ? {} : { urlRequest: requester.request },
-        skills: this.context.registry.skills,
-        snippets: this.context.registry.snippets,
-      };
-      let scan = await buildWorkspaceModel(scanOptions);
+      let scan = await scanner.run();
       let projected = applyRequiredMcpServers(scan.model, configured.config);
       let model = projected.model;
       let run = runChecks(activeChecks, model, configured.config);
@@ -236,7 +236,7 @@ export class CheckCommand extends Command<AuraCliContext> {
         fixRunDiagnostics = fixPassDiagnostics(outcome);
         fixes = outcome.fixes;
         if (outcome.applied) {
-          scan = await buildWorkspaceModel(scanOptions);
+          scan = await scanner.run();
           projected = applyRequiredMcpServers(scan.model, configured.config);
           model = projected.model;
           run = runChecks(activeChecks, model, configured.config);
@@ -294,7 +294,7 @@ export class CheckCommand extends Command<AuraCliContext> {
         this.context.telemetry,
       );
     } finally {
-      await requester?.close();
+      await scanner.close();
     }
   }
 }

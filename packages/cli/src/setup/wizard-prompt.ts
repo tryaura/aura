@@ -4,7 +4,8 @@ import type { Readable, Writable } from "node:stream";
 import { safe } from "../safe-text.js";
 import { createFormSession } from "./wizard-form.js";
 import { runWizardLoader } from "./wizard-loader.js";
-import { countWizardFrameRows, eraseWizardFrame, resolveWizardViewport } from "./wizard-output.js";
+import { countFrameRows, eraseFrame } from "../terminal-frame.js";
+import { resolveWizardViewport } from "./wizard-output.js";
 import { claimTerminal, supportsRawMode } from "./wizard-terminal.js";
 import { renderAnsweredSummary, renderWizardFrame } from "./wizard-render.js";
 import type {
@@ -104,9 +105,9 @@ async function runForm(
     // Read the size every repaint rather than once, so a resize mid-form is picked up.
     const viewport = resolveWizardViewport(stdout);
     const frame = renderWizardFrame(session.frame(), options.colorDepth, viewport);
-    stdout.write(`${eraseWizardFrame(erase)}${frame}`);
+    stdout.write(`${eraseFrame(erase)}${frame}`);
     lastFrame = frame;
-    renderedLines = countWizardFrameRows(frame, viewport.columns);
+    renderedLines = countFrameRows(frame, viewport.columns);
   };
 
   // The terminal must come back on every way out of the form — resolution, a thrown repaint, or
@@ -124,7 +125,7 @@ async function runForm(
         stdin.off("end", onEnd);
         stdout.off("resize", onResize);
         stdin.pause();
-        stdout.write(eraseWizardFrame(renderedLines));
+        stdout.write(eraseFrame(renderedLines));
         // Only a completed form leaves its collapsed summary behind, and only when the summary
         // gate lets it through; a backed-out or aborted form vanishes without a trace.
         if (result !== "aborted" && result !== "back") {
@@ -143,7 +144,7 @@ async function runForm(
       // trusting the stale one and leaving artifact rows behind.
       const onResize = (): void => {
         const viewport = resolveWizardViewport(stdout);
-        paint(Math.max(renderedLines, countWizardFrameRows(lastFrame, viewport.columns)));
+        paint(Math.max(renderedLines, countFrameRows(lastFrame, viewport.columns)));
       };
 
       const onEnd = (): void => {

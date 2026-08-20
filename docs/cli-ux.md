@@ -59,6 +59,27 @@ internal help command and unknown-command errors).
 
 ## Check report
 
+### Scan progress
+
+A check run is dominated by probes Aura does not control: an adapter's `detect` execs the
+application's own CLI, and a companion CLI that connects to every configured MCP server before it
+answers takes seconds on its own. Nothing about the report can be printed until every one of them
+returns, so the run says what it is waiting for instead of going quiet. Human output on a terminal
+paints the same frame the setup wizard's opening scan uses — `Scanning this machine…` with one
+status row per detected-application adapter (pending `☐`, an animated spinner while its probe runs,
+then `✔`) — from the moment the scan starts, which is the first thing that happens after the
+command's options and configuration resolve. Synthetic adapters model files rather than an
+installed application, so they are never named as a row. A `--fix` run that applies something and
+rescans paints the frame again for the second scan.
+
+The frame is a display and nothing more: it never changes what the scan does or the order results
+come back in, and it is erased before the report is written, so the report's first line is still
+the report's first line. A run whose output is redirected, and a `--json` run, paint no frame at
+all — their streams carry a document, not a display — so captured output is byte-identical with or
+without a terminal attached.
+
+### Report body
+
 Human check output is action-first. The concise default renders the human verdict and severity
 counts, the one command that can address the available fixes, then Available fixes, Manual
 attention, and Suggestions. Informational findings are suggestions, never manual work. Passed
@@ -140,7 +161,9 @@ any other code to 2.
 | `└`   | Sub-row connector under the active step          |
 | `·`   | Separator inside hint lines and footers          |
 
-Plain ASCII/Unicode only — no spinner frames, no emoji.
+Plain ASCII/Unicode only, no emoji. The one animation is the loading spinner, shared by the setup
+wizard's loading frames and the check scan's progress rows; it never appears in report output, and
+every surface that animates erases itself before anything durable is printed.
 
 ## Setup wizard tab bar
 
