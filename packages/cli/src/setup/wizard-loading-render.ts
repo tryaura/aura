@@ -1,5 +1,5 @@
+import { loadingGlyph } from "../loading-frame.js";
 import { safe } from "../safe-text.js";
-import type { Style } from "../style.js";
 import { clipBody } from "./wizard-clip.js";
 import {
   createWizardStyle,
@@ -7,7 +7,7 @@ import {
   type WizardFrame,
   type WizardViewport,
 } from "./wizard-render.js";
-import { DONE, renderTabBar, UNANSWERED } from "./wizard-tabs.js";
+import { renderTabBar } from "./wizard-tabs.js";
 import type {
   WizardFlowContext,
   WizardLoadItem,
@@ -20,7 +20,6 @@ export interface WizardLoadingItemView extends WizardLoadItem {
 }
 
 const FRAME_BASE_CHROME_ROWS = 4;
-const SPINNER = Object.freeze(["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]);
 
 /** Renders an asynchronous phase under the same flow header as the form it is preparing. */
 export function renderWizardLoadingFrame(
@@ -78,18 +77,4 @@ export function renderWizardLoadingFrame(
     style.dim(" Loading, please wait…"),
   ];
   return `${lines.join("\n")}\n`;
-}
-
-function loadingGlyph(
-  status: WizardLoadingItemView["status"],
-  frame: number,
-  style: Style,
-): string {
-  if (status === "complete") {
-    return DONE;
-  }
-  if (status === "pending") {
-    return style.dim(UNANSWERED);
-  }
-  return SPINNER[frame % SPINNER.length] ?? SPINNER[0] ?? "…";
 }

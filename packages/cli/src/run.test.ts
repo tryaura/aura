@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 import { runCli } from "./index.js";
 import { parseCheckReport } from "./test-support/check-output-schema.js";
 import {
+  appsPlugin,
   BRANDING,
   createCapture,
   distro,
@@ -298,6 +299,35 @@ describe("runCli", () => {
     );
     expect(parseCheckReport(capture.stdout.text)).toMatchObject({ kind: "check-report" });
     expect(capture.stderr.text).toContain("Nothing to fix");
+  });
+
+  it("names each application it is waiting on while a terminal run scans", async () => {
+    const capture = createCapture(["check"]);
+    Object.assign(capture.stdout, { columns: 80, isTTY: true });
+
+    expect(await runCli(distro([appsPlugin(), findingPlugin("info", [])]), capture.runtime)).toBe(
+      0,
+    );
+    const [frame, report] = capture.stdout.text.split(`${ESCAPE}[0J`).slice(-2);
+
+    expect(frame).toContain("Scanning this machine…");
+    expect(frame).toContain("Installed App");
+    expect(frame).toContain("Missing App");
+    // The frame is transient: the report that follows the last erase carries none of it.
+    expect(report).not.toContain("Scanning this machine…");
+    expect(report).toContain("Acme Doctor check");
+  });
+
+  it("paints no scan frame when the run promises one machine-readable document", async () => {
+    const capture = createCapture(["check", "--json"]);
+    Object.assign(capture.stdout, { columns: 80, isTTY: true });
+
+    expect(await runCli(distro([appsPlugin(), findingPlugin("info", [])]), capture.runtime)).toBe(
+      0,
+    );
+
+    expect(capture.stdout.text).not.toContain("Scanning this machine…");
+    expect(parseCheckReport(capture.stdout.text)).toMatchObject({ kind: "check-report" });
   });
 
   it("rejects --only with --explain and unknown selectors before scanning", async () => {

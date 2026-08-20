@@ -1,11 +1,10 @@
+import { SPINNER_INTERVAL_MS } from "../loading-frame.js";
+import { countFrameRows, eraseFrame } from "../terminal-frame.js";
 import type { InteractiveWizardOptions } from "./wizard-prompt.js";
 import { renderWizardLoadingFrame, type WizardLoadingItemView } from "./wizard-loading-render.js";
-import { countWizardFrameRows, eraseWizardFrame, resolveWizardViewport } from "./wizard-output.js";
+import { resolveWizardViewport } from "./wizard-output.js";
 import { claimTerminal, supportsRawMode } from "./wizard-terminal.js";
 import type { WizardFlowContext, WizardLoadRequest, WizardLoadUpdate } from "./wizard-types.js";
-
-/** Spinner cadence; fast enough to read as motion, slow enough not to churn the terminal. */
-const SPINNER_INTERVAL_MS = 80;
 
 /**
  * Runs asynchronous work while maintaining one animated, itemized wizard frame.
@@ -46,8 +45,8 @@ export async function runWizardLoader<T>(
       viewport,
       flow,
     );
-    stdout.write(`${eraseWizardFrame(renderedLines)}${frame}`);
-    renderedLines = countWizardFrameRows(frame, viewport.columns);
+    stdout.write(`${eraseFrame(renderedLines)}${frame}`);
+    renderedLines = countFrameRows(frame, viewport.columns);
   };
   const update: WizardLoadUpdate = (id, status) => {
     if (statuses.has(id)) {
@@ -72,7 +71,7 @@ export async function runWizardLoader<T>(
     clearInterval(animation);
     stdin.off("data", discard);
     stdin.pause();
-    stdout.write(eraseWizardFrame(renderedLines));
+    stdout.write(eraseFrame(renderedLines));
     claim?.release();
   }
 }
