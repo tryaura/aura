@@ -8,6 +8,7 @@ import {
   isSkillSourceAllowed,
   listDirectorySkills,
   listDriverSkills,
+  loadSkillPackGroups,
   type DriverSkillListingResult,
 } from "@tryaura/core";
 
@@ -57,7 +58,8 @@ export async function loadListing(request: SkillListingRequest): Promise<SkillCa
   }));
 
   const limit = createLimiter(MAX_CONCURRENT_SOURCE_LISTINGS);
-  const [directoryResults, driverResults] = await Promise.all([
+  const [packOutcome, directoryResults, driverResults] = await Promise.all([
+    loadSkillPackGroups(request.inputs.registryPresets ?? []),
     Promise.all(
       request.sources.map((source) =>
         limit(async () => ({
@@ -108,9 +110,11 @@ export async function loadListing(request: SkillListingRequest): Promise<SkillCa
     entries.push(...remoteEntries(result.listings, source));
   }
 
+  notes.push(...packOutcome.notes);
   return {
     entries: Object.freeze(entries),
     notes: Object.freeze(notes),
+    packs: packOutcome.groups,
     truncatedSources: Object.freeze(truncatedSources),
     unavailableSources: Object.freeze(unavailableSources),
     ...verificationFields(directoryResults),

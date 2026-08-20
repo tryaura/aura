@@ -3,6 +3,7 @@ import type {
   DirectorySkillSource,
   DriverSkillSource,
   Environment,
+  Preset,
   PrivateDirectorySkillSource,
   ResolvedSkillPack,
   SkillSourceId,
@@ -14,6 +15,7 @@ import {
   collectSkillDirectorySources,
   isSkillSourceAllowed,
   type DriverSkillListingResult,
+  type SkillPackGroup,
 } from "@tryaura/core";
 
 import { resolveSkillSelections } from "./skill-catalog-resolution.js";
@@ -70,6 +72,8 @@ export interface SkillCatalogListing {
   readonly entries: readonly SkillCatalogEntry[];
   /** First-visit `io.note` lines: preset problems, index problems, listing failures. */
   readonly notes: readonly string[];
+  /** Plugin-shipped skill packs, offered as checkable groups ahead of the catalog rows. */
+  readonly packs: readonly SkillPackGroup[];
   /** Sources that advertise more entries than the cap; each renders a leading disabled row. */
   readonly truncatedSources: readonly TruncatedSkillSource[];
   readonly unavailableSources: readonly UnavailableSkillSource[];
@@ -144,6 +148,8 @@ export interface SkillCatalogInputs {
   readonly presetOrigin?: string | undefined;
   readonly registryDirectories: readonly DirectorySkillSource[];
   readonly registryDrivers?: readonly SkillSourceDriver[] | undefined;
+  /** Plugin-shipped presets, offered as skill packs when they declare a skill selection. */
+  readonly registryPresets?: readonly Preset[] | undefined;
 }
 
 export function createSkillCatalog(inputs: SkillCatalogInputs): SkillCatalog {

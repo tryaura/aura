@@ -134,6 +134,30 @@ export function pickerOptions(inputs: SkillStageInputs): readonly WizardOption[]
       value: `source:${source.id}`,
     }));
 
+  // A pack is a selection gesture over catalog rows: checking it checks its members, every remote
+  // member still passes its own Review with Skip standing, and a non-interactive run takes nothing
+  // from it. Members the catalog does not offer this run are simply absent from the gesture; a
+  // pack with none left renders disabled rather than vanishing.
+  const packRows = inputs.listing.packs.map((pack): WizardOption => {
+    const members = pack.skills
+      .map((skill) => skillIdentity(skill.source, skill.id))
+      .filter((identity) => covered.has(identity));
+    const unavailable =
+      members.length === 0
+        ? { disabled: true, disabledNote: "no member is available in this run" }
+        : unsupported
+          ? { disabled: true, disabledNote: "no selected app supports skills" }
+          : {};
+    return {
+      description: pack.description,
+      ...unavailable,
+      group: "Skill packs",
+      label: `${pack.name} — ${String(members.length)} skills`,
+      members,
+      value: `pack:${pack.id}`,
+    };
+  });
+
   // Truncation leads for the same reason an unavailable source does: nothing preselects this row,
   // so anywhere later the initial window could hide it — and a catalog quietly missing its tail is
   // exactly what must be visible without searching for it.
@@ -165,6 +189,13 @@ export function pickerOptions(inputs: SkillStageInputs): readonly WizardOption[]
   // Unavailable and truncated sources lead. They are the only rows nothing preselects, so behind
   // the picker's initial row window they would be the one class of row that can fall off the first
   // frame entirely — and a source being down or cut short is exactly what has to be visible
-  // without searching for it.
-  return [...sourceRows, ...truncatedRows, ...entryRows, ...manifestRows, ...presetRows];
+  // without searching for it. Packs come next: most users check one pack and never open search.
+  return [
+    ...sourceRows,
+    ...truncatedRows,
+    ...packRows,
+    ...entryRows,
+    ...manifestRows,
+    ...presetRows,
+  ];
 }

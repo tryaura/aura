@@ -2,8 +2,8 @@ import { safe } from "../safe-text.js";
 import { createStyle, type Style } from "../style.js";
 import { wrapPreviewLines } from "../text-width.js";
 import { clipBody } from "./wizard-clip.js";
-import { highlightLabel } from "./wizard-search.js";
-import { queryTerms, searchLines } from "./wizard-render-search.js";
+import { searchLines } from "./wizard-render-search.js";
+import { groupHeadingLines, optionLines } from "./wizard-render-options.js";
 import { DONE, renderTabBar, UNANSWERED } from "./wizard-tabs.js";
 import type { WizardFlowContext, WizardOption, WizardQuestion } from "./wizard-types.js";
 
@@ -64,10 +64,7 @@ const FRAME_BASE_CHROME_ROWS = 4;
 /** Below this the wrapped body is unreadable anyway, and the arithmetic stops being useful. */
 const PREVIEW_MIN_COLUMNS = 40;
 
-const ANSWERED = "☑";
 const CURSOR = "❯";
-const SELECTED = "●";
-const UNSELECTED = "○";
 
 /**
  * Renders one full wizard frame as plain lines.
@@ -172,42 +169,6 @@ function renderQuestionBody(
   }
 
   return { focus, lines };
-}
-
-function groupHeadingLines(
-  group: string | undefined,
-  index: number,
-  previousGroup: string | undefined,
-  style: Style,
-): readonly string[] {
-  if (group === undefined || group === previousGroup) {
-    return [];
-  }
-  return [...(index > 0 ? [""] : []), ` ${style.bold(safe(group))}`];
-}
-
-function optionLines(
-  option: WizardQuestion["options"][number],
-  index: number,
-  view: WizardQuestionView,
-  cursorRow: number,
-  style: Style,
-): readonly string[] {
-  const cursor = index === cursorRow ? CURSOR : " ";
-  // A select marks what currently stands — the `initial` a fresh form proposes (which is what
-  // `--yes` accepts) or a re-seeded answer — since unlike a multiselect it has no checkboxes.
-  const marker =
-    view.question.kind === "multiselect"
-      ? `${view.selected.has(option.value) ? ANSWERED : UNANSWERED} `
-      : `${view.selected.has(option.value) ? SELECTED : UNSELECTED} `;
-  const unavailable =
-    option.disabled === true ? style.dim(` — ${safe(option.disabledNote ?? "unavailable")}`) : "";
-  const label = highlightLabel(safe(option.label), queryTerms(view), style.bold);
-  const rows = [`${cursor} ${String(index + 1)}. ${marker}${label}${unavailable}`];
-  if (option.description !== undefined) {
-    rows.push(style.dim(`      ${safe(option.description)}`));
-  }
-  return rows;
 }
 
 function renderSubmitBody(

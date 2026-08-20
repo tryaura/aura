@@ -54,6 +54,7 @@ export function createSetupCatalogs(inputs: SetupCatalogInputs): SetupCatalogs {
       presetOrigin: inputs.presetOrigin,
       registryDirectories: inputs.registry.skillDirectories,
       registryDrivers: inputs.registry.skillSources,
+      registryPresets: inputs.registry.presets,
     }),
   };
 }

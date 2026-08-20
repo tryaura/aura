@@ -65,7 +65,13 @@ export function emptyMcpCatalog(): McpSetupCatalog {
 export function emptySkillCatalog(): SkillCatalog {
   return {
     load: () =>
-      Promise.resolve({ entries: [], notes: [], truncatedSources: [], unavailableSources: [] }),
+      Promise.resolve({
+        entries: [],
+        notes: [],
+        packs: [],
+        truncatedSources: [],
+        unavailableSources: [],
+      }),
     pendingSources: () => [],
     policy: { presetName: ".aura/preset.json" },
     privateSources: [],

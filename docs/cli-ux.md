@@ -154,6 +154,7 @@ any other code to 2.
 | `✔`   | Completed step                                   |
 | `☐`   | Pending step, or an unchecked multiselect option |
 | `☑`   | A checked multiselect option                     |
+| `◪`   | A pack row with some, not all, members checked   |
 | `●`   | The currently selected option of a select        |
 | `○`   | An unselected select option                      |
 | `❯`   | Cursor row inside a question body                |
@@ -471,6 +472,18 @@ entries — the rest cannot be listed until the catalog narrows upstream`). Trun
   `s Showing only selected rows · s show all`), a second press restores the full view, and
   opening `/` clears the filter — the two narrowings never compose. The standing hint carries an
   `s selected` segment exactly where the filter is available.
+- Plugin-shipped presets that declare a skill selection appear as **skill packs**: one row per
+  preset under a `Skill packs` group ahead of the catalog rows, labelled
+  `<name> — <n> skills`. A pack is a selection gesture, not a lock or a policy layer: space on it
+  checks every member row the catalog offers this run (or clears them all when every one is
+  checked), each member stays individually toggleable, a partially checked pack renders `◪` with
+  `(K of N selected)` in place, and its own value never enters the answer. Every remote member
+  still passes its own Review with Skip standing, so `--yes` takes nothing from a pack. A pack
+  none of whose members are offered renders disabled (`— no member is available in this run`);
+  a preset that fails to read or validate is dropped with a first-visit note naming it; a preset
+  with no skill selection is a policy document, not a pack, and is skipped silently. The pack
+  reads only the preset's `skills` list — directories, checks, and required servers apply only
+  when the preset is configured as the run's policy layer.
 - `p` works at the picker, not only at Review: a remote row fetches its own SKILL.md on demand —
   the overlay opens on `Loading the preview…` and repaints with the body — because reading a
   skill is exactly how someone decides whether to check its row. The fetch is bounded, memoized

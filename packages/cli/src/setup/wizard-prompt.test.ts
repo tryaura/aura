@@ -314,6 +314,47 @@ describe("interactive wizard", () => {
     });
   });
 
+  it("toggles a pack row's members as a group while leaving them individually toggleable", async () => {
+    const session = createSession();
+    const io = createInteractiveWizardIo({
+      colorDepth: 0,
+      stdin: session.stdin,
+      stdout: session.stdout,
+    });
+    const form = io.ask([
+      {
+        id: "skills",
+        kind: "multiselect",
+        label: "Skills",
+        options: [
+          { label: "Starter — 2 skills", members: ["review", "triage"], value: "pack:starter" },
+          { label: "Review", value: "review" },
+          { label: "Triage", value: "triage" },
+        ],
+        prompt: "Choose skills",
+      },
+    ]);
+
+    // Checking the pack checks both members.
+    session.press("space", { sequence: " " });
+    expect(session.output()).toContain("☑ Starter — 2 skills");
+
+    // Unchecking one member leaves the pack partially checked, with the count in place.
+    session.press("down");
+    session.press("space", { sequence: " " });
+    const partial = session.output();
+    expect(partial).toContain("◪ Starter — 2 skills (1 of 2 selected)");
+
+    // Space on the partially checked pack completes it rather than clearing it.
+    session.press("up");
+    session.press("space", { sequence: " " });
+    session.press("return");
+
+    await expect(form).resolves.toEqual({
+      skills: { kind: "options", values: ["review", "triage"] },
+    });
+  });
+
   it("opens a lazy preview on a loading notice and repaints with the fetched body", async () => {
     const session = createSession();
     const io = createInteractiveWizardIo({

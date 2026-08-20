@@ -110,10 +110,29 @@ function toggle(
   if (option === undefined || (option.disabled === true && !state.selected.has(option.value))) {
     return false;
   }
+  if (option.members !== undefined) {
+    return toggleMembers(state, option.members);
+  }
   if (state.selected.has(option.value)) {
     state.selected.delete(option.value);
   } else {
     state.selected.add(option.value);
+  }
+  return true;
+}
+
+/** Checks every member of a pack row, or clears them all when every one is already checked. */
+function toggleMembers(state: QuestionState, members: readonly string[]): boolean {
+  if (members.length === 0) {
+    return false;
+  }
+  const clearing = members.every((value) => state.selected.has(value));
+  for (const value of members) {
+    if (clearing) {
+      state.selected.delete(value);
+    } else {
+      state.selected.add(value);
+    }
   }
   return true;
 }
