@@ -6,6 +6,7 @@ import {
   describeFailure,
   FixPlanApplyError,
   prepareFixCandidates,
+  refreshMcpSources,
   type CheckDiagnostic,
 } from "@tryaura/core";
 import { pluralize } from "@tryaura/core/pluralize";
@@ -60,6 +61,9 @@ export interface FixOutcome {
 
 // fallow-ignore-next-line complexity -- coordinates one transaction across explicit terminal states.
 export async function runFixes(request: FixRequest): Promise<FixOutcome> {
+  // MCP configuration files churn under other processes between the scan and this moment; fix
+  // plans built from a fresh read carry preconditions for the file that is actually there.
+  await refreshMcpSources(request.model);
   const automatic = collectAutomaticFixCandidates({
     checks: request.checks,
     findings: request.findings,

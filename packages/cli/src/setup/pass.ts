@@ -1,5 +1,10 @@
 import type { AuraEffectiveConfig, AuraManifest, Check, SetupRunOutcome } from "@tryaura/aura-sdk";
-import { AURA_TEAM_PRESET_PATH, prepareFixPlan, type WorkspaceScan } from "@tryaura/core";
+import {
+  AURA_TEAM_PRESET_PATH,
+  prepareFixPlan,
+  refreshMcpSources,
+  type WorkspaceScan,
+} from "@tryaura/core";
 
 import { safe } from "../safe-text.js";
 import type { CliExitCode } from "../types.js";
@@ -21,6 +26,8 @@ type PassOutcome =
   | {
       readonly kind: "apply";
       readonly manifest: AuraManifest;
+      /** What this pass planned from, so a raced apply can re-plan the same selections. */
+      readonly planInputs: Parameters<typeof planSetup>[0];
       readonly prepared: PreparedPlan;
     }
   | { readonly kind: "back"; readonly start: GatherStart }
@@ -60,7 +67,8 @@ export async function runPass(
   }
   const selections = gathered.selections;
 
-  const planned = await previewPlan(request, { ...stepContext, selections });
+  const planInputs = { ...stepContext, selections };
+  const planned = await previewPlan(request, planInputs);
   if (planned.kind === "converged") {
     if (stepContext.repoPreset?.recorded === true) {
       stdout.write(leftUnchanged(stepContext));
@@ -101,7 +109,7 @@ export async function runPass(
       ? { code: 1, kind: "exit", manifest: planned.manifest, outcome: "aborted" }
       : { code: 0, kind: "exit", manifest: planned.manifest, outcome: "declined" };
   }
-  return { kind: "apply", manifest: planned.manifest, prepared: planned.prepared };
+  return { kind: "apply", manifest: planned.manifest, planInputs, prepared: planned.prepared };
 }
 
 /**
@@ -122,6 +130,10 @@ async function previewPlan(
   inputs: Parameters<typeof planSetup>[0],
 ): Promise<PlanOutcome> {
   const { stdout } = request;
+  // The scan ran before the wizard's prompts, and MCP configuration files churn under other
+  // processes in exactly that gap — `~/.claude.json` most of all. Planning against a fresh read
+  // shrinks the stale-precondition window from the wizard's runtime to the moments below.
+  await refreshMcpSources(inputs.model);
   const outcome = planSetup(inputs);
   const prepared = await prepareFixPlan({ model: inputs.model, plan: outcome.plan });
 

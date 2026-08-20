@@ -84,6 +84,11 @@ export function rememberMcpSecretPlanner(app: AppModel, planner: AppMcpSecretPla
   PLANNERS.set(app, planner);
 }
 
+/** Forgets one scan's memoized plans, after a refresh replaced the bytes they were built from. */
+export function forgetMcpSecretPlans(model: WorkspaceModel): void {
+  PLANS.delete(model);
+}
+
 /**
  * Whether this occurrence has a behavior-preserving adapter rewrite that a plan can actually carry.
  *

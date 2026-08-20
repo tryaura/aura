@@ -42,6 +42,11 @@ export function rememberMcpConvergence(app: AppModel, convergence: AppMcpConverg
   PLANNERS.set(app, convergence);
 }
 
+/** Forgets one scan's memoized plans, after a refresh replaced the bytes they were built from. */
+export function forgetMcpPlans(model: WorkspaceModel): void {
+  PLANS.delete(model);
+}
+
 /**
  * Reports only why convergence is impossible, without rendering any file.
  *
