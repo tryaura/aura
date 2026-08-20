@@ -4,6 +4,7 @@ import type {
   PrivateDirectorySkillSource,
   ResolvedSkillPack,
 } from "@tryaura/aura-sdk";
+import type { SkillPackGroup } from "@tryaura/core";
 import { createWorkspaceModel } from "@tryaura/aura-sdk/testing";
 
 import { skillIdentity } from "../skill-planner-paths.js";
@@ -12,6 +13,8 @@ import type {
   PendingSkillSource,
   SkillCatalog,
   SkillCatalogEntry,
+  SkillCatalogVerification,
+  TruncatedSkillSource,
   UnavailableSkillSource,
 } from "../skills-catalog.js";
 import { emptyMcpCatalog, emptySkillCatalog } from "../testing.js";
@@ -80,22 +83,29 @@ interface CatalogOptions {
   readonly pendingSources?: readonly PendingSkillSource[];
   readonly policy?: SkillCatalog["policy"];
   readonly privateSources?: readonly PrivateDirectorySkillSource[];
+  readonly listingPacks?: readonly SkillPackGroup[];
   readonly problems?: ReadonlyMap<string, string>;
+  readonly truncatedSources?: readonly TruncatedSkillSource[];
   readonly unavailableSources?: readonly UnavailableSkillSource[];
+  readonly verification?: SkillCatalogVerification | undefined;
 }
 
 export function fakeCatalog(options: CatalogOptions = {}): SkillCatalog {
+  const listing = {
+    entries: options.entries ?? [],
+    notes: options.notes ?? [],
+    packs: options.listingPacks ?? [],
+    truncatedSources: options.truncatedSources ?? [],
+    unavailableSources: options.unavailableSources ?? [],
+    ...(options.verification === undefined ? {} : { verification: options.verification }),
+  };
   return {
     load: (_approved, update) => {
       for (const source of options.pendingSources ?? []) {
         update?.(source.id, "active");
         update?.(source.id, "complete");
       }
-      return Promise.resolve({
-        entries: options.entries ?? [],
-        notes: options.notes ?? [],
-        unavailableSources: options.unavailableSources ?? [],
-      });
+      return Promise.resolve(listing);
     },
     pendingSources: () => options.pendingSources ?? [],
     policy: options.policy ?? emptySkillCatalog().policy,

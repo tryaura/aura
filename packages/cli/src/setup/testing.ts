@@ -77,7 +77,14 @@ export function emptyMcpCatalog(): McpSetupCatalog {
 /** A catalog with no sources and no policy, for a context whose test never reaches skills. */
 export function emptySkillCatalog(): SkillCatalog {
   return {
-    load: () => Promise.resolve({ entries: [], notes: [], unavailableSources: [] }),
+    load: () =>
+      Promise.resolve({
+        entries: [],
+        notes: [],
+        packs: [],
+        truncatedSources: [],
+        unavailableSources: [],
+      }),
     pendingSources: () => [],
     policy: { presetName: ".aura/preset.json" },
     privateSources: [],

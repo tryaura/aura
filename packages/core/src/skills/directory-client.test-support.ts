@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import type { DirectorySkillSource, HttpGetRequest, HttpGetResult } from "@tryaura/aura-sdk";
 
 import { createTestEnvironment } from "../workspace/testing.js";
@@ -42,6 +44,9 @@ export function scriptedDirectoryEnvironment(
 ): ScriptedDirectoryEnvironment {
   const requests: HttpGetRequest[] = [];
   const environment = createTestEnvironment({
+    // Unique per environment: listing now reads and writes the on-disk catalog cache below the
+    // home directory, and a shared path would let one test serve another test's responses.
+    homeDir: `/home/dev-${randomUUID()}`,
     httpGet: (request) => {
       requests.push(request);
       return Promise.resolve(respond(request, requests.length));

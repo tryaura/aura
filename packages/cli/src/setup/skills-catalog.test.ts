@@ -9,6 +9,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createEnvironment } from "@tryaura/core";
 
+import { skillIdentity } from "./skill-planner-paths.js";
 import { createSkillCatalog } from "./skills-catalog.js";
 
 function catalog(
@@ -112,10 +113,13 @@ describe("createSkillCatalog", () => {
       active += 1;
       maximum = Math.max(maximum, active);
       return new Promise((resolve) => {
-        queueMicrotask(() => {
+        // A macrotask, not a microtask: the listing path reads the on-disk catalog cache before
+        // each request, so a response that settles within the same microtask queue would drain
+        // every source one at a time and measure the cache read instead of the request limiter.
+        setTimeout(() => {
           active -= 1;
           resolve({ body: "[]", kind: "response", status: 200 });
-        });
+        }, 1);
       });
     });
     const updates: string[] = [];
@@ -140,7 +144,53 @@ describe("createSkillCatalog", () => {
     });
     expect(memoizedUpdates).toEqual([]);
   });
+
+  it("maps background AgenticSkills verification onto source-qualified picker identities", async () => {
+    const source: DirectorySkillSource = {
+      id: "directory:agenticskills",
+      kind: "directory",
+      name: "AgenticSkills",
+      protocol: "agenticskills",
+      url: "https://agenticskills.io",
+    };
+    const skills = catalog([source], (request) =>
+      Promise.resolve(
+        request.url === "https://agenticskills.io/api/skills"
+          ? jsonResponse({
+              skills: [agenticEntry("current", "Current"), agenticEntry("stale", "Stale")],
+            })
+          : jsonResponse({
+              tree: [{ path: "skills/current/SKILL.md", type: "blob" }],
+              truncated: false,
+            }),
+      ),
+    );
+
+    const listing = await skills.load();
+    const verification = listing.verification;
+    if (verification === undefined) {
+      throw new Error("expected AgenticSkills verification");
+    }
+    await verification.settled;
+
+    expect(verification.isMissing(skillIdentity(source.id, "current"))).toBe(false);
+    expect(verification.isMissing(skillIdentity(source.id, "stale"))).toBe(true);
+  });
 });
+
+function agenticEntry(slug: string, name: string) {
+  return {
+    description: `${name} skill.`,
+    githubUrl: `https://github.com/acme/skills/tree/main/skills/${slug}`,
+    lastUpdated: "2026-08-20",
+    name,
+    slug,
+  };
+}
+
+function jsonResponse(body: unknown): HttpGetResult {
+  return { body: JSON.stringify(body), kind: "response", status: 200 };
+}
 
 function driver(id: string): SkillSourceDriver & { readonly list: ReturnType<typeof vi.fn> } {
   return {

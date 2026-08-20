@@ -1,13 +1,20 @@
 /**
  * The largest directory index Aura will read, in bytes.
  *
- * Same number as the other catalog caps in `workspace/reader-limits.ts`: an index is a metadata
- * document, and the picker reads it while the user waits.
+ * Sized for the entry cap below at a few hundred bytes of metadata per entry: an index is still a
+ * metadata document, but a real public catalog carries thousands of skills, and a byte cap that
+ * silently halves the entry cap would make the two limits disagree about what fits.
  */
-export const MAX_DIRECTORY_INDEX_BYTES = 256_000;
+export const MAX_DIRECTORY_INDEX_BYTES = 4_000_000;
 
-/** The most listings one directory index may advertise; entries beyond the cap are dropped. */
-export const MAX_DIRECTORY_INDEX_ENTRIES = 1_000;
+/**
+ * The most listings one directory index may advertise; entries beyond the cap are dropped.
+ *
+ * Parsing is the only per-entry cost of a listing — nothing per-entry touches the network — so the
+ * cap guards memory, not latency. A source that overflows it renders one disabled picker row
+ * naming both numbers, never only a diagnostic note.
+ */
+export const MAX_DIRECTORY_INDEX_ENTRIES = 10_000;
 
 /** The most remote directories one workspace team preset may declare. */
 export const MAX_TEAM_PRESET_DIRECTORIES = 32;
@@ -15,17 +22,17 @@ export const MAX_TEAM_PRESET_DIRECTORIES = 32;
 /** The most source ids one workspace team preset allowlist may carry. */
 export const MAX_TEAM_PRESET_ALLOWED_SOURCES = 256;
 
-/** The most skill-content requests Aura runs concurrently for one directory. */
+/** The most curated collections one catalog may advertise; entries beyond the cap are dropped. */
+export const MAX_CATALOG_COLLECTIONS = 32;
+
+/** The most member ids one advertised collection may carry. */
+export const MAX_COLLECTION_MEMBERS = 200;
+
+/** The most remote skill or repository requests Aura runs concurrently for one directory. */
 export const MAX_CONCURRENT_SKILL_REQUESTS = 8;
 
-/**
- * The most existence probes Aura runs concurrently while listing a provider directory.
- *
- * Higher than the content limit because a probe is one small static-host GET whose body is
- * discarded, and because the whole sweep sits between the user and the picker: a catalog of a
- * couple hundred entries has to clear in about a second, not five.
- */
-export const MAX_CONCURRENT_SKILL_PROBES = 24;
+/** The largest recursive GitHub repository tree used for advisory catalog verification. */
+export const MAX_REPO_TREE_BYTES = 8_000_000;
 
 /** The largest single skill response Aura will read, in bytes. */
 export const MAX_SKILL_RESPONSE_BYTES = 5_000_000;

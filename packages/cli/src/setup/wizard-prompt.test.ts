@@ -267,12 +267,215 @@ describe("interactive wizard", () => {
       },
     ]);
 
-    expect(session.output()).toContain("11. ☑ Skill 12");
+    expect(session.output()).toContain("Selected (1)");
+    expect(session.output()).toContain("1. ☑ Skill 12");
+    expect(session.output()).toContain("· 1 selected");
     session.press("return");
 
     await expect(form).resolves.toEqual({
       skills: { kind: "options", values: ["skill-12"] },
     });
+  });
+
+  it("keeps checked rows visible under an active query that does not match them", async () => {
+    const session = createSession();
+    const io = createInteractiveWizardIo({
+      colorDepth: 0,
+      stdin: session.stdin,
+      stdout: session.stdout,
+    });
+    const options = Array.from({ length: 12 }, (_, index) => ({
+      label: `Skill ${String(index + 1)}`,
+      value: `skill-${String(index + 1)}`,
+    }));
+    const form = io.ask([
+      {
+        id: "skills",
+        initial: ["skill-12"],
+        kind: "multiselect",
+        label: "Skills",
+        options,
+        prompt: "Choose skills",
+        search: { initialLimit: 10, placeholder: "Search all 12 skills" },
+      },
+    ]);
+
+    session.press("slash", { sequence: "/" });
+    session.type("Skill 3");
+    session.press("return");
+
+    expect(session.output()).toContain("/ Search: Skill 3 · 1 match · 1 selected");
+    expect(session.output()).toContain("Selected, not matching this filter (1)");
+    expect(session.output()).toContain("☑ Skill 12");
+    session.press("return");
+
+    await expect(form).resolves.toEqual({
+      skills: { kind: "options", values: ["skill-12"] },
+    });
+  });
+
+  it("toggles a pack row's members as a group while leaving them individually toggleable", async () => {
+    const session = createSession();
+    const io = createInteractiveWizardIo({
+      colorDepth: 0,
+      stdin: session.stdin,
+      stdout: session.stdout,
+    });
+    const form = io.ask([
+      {
+        id: "skills",
+        kind: "multiselect",
+        label: "Skills",
+        options: [
+          { label: "Starter — 2 skills", members: ["review", "triage"], value: "pack:starter" },
+          { label: "Review", value: "review" },
+          { label: "Triage", value: "triage" },
+        ],
+        prompt: "Choose skills",
+      },
+    ]);
+
+    // Checking the pack checks both members.
+    session.press("space", { sequence: " " });
+    expect(session.output()).toContain("☑ Starter — 2 skills");
+
+    // Unchecking one member leaves the pack partially checked, with the count in place.
+    session.press("down");
+    session.press("space", { sequence: " " });
+    const partial = session.output();
+    expect(partial).toContain("◪ Starter — 2 skills (1 of 2 selected)");
+
+    // Space on the partially checked pack completes it rather than clearing it.
+    session.press("up");
+    session.press("space", { sequence: " " });
+    session.press("return");
+
+    await expect(form).resolves.toEqual({
+      skills: { kind: "options", values: ["review", "triage"] },
+    });
+  });
+
+  it("opens a lazy preview on a loading notice and repaints with the fetched body", async () => {
+    const session = createSession();
+    const io = createInteractiveWizardIo({
+      colorDepth: 0,
+      stdin: session.stdin,
+      stdout: session.stdout,
+    });
+    const fetched = Promise.withResolvers<string>();
+    const form = io.ask([
+      {
+        id: "skills",
+        kind: "multiselect",
+        label: "Skills",
+        options: [
+          { label: "jira-triage", loadPreview: () => fetched.promise, value: "jira-triage" },
+        ],
+        prompt: "Choose skills",
+      },
+    ]);
+
+    session.press("p", { sequence: "p" });
+    expect(session.output()).toContain("Loading the preview…");
+
+    fetched.resolve("# Jira triage\n\nRead this first.");
+    await new Promise((resolve) => {
+      setImmediate(resolve);
+    });
+    expect(session.output()).toContain("Read this first.");
+
+    session.press("escape");
+    session.press("return");
+    await expect(form).resolves.toEqual({ skills: { kind: "options", values: [] } });
+  });
+
+  it("narrows to the checked rows on s and back on a second press", async () => {
+    const session = createSession();
+    const io = createInteractiveWizardIo({
+      colorDepth: 0,
+      stdin: session.stdin,
+      stdout: session.stdout,
+    });
+    const options = Array.from({ length: 12 }, (_, index) => ({
+      label: `Skill ${String(index + 1)}`,
+      value: `skill-${String(index + 1)}`,
+    }));
+    const form = io.ask([
+      {
+        id: "skills",
+        initial: ["skill-11", "skill-12"],
+        kind: "multiselect",
+        label: "Skills",
+        options,
+        prompt: "Choose skills",
+        search: { initialLimit: 10, placeholder: "Search all 12 skills" },
+      },
+    ]);
+
+    const beforeFilter = session.output().length;
+    session.press("s", { sequence: "s" });
+    const filtered = session.output().slice(beforeFilter);
+    expect(filtered).toContain("s Showing only selected rows · s show all · 2 selected");
+    expect(filtered).not.toContain("☐ Skill 1");
+
+    const beforeRestore = session.output().length;
+    session.press("s", { sequence: "s" });
+    expect(session.output().slice(beforeRestore)).toContain("/ Search all 12 skills · 2 selected");
+    session.press("return");
+
+    await expect(form).resolves.toEqual({
+      skills: { kind: "options", values: ["skill-11", "skill-12"] },
+    });
+  });
+
+  it("repaints live option state and unsubscribes when the form closes", async () => {
+    const session = createSession();
+    const io = createInteractiveWizardIo({
+      colorDepth: 0,
+      stdin: session.stdin,
+      stdout: session.stdout,
+    });
+    let stale = false;
+    let repaint: (() => void) | undefined;
+    let unsubscribed = false;
+    const form = io.ask([
+      {
+        id: "skills",
+        kind: "multiselect",
+        label: "Skills",
+        options: [
+          {
+            get disabled() {
+              return stale;
+            },
+            get disabledNote() {
+              return stale ? "source no longer publishes this skill" : undefined;
+            },
+            label: "Jira projects",
+            value: "jira-projects",
+          },
+        ],
+        prompt: "Choose skills",
+        subscribe: (listener) => {
+          repaint = listener;
+          return () => {
+            unsubscribed = true;
+          };
+        },
+      },
+    ]);
+
+    expect(lastFrame(session)).not.toContain("source no longer publishes this skill");
+    stale = true;
+    if (repaint === undefined) {
+      throw new Error("expected live repaint subscription");
+    }
+    repaint();
+
+    expect(lastFrame(session)).toContain("Jira projects — source no longer publishes this skill");
+    session.press("return");
+    await expect(form).resolves.toEqual({ skills: { kind: "options", values: [] } });
+    expect(unsubscribed).toBe(true);
   });
 
   it("collects free text typed on the trailing row", async () => {

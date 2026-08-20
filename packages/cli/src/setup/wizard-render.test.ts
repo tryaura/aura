@@ -233,6 +233,33 @@ describe("renderWizardFrame", () => {
     expect(rendered).toContain("❯ 12. ☐ Snippet 12");
   });
 
+  it("keeps a searchable question's context pinned while option rows scroll", () => {
+    const skills: WizardQuestion = {
+      id: "skills",
+      kind: "multiselect",
+      label: "Skills",
+      options: Array.from({ length: 12 }, (_, index) => ({
+        description: `Description ${String(index + 1)}.`,
+        label: `Skill ${String(index + 1)}`,
+        value: `skill-${String(index + 1)}`,
+      })),
+      prompt: "Which skills should Aura install to the shared skills directory?",
+      search: { initialLimit: 10, placeholder: "Search all 12 skills" },
+    };
+    const frame: WizardFrame = {
+      activeTab: 0,
+      cursorRow: 11,
+      questions: [view(skills)],
+    };
+
+    const rendered = renderWizardFrame(frame, 0, { columns: 80, rows: 16 });
+
+    expect(rendered.split("\n").length - 1).toBeLessThanOrEqual(16 - 1);
+    expect(rendered).toContain("Which skills should Aura install to the shared skills directory?");
+    expect(rendered).toContain("/ Search all 12 skills");
+    expect(rendered).toContain("❯ 12. ☐ Skill 12");
+  });
+
   it("clips by wrapped display rows, so wide labels never overflow the viewport", () => {
     const wide: WizardQuestion = {
       id: "snippets",
@@ -463,6 +490,39 @@ describe("renderWizardFrame", () => {
     );
     expect(preview).toContain("# Rules\n [2KKeep subjects short.");
     expect(preview).not.toContain("\u001b");
+  });
+
+  it("names a skill that its source stopped publishing", () => {
+    const skills: WizardQuestion = {
+      id: "skills",
+      kind: "multiselect",
+      label: "Skills",
+      options: [
+        {
+          description: "Manage Jira projects. · v2026.8.20",
+          disabled: true,
+          disabledNote: "source no longer publishes this skill",
+          group: "Atlassian",
+          label: "Jira projects",
+          value: "directory:agenticskills/jira-projects",
+        },
+      ],
+      prompt: "Which skills should Aura install?",
+    };
+
+    expect(renderWizardFrame({ activeTab: 0, cursorRow: 0, questions: [view(skills)] }, 0))
+      .toMatchInlineSnapshot(`
+      " ▶ Skills ☐ │ Submit
+
+       Which skills should Aura install?
+
+       Atlassian
+      ❯ 1. ☐ Jira projects — source no longer publishes this skill
+            Manage Jira projects. · v2026.8.20
+
+       ↑/↓ move · space toggle · ←/→ steps · ↵ select · esc cancel
+      "
+    `);
   });
 
   it("clips and wraps a preview to the viewport instead of overflowing it", () => {
