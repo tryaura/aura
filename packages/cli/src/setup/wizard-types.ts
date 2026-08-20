@@ -33,6 +33,14 @@ export interface WizardOption {
    * Stronger than `disabled`, which refuses only the marking direction so a seeded selection can
    * always be given up. A locked row states something the form is not asking about — a record Aura
    * has no way to act on either way — so both directions are refused and the cursor skips it.
+   *
+   * A locked row carries no number either: numbers are what digits address, and addressing a row
+   * whose every direction is refused would spend a digit on nothing. It renders `✔` rather than a
+   * checkbox for the same reason — a box invites the space press that a lock then swallows.
+   *
+   * That `✔` comes from the lock alone and never from {@link WizardQuestion.initial}: it reports
+   * settled state rather than what this run marked, so a caller that seeds the value and one that
+   * does not draw the same row. Answer summaries leave locked rows out for the same reason.
    */
   readonly locked?: boolean | undefined;
   /**
@@ -44,6 +52,14 @@ export interface WizardOption {
    * afterwards. Its checkbox renders derived state: none, some (`◪`), or all of its members.
    */
   readonly members?: readonly string[] | undefined;
+  /**
+   * Dim ` · <note>` trailing the label: where the row sits, not why it cannot be marked.
+   *
+   * Earns its place on a row pulled out of its own group — a record block gathered from several
+   * categories — where the heading above it no longer says where it came from. `disabledNote` is
+   * the other half of the pair and reports the opposite: why a visible row refuses a mark.
+   */
+  readonly note?: string | undefined;
   /** Full multi-line content shown by the interactive preview action. */
   readonly preview?: string | undefined;
   readonly value: string;

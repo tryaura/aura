@@ -1,4 +1,4 @@
-import { digitRow, rowCount, tabDelta } from "./wizard-keys.js";
+import { digitRow, moveCursor, tabDelta } from "./wizard-keys.js";
 import { applySearchKeypress } from "./wizard-form-search.js";
 import { handlePreviewKeypress, openPreview, type PreviewState } from "./wizard-preview.js";
 import {
@@ -171,13 +171,8 @@ export function createFormSession(
     }
 
     const options = visibleOptions(state);
-    const rows = rowCount(state.question, options.length);
-    if (keypress.name === "up" && rows > 0) {
-      cursorRow = (cursorRow - 1 + rows) % rows;
-      return true;
-    }
-    if (keypress.name === "down" && rows > 0) {
-      cursorRow = (cursorRow + 1) % rows;
+    if (keypress.name === "up" || keypress.name === "down") {
+      cursorRow = moveCursor(state.question, options, cursorRow, keypress.name === "up" ? -1 : 1);
       return true;
     }
     return applyTextOrToggle(keypress, state, options);
@@ -207,7 +202,7 @@ export function createFormSession(
       return markRow(state, cursorRow, options);
     }
 
-    const digit = digitRow(keypress, state.question, options.length);
+    const digit = digitRow(keypress, state.question, options);
     if (digit === undefined) {
       return false;
     }

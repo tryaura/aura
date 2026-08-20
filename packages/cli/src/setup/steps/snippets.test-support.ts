@@ -109,17 +109,21 @@ export function missingManifest(): AuraManifestState {
 }
 
 export function readyManifest(id: string, hash?: string): AuraManifestState {
+  return recordedManifest([{ ...(hash === undefined ? {} : { hash }), id }]);
+}
+
+/** Several recorded ids, none of them hashed — the shape a multi-row record block needs. */
+export function readyManifestIds(...ids: readonly string[]): AuraManifestState {
+  return recordedManifest(ids.map((id) => ({ id })));
+}
+
+function recordedManifest(
+  snippets: readonly { readonly hash?: string; readonly id: string }[],
+): AuraManifestState {
   return {
     exists: true,
     path: "/home/dev/agents/aura.json",
     status: "ready",
-    value: {
-      apps: {},
-      mcpServers: [],
-      ownership: {},
-      schemaVersion: 1,
-      skills: [],
-      snippets: [{ ...(hash === undefined ? {} : { hash }), id }],
-    },
+    value: { apps: {}, mcpServers: [], ownership: {}, schemaVersion: 1, skills: [], snippets },
   };
 }
