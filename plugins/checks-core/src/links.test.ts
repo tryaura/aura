@@ -94,7 +94,7 @@ describe("INS-002", () => {
     );
     const finding = onlyFinding(sharedInstructionLinksCheck, model);
 
-    expect(finding.details).toContain("Consolidate its content");
+    expect(finding.details).toContain("Run `aura setup` and choose instruction consolidation");
     expect(sharedInstructionLinksCheck.fix(finding, model)).toBeUndefined();
   });
 

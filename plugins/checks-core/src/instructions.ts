@@ -82,7 +82,7 @@ export const sharedInstructionLinksCheck = defineCheck({
   },
   explain: `Each detected agent application must load the canonical shared instructions through a mechanism its adapter understands. A missing import, native copy, or symlink leaves that application working from different rules even when the shared source is correct. Applications with no instruction file of their own in the home directory are out of scope: Cursor, for one, keeps its global User Rules inside its own settings, where Aura cannot write.
 
-Re-run the check with \`--fix\` to add the adapter-supported link without replacing unrelated instructions. Inspect the preview first, apply it, then restart the affected application if it caches instruction files.`,
+Re-run the check with \`--fix\` to add the adapter-supported link without replacing unrelated instructions. Inspect the preview first, apply it, then restart the affected application if it caches instruction files. An application whose instruction file already holds guidance of its own is a manual finding instead, because \`--fix\` never overwrites one: run \`aura setup\` and choose instruction consolidation to merge that content into the shared source, which archives the original before the link takes its place.`,
   findingGroup: SHARED_INSTRUCTION_GROUP,
   fix(finding, model): FixPlan | undefined {
     const app = model.apps.find((candidate) => candidate.adapterId === findingAppId(finding));

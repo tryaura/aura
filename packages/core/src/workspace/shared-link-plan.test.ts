@@ -132,7 +132,7 @@ describe("planSharedInstructionLink convergence", () => {
 
     expect(outcome).toEqual({
       blocked:
-        "The existing file is user-owned. Consolidate its content before replacing it with a symlink.",
+        "The existing file is user-owned and is never replaced automatically. Run `aura setup` and choose instruction consolidation to merge its content into the shared source.",
     });
   });
 

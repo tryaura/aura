@@ -164,7 +164,7 @@ function planSymlink(
   ) {
     return {
       blocked:
-        "The existing file is user-owned. Consolidate its content before replacing it with a symlink.",
+        "The existing file is user-owned and is never replaced automatically. Run `aura setup` and choose instruction consolidation to merge its content into the shared source.",
     };
   }
   if (observedStateHolds(options.sourceContent) && pointsAt(status, target)) {
