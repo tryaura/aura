@@ -2,6 +2,7 @@
 import type {
   AdapterFileSpec,
   AdapterParseInput,
+  Environment,
   InstalledSkill,
   McpServer,
 } from "@tryaura/aura-sdk";
@@ -254,6 +255,96 @@ describe("buildWorkspaceModel", () => {
     });
 
     expect(model.instructionFiles[0]?.links.map((link) => link.valid)).toEqual([true, false]);
+  });
+
+  it("reports each adapter's scan starting and settling, even for one that throws", async () => {
+    const reports: [string, string][] = [];
+    const broken = createTestAdapter({
+      detect: () => Promise.reject(new Error("detect exploded")),
+      id: "broken",
+    });
+    const working = createTestAdapter({ id: "working" });
+
+    await buildWorkspaceModel({
+      adapters: [broken, working],
+      environment: createTestEnvironment(),
+      onAdapterScan: (adapterId, status) => reports.push([adapterId, status]),
+      reader: createMemoryReader(),
+    });
+
+    expect(reports.filter(([id]) => id === "broken")).toEqual([
+      ["broken", "active"],
+      ["broken", "complete"],
+    ]);
+    expect(reports.filter(([id]) => id === "working")).toEqual([
+      ["working", "active"],
+      ["working", "complete"],
+    ]);
+  });
+
+  it("keeps progress observers from changing adapter scan results", async () => {
+    const reports: [string, string][] = [];
+
+    const scan = await buildWorkspaceModel({
+      adapters: [createTestAdapter({ id: "working" })],
+      environment: createTestEnvironment(),
+      onAdapterScan: (adapterId, status) => {
+        reports.push([adapterId, status]);
+        throw new Error("observer exploded");
+      },
+      reader: createMemoryReader(),
+    });
+
+    expect(scan.model.apps.map((app) => app.adapterId)).toEqual(["working"]);
+    expect(reports).toEqual([
+      ["working", "active"],
+      ["working", "complete"],
+    ]);
+  });
+
+  it("cancels an adapter command when its scan is aborted", async () => {
+    const controller = new AbortController();
+    let markStarted: () => void = () => undefined;
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    const base = createTestEnvironment();
+    const environment: Environment = {
+      ...base,
+      exec: (request) => {
+        markStarted();
+        const signal = request.signal;
+        if (signal === undefined) {
+          return Promise.reject(new Error("scan command did not receive a cancellation signal"));
+        }
+        return new Promise<never>((_resolve, reject) => {
+          const abort = (): void => reject(signal.reason);
+          if (signal.aborted) {
+            abort();
+            return;
+          }
+          signal.addEventListener("abort", abort, { once: true });
+        });
+      },
+    };
+    const adapter = createTestAdapter({
+      detect: async (runtime) => {
+        await runtime.exec({ command: "slow-detect" });
+        return { installed: false };
+      },
+      id: "slow",
+    });
+    const pending = buildWorkspaceModel({
+      adapters: [adapter],
+      environment,
+      reader: createMemoryReader(),
+      signal: controller.signal,
+    });
+    await started;
+
+    controller.abort();
+
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
   });
 
   it("skips an application that is not installed, silently", async () => {

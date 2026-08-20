@@ -12,6 +12,7 @@ import {
 
 import { resolveRuntimeConfig, type RuntimeConfigResult } from "../runtime-config.js";
 import { establishRepoPresetTrust } from "./repo-trust.js";
+import { trackBootScan } from "./scan-loading.js";
 import type { SetupRequest } from "./setup.js";
 import { bootRepoPresetTrust } from "./trust-record.js";
 import type { SetupRepoPresetContext } from "./types.js";
@@ -44,9 +45,13 @@ export type SetupBoot =
  * already made and get them asked again. The read-only manifest check runs before the prompt so it
  * is never asked for a run that is already dead.
  *
- * The full scan stays behind every cheap early exit. It supplies the canonical model the trust
- * write needs, but an invalid manifest, an aborted trust prompt, or invalid configuration should
- * not scan every adapter and package manifest first.
+ * The full scan starts the moment the trust prompt resolves and is awaited last, behind a wizard
+ * loading frame, so nothing user-visible ever waits on it silently. The prompt needs only the
+ * manifest read and therefore appears instantly; the scan's slowest probes (an adapter execing a
+ * companion CLI can take many seconds) then overlap configuration resolution, and whatever
+ * remains is spent on an animated per-adapter frame rather than a dead terminal. Starting after
+ * the prompt keeps an aborted run's guarantee intact — backing out of the trust question still
+ * means no adapter ever ran — while an invalid configuration cancels the speculative scan.
  */
 export async function bootSetup(
   request: SetupRequest,
@@ -68,6 +73,18 @@ export async function bootSetup(
   if (trust.kind === "aborted") {
     return { status: "aborted" };
   }
+  const scanCancellation = new AbortController();
+  const settleScan = trackBootScan(request.registry.adapters, (report) =>
+    buildWorkspaceModel({
+      adapters: request.registry.adapters,
+      environment,
+      mcpCatalog: request.registry.mcpServers,
+      onAdapterScan: report,
+      signal: scanCancellation.signal,
+      snippets: request.registry.snippets,
+      skills: request.registry.skills,
+    }),
+  );
   const configured = await resolveRuntimeConfig({
     acceptedRepoPresetHash: trust.acceptedHash,
     cliLayer: request.cliLayer,
@@ -83,16 +100,11 @@ export async function bootSetup(
     registry: request.registry,
   });
   if (configured.status === "invalid") {
+    scanCancellation.abort();
     return configured;
   }
 
-  const scan = await buildWorkspaceModel({
-    adapters: request.registry.adapters,
-    environment,
-    mcpCatalog: request.registry.mcpServers,
-    snippets: request.registry.snippets,
-    skills: request.registry.skills,
-  });
+  const scan = await settleScan(request.io);
   // After resolution, because only then is it known whether the layer the prompt described is the
   // layer this run applied — a file rewritten between the two reads leaves it held.
   const trusted = await bootRepoPresetTrust(request, configured, trust.acceptedHash, scan);

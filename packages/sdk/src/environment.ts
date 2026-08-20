@@ -77,6 +77,13 @@ export interface ExecRequest {
   /** Data written to the child's stdin, which is then closed. */
   readonly input?: string | undefined;
   /**
+   * Optional caller cancellation.
+   *
+   * Aborting kills the command and its descendants, then rejects the execution with the signal's
+   * reason. Calls without a signal retain the never-rejecting result contract.
+   */
+  readonly signal?: AbortSignal | undefined;
+  /**
    * Milliseconds before the child and its descendants are killed.
    *
    * Defaults to {@link DEFAULT_EXEC_TIMEOUT_MS} and is clamped to {@link MAX_EXEC_TIMEOUT_MS}. A
@@ -87,7 +94,8 @@ export interface ExecRequest {
 }
 
 /**
- * The outcome of an {@link ExecRequest}. Resolves for every outcome and never rejects.
+ * The outcome of an {@link ExecRequest}. Resolves for every process outcome and rejects only when
+ * an explicit {@link ExecRequest.signal} aborts the command.
  *
  * Failures Aura core itself produced are reported with a reserved {@link ExecResult.exitCode} so
  * they stay distinguishable from a command that ran and reported failure:

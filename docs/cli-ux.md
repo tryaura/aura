@@ -360,6 +360,20 @@ continue.`): proceeding without it would silently widen whatever the file was wr
   group, mirroring the team preset's: values apply through configuration resolution and are never
   copied into the manifest.
 
+### Opening scan
+
+Setup opens instantly: the only work ahead of the first interactive frame is reading the
+manifest, so the repository-trust prompt (when one is due) appears with no perceptible delay,
+and no network request or adapter probe ever runs before it. The machine scan — every adapter's
+detect, including probes that exec a companion CLI and can take many seconds — starts the moment
+the trust prompt resolves, overlaps configuration resolution, and is awaited only where the Apps
+step needs its result, behind the same loading frame the Skills step uses: the prompt reads
+`Scanning this machine…` with one status row per adapter (pending `☐`, an animated spinner while
+its probe runs, then `✔`). Progress made before the frame opened is replayed into it, and a scan
+that settled before the wizard needed it skips the frame entirely. Aborting the trust prompt
+still means no adapter ever ran, and configuration that resolves invalid cancels every speculative
+adapter command before setup reports the problem.
+
 ### Skills step
 
 A picker over every allowed skill source, then one Review form per selected remote skill.
@@ -537,6 +551,10 @@ counts the two columns it occupies rather than two per code point.
 A terminal resize repaints immediately against the new viewport, erasing with the larger of the
 old row count and the painted frame recounted at the new width, so a shrink leaves no artifact
 rows behind.
+
+The opening scan starts in `boot.ts` and reaches its loading frame through `scan-loading.ts`,
+which buffers adapter progress reported before the frame exists and replays it on open; the
+frame itself is the shared loader (`wizard-loader.ts`).
 
 One refinement remains open: a _multi-question_ form reopened via back lands on its first
 question tab (backing into duplicates opens Duplicate 1, not Duplicate 4).

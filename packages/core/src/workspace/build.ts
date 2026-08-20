@@ -13,7 +13,12 @@ import { auraManifestDiagnostics } from "../manifest/diagnostic.js";
 import type { RegisteredSkillPack } from "../plugin-registry.js";
 import { resolveAuraManifestPath } from "../manifest/protocol.js";
 import { readAuraManifest } from "../manifest/read.js";
-import { type ScanContext, scanAdapter, type SkippedApp } from "./adapter-scan.js";
+import {
+  type AdapterScan,
+  type ScanContext,
+  scanAdapter,
+  type SkippedApp,
+} from "./adapter-scan.js";
 import type { ScanDiagnostic } from "./diagnostics.js";
 import { createDocumentResolver } from "./documents.js";
 import { resolveMcpCatalog } from "./mcp-catalog.js";
@@ -21,6 +26,7 @@ import { createMcpProber, type McpProber, type McpProbeSettings } from "./mcp-pr
 import { findGitMainWorktreeRoot, findProjectRoot } from "./project-root.js";
 import { createCachingReader, createFileReader, type FileReader } from "./reader.js";
 import { scanRepository } from "./repository.js";
+import { withScanCancellation } from "./scan-cancellation.js";
 import { sharedInstructionsPath, toSharedInstructions } from "./shared-links.js";
 import { resolveBundledSkills, scanSharedSkills } from "./skills.js";
 import { resolveSnippets } from "./snippet-catalog.js";
@@ -52,8 +58,17 @@ export interface WorkspaceScanOptions {
    * An empty object probes the filesystem only.
    */
   readonly mcpProbes?: McpProbeSettings | undefined;
+  /**
+   * Called as each adapter's scan starts and settles, so a live surface can show which
+   * application is being probed while a slow detect (a version probe, a companion CLI that
+   * connects somewhere) is still running. Purely observational: the scan's results and ordering
+   * are identical with or without it.
+   */
+  readonly onAdapterScan?: ((adapterId: string, status: "active" | "complete") => void) | undefined;
   /** Filesystem access. Defaults to the real one. */
   readonly reader?: FileReader | undefined;
+  /** Cancels adapter work, including any subprocess Aura is still waiting on. */
+  readonly signal?: AbortSignal | undefined;
   /**
    * Registry snippets to resolve during the same read pass, each bounded by `MAX_SNIPPET_BYTES`.
    * A snippet that cannot be resolved is reported as a diagnostic and left out of the model rather
@@ -95,7 +110,12 @@ const skipMcpProbes: McpProber = (servers) => Promise.resolve(servers);
  */
 export async function buildWorkspaceModel(options: WorkspaceScanOptions): Promise<WorkspaceScan> {
   const reader = createCachingReader(options.reader ?? createFileReader());
-  const environment = await canonicalizeEnvironmentPaths(options.environment, reader);
+  options.signal?.throwIfAborted();
+  const environment = withScanCancellation(
+    await canonicalizeEnvironmentPaths(options.environment, reader),
+    options.signal,
+  );
+  options.signal?.throwIfAborted();
   const projectRoot = findProjectRoot(environment.cwd, reader);
   const gitMainWorktreeRoot = projectRoot.then((root) =>
     root === undefined ? undefined : findGitMainWorktreeRoot(root, reader),
@@ -117,7 +137,9 @@ export async function buildWorkspaceModel(options: WorkspaceScanOptions): Promis
 
   // Start every independent scan before awaiting any one of them.
   const scansPending = Promise.all(
-    options.adapters.map((adapter) => scanAdapter(adapter, context)),
+    options.adapters.map((adapter) =>
+      reportingScan(adapter, context, options.onAdapterScan, options.signal),
+    ),
   );
   const repositoryPending = projectRoot.then((found) =>
     found === undefined ? undefined : scanRepository(found, environment, reader),
@@ -138,6 +160,7 @@ export async function buildWorkspaceModel(options: WorkspaceScanOptions): Promis
   const resolvedCatalog = await resolvedCatalogPending;
   const resolvedSkills = await resolvedSkillsPending;
   const sharedSkills = await sharedSkillsPending;
+  options.signal?.throwIfAborted();
 
   const apps: AppModel[] = [];
   const diagnostics: ScanDiagnostic[] = [];
@@ -182,6 +205,37 @@ export async function buildWorkspaceModel(options: WorkspaceScanOptions): Promis
     },
     skipped,
   };
+}
+
+/** One adapter's scan bracketed by progress reports; `finally` keeps a throwing scan honest. */
+async function reportingScan(
+  adapter: Adapter,
+  context: ScanContext,
+  report: WorkspaceScanOptions["onAdapterScan"],
+  signal: AbortSignal | undefined,
+): Promise<AdapterScan> {
+  reportScan(report, adapter.id, "active");
+  try {
+    signal?.throwIfAborted();
+    const scan = await scanAdapter(adapter, context);
+    signal?.throwIfAborted();
+    return scan;
+  } finally {
+    reportScan(report, adapter.id, "complete");
+  }
+}
+
+/** A progress sink is an observer, so its own failure cannot change the scan it watches. */
+function reportScan(
+  report: WorkspaceScanOptions["onAdapterScan"],
+  adapterId: string,
+  status: "active" | "complete",
+): void {
+  try {
+    report?.(adapterId, status);
+  } catch {
+    // Terminal and embedding observers do not own the scan result.
+  }
 }
 
 function environmentVariableStates(
