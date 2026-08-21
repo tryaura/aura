@@ -18,7 +18,7 @@ const distro: CliDistro = {
     description: "Acme's agent configuration doctor",
     displayName: "Acme Dev",
     docsUrl: "https://engineering.acme.example/acmedev",
-    version: "0.3.1",
+    version: "0.3.2",
   },
   defaultPreset: "plugin:acme/platform",
   plugins: [...OFFICIAL_PLUGINS, internalPlugin],
