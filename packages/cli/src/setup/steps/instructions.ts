@@ -1,7 +1,5 @@
 import { basename } from "node:path";
 
-import type { Scope } from "@tryaura/aura-sdk";
-
 import {
   describeInstructionSource,
   duplicateClusters,
@@ -26,7 +24,6 @@ import {
   CONSOLIDATE_VALUE,
   scopeStages,
   settledTargetContent,
-  SKIP_VALUE,
   TEMPLATE_VALUE,
   type ChainState,
   type ScopeDraft,
@@ -34,7 +31,7 @@ import {
 } from "./instruction-stages.js";
 
 /**
- * The instructions step: one back-navigable chain of forms across both scopes.
+ * The instructions step: one back-navigable chain of forms for personal instructions.
  *
  * Each scope contributes action → sources → duplicate review stages; a stage whose precondition no
  * longer holds (a non-consolidate action, no duplicated paragraphs left) simply disappears from
@@ -44,14 +41,11 @@ import {
 export const instructionsStep: SetupStep = {
   gather: async (context, io) => {
     const inputs = scopeInputs(context);
-    const scopes = scopeList(inputs);
     if (context.revisited !== true) {
-      for (const input of scopes) {
-        emitScopeNotes(input, io);
-      }
+      emitScopeNotes(inputs.global, io);
     }
 
-    const stages = scopes.flatMap(scopeStages);
+    const stages = scopeStages(inputs.global);
     const result = await runFormChain(stages, initialState(context), io, {
       entry: context.enteredBackward === true ? "end" : "start",
       flow: context.flow,
@@ -70,28 +64,19 @@ export const instructionsStep: SetupStep = {
 
 interface ScopeInputs {
   readonly global: ScopeInput;
-  readonly project: ScopeInput | undefined;
 }
 
-/** Both scopes in flow order, which is the order notes are emitted and stages are chained in. */
-function scopeList(inputs: ScopeInputs): readonly ScopeInput[] {
-  return inputs.project === undefined ? [inputs.global] : [inputs.global, inputs.project];
-}
-
-/** Folds both scopes' drafts into the step's selections, unoffered when it asked nothing to do it. */
+/** Folds the personal draft into the step's selections, unoffered when it asked nothing to do it. */
 function settle(
   context: SetupStepContext,
   inputs: ScopeInputs,
   result: ChainState,
   unoffered: boolean,
 ): SetupSelections | SetupStepUnoffered {
-  const project =
-    inputs.project === undefined ? undefined : scopeSelection(inputs.project, result.project);
   const selections: SetupSelections = {
     ...context.selections,
     instructions: {
       global: scopeSelection(inputs.global, result.global),
-      ...(project === undefined ? {} : { project }),
     },
   };
   // Every scope settled on its own, so the step recorded what it settled without asking: an answer
@@ -99,7 +84,7 @@ function settle(
   return unoffered ? { selections, unoffered: true } : selections;
 }
 
-/** Everything both scopes need from the workspace; project is absent when it has nothing to do. */
+/** Everything personal instruction setup needs from the workspace. */
 function scopeInputs(context: SetupStepContext): ScopeInputs {
   const inventory = instructionInventory(context.model);
   const targets = instructionTargets(context.model);
@@ -113,20 +98,7 @@ function scopeInputs(context: SetupStepContext): ScopeInputs {
     targetContentValue: instructionTargetContent(context.model, "global", targets.global),
     targetPath: targets.global,
   };
-  const projectSources = inventory.filter((source) => source.scope === "project");
-  const projectContent = instructionTargetContent(context.model, "project", targets.project);
-  const project: ScopeInput | undefined =
-    projectSources.length === 0 && projectContent === undefined
-      ? undefined
-      : {
-          blocked: false,
-          clusters,
-          scope: "project",
-          sources: projectSources,
-          targetContentValue: projectContent,
-          targetPath: targets.project,
-        };
-  return { global, project };
+  return { global };
 }
 
 function scopeSelection(input: ScopeInput, draft: ScopeDraft): InstructionScopeSelection {
@@ -134,7 +106,7 @@ function scopeSelection(input: ScopeInput, draft: ScopeDraft): InstructionScopeS
     return inactiveSelection(input, "blocked");
   }
   if (draft.action !== CONSOLIDATE_VALUE) {
-    return inactiveSelection(input, inactiveAction(draft.action, input.scope));
+    return inactiveSelection(input, inactiveAction(draft.action));
   }
   const selectedSources = draft.selectedSources ?? [];
   // Winners can outlive the sources whose duplicates they resolved; only those a still-relevant
@@ -161,16 +133,16 @@ function scopeSelection(input: ScopeInput, draft: ScopeDraft): InstructionScopeS
  * INS-002 firing at error severity, so the action menu never offers it there; this mapping is the
  * second half of that rule, keeping an action off the menu from becoming one the planner obeys.
  */
-function inactiveAction(action: string | undefined, scope: Scope): "keep" | "skip" | "template" {
+function inactiveAction(action: string | undefined): "keep" | "template" {
   if (action === TEMPLATE_VALUE) {
     return "template";
   }
-  return action === SKIP_VALUE && scope === "project" ? "skip" : "keep";
+  return "keep";
 }
 
 function inactiveSelection(
   input: ScopeInput,
-  action: "blocked" | "keep" | "skip" | "template",
+  action: "blocked" | "keep" | "template",
 ): InstructionScopeSelection {
   return {
     action,
@@ -184,7 +156,7 @@ function inactiveSelection(
 /** A re-entered step resumes from what this run already decided, not from cold-start defaults. */
 function initialState(context: SetupStepContext): ChainState {
   const existing = context.selections.instructions;
-  return { global: toDraft(existing?.global), project: toDraft(existing?.project) };
+  return { global: toDraft(existing?.global) };
 }
 
 function toDraft(selection: InstructionScopeSelection | undefined): ScopeDraft {
@@ -213,12 +185,12 @@ function emitScopeNotes(input: ScopeInput, io: WizardIo): void {
       scope: input.scope,
     });
     io.note(
-      `${input.scope === "global" ? "Global" : "Project"} instructions already live in ${input.targetPath} (${size}); Aura found nothing else to consolidate and leaves the file as it is.`,
+      `Personal instructions already live in ${input.targetPath} (${size}); Aura found nothing else to consolidate and leaves the file as it is.`,
     );
     return;
   }
   if (input.sources.length > 0) {
-    io.note(`Found ${describeSources(input.sources)} for ${input.scope} consolidation.`);
+    io.note(`Found ${describeSources(input.sources)} for personal consolidation.`);
   }
 }
 

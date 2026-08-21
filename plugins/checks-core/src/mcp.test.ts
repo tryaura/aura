@@ -16,7 +16,6 @@ import { app, model } from "./testing.js";
 const DOCS: AuraManifestMcpServer = {
   apps: ["claude-code"],
   name: "docs",
-  scope: "global",
   transport: { args: ["-y", "@example/docs"], command: "npx", env: ["TOKEN"], type: "stdio" },
 };
 
@@ -31,7 +30,6 @@ describe("MCP-001 and MCP-002", () => {
           catalogId: "official/docs",
           name: "docs",
           requiredBy: "Acme platform",
-          scope: "global",
           transport: DOCS.transport,
         },
       ],
@@ -297,7 +295,6 @@ function remoteDesired(): AuraManifestMcpServer {
   return {
     apps: ["claude-code"],
     name: "remote",
-    scope: "global",
     transport: {
       headers: { Authorization: "Bearer ${TOKEN}" },
       type: "http",

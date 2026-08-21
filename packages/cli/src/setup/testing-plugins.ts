@@ -79,7 +79,7 @@ export function consolidationPlugin(): AuraPlugin {
   });
   return definePlugin({
     adapters: [adapter],
-    apiVersion: 1,
+    apiVersion: 2,
     checks: [duplicates],
     id: "checks-core",
     name: "Fixture Checks",
@@ -123,7 +123,7 @@ export function symlinkConsolidationPlugin(): AuraPlugin {
         supportedRange: ">=1 <2",
       }),
     ],
-    apiVersion: 1,
+    apiVersion: 2,
     id: "symlink-consolidation",
     name: "Symlink Consolidation",
     version: "1.0.0",
@@ -165,15 +165,10 @@ export function projectConsolidationPlugin(): AuraPlugin {
             skills: [],
           };
         },
-        projectSharedLink: {
-          entryPath: "./CLAUDE.md",
-          kind: "import-line",
-          lineTemplate: `@${SHARED_INSTRUCTIONS_TEMPLATE_TOKEN}`,
-        },
         supportedRange: ">=1 <2",
       }),
     ],
-    apiVersion: 1,
+    apiVersion: 2,
     id: "project-consolidation",
     name: "Project Consolidation",
     version: "1.0.0",

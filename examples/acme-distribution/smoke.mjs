@@ -28,7 +28,6 @@ function manifest() {
             apps: ["acme-agent"],
             catalogId: "acme/source-control",
             name: "acme-source-control",
-            scope: "global",
             transport: {
               headers: { Authorization: "Bearer ${ACME_SOURCE_TOKEN}" },
               type: "http",

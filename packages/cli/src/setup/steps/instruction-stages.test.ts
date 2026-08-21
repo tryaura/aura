@@ -12,7 +12,6 @@ import type {
 import {
   CONSOLIDATE_VALUE,
   scopeStages,
-  SKIP_VALUE,
   TEMPLATE_VALUE,
   type ChainState,
   type ScopeInput,
@@ -29,15 +28,6 @@ const GLOBAL: ScopeInput = {
   targetPath: "/home/dev/agents/AGENTS.md",
 };
 
-const PROJECT: ScopeInput = {
-  blocked: false,
-  clusters: [],
-  scope: "project",
-  sources: [{ content: "# Project\n\nRules.\n", path: "/work/CLAUDE.md", scope: "project" }],
-  targetContentValue: undefined,
-  targetPath: "/work/AGENTS.md",
-};
-
 const FLOW: WizardFlowContext = {
   completed: [{ label: "Applications" }],
   step: { compactLabel: "Instr", label: "Instructions" },
@@ -50,8 +40,8 @@ interface Ask {
   readonly questions: readonly WizardQuestion[];
 }
 
-/** Runs both scopes' stages, recording every form the chain opened and the flow it carried. */
-async function runScopes(
+/** Runs the personal stages, recording every form the chain opened and the flow it carried. */
+async function runStages(
   answer: WizardAnswers,
 ): Promise<{ readonly asks: readonly Ask[]; readonly state: ChainState }> {
   const asks: Ask[] = [];
@@ -64,12 +54,7 @@ async function runScopes(
     },
   };
 
-  const state = await runFormChain(
-    [...scopeStages(GLOBAL), ...scopeStages(PROJECT)],
-    { global: {}, project: {} },
-    io,
-    { flow: FLOW },
-  );
+  const state = await runFormChain(scopeStages(GLOBAL), { global: {} }, io, { flow: FLOW });
   if (typeof state === "symbol") {
     throw new Error("Expected the chain to settle.");
   }
@@ -78,7 +63,7 @@ async function runScopes(
 
 /** The action form one scope opens with, before any answer has been given to it. */
 async function actionQuestion(input: ScopeInput): Promise<WizardQuestion> {
-  const question = (await scopeStages(input)[0]?.questions({ global: {}, project: {} }))?.[0];
+  const question = (await scopeStages(input)[0]?.questions({ global: {} }))?.[0];
   if (question?.kind !== "select") {
     throw new Error("Expected the action form.");
   }
@@ -86,47 +71,13 @@ async function actionQuestion(input: ScopeInput): Promise<WizardQuestion> {
 }
 
 describe("scopeStages", () => {
-  it("gives a declined scope its action tab and nothing after it", async () => {
-    const { asks, state } = await runScopes({
-      "project-instruction-action": { kind: "options", values: [SKIP_VALUE] },
-    });
+  it("ends personal configuration after sources when it has no duplicates to review", async () => {
+    const { asks, state } = await runStages({});
 
-    expect(state.project.action).toBe(SKIP_VALUE);
-    // No Sources or Duplicates form follows the declined scope — the sub-row maps what exists, so
-    // tabs the answer removed must not be left standing in it.
+    expect(state.global.action).toBe("consolidate");
     expect(asks.map((ask) => ask.ids)).toEqual([
       ["global-instruction-action"],
       ["global-instruction-sources"],
-      ["project-instruction-action"],
-    ]);
-
-    const declined = asks.at(-1);
-    const question = declined?.questions[0];
-    if (declined === undefined || question === undefined) {
-      throw new Error("Expected the project action form.");
-    }
-    const frame: WizardFrame = {
-      activeTab: 0,
-      cursorRow: 0,
-      ...(declined.flow === undefined ? {} : { flow: declined.flow }),
-      questions: [{ answered: false, question, selected: new Set(), text: "" }],
-    };
-
-    // The row `docs/cli-ux.md` pins for a declined scope, rendered from the chain that produces it.
-    expect(renderWizardFrame(frame, 0).split("\n")[1]).toBe(
-      " └ ✔ Global │ ✔ Sources │ ▶ Project ☐",
-    );
-  });
-
-  it("ends each configured scope after its sources when it has no duplicates to review", async () => {
-    const { asks, state } = await runScopes({});
-
-    expect(state.project.action).toBe("consolidate");
-    expect(asks.map((ask) => ask.ids)).toEqual([
-      ["global-instruction-action"],
-      ["global-instruction-sources"],
-      ["project-instruction-action"],
-      ["project-instruction-sources"],
     ]);
   });
 
@@ -176,7 +127,7 @@ describe("scopeStages", () => {
   });
 
   it("says on the action menu that combining moves the files it merges", async () => {
-    const { asks } = await runScopes({});
+    const { asks } = await runStages({});
 
     const action = asks[0]?.questions[0];
     if (action?.kind !== "select") {

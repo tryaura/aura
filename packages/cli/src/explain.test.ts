@@ -15,7 +15,7 @@ describe("check --explain", () => {
           return { installed: false };
         }),
       ],
-      apiVersion: 1,
+      apiVersion: 2,
       id: "fixture-adapter",
       name: "Fixture Adapter",
       version: "1.0.0",
@@ -88,7 +88,7 @@ describe("check --explain", () => {
   it("names the command that can apply an automatic fix", async () => {
     const capture = createCapture(["check", "--explain", "fixture-auto/AUTO"]);
     const plugin = definePlugin({
-      apiVersion: 1,
+      apiVersion: 2,
       checks: [
         defineCheck({
           defaultSeverity: "warn",
@@ -113,7 +113,7 @@ describe("check --explain", () => {
 
   it("names the command that asks for guided fixes and reports them as applicable in JSON", async () => {
     const plugin = definePlugin({
-      apiVersion: 1,
+      apiVersion: 2,
       checks: [
         defineCheck({
           defaultSeverity: "warn",

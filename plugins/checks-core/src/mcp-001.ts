@@ -4,7 +4,6 @@ import {
   configuredFor,
   convergenceFix,
   desiredMcpTargets,
-  hasMisplacedServerFor,
   unusableFor,
   withBlockers,
   type DesiredMcpTarget,
@@ -51,7 +50,7 @@ function detectParity(model: WorkspaceModel): readonly DetectedFinding[] {
     const names = desiredByApp.get(target.appId) ?? new Set<string>();
     names.add(target.name);
     desiredByApp.set(target.appId, names);
-    const finding = parityFinding(model, desired, target);
+    const finding = parityFinding(model, target);
     if (finding !== undefined) {
       affected.add(target.appId);
       findings.push(finding);
@@ -86,7 +85,6 @@ function managedApps(model: WorkspaceModel): ReadonlySet<string> {
  */
 function parityFinding(
   model: WorkspaceModel,
-  desired: readonly DesiredMcpTarget[],
   target: DesiredMcpTarget,
 ): DetectedFinding | undefined {
   const unusable = unusableFor(model, target);
@@ -108,22 +106,51 @@ function parityFinding(
     };
   }
 
-  if (hasMisplacedServerFor(model, desired, target)) {
+  if (configuredFor(model, target).length > 0) {
     return undefined;
   }
+  const elsewhere = elsewhereDetail(model, target);
+  return {
+    ...(elsewhere === undefined ? {} : { details: elsewhere }),
+    id: `missing:${target.appId}:${target.name}`,
+    message: `MCP server ${target.name} is missing from ${target.appId}.`,
+    metadata: {
+      appId: target.appId,
+      kind: "missing",
+      ...(target.requiredBy === undefined ? {} : { requiredBy: target.requiredBy }),
+      serverName: target.name,
+    },
+  };
+}
 
-  return configuredFor(model, target).length > 0
+/**
+ * Says where else the name already appears, so this finding and MCP-005 read as one problem.
+ *
+ * Aura converges only the global target, so an entry the application keeps somewhere else leaves
+ * both checks with something true to say: this one that the global entry is absent, MCP-005 that
+ * the entry it found is not the one Aura manages. Read side by side without this line, "is missing
+ * from claude-code" and "is configured in /workspace/.mcp.json" look like a contradiction.
+ */
+function elsewhereDetail(model: WorkspaceModel, target: DesiredMcpTarget): string | undefined {
+  const paths = [
+    ...new Set(
+      model.mcpServers
+        .filter((server) => server.appId === target.appId && server.name === target.name)
+        .map((server) => sourcePath(model, server) ?? `${server.scope} configuration`),
+    ),
+  ];
+  return paths.length === 0
     ? undefined
-    : {
-        id: `missing:${target.appId}:${target.name}`,
-        message: `MCP server ${target.name} is missing from ${target.appId}.`,
-        metadata: {
-          appId: target.appId,
-          kind: "missing",
-          ...(target.requiredBy === undefined ? {} : { requiredBy: target.requiredBy }),
-          serverName: target.name,
-        },
-      };
+    : `The name is already configured in ${paths.join(", ")}, which is not the file Aura converges. Adding the global entry here does not remove that one; MCP-005 reports it separately.`;
+}
+
+function sourcePath(
+  model: WorkspaceModel,
+  server: WorkspaceModel["mcpServers"][number],
+): string | undefined {
+  return model.apps
+    .find((app) => app.adapterId === server.appId)
+    ?.sourceFiles.find((file) => file.spec.id === server.sourceId)?.spec.path;
 }
 
 /**

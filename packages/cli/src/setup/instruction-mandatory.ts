@@ -1,7 +1,5 @@
 import { resolve } from "node:path";
 
-import type { Scope } from "@tryaura/aura-sdk";
-
 import type { InstructionSource } from "./instructions.js";
 import { managedAppIdList } from "./managed-apps.js";
 import type { InstructionScopeSelection, SetupStepContext } from "./types.js";
@@ -13,14 +11,14 @@ import type { InstructionScopeSelection, SetupStepContext } from "./types.js";
  * only once that entry is merged here and archived. The wizard does not offer an entry already
  * pointing at the target, so leaving this to the selection strands the app on every run.
  */
-function mandatoryEntryPaths(context: SetupStepContext, scope: Scope): ReadonlySet<string> {
+function mandatoryEntryPaths(context: SetupStepContext): ReadonlySet<string> {
   const managedIds = new Set(managedAppIdList(context));
   const paths = new Set<string>();
   for (const app of context.model.apps) {
     if (app.synthetic === true || !managedIds.has(app.adapterId)) {
       continue;
     }
-    const link = scope === "global" ? app.sharedLink : app.projectSharedLink;
+    const link = app.sharedLink;
     if (link?.kind === "symlink") {
       paths.add(resolve(link.entryPath));
     }
@@ -39,7 +37,7 @@ export function requiredEntries(
   selection: InstructionScopeSelection,
   inventory: readonly InstructionSource[],
 ): readonly InstructionSource[] {
-  const required = mandatoryEntryPaths(context, selection.scope);
+  const required = mandatoryEntryPaths(context);
   return inventory.filter(
     (source) => source.scope === selection.scope && required.has(resolve(source.path)),
   );

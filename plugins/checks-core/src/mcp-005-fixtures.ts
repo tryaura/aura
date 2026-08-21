@@ -5,16 +5,13 @@ import type {
   AppModel,
   AuraManifest,
   AuraManifestMcpServer,
-  FixPlan,
   McpConvergenceBlocker,
   McpServer,
   Scope,
   WorkspaceModel,
 } from "@tryaura/aura-sdk";
-import { runChecks } from "@tryaura/core";
 import type { AppMcpConvergence } from "@tryaura/core/testing";
 
-import { mcp005 } from "./mcp-005.js";
 import { app, model } from "./testing.js";
 
 /** The transport every fixture agrees on, so drift never stands in for placement. */
@@ -39,34 +36,16 @@ export const PLACEMENTS: readonly PlacementCase[] = [
     sourceId: CLAUDE_CODE_SOURCE_IDS.mcpProject,
   },
   {
-    appId: CLAUDE_CODE_ADAPTER_ID,
-    automatic: true,
-    expectedScope: "project",
-    sourceId: CLAUDE_CODE_SOURCE_IDS.mcp,
-  },
-  {
     appId: CURSOR_ADAPTER_ID,
     automatic: true,
     expectedScope: "global",
     sourceId: CURSOR_SOURCE_IDS.mcpProject,
   },
   {
-    appId: CURSOR_ADAPTER_ID,
-    automatic: true,
-    expectedScope: "project",
-    sourceId: CURSOR_SOURCE_IDS.mcpGlobal,
-  },
-  {
     appId: CODEX_ADAPTER_ID,
     automatic: false,
     expectedScope: "global",
     sourceId: CODEX_PROJECT_SOURCE_ID,
-  },
-  {
-    appId: CODEX_ADAPTER_ID,
-    automatic: false,
-    expectedScope: "project",
-    sourceId: CODEX_SOURCE_IDS.mcp,
   },
 ];
 
@@ -99,7 +78,7 @@ export function workspaceFor(options: PlacementWorkspaceOptions): WorkspaceModel
       status: "ready",
       value: manifest(
         options.appId,
-        options.desired ?? [desired(options.expectedScope, options.appId)],
+        options.desired ?? [desired(options.appId)],
         options.ledger,
         options.managed ?? true,
       ),
@@ -107,19 +86,8 @@ export function workspaceFor(options: PlacementWorkspaceOptions): WorkspaceModel
   });
 }
 
-/** The MCP-005 finding and the plan it builds, which every remediation case needs together. */
-export function placementPlan(workspace: WorkspaceModel): FixPlan | undefined {
-  const finding = runChecks([mcp005], workspace).findings[0];
-  return finding === undefined ? undefined : mcp005.fix(finding, workspace);
-}
-
-/** The manual steps as one string, so a case can assert on wording without indexing. */
-export function placementSteps(workspace: WorkspaceModel): string {
-  return placementPlan(workspace)?.manualSteps?.join("\n") ?? "";
-}
-
-export function desired(scope: Scope, appId: string): AuraManifestMcpServer {
-  return { apps: [appId], name: "docs", scope, transport: { ...TRANSPORT } };
+export function desired(appId: string): AuraManifestMcpServer {
+  return { apps: [appId], name: "docs", transport: { ...TRANSPORT } };
 }
 
 export function server(appId: string, sourceId: string, scope: Scope): McpServer {

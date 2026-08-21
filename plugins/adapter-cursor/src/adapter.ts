@@ -50,7 +50,7 @@ export const cursorAdapter = defineAdapter({
       unusableMcpServers: mcpFiles.flatMap(({ config }) => config.unusable),
     };
   },
-  // No `sharedLink` or `projectSharedLink`. The explicit capability above says why the global link
+  // No `sharedLink`. The explicit capability above says why the global link
   // is not applicable: Cursor keeps User Rules inside its own settings, so there is no home entry
   // to write. Earlier versions borrowed a project path for that global link, making a home-scoped
   // check demand a file in whichever repository the user happened to run it from. At project scope

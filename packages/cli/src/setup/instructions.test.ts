@@ -28,7 +28,6 @@ describe("instruction inventory", () => {
 
     expect(instructionTargets(model)).toEqual({
       global: "/home/dev/agents/AGENTS.md",
-      project: "/repo/project/AGENTS.md",
     });
     expect(instructionInventory(model)).toEqual([
       { content: "é\nnext", path: global.path, scope: "global" },
@@ -53,24 +52,6 @@ describe("instruction composition", () => {
         workspaceModel([]),
       ),
     ).toBe("# Instructions from ~/a.md\n\nA\r\n\n\n---\n\n# Instructions from ~/b.md\n\nB\n");
-  });
-
-  it("names a project source by its repository-relative path, never the checkout", () => {
-    const inside: InstructionSource = {
-      content: "Project rule\n",
-      path: "/repo/project/docs/CLAUDE.md",
-      scope: "project",
-    };
-
-    const output = composeConsolidatedInstructions(
-      [inside],
-      { ...selection([inside.path]), scope: "project", targetPath: "/repo/project/AGENTS.md" },
-      [],
-      workspaceModel([]),
-    );
-
-    expect(output).toBe("# Instructions from docs/CLAUDE.md\n\nProject rule\n");
-    expect(output).not.toContain("/repo/project");
   });
 
   it("keeps the selected duplicate winner and removes only the loser range", () => {

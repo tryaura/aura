@@ -269,8 +269,6 @@ export interface AppModel extends Omit<AdapterSnapshot, "problems"> {
   readonly sourceFiles: readonly AdapterFileStatus[];
   /** Resolved directories where this application discovers skills. */
   readonly skillDirectories?: readonly ResolvedSkillDirectory[] | undefined;
-  /** How this application can be wired to the repository's shared instructions. */
-  readonly projectSharedLink?: ResolvedSharedLink | undefined;
   /** How this application can be wired to the shared instruction source, when declared. */
   readonly sharedLink?: ResolvedSharedLink | undefined;
   /** Whether Aura understands the detected version. */

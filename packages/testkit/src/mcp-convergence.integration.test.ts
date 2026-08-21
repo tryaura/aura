@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 import { claudeCodeShimResponses } from "./fixtures/claude-code.js";
 import { codexShimResponses } from "./fixtures/codex.js";
 import { cursorShimResponses } from "./fixtures/cursor.js";
-import { guidedCheck, officialScan, type ScannableSeed } from "./official-scan.js";
+import { officialCheck, officialScan, type ScannableSeed } from "./official-scan.js";
 import { runCheck } from "./runner.js";
 import { createSeedBuilder } from "./seed.boundary.js";
 
@@ -103,7 +103,7 @@ describe("manifest-driven MCP convergence", () => {
     });
   });
 
-  it("moves an owned server across scopes idempotently and undoes both files and ledger", async () => {
+  it("adds the global server without changing the project file and undoes global state", async () => {
     const globalBefore =
       JSON.stringify({ mcpServers: { personal: { command: "keep-cursor" } } }, undefined, 2) + "\n";
     const projectBefore =
@@ -117,14 +117,9 @@ describe("manifest-driven MCP convergence", () => {
       .shim("cursor", cursorShimResponses({ version: "3.11.0" }))
       .build();
     const firstScan = await cursorScan(seed);
-    const check = guidedCheck("MCP-005");
-    const finding = runChecks([check], firstScan).findings[0];
-    if (finding === undefined) {
-      throw new Error("Expected a guided MCP-005 finding.");
-    }
-    const plan = check.fix(finding, firstScan);
+    const plan = planManifestMcpConvergence(firstScan, "cursor").plan;
     if (plan === undefined) {
-      throw new Error("Expected MCP-005 to build a move plan.");
+      throw new Error("Expected MCP convergence to build a global plan.");
     }
 
     const applied = await executeFixPlan({
@@ -132,11 +127,11 @@ describe("manifest-driven MCP convergence", () => {
       now: () => new Date("2026-08-18T01:02:03.004Z"),
       plan,
     });
-    expect(applied.appliedOperationCount).toBe(3);
+    expect(applied.appliedOperationCount).toBe(2);
     expect(await readFile(join(seed.homeDir, ".cursor", "mcp.json"), "utf8")).toContain(
       '"managed"',
     );
-    expect(await readFile(join(seed.workspaceDir, ".cursor", "mcp.json"), "utf8")).not.toContain(
+    expect(await readFile(join(seed.workspaceDir, ".cursor", "mcp.json"), "utf8")).toContain(
       '"managed"',
     );
     expect(
@@ -144,7 +139,9 @@ describe("manifest-driven MCP convergence", () => {
     ).toMatchObject({ ownership: { cursor: { mcpServerNames: ["managed"] } } });
 
     const converged = await cursorScan(seed);
-    expect(runChecks([check], converged).findings).toEqual([]);
+    expect(runChecks([officialCheck("MCP-005")], converged).findings[0]).toMatchObject({
+      fixability: "manual",
+    });
     const secondPlan = planManifestMcpConvergence(converged, "cursor").plan;
     if (secondPlan === undefined) {
       throw new Error("Expected a converged Cursor plan.");
@@ -165,7 +162,7 @@ describe("manifest-driven MCP convergence", () => {
         model: converged,
         now: () => new Date("2026-08-18T01:02:05.004Z"),
       }),
-    ).resolves.toMatchObject({ restoredOperationCount: 3, status: "undone" });
+    ).resolves.toMatchObject({ restoredOperationCount: 2, status: "undone" });
     await expect(readFile(join(seed.homeDir, ".cursor", "mcp.json"), "utf8")).resolves.toBe(
       globalBefore,
     );
@@ -195,7 +192,6 @@ function manifest(): string {
           {
             apps: ["claude-code", "codex", "cursor"],
             name: "managed",
-            scope: "global",
             transport: {
               args: ["-y", "@example/managed"],
               command: "npx",
@@ -228,7 +224,6 @@ function misplacedManifest(): string {
           {
             apps: ["cursor"],
             name: "managed",
-            scope: "global",
             transport: { command: "managed-server", type: "stdio" },
           },
         ],

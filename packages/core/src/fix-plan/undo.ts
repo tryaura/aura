@@ -60,7 +60,7 @@ export async function undoFixPlan(options: FixPlanUndoOptions): Promise<FixPlanU
     return Object.freeze({ status: "nothing-to-undo" });
   }
 
-  const policy = await createPathPolicy(options.model, options.managedHomeRoots);
+  const policy = await createPathPolicy(options.model);
   return withJournalLock(root, options.now, async () => {
     const selection = await select(root, options);
     if (selection === undefined) {

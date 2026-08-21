@@ -406,7 +406,7 @@ function app(
     instructionFiles: [],
     mcpServers: [],
     metadata: undefined,
-    skillDirectories: [{ id: `${id}.skills.global`, path: directory, scope: "global" }],
+    skillDirectories: [{ id: `${id}.skills.global`, path: directory }],
     skills: [],
     sourceFiles:
       linkTarget === undefined && pathKind === "symlink"

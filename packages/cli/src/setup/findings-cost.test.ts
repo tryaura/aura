@@ -50,7 +50,7 @@ describe("what a setup run pays for findings", () => {
 /** An always-passing check that records how many times a run asked it to detect. */
 function countingPlugin(onDetect: () => void): AuraPlugin {
   return definePlugin({
-    apiVersion: 1,
+    apiVersion: 2,
     checks: [
       defineCheck({
         defaultSeverity: "info",

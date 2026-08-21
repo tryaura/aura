@@ -21,7 +21,9 @@ describe("MCP-005 detection", () => {
 
       expect(runChecks([mcp005], workspace).findings[0]).toMatchObject({
         checkId: "MCP-005",
-        metadata: { actualScope, appId, expectedScope, serverName: "docs", sourceId },
+        // No expected scope travels with the finding: the only destination is the global target.
+        fixability: "manual",
+        metadata: { actualScope, appId, serverName: "docs", sourceId },
         severity: "warn",
       });
     },
@@ -30,7 +32,7 @@ describe("MCP-005 detection", () => {
   it("stays silent when every entry is in the file its scope is written to", () => {
     const workspace = workspaceFor({
       appId: CURSOR_ADAPTER_ID,
-      desired: [desired("global", CURSOR_ADAPTER_ID)],
+      desired: [desired(CURSOR_ADAPTER_ID)],
       expectedScope: "global",
       ledger: ["docs"],
       servers: [server(CURSOR_ADAPTER_ID, CURSOR_SOURCE_IDS.mcpGlobal, "global")],
@@ -51,34 +53,31 @@ describe("MCP-005 detection", () => {
     expect(finding?.message).toBe(
       "Personal MCP server docs for Cursor is configured in /workspace/.cursor/mcp.json.",
     );
-    expect(finding?.details).toContain("inside the repository");
+    expect(finding?.details).toContain("Aura will not edit that file");
     expect(finding?.locations?.map((location) => location.path)).toEqual([
       "/workspace/.cursor/mcp.json",
       "/home/dev/.cursor/mcp.json",
     ]);
   });
 
-  it("does not duplicate a misplaced server as MCP-001 missing state", () => {
+  it("reports missing global state separately from a project placement", () => {
     const workspace = workspaceFor({
       appId: CLAUDE_CODE_ADAPTER_ID,
-      expectedScope: "project",
+      expectedScope: "global",
       ledger: ["docs"],
-      servers: [server(CLAUDE_CODE_ADAPTER_ID, CLAUDE_CODE_SOURCE_IDS.mcp, "global")],
+      servers: [server(CLAUDE_CODE_ADAPTER_ID, CLAUDE_CODE_SOURCE_IDS.mcpProject, "project")],
     });
 
     expect(
       runChecks([mcp001, mcp005], workspace).findings.map((finding) => finding.checkId),
-    ).toEqual(["MCP-005"]);
+    ).toEqual(["MCP-001", "MCP-005"]);
   });
 
-  it("keeps MCP-001 missing coverage when the same name is desired in both scopes", () => {
+  it("keeps MCP-001 missing coverage when the project has the same name", () => {
     const workspace = workspaceFor({
       appId: CLAUDE_CODE_ADAPTER_ID,
-      desired: [
-        desired("global", CLAUDE_CODE_ADAPTER_ID),
-        desired("project", CLAUDE_CODE_ADAPTER_ID),
-      ],
-      expectedScope: "project",
+      desired: [desired(CLAUDE_CODE_ADAPTER_ID)],
+      expectedScope: "global",
       ledger: ["docs"],
       servers: [server(CLAUDE_CODE_ADAPTER_ID, CLAUDE_CODE_SOURCE_IDS.mcpProject, "project")],
     });
@@ -88,7 +87,10 @@ describe("MCP-005 detection", () => {
         finding.checkId,
         finding.id,
       ]),
-    ).toEqual([["MCP-001", "missing:claude-code:docs"]]);
+    ).toEqual([
+      ["MCP-001", "missing:claude-code:docs"],
+      ["MCP-005", "claude-code:claude-code.mcp.project:docs:project-to-global"],
+    ]);
   });
 
   it("ignores unmanifested servers and servers in unmanaged applications", () => {
@@ -130,7 +132,7 @@ describe("MCP-005 and Claude Code's per-directory entries", () => {
     expect(finding?.message).toBe(
       "Personal MCP server docs for Claude Code is configured in /home/dev/.claude.json.",
     );
-    expect(finding?.details).toContain("applies only where it is configured");
+    expect(finding?.details).toContain("global configuration target Aura manages");
     expect(finding?.details).not.toContain("repository");
     expect(finding?.details).not.toContain("committed");
   });
@@ -138,28 +140,26 @@ describe("MCP-005 and Claude Code's per-directory entries", () => {
   it("reports a team server that only this directory receives", () => {
     const workspace = workspaceFor({
       appId: CLAUDE_CODE_ADAPTER_ID,
-      expectedScope: "project",
+      expectedScope: "global",
       ledger: ["docs"],
       servers: [local()],
     });
     const findings = runChecks([mcp001, mcp005], workspace).findings;
 
-    expect(findings.map((finding) => finding.checkId)).toEqual(["MCP-005"]);
-    expect(findings[0]?.details).toContain("personal to you");
-    expect(findings[0]?.details).toContain("/workspace/.mcp.json");
+    expect(findings.map((finding) => finding.checkId)).toEqual(["MCP-001", "MCP-005"]);
+    expect(findings[1]?.details).toContain("global configuration target Aura manages");
   });
 
   it("reports the per-directory entry and the global one separately", () => {
     const workspace = workspaceFor({
       appId: CLAUDE_CODE_ADAPTER_ID,
-      expectedScope: "project",
+      expectedScope: "global",
       ledger: ["docs"],
       servers: [local(), server(CLAUDE_CODE_ADAPTER_ID, CLAUDE_CODE_SOURCE_IDS.mcp, "global")],
     });
 
     expect(runChecks([mcp005], workspace).findings.map((finding) => finding.id)).toEqual([
-      "claude-code:claude-code.mcp.global:docs:project-to-project",
-      "claude-code:claude-code.mcp.global:docs:global-to-project",
+      "claude-code:claude-code.mcp.global:docs:project-to-global",
     ]);
   });
 });

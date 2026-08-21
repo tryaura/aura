@@ -31,15 +31,15 @@ interface NamespaceCase {
 describe("plugin validation", () => {
   it("rejects an unsupported API version and names the upgrade to make", () => {
     const futureError = captureRegistryError([
-      createPlugin("future", { apiVersion: 2, name: "Future Plugin" }),
+      createPlugin("future", { apiVersion: 3, name: "Future Plugin" }),
     ]);
     const staleError = captureRegistryError([
       createPlugin("stale", { apiVersion: 0, name: "Stale Plugin" }),
     ]);
 
     expect(futureError.message).toContain('Plugin "Future Plugin" (future)');
-    expect(futureError.message).toContain("unsupported apiVersion 2");
-    expect(futureError.message).toContain("supports apiVersion 1");
+    expect(futureError.message).toContain("unsupported apiVersion 3");
+    expect(futureError.message).toContain("supports apiVersion 2");
     expect(futureError.message).toContain("Upgrade Aura");
     expect(staleError.message).toContain("Upgrade the plugin");
   });
@@ -48,13 +48,13 @@ describe("plugin validation", () => {
     const error = captureRegistryError([
       createPlugin("acme", { checks: [createCheck("SEC-001")], name: "Acme" }),
       createPlugin("beta", { name: "Beta", snippets: [createSnippet("rules")] }),
-      createPlugin("gamma", { apiVersion: 3, name: "Gamma" }),
+      createPlugin("gamma", { apiVersion: 4, name: "Gamma" }),
     ]);
 
     expect(error.message).toContain("(3 problems)");
     expect(error.message).toContain('check ID "SEC-001"');
     expect(error.message).toContain('snippet ID "rules"');
-    expect(error.message).toContain("unsupported apiVersion 3");
+    expect(error.message).toContain("unsupported apiVersion 4");
   });
 
   it("rejects duplicate plugin IDs and identifies both plugins", () => {

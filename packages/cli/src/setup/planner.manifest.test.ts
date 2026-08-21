@@ -62,7 +62,6 @@ describe("planSetup manifest app safety", () => {
     const server = {
       apps: ["app"],
       name: "duplicate",
-      scope: "global",
       transport: { command: "docs-mcp", type: "stdio" },
     } as const;
     const base = context(manifest({ app: { managed: true } }), catalog("app"), ["app"]);

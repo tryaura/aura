@@ -12,18 +12,18 @@ describe("persistent undo integration", () => {
   it("restores a seeded filesystem from a fresh core invocation", async () => {
     await using seed = await createSeedBuilder()
       .homeFile("agents/AGENTS.md", "shared\n")
-      .workspaceFile("updated.md", "before\n")
-      .workspaceFile("removed.md", "removed\n")
-      .workspaceFile("source.md", "source\n")
+      .homeFile("agents/fixture/updated.md", "before\n")
+      .homeFile("agents/fixture/removed.md", "removed\n")
+      .homeFile("agents/fixture/source.md", "source\n")
       .build();
     const home = seed.homeDir;
     const workspace = seed.workspaceDir;
     const agents = join(home, "agents");
-    const updated = join(workspace, "updated.md");
-    const removed = join(workspace, "removed.md");
-    const source = join(workspace, "source.md");
-    const destination = join(workspace, "archive", "source.md");
-    const link = join(workspace, "nested", "AGENTS.md");
+    const updated = join(agents, "fixture", "updated.md");
+    const removed = join(agents, "fixture", "removed.md");
+    const source = join(agents, "fixture", "source.md");
+    const destination = join(agents, "fixture", "archive", "source.md");
+    const link = join(agents, "fixture", "nested", "AGENTS.md");
     const shared = join(agents, "AGENTS.md");
     await chmod(updated, 0o600);
     const model = workspaceModel(home, workspace, shared);

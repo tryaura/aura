@@ -95,7 +95,7 @@ function distro(): CliDistro {
     branding: { command: "fixture", displayName: "Fixture Doctor" },
     plugins: [
       definePlugin({
-        apiVersion: 1,
+        apiVersion: 2,
         checks: [
           defineCheck({
             defaultSeverity: "info",
@@ -123,7 +123,7 @@ function snippetDistro(workspaceDir: string): CliDistro {
     plugins: [
       ...base.plugins,
       definePlugin({
-        apiVersion: 1,
+        apiVersion: 2,
         id: "fixture-content",
         name: "Fixture content",
         presets: [

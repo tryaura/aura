@@ -71,7 +71,3 @@ export function isPlacedAt(app: AppModel, server: McpServer, target: DesiredMcpT
   // no nameable destination is a warning with no remedy.
   return canonical === undefined || canonical.spec.id === server.sourceId;
 }
-
-export function isScope(value: unknown): value is Scope {
-  return value === "global" || value === "project";
-}

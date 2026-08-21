@@ -167,10 +167,9 @@ To make the server mandatory policy for this repository, also list it in
 }
 ```
 
-A required server opens selected and is labelled **from repo, required**. Aura still asks the user
-to confirm its name, scope, and applications. If an application has no project-scoped MCP target,
-choose **Global** or leave that application unselected; Aura blocks an impossible plan instead of
-silently writing somewhere else.
+A required server opens selected and is labelled **from repo, required**. Aura asks the user to
+confirm its name and applications, then installs it into each selected application's global MCP
+configuration. The repository definition is trusted input; Aura does not write repository files.
 
 Credential fields declare environment variable names, never values. See the
 [MCP catalog reference](/docs/reference/mcp-catalog/) for HTTP transports, headers, and
@@ -222,7 +221,7 @@ transport. After accepting trust:
 
 1. Preview and tick the repository snippet.
 2. Select the repository skill, preview its `SKILL.md`, and choose **Install**.
-3. Confirm the MCP server's name, scope, and target applications.
+3. Confirm the MCP server's name and target applications.
 4. Review the final file plan and choose **Apply**.
 
 Then verify the resulting application state:

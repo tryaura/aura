@@ -9,7 +9,7 @@ const contentSource = (path: string): FileContentSource => ({
 });
 
 export default definePlugin({
-  apiVersion: 1,
+  apiVersion: 2,
   // Deliberately not the package's "content-official": the plugin id namespaces every
   // user-facing snippet id, and "official/commit-conventions" is the intended spelling.
   id: "official",

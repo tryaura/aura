@@ -50,7 +50,7 @@ describe("createPluginRegistry", () => {
       bareCheckIdPlugins: ["core"],
     });
 
-    expect(SUPPORTED_PLUGIN_API_VERSION).toBe(1);
+    expect(SUPPORTED_PLUGIN_API_VERSION).toBe(2);
     expect(registry.plugins).toEqual([alpha, empty, core]);
     expect(registry.adapters).toEqual([alphaAdapter, coreAdapter]);
     expect(registry.checks).toEqual([alphaCheck, coreCheck]);

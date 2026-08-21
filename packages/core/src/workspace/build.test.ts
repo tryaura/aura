@@ -46,7 +46,6 @@ const SKILL: InstalledSkill = {
   id: "alpha/review",
   name: "Review",
   path: "/home/dev/.claude/skills/review",
-  scope: "global",
 };
 
 describe("buildWorkspaceModel", () => {

@@ -14,7 +14,7 @@ export type { ClaudePermissionMode } from "./contract.js";
 
 export default definePlugin({
   adapters: [claudeCodeAdapter],
-  apiVersion: 1,
+  apiVersion: 2,
   id: "adapter-claude-code",
   name: "Claude Code Adapter",
   version: "0.0.0",

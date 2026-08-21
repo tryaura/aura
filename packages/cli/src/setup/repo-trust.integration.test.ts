@@ -87,7 +87,7 @@ describe("repository preset trust across a setup run", () => {
             return { installed: false };
           }),
         ],
-        apiVersion: 1,
+        apiVersion: 2,
         id: "scan-sentinel",
         name: "Scan sentinel",
         version: "1.0.0",

@@ -98,7 +98,7 @@ const check = defineCheck({
 
 export default definePlugin({
   adapters: [adapter],
-  apiVersion: 1,
+  apiVersion: 2,
   checks: [check],
   id: "acme",
   name: "Acme",

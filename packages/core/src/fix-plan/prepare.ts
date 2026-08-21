@@ -38,7 +38,7 @@ import { renderRedactedWriteDiff } from "./write-redaction.js";
 export async function prepareOperations(
   options: FixPlanPreviewOptions,
 ): Promise<{ readonly preview: FixPlanPreview; readonly state: PreparedPlanState }> {
-  const policy = await createPathPolicy(options.model, options.managedHomeRoots);
+  const policy = await createPathPolicy(options.model);
   const validated = await validatePlanPaths(options.plan, policy);
   const budget: RetentionBudget = { remaining: MAX_RETAINED_PLAN_BYTES };
   const operations: PreparedOperation[] = [];

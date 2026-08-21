@@ -175,7 +175,7 @@ async function createFixture(options: {
           supportedRange: ">=1",
         }),
       ],
-      apiVersion: 1,
+      apiVersion: 2,
       id: "fixture",
       name: "Fixture",
       skillSources: [
@@ -192,7 +192,7 @@ async function createFixture(options: {
     ...(options.disabled === true
       ? [
           definePlugin({
-            apiVersion: 1,
+            apiVersion: 2,
             disabledSkillSources: [SOURCE_ID],
             id: "policy",
             name: "Policy",

@@ -221,7 +221,6 @@ function readyManifest(
         {
           apps,
           name: "docs",
-          scope: "global",
           transport: { args: ["@example/docs"], command: "npx", type: "stdio" },
         },
       ],

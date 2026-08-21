@@ -66,7 +66,7 @@ export function appsPlugin(): AuraPlugin {
         supportedRange: ">=1",
       }),
     ],
-    apiVersion: 1,
+    apiVersion: 2,
     id: "fixture-apps",
     name: "Fixture Apps",
     version: "1.0.0",
@@ -76,7 +76,7 @@ export function appsPlugin(): AuraPlugin {
 /** A plugin whose check throws the kind of message that quotes the file that broke it. */
 export function throwingPlugin(): AuraPlugin {
   return definePlugin({
-    apiVersion: 1,
+    apiVersion: 2,
     checks: [
       defineCheck({
         defaultSeverity: "error",
@@ -104,7 +104,7 @@ export function findingPlugin(
   ],
 ): AuraPlugin {
   return definePlugin({
-    apiVersion: 1,
+    apiVersion: 2,
     checks: [
       defineCheck({
         defaultSeverity: severity,

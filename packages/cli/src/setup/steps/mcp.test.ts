@@ -32,7 +32,6 @@ describe("mcpStep", () => {
             apps: ["claude-code"],
             catalogId: "official/sentry",
             name: "sentry",
-            scope: "global",
           },
         ],
       },
@@ -187,7 +186,7 @@ describe("mcpStep", () => {
     const result = await mcpStep.gather(context([github, sentry]), io);
 
     expect(serverNames(result)).toEqual(["shared", "separate"]);
-    expect(io.notes.join("\n")).toContain("already configured at global scope");
+    expect(io.notes.join("\n")).toContain("already configured globally");
   });
 
   it("keeps the answers of this pass when a later form goes back to the picker", async () => {

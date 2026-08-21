@@ -146,7 +146,7 @@ describe("runSetup", () => {
       findingPlugin("info", []),
       definePlugin({
         adapters: [installedClaude, installedCodex],
-        apiVersion: 1,
+        apiVersion: 2,
         id: "fixture-skills",
         name: "Fixture Skills",
         skills: [
@@ -243,7 +243,7 @@ describe("runSetup", () => {
       findingPlugin("info", []),
       definePlugin({
         adapters: [installedCodex],
-        apiVersion: 1,
+        apiVersion: 2,
         id: "fixture",
         mcpCatalog: [
           {
@@ -437,33 +437,30 @@ describe("runSetup", () => {
     ]);
   });
 
-  it("offers the project opt-out last, so --yes still configures rather than declining", async () => {
+  it("does not offer a project instruction setup stage", async () => {
     const fixture = await createFixture();
     await writeFile(join(fixture.environment.cwd, "CLAUDE.md"), "# Project\n\nRules.\n", "utf8");
     const registry = createPluginRegistry(
       [projectConsolidationPlugin(), findingPlugin("info", [])],
       {},
     );
-    let options: readonly { readonly value: string }[] = [];
+    let offeredProjectAction = false;
     const base = createScriptedWizardIo({});
     const io: WizardIo = {
       ...base,
       ask: async (questions, flow) => {
-        const action = questions.find((question) => question.id === "project-instruction-action");
-        if (action?.kind === "select") {
-          options = action.options;
-        }
+        offeredProjectAction ||= questions.some(
+          (question) => question.id === "project-instruction-action",
+        );
         return base.ask(questions, flow);
       },
     };
 
     await expect(runSetup(fixture.request({}, { io, registry }))).resolves.toBe(0);
 
-    // An empty script is the `--yes` path, and it takes each question's first option: the opt-out
-    // must therefore sit last, or every non-interactive run would silently decline the scope.
-    expect(options.map((option) => option.value)).toEqual(["consolidate", "template", "skip"]);
-    await expect(readFile(join(fixture.environment.cwd, "AGENTS.md"), "utf8")).resolves.toContain(
-      "# Instructions from CLAUDE.md",
+    expect(offeredProjectAction).toBe(false);
+    await expect(readFile(join(fixture.environment.cwd, "CLAUDE.md"), "utf8")).resolves.toBe(
+      "# Project\n\nRules.\n",
     );
   });
 
@@ -535,7 +532,7 @@ describe("runSetup", () => {
             return { installed: false };
           }),
         ],
-        apiVersion: 1,
+        apiVersion: 2,
         id: "scan-sentinel",
         name: "Scan sentinel",
         version: "1.0.0",
@@ -645,7 +642,7 @@ describe("runSetup", () => {
     // is the only step that asked anything. The four it never asked stay out of the event entirely
     // rather than reporting an empty answer nobody gave.
     expect(applied.events[0]).toMatchObject({
-      actions: { instructions: [{ action: "template", scope: "global" }] },
+      actions: { instructions: [{ action: "template" }] },
       command: "setup",
       exitCode: 0,
       kind: "setup-run",

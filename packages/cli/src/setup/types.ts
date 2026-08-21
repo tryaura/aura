@@ -6,7 +6,6 @@ import type {
   Finding,
   RepoContentSet,
   ResolvedSkillPack,
-  Scope,
   TelemetrySetupActions,
   WorkspaceModel,
 } from "@tryaura/aura-sdk";
@@ -33,27 +32,26 @@ interface BaselineSelections {
 }
 
 /**
- * What the wizard settled on for one scope.
+ * What the wizard settled on for the personal instruction target.
  *
- * `blocked` is not `keep`: it means Aura could not read the target safely, so the scope is left out
- * of link planning entirely rather than wired to a file Aura refused to touch. `skip` leaves the
- * scope out the same way, but because the user asked for it — the difference matters only to what
- * the wizard says, never to what the planner does with either.
+ * `blocked` is not `keep`: it means Aura could not read the target safely, so it is left out of
+ * link planning entirely rather than wired to a file Aura refused to touch. There is no opt-out —
+ * INS-001 and INS-002 fire at error severity against a missing shared source, so a declined target
+ * would be an answer the wizard offered and its own closing checklist then failed the run over.
  */
-type InstructionTargetAction = "blocked" | "consolidate" | "keep" | "skip" | "template";
+type InstructionTargetAction = "blocked" | "consolidate" | "keep" | "template";
 
 export interface InstructionScopeSelection {
   readonly action: InstructionTargetAction;
   /** INS-003 finding id to selected `path:startLine:endLine` member id. */
   readonly duplicateWinners: Readonly<Record<string, string>>;
-  readonly scope: Scope;
+  readonly scope: "global";
   readonly selectedSources: readonly string[];
   readonly targetPath: string;
 }
 
 interface InstructionSelections {
   readonly global: InstructionScopeSelection;
-  readonly project?: InstructionScopeSelection | undefined;
 }
 
 /**

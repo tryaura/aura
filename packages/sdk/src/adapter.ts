@@ -258,14 +258,6 @@ export interface Adapter {
    */
   readonly parse: (input: AdapterParseInput) => AdapterSnapshot;
   /**
-   * Optional mechanism for linking this app to the repository's shared `AGENTS.md`, at `./...`.
-   *
-   * Omit it when the application already reads `AGENTS.md` at the project root: an entry that
-   * only points at a file the application would have loaded anyway is one more file in somebody
-   * else's repository, earning nothing.
-   */
-  readonly projectSharedLink?: AdapterSharedLink | undefined;
-  /**
    * Optional mechanism for linking this app to the shared instruction source, at `~/...`.
    *
    * When the application keeps its global guidance somewhere Aura cannot write, omit this field

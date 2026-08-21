@@ -3,14 +3,12 @@ import ignore from "ignore";
 import {
   defineCheck,
   type DetectedFinding,
-  type Finding,
-  type FixPlan,
   type GitignoreModel,
   type RepositoryModel,
   type WorkspaceModel,
 } from "@tryaura/aura-sdk";
 
-import { reconcileGitignoreBlock } from "./gitignore-block.js";
+import { abandonedBlock, abandonedBlockDetail } from "./env-003-legacy.js";
 
 const LOCAL_SETTINGS_PATH = ".claude/settings.local.json";
 
@@ -22,14 +20,13 @@ const SHAREABLE_PATHS: readonly string[] = ["AGENTS.md", "CLAUDE.md", ".mcp.json
 
 const EXPLAIN = `Personal agent overrides should stay out of version control, while shared instruction and MCP configuration should remain commit-ready. Aura evaluates the repository's root .gitignore together with .git/info/exclude, using Git-style pattern semantics including negations and rule order. Nested .gitignore files and a global core.excludesFile are not read, so \`git check-ignore -v <path>\` is the authority whenever the two disagree.
 
-The automatic fix maintains a final ENV-003 block in the root .gitignore, and only ever adds rules for agent-owned paths. If a personal file was already tracked, ignore rules cannot remove it from the index; review it, then run \`git rm --cached -- <path>\` manually.`;
+Aura never edits repository files. Update the root .gitignore manually if this policy does not match, and use \`git check-ignore -v <path>\` to verify the result. If a personal file was already tracked, ignore rules cannot remove it from the index; review it, then run \`git rm --cached -- <path>\` manually. Earlier releases maintained an \`# aura:begin ENV-003\` block in this file; Aura no longer writes or repairs it, and reports it once so the rules become yours rather than something carrying Aura's name that nothing updates.`;
 
 export const env003 = defineCheck({
   defaultSeverity: "warn",
   detect: (model) => detectGitignoreFindings(model),
   explain: EXPLAIN,
-  fix: (finding, model) => fixGitignore(finding, model),
-  fixability: "auto",
+  fixability: "manual",
   id: "ENV-003",
   scope: "project",
   title: "Repository ignore rules separate personal and shared agent state",
@@ -54,9 +51,25 @@ function detectGitignoreFindings(model: WorkspaceModel): readonly DetectedFindin
 
   return [
     ...policyFindings(repository),
-    ...malformedBlockFindings(repository.gitignore),
+    ...abandonedBlockFindings(repository.gitignore),
     ...trackedPersonalFindings(repository.trackedAgentPaths ?? []),
   ];
+}
+
+function abandonedBlockFindings(gitignore: GitignoreModel): readonly DetectedFinding[] {
+  const block = abandonedBlock(gitignore);
+  return block === undefined
+    ? []
+    : [
+        {
+          details: abandonedBlockDetail(gitignore.path, block),
+          fixability: "manual",
+          id: "managed-block-abandoned",
+          locations: [{ path: gitignore.path }],
+          message: "An earlier Aura release left a managed block in this repository's .gitignore.",
+          severity: "info",
+        },
+      ];
 }
 
 function policyFindings(repository: RepositoryModel): readonly DetectedFinding[] {
@@ -93,21 +106,6 @@ function policyFindings(repository: RepositoryModel): readonly DetectedFinding[]
           metadata: { personalNotIgnored, shareableIgnored },
         },
       ];
-}
-
-function malformedBlockFindings(gitignore: GitignoreModel): readonly DetectedFinding[] {
-  return reconcileGitignoreBlock(gitignore.content ?? "") === undefined
-    ? [
-        {
-          details:
-            "Repair the duplicate, incomplete, reversed, suffixed, or indented ENV-003 markers before running the automatic fix again.",
-          fixability: "manual",
-          id: "managed-block-malformed",
-          locations: [{ path: gitignore.path }],
-          message: "Aura's managed ENV-003 block has malformed markers.",
-        },
-      ]
-    : [];
 }
 
 function trackedPersonalFindings(paths: readonly string[]): readonly DetectedFinding[] {
@@ -155,24 +153,4 @@ function policyDetail(
       ? []
       : [`Shareable paths currently ignored: ${shareableIgnored.join(", ")}.`]),
   ].join(" ");
-}
-
-function fixGitignore(finding: Finding, model: WorkspaceModel): FixPlan | undefined {
-  if (finding.id !== "gitignore-policy") {
-    return undefined;
-  }
-  const gitignore = model.repository?.gitignore;
-  if (gitignore === undefined || gitignore.problem !== undefined) {
-    return undefined;
-  }
-
-  const content = reconcileGitignoreBlock(gitignore.content ?? "");
-  if (content === undefined) {
-    return undefined;
-  }
-
-  return {
-    operations: [{ content, path: gitignore.path, type: "write" }],
-    summary: "Update Aura's managed agent-file rules in .gitignore.",
-  };
 }

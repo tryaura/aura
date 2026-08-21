@@ -126,10 +126,14 @@ export interface TelemetrySetupActions {
   readonly snippets?: readonly string[] | undefined;
 }
 
-/** One instruction scope and the handling selected for it during setup. */
+/**
+ * The handling selected for personal instructions during setup.
+ *
+ * No scope travels with it. Aura consolidates one target, so a scope field would be the same
+ * constant on every event ever sent, which is a column that cannot answer a question.
+ */
 export interface TelemetryInstructionAction {
-  readonly action: "blocked" | "consolidate" | "keep" | "skip" | "template";
-  readonly scope: "global" | "project";
+  readonly action: "blocked" | "consolidate" | "keep" | "template";
 }
 
 /** How a completed setup flow ended. Unexpected throws emit `command-failed` instead. */

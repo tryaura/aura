@@ -1,5 +1,4 @@
 import type { FileProblem } from "./adapter.js";
-import type { Scope } from "./common.js";
 
 /** Whether Aura could read and parse a skill's root `SKILL.md`. */
 export type SkillDefinitionStatus = "invalid-frontmatter" | "missing-file" | "ready" | "unreadable";
@@ -31,7 +30,6 @@ export interface InstalledSkill {
   readonly invocationName?: string | undefined;
   readonly name: string;
   readonly path: string;
-  readonly scope: Scope;
   /** Absolute path of the entry's `SKILL.md`. */
   readonly skillFilePath?: string | undefined;
   /** Skill-directory source-file id. */
@@ -47,7 +45,6 @@ export interface InstalledSkill {
 export interface ResolvedSkillDirectory {
   readonly id: string;
   readonly path: string;
-  readonly scope: Scope;
 }
 
 /** One file or directory found below a shared installed skill. */

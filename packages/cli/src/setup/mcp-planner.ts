@@ -116,7 +116,7 @@ function withRequiredOverrides(
 function unconfiguredRequirement(context: SetupStepContext, id: string): string {
   return context.interactive
     ? `Required MCP catalog entry ${id} could not be selected for a managed compatible application.`
-    : `Required MCP catalog entry ${id} is not configured yet. Run setup interactively to choose its name, scope, and applications; later non-interactive runs re-apply what the manifest records.`;
+    : `Required MCP catalog entry ${id} is not configured yet. Run setup interactively to choose its name and applications; later non-interactive runs re-apply what the manifest records globally.`;
 }
 
 function withMcpOwnership(

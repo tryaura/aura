@@ -136,7 +136,6 @@ describe("workspace MCP catalog", () => {
         {
           apps: ["fake"],
           name: "docs",
-          scope: "global",
           transport: { command: "docs", env: ["DOCS_TOKEN", "OTHER_TOKEN"], type: "stdio" },
         },
       ],

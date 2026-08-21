@@ -33,9 +33,7 @@ export function applyRequiredMcpServers(
     return { diagnostics: Object.freeze([]), model };
   }
   const manifest = model.manifest.value;
-  const configured = new Set(
-    manifest.mcpServers.map((server) => `${server.scope}\0${server.name}`),
-  );
+  const configured = new Set(manifest.mcpServers.map((server) => server.name));
   const configuredCatalogIds = new Set(
     manifest.mcpServers.flatMap((server) =>
       server.catalogId === undefined ? [] : [server.catalogId],
@@ -61,7 +59,7 @@ export function applyRequiredMcpServers(
       continue;
     }
     const name = catalog.manifest.serverName;
-    if (configured.has(`global\0${name}`)) {
+    if (configured.has(name)) {
       diagnostics.push(
         note(
           `is already configured as "${name}", so your own settings were kept`,
@@ -88,7 +86,6 @@ export function applyRequiredMcpServers(
         catalogId: catalog.id,
         name,
         requiredBy: selection.provenance.label,
-        scope: "global",
         transport: catalog.manifest.transportTemplate,
       }),
     );

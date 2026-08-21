@@ -49,7 +49,6 @@ Every top-level section is required, including sections that are still empty:
         "env": ["GITHUB_TOKEN"]
       },
       "apps": ["claude-code", "cursor"],
-      "scope": "global",
       "catalogId": "official/github"
     },
     {
@@ -61,8 +60,7 @@ Every top-level section is required, including sections that are still empty:
           "Authorization": "Bearer ${SENTRY_TOKEN}"
         }
       },
-      "apps": ["claude-code"],
-      "scope": "project"
+      "apps": ["claude-code"]
     }
   ],
   "overrides": {
@@ -96,9 +94,12 @@ and makes the snippet available to add again. Each skill records its source-loca
 stable source provenance, source version,
 deterministic tree hash, and pin state. Source provenance starts with `plugin:`, `directory:`, or
 `driver:`. A pinned skill keeps its recorded revision. Each `mcpServers` entry records one desired
-server, the applications that should receive it, and whether it belongs in global or project
-configuration. `catalogId` records provenance for a catalog selection and is omitted for a custom
-server.
+server and the applications that should receive it. All entries are installed into global
+application configuration. A `scope` property written by an older Aura is ignored on read and
+dropped the next time Aura writes the manifest, so no manual edit is needed; the one exception is a
+manifest that named the same server for the same application at both scopes, which now reads as two
+entries claiming one name and must be reduced to the one you want to keep. `catalogId` records
+provenance for a catalog selection and is omitted for a custom server.
 
 `overrides.requiredMcpServers` records an explicit decision to omit a server required by the active
 preset. Setup requires interactive confirmation before adding this override, clears it when the

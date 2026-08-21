@@ -35,7 +35,7 @@ export interface PluginFixtureOptions {
 export function createPlugin(id: string, options: PluginFixtureOptions = {}): PluginCandidate {
   return {
     adapters: options.adapters,
-    apiVersion: options.apiVersion ?? 1,
+    apiVersion: options.apiVersion ?? 2,
     checks: options.checks,
     disabledSkillSources: options.disabledSkillSources,
     id,

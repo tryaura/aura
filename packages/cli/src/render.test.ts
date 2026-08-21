@@ -24,7 +24,7 @@ function groupedPlugin(secondManual = false, extra = 0): AuraPlugin {
     title: "Complete the related fixture setup",
   };
   return definePlugin({
-    apiVersion: 1,
+    apiVersion: 2,
     checks: [
       defineCheck({
         defaultSeverity: "error",
@@ -75,7 +75,7 @@ function groupedPlugin(secondManual = false, extra = 0): AuraPlugin {
 
 function fixablePlugin(findings: readonly DetectedFinding[]): AuraPlugin {
   return definePlugin({
-    apiVersion: 1,
+    apiVersion: 2,
     checks: [
       defineCheck({
         defaultSeverity: "warn",

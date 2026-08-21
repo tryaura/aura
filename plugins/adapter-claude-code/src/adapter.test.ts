@@ -103,24 +103,15 @@ describe("Claude Code file specifications", () => {
     });
   });
 
-  // The two slots differ on purpose: only the project entry is committed, so only it has to be a
-  // file every checkout can read without the author's filesystem.
-  it("keeps the committed project entry an import line", () => {
-    expect(claudeCodeAdapter.projectSharedLink).toEqual({
-      entryPath: "./CLAUDE.md",
-      kind: "import-line",
-      lineTemplate: "@{{sharedInstructions}}",
-    });
+  it("does not expose a managed project instruction link", () => {
+    expect(claudeCodeAdapter).not.toHaveProperty("projectSharedLink");
   });
 
   it("declares the instruction-loading model checks read instead of hard-coding it", () => {
     expect(claudeCodeAdapter.capabilities).toEqual({
       instructions: { importDepthLimit: 5, importStyle: "at-import", loading: "import-graph" },
       skills: {
-        directories: [
-          { entryPath: "~/.claude/skills", id: "claude-code.skills.global" },
-          { entryPath: "./.claude/skills", id: "claude-code.skills.project" },
-        ],
+        directories: [{ entryPath: "~/.claude/skills", id: "claude-code.skills.global" }],
       },
     });
   });
@@ -190,13 +181,6 @@ describe("Claude Code file specifications", () => {
         optional: true,
         path: "/home/dev/.claude/skills",
         scope: "global",
-      },
-      {
-        id: "claude-code.skills.project",
-        kind: "skills",
-        optional: true,
-        path: "/workspace/.claude/skills",
-        scope: "project",
       },
     ]);
   });

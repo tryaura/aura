@@ -183,7 +183,6 @@ function manifest(): AuraManifest {
       {
         apps: ["fake"],
         name: "managed",
-        scope: "global",
         transport: { command: "manifest-command", type: "stdio" },
       },
     ],

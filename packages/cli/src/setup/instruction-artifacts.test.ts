@@ -90,7 +90,7 @@ describe("instruction inventory and Aura's own artifacts", () => {
     expect(offered).toEqual([{ content, path: entry.path, scope: "global" }]);
   });
 
-  it("excludes a native-copy entry only while it holds exactly the rendered content", () => {
+  it("treats legacy project copies as user-owned instruction sources", () => {
     const link: ResolvedSharedLink = {
       content: "Follow the shared instructions.\n",
       entryPath: "/repo/project/.cursor/rules/aura.mdc",
@@ -100,8 +100,10 @@ describe("instruction inventory and Aura's own artifacts", () => {
     const pristine = document(link.entryPath, "project", link.content ?? "");
     const edited = document(link.entryPath, "project", "Hand-edited rule.\n");
 
-    expect(instructionInventory(model([pristine], [app("cursor", link)]))).toEqual([]);
-    expect(instructionInventory(model([edited], [app("cursor", link)]))).toEqual([
+    expect(instructionInventory(model([pristine]))).toEqual([
+      { content: link.content, path: link.entryPath, scope: "project" },
+    ]);
+    expect(instructionInventory(model([edited]))).toEqual([
       { content: "Hand-edited rule.\n", path: link.entryPath, scope: "project" },
     ]);
   });
@@ -127,7 +129,7 @@ function app(id: string, sharedLink: ResolvedSharedLink): AppModel {
     skills: [],
     sourceFiles: [],
     support: { status: "supported", supportedRange: ">=1 <2" },
-    ...(sharedLink.scope === "global" ? { sharedLink } : { projectSharedLink: sharedLink }),
+    sharedLink,
   };
 }
 

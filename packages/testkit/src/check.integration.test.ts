@@ -193,7 +193,7 @@ function fixturePlugin(observe: (environment: Environment, childEnvironment: str
 
   return definePlugin({
     adapters: [adapter],
-    apiVersion: 1,
+    apiVersion: 2,
     checks: [check],
     id: "fixture",
     name: "Fixture",

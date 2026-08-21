@@ -210,7 +210,6 @@ function expectClaudeSources(scan: WorkspaceScan, seed: TestSeed): void {
     `${seed.workspaceDir}/.claude/settings.local.json`,
     `${seed.workspaceDir}/.claude/settings.json`,
     `${seed.homeDir}/.claude/skills`,
-    `${seed.workspaceDir}/.claude/skills`,
   ]);
   expect(scan.model.apps[0]?.metadata).toEqual({
     claudePermissions: { global: { allowCount: 1 } },

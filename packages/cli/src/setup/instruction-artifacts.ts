@@ -31,11 +31,11 @@ export function canonicalSourcePath(document: InstructionDocument): string {
  */
 export function isAuraArtifact(document: InstructionDocument, model: WorkspaceModel): boolean {
   const path = resolve(document.path);
-  return model.apps.some((app) =>
-    [app.sharedLink, app.projectSharedLink].some(
-      (link) =>
-        link !== undefined && resolve(link.entryPath) === path && matchesLink(document, link),
-    ),
+  return model.apps.some(
+    (app) =>
+      app.sharedLink !== undefined &&
+      resolve(app.sharedLink.entryPath) === path &&
+      matchesLink(document, app.sharedLink),
   );
 }
 
@@ -60,7 +60,7 @@ function matchesLink(document: InstructionDocument, link: ResolvedSharedLink): b
  */
 export function importLineLinks(model: WorkspaceModel): readonly ResolvedSharedLink[] {
   return model.apps
-    .flatMap((app) => [app.sharedLink, app.projectSharedLink])
+    .map((app) => app.sharedLink)
     .filter(
       (link): link is ResolvedSharedLink =>
         link?.kind === "import-line" && link.content !== undefined,

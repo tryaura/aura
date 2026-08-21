@@ -8,7 +8,7 @@ describe("shared-link plugin validation", () => {
   it("rejects unsafe or incomplete declarations", () => {
     const traversal: Adapter = {
       ...createAdapter("traversal"),
-      projectSharedLink: {
+      sharedLink: {
         entryPath: "./../AGENTS.md",
         kind: "native-copy",
         lineTemplate: "@file {{sharedInstructions}}",
@@ -45,7 +45,7 @@ describe("shared-link plugin validation", () => {
       }),
     ]);
 
-    expect(error.message).toContain("normalized portable path without traversal");
+    expect(error.message).toContain('entryPath must begin with "~/"');
     expect(error.message).toContain("import-line declarations require lineTemplate");
     expect(error.message).toContain("must contain exactly one {{sharedInstructions}} token");
     expect(error.message).toContain("symlink declarations must not provide lineTemplate");
@@ -83,7 +83,7 @@ describe("shared-link plugin validation", () => {
     ).not.toThrow();
   });
 
-  it("refuses a declaration whose entry does not live in its slot's scope", () => {
+  it("refuses a declaration whose entry does not live in the home directory", () => {
     // The shape that made a home-scoped check demand a file in whichever repository the user was
     // standing in, and write their home directory into it absolutely.
     const projectEntryGlobalSlot: Adapter = {
@@ -94,8 +94,9 @@ describe("shared-link plugin validation", () => {
         lineTemplate: "@file {{sharedInstructions}}",
       },
     };
-    const homeEntryProjectSlot: Adapter = {
+    const removedProjectSlot: Adapter = {
       ...createAdapter("project-slot"),
+      // @ts-expect-error projectSharedLink was removed from the SDK but can arrive from JavaScript.
       projectSharedLink: {
         entryPath: "~/.agent/rules.md",
         kind: "native-copy",
@@ -104,15 +105,13 @@ describe("shared-link plugin validation", () => {
     };
 
     const error = captureRegistryError([
-      createPlugin("scopes", { adapters: [projectEntryGlobalSlot, homeEntryProjectSlot] }),
+      createPlugin("scopes", { adapters: [projectEntryGlobalSlot, removedProjectSlot] }),
     ]);
 
     expect(error.message).toContain(
-      'adapter "global-slot" declares invalid sharedLink: entryPath must begin with "~/" at global scope',
+      'adapter "global-slot" declares invalid sharedLink: entryPath must begin with "~/"',
     );
-    expect(error.message).toContain(
-      'adapter "project-slot" declares invalid projectSharedLink: entryPath must begin with "./" at project scope',
-    );
+    expect(error.message).toContain('adapter "project-slot" declares removed projectSharedLink');
   });
 
   it("refuses a global link that is also declared not applicable", () => {

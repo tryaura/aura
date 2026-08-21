@@ -7,7 +7,7 @@ export type { ProjectTrust } from "./contract.js";
 
 export default definePlugin({
   adapters: [codexAdapter],
-  apiVersion: 1,
+  apiVersion: 2,
   id: "adapter-codex",
   name: "Codex Adapter",
   version: "0.0.0",

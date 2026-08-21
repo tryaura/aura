@@ -4,7 +4,7 @@ description: Contribution slots available to an Aura plugin and the rules the re
 ---
 
 A plugin is created with `definePlugin` and declares an `id`, a `name`, a `version`, and
-`apiVersion: 1`. Aura v1 loads only plugins declaring `apiVersion: 1`; anything else is rejected at
+`apiVersion: 2`. This Aura build loads only plugins declaring `apiVersion: 2`; anything else is rejected at
 registration.
 
 ## Contribution slots
@@ -114,7 +114,7 @@ contributed by adapters from other plugins. Do not copy `InstructionDocument` co
 finding.
 
 Adapters may opt into manifest-driven MCP remediation with a pure `mcpWrite` serializer. It receives
-one declared MCP file's existing contents, the desired owned servers for that file's scope, and the
+one declared global MCP file's existing contents, the desired owned servers, and the
 application's ownership-ledger names, and returns either `{ content }` or `{ refusal }`. It must
 preserve unrelated entries and refuse malformed or unrepresentable configuration rather than
 guessing. Core keeps the captured bytes to itself: a check sees `McpConvergenceBlocker` values and

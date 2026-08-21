@@ -7,7 +7,6 @@ import {
   type Scope,
   type WorkspaceModel,
 } from "@tryaura/aura-sdk";
-import { projectSharedInstructionsPath } from "@tryaura/core";
 import { pluralize } from "@tryaura/core/pluralize";
 
 import { canonicalSourcePath, isAuraArtifact } from "./instruction-artifacts.js";
@@ -41,12 +40,9 @@ export interface DuplicateCluster {
   readonly similarity: number;
 }
 
-export function instructionTargets(model: WorkspaceModel): Readonly<Record<Scope, string>> {
+export function instructionTargets(model: WorkspaceModel): Readonly<{ global: string }> {
   return {
     global: resolve(model.sharedInstructions.path),
-    // Core's helper, not a second spelling of the same filename: an adapter's project link is
-    // resolved against it, and a target the wizard writes elsewhere would be linked to nothing.
-    project: resolve(projectSharedInstructionsPath(model.projectRoot, model.cwd)),
   };
 }
 
@@ -66,8 +62,7 @@ export function instructionInventory(model: WorkspaceModel): readonly Instructio
     // Both spellings are checked because either can be the alias: a symlinked entry canonicalizes
     // to the target, and an owned path recorded before a link moved still names the entry.
     const excluded = [path, canonicalSourcePath(document)].some(
-      (candidate) =>
-        candidate === targets.global || candidate === targets.project || owned.has(candidate),
+      (candidate) => candidate === targets.global || owned.has(candidate),
     );
     if (excluded || isAuraArtifact(document, model)) {
       continue;

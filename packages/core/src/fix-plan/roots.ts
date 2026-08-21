@@ -3,7 +3,6 @@ import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import type { AdapterFileSpec, WorkspaceModel } from "@tryaura/aura-sdk";
 
 import { comparablePath } from "./claims.js";
-import { FixPlanError } from "./types.js";
 
 /**
  * A location a plan may mutate.
@@ -20,27 +19,21 @@ export interface AllowedRoot {
 /**
  * Determines where a plan may write.
  *
- * The workspace is always one root. The rest are derived from what the detected adapters declared
- * as global-scope configuration, so the writable surface of the home directory is exactly the
+ * Roots are derived only from Aura's shared home directory and what detected adapters declared as
+ * global-scope configuration, so the writable surface of the home directory is exactly the
  * applications Aura found rather than a hardcoded guess. A declared file contributes its own
  * directory — `~/.claude/CLAUDE.md` yields `~/.claude`, not `~` — which keeps an adapter that reads
  * something under a shared directory such as `~/.config/<app>` from opening `~/.config` wholesale.
  */
-export function resolveAllowedRoots(
-  model: WorkspaceModel,
-  managedHomeRoots: readonly string[] | undefined,
-): readonly AllowedRoot[] {
+export function resolveAllowedRoots(model: WorkspaceModel): readonly AllowedRoot[] {
   const homeDir = resolve(model.homeDir);
   const roots = new Map<string, AllowedRoot>();
-  add(roots, { exact: false, path: resolve(model.projectRoot ?? model.cwd) });
   const sharedDirectory = dirname(resolve(model.sharedInstructions.path));
   if (isStrictDescendant(homeDir, sharedDirectory)) {
     add(roots, { exact: false, path: sharedDirectory });
   }
 
-  for (const root of managedHomeRoots === undefined
-    ? deriveManagedHomeRoots(model, homeDir)
-    : validateManagedHomeRoots(managedHomeRoots, homeDir)) {
+  for (const root of deriveManagedHomeRoots(model, homeDir)) {
     add(roots, root);
   }
 
@@ -127,32 +120,6 @@ function rootsForSpec(spec: AdapterFileSpec, homeDir: string): readonly AllowedR
         { exact: false, path: directory },
       ]
     : [{ exact: true, path }];
-}
-
-function validateManagedHomeRoots(
-  managedHomeRoots: readonly string[],
-  homeDir: string,
-): readonly AllowedRoot[] {
-  return managedHomeRoots.map((candidate) => {
-    if (!isAbsolute(candidate)) {
-      throw new FixPlanError(
-        "invalid-options",
-        `managedHomeRoots must contain absolute paths: ${candidate}`,
-        { path: candidate },
-      );
-    }
-
-    const path = resolve(candidate);
-    if (!isStrictDescendant(homeDir, path)) {
-      throw new FixPlanError(
-        "invalid-options",
-        `managedHomeRoots must sit strictly inside ${homeDir}: ${candidate}`,
-        { path: candidate },
-      );
-    }
-
-    return { exact: false, path };
-  });
 }
 
 function add(roots: Map<string, AllowedRoot>, root: AllowedRoot): void {

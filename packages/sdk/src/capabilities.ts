@@ -48,7 +48,7 @@ export interface AdapterInstructionCapabilities {
 export interface AdapterSkillDirectory {
   /** Stable source-file id used by the adapter's read side. */
   readonly id: string;
-  /** Portable `~/...` or `./...` path resolved from the captured environment. */
+  /** Portable global `~/...` path resolved from the captured home directory. */
   readonly entryPath: string;
 }
 

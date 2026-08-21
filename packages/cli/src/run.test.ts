@@ -1,5 +1,5 @@
 /* eslint-disable max-lines -- one end-to-end CLI matrix shares the same injected runtime fixtures. */
-import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -151,8 +151,9 @@ describe("runCli", () => {
   it("omits all-noop JSON fixes without rescanning", async () => {
     const temporaryRoot = await mkdtemp(join(tmpdir(), "aura-cli-noop-"));
     const root = await realpath(temporaryRoot);
-    const path = join(root, "current.md");
+    const path = join(root, "agents", "current.md");
     try {
+      await mkdir(join(root, "agents"));
       await writeFile(path, "current", "utf8");
       let detections = 0;
       const plugin = definePlugin({
@@ -162,7 +163,7 @@ describe("runCli", () => {
             return { installed: true };
           }),
         ],
-        apiVersion: 1,
+        apiVersion: 2,
         checks: [
           defineCheck({
             defaultSeverity: "warn",
@@ -203,8 +204,11 @@ describe("runCli", () => {
   });
 
   it("redacts JSON fix diffs unless --detail is requested", async () => {
+    const temporaryRoot = await mkdtemp(join(tmpdir(), "aura-cli-json-fix-"));
+    const root = await realpath(temporaryRoot);
+    await mkdir(join(root, "agents"));
     const plugin = definePlugin({
-      apiVersion: 1,
+      apiVersion: 2,
       checks: [
         defineCheck({
           defaultSeverity: "warn",
@@ -214,7 +218,7 @@ describe("runCli", () => {
             operations: [
               {
                 content: "potentially secret contents\n",
-                path: join(process.cwd(), ".context", "check-json-fixture.md"),
+                path: join(root, "agents", "check-json-fixture.md"),
                 type: "write",
               },
             ],
@@ -230,17 +234,26 @@ describe("runCli", () => {
       name: "Fixture JSON",
       version: "1.0.0",
     });
-    const redacted = createCapture(["check", "--fix", "--dry-run", "--json"]);
-    const detailed = createCapture(["check", "--fix", "--dry-run", "--json", "--detail"]);
+    try {
+      const redacted = createCapture(["check", "--fix", "--dry-run", "--json"]);
+      const detailed = createCapture(["check", "--fix", "--dry-run", "--json", "--detail"]);
+      const runtime = (capture: ReturnType<typeof createCapture>) => ({
+        ...capture.runtime,
+        cwd: root,
+        homeDir: root,
+      });
 
-    expect(await runCli(distro([plugin]), redacted.runtime)).toBe(0);
-    const redactedReport = parseCheckReport(redacted.stdout.text);
-    expect(redactedReport.fixes?.[0]?.operations[0]).not.toHaveProperty("diff");
-    expect(redacted.stdout.text).not.toContain("potentially secret contents");
-    expect(await runCli(distro([plugin]), detailed.runtime)).toBe(0);
-    const detailedReport = parseCheckReport(detailed.stdout.text);
-    expect(detailedReport.fixes?.[0]?.operations[0]?.diff).toContain("diff --aura");
-    expect(detailed.stdout.text).toContain("potentially secret contents");
+      expect(await runCli(distro([plugin]), runtime(redacted))).toBe(0);
+      const redactedReport = parseCheckReport(redacted.stdout.text);
+      expect(redactedReport.fixes?.[0]?.operations[0]).not.toHaveProperty("diff");
+      expect(redacted.stdout.text).not.toContain("potentially secret contents");
+      expect(await runCli(distro([plugin]), runtime(detailed))).toBe(0);
+      const detailedReport = parseCheckReport(detailed.stdout.text);
+      expect(detailedReport.fixes?.[0]?.operations[0]?.diff).toContain("diff --aura");
+      expect(detailed.stdout.text).toContain("potentially secret contents");
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
   });
 
   it("accepts the frozen JSON version and rejects invalid version usage", async () => {
@@ -350,7 +363,7 @@ describe("runCli", () => {
           return { installed: false };
         }),
       ],
-      apiVersion: 1,
+      apiVersion: 2,
       checks: [
         defineCheck({
           defaultSeverity: "warn",
@@ -395,7 +408,7 @@ describe("runCli", () => {
           return { installed: false };
         }),
       ],
-      apiVersion: 1,
+      apiVersion: 2,
       id: "fixture",
       name: "Fixture",
       version: "1.0.0",
@@ -494,7 +507,7 @@ describe("runCli", () => {
           return { installed: false };
         }),
       ],
-      apiVersion: 1,
+      apiVersion: 2,
       id: "fixture",
       name: "Fixture",
       version: "1.0.0",
@@ -523,7 +536,7 @@ describe("runCli", () => {
           supportedRange: ">=1",
         }),
       ),
-      apiVersion: 1,
+      apiVersion: 2,
       checks: [
         defineCheck({
           defaultSeverity: "warn",
@@ -554,7 +567,7 @@ describe("runCli", () => {
           return { installed: false };
         }),
       ],
-      apiVersion: 1,
+      apiVersion: 2,
       id: "fixture",
       name: "Fixture",
       version: "1.0.0",
@@ -601,7 +614,7 @@ describe("runCli", () => {
           supportedRange: ">=1",
         }),
       ],
-      apiVersion: 1,
+      apiVersion: 2,
       checks: [],
       id: "fixture",
       name: "Fixture",
@@ -630,7 +643,7 @@ describe("runCli", () => {
           supportedRange: ">=1",
         }),
       ],
-      apiVersion: 1,
+      apiVersion: 2,
       checks: [],
       id: "fixture",
       name: "Fixture",
@@ -697,7 +710,7 @@ describe("runCli", () => {
           supportedRange: ">=1",
         }),
       ],
-      apiVersion: 1,
+      apiVersion: 2,
       checks: [
         defineCheck({
           defaultSeverity: "warn",
@@ -725,7 +738,7 @@ describe("runCli", () => {
 
   it("uses exit code three and a failed record when fix preparation fails", async () => {
     const plugin = definePlugin({
-      apiVersion: 1,
+      apiVersion: 2,
       checks: [
         defineCheck({
           defaultSeverity: "warn",
@@ -813,7 +826,7 @@ describe("runCli", () => {
 
   it("grants bare check ids only where the distribution said so", async () => {
     const bare = definePlugin({
-      apiVersion: 1,
+      apiVersion: 2,
       checks: [
         defineCheck({
           defaultSeverity: "warn",
@@ -905,7 +918,7 @@ function remoteMcpProbePlugin(url: string) {
         supportedRange: ">=1",
       }),
     ],
-    apiVersion: 1,
+    apiVersion: 2,
     checks: [
       defineCheck({
         defaultSeverity: "error",

@@ -57,7 +57,7 @@ describe("compiled Aura distribution", () => {
       });
       expect(asJson.stderr).toBe("");
       expect(JSON.parse(asJson.stdout)).toMatchObject({
-        fixesApplicable: checkId === "ENV-003" || checkId === "ENV-004",
+        fixesApplicable: checkId === "ENV-004",
         id: checkId,
       });
     }
@@ -132,11 +132,11 @@ describe("compiled Aura distribution", () => {
           title: "Managed MCP servers match the manifest definition",
         },
         { id: "MCP-003", title: "Configured MCP servers can be reached" },
-        { id: "MCP-005", title: "Managed MCP servers use their manifest scope" },
+        { id: "MCP-005", title: "Managed MCP servers use global configuration" },
         { id: "SKL-001", title: "Shared skills have valid definitions and references" },
         { id: "SKL-002", title: "Managed applications deploy manifest skills" },
         { id: "SKL-003", title: "Application skill symlinks resolve" },
-        { id: "SKL-004", title: "Skill invocation names are unique per application scope" },
+        { id: "SKL-004", title: "Skill invocation names are unique per application" },
       ],
       schemaVersion: 1,
       status: "error",

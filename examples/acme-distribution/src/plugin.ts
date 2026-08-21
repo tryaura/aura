@@ -63,7 +63,7 @@ function missingContributions(model: WorkspaceModel): readonly string[] {
 
 export default definePlugin({
   adapters: [acmeAgentAdapter],
-  apiVersion: 1,
+  apiVersion: 2,
   checks: [distributionCheck],
   disabledSkillSources: ["directory:agenticskills"],
   id: "acme",

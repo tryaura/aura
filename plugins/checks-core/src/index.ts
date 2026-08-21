@@ -25,7 +25,7 @@ import { skl004 } from "./skl-004.js";
 
 export default definePlugin({
   adapters: [legacyInstructionsAdapter],
-  apiVersion: 1,
+  apiVersion: 2,
   checks: [
     env001,
     env002,

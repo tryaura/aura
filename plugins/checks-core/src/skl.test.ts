@@ -206,7 +206,7 @@ describe("SKL-004", () => {
     expect(findings[0]?.locations).toHaveLength(2);
   });
 
-  it("accepts one skill deployed to both the global and project directory of one app", () => {
+  it("reports duplicate legacy deployments within one application", () => {
     // SKL-002 deploys every manifest skill to every directory an app declares, and Claude Code
     // declares one of each scope. Grouping across scopes would make SKL-002's own fix raise an
     // error here, telling the user to delete a link Aura had just created.
@@ -219,7 +219,7 @@ describe("SKL-004", () => {
       apps: [app({ adapterId: "claude-code", skills: [global, project] })],
     });
 
-    expect(runChecks([skl004], workspace).findings).toEqual([]);
+    expect(runChecks([skl004], workspace).findings).toHaveLength(1);
   });
 });
 
@@ -305,7 +305,6 @@ function skill(
     invocationName: "review",
     name: "review",
     path,
-    scope: "global",
     sourceId: `${appId}.skills.global`,
     ...(options.resolved === undefined
       ? {}

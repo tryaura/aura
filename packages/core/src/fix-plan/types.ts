@@ -57,14 +57,6 @@ export interface FixPlanPreview {
 
 /** Inputs required to render a fix plan. */
 export interface FixPlanPreviewOptions {
-  /**
-   * Absolute directories under the home directory a plan may write to.
-   *
-   * Defaults to the directories the detected adapters declared as global-scope configuration, so
-   * the writable surface tracks the applications actually installed. Every entry must sit strictly
-   * inside {@link WorkspaceModel.homeDir}; the home directory itself is never an allowed root.
-   */
-  readonly managedHomeRoots?: readonly string[] | undefined;
   readonly model: WorkspaceModel;
   readonly plan: FixPlan;
 }
@@ -109,8 +101,6 @@ export interface FixPlanUndoOptions {
    * Accepts the `backupId` an execution returned, or an ID from {@link FixPlanBackup}.
    */
   readonly backupId?: string | undefined;
-  /** Restricts the restore the same way it restricts a plan. See {@link FixPlanPreviewOptions}. */
-  readonly managedHomeRoots?: readonly string[] | undefined;
   readonly model: WorkspaceModel;
   /** Injected clock recorded when the journal entry is completed. */
   readonly now: () => Date;

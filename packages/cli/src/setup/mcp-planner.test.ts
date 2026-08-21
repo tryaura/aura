@@ -114,7 +114,6 @@ describe("MCP setup planner", () => {
           apps: [],
           catalogId: "official/github",
           name: "github",
-          scope: "global",
           transport: { command: "github-mcp", type: "stdio" },
         },
       ],
