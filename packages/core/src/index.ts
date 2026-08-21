@@ -116,7 +116,9 @@ export type { ScanDiagnostic, ScanPhase } from "./workspace/diagnostics.js";
 export { createFileReader, MAX_FILE_BYTES } from "./workspace/reader.js";
 export { isEmbeddedAssetPath } from "./workspace/embedded-assets.js";
 export { MAX_SNIPPET_BYTES } from "./workspace/reader-limits.js";
-export { createHttpGet, vetHttpUrl } from "./http.boundary.js";
+export { createHttpGet, isAllowedHttpUrl, vetHttpUrl } from "./http.boundary.js";
+/** @internal Shared by every on-disk cache below `~/agents/.cache`, including the CLI updater's. */
+export { cacheLocation, readCacheEnvelope, writeCacheEnvelope } from "./workspace/disk-cache.js";
 export { createHttpPost } from "./http-post.boundary.js";
 export { listDirectorySkills, resolveDirectorySkills } from "./skills/directory-client.js";
 export { loadSkillPackGroups, type SkillPackGroup } from "./skills/pack-groups.js";

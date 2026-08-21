@@ -96,6 +96,18 @@ check` notes it as held until then.
   which stamps the tag version into `distros/aura`, compiles and smoke-tests the binary
   (`verify:binary`), and packages it with the `LICENSE`. Checksummed tarballs are attached to the
   GitHub release.
+- **Publication is draft-first, and the order is load-bearing.** The `publish` job checks the exact
+  artifact set, attests it, creates a _draft_ release, reads the attached assets back from the API,
+  publishes, and only then asserts the release is immutable and every archive exposes a SHA-256
+  digest. Publishing is what freezes a release, so everything that can fail has to fail while the
+  release can still be thrown away. The standalone updater installs only immutable releases with
+  per-asset digests, so a release missing either would be one no binary can install — the workflow
+  fails instead. This requires **Settings → General → Immutable releases** to be enabled on the
+  repository; it applies only to releases published after the setting is turned on.
+- The compiled binary is built from `distros/aura/src/standalone-main.boundary.ts`, not `main.ts`.
+  That entry is the only one that declares a `CliStandaloneInstallation`, which is half of the gate
+  the updater needs; the npm `bin` stays on `main.ts` so an `npx` or npm-global run cannot reach
+  installation code. `distros/aura/src/standalone-entry.test.ts` pins that wiring.
 - Because the version is stamped only in release CI, a source build's `aura --version` reports
   `0.0.0`.
 

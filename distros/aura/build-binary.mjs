@@ -22,7 +22,9 @@ try {
     [
       ...bun.prefix,
       "build",
-      "src/main.ts",
+      // The standalone entry, not the npm one: only this file declares the installation capability
+      // the updater needs, so the compiled binary is the only artifact that can replace itself.
+      "src/standalone-main.boundary.ts",
       ...entries,
       "--compile",
       "--minify",

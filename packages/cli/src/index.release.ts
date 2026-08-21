@@ -2,9 +2,14 @@ import type { TelemetrySink } from "@tryaura/aura-sdk";
 
 import type { HttpTelemetrySinkOptions } from "./http-telemetry-sink.js";
 import type { CliDistro, CliExitCode, CliRuntime } from "./types.js";
+import type { StandaloneProcess } from "./update/installation.js";
+import type { CliStandaloneInstallation } from "./update/types.js";
 
 export declare function runCli(distro: CliDistro, runtime?: CliRuntime): Promise<CliExitCode>;
 export declare function createHttpTelemetrySink(options: HttpTelemetrySinkOptions): TelemetrySink;
+export declare function standaloneInstallation(
+  current: StandaloneProcess,
+): CliStandaloneInstallation | undefined;
 export type {
   HttpTelemetryDeliveryFailure,
   HttpTelemetrySinkOptions,
@@ -34,3 +39,11 @@ export type {
   CliRegistryOptions,
   CliRuntime,
 } from "./types.js";
+export type { StandaloneProcess } from "./update/installation.js";
+export type {
+  CliStandaloneInstallation,
+  CliUpdateCandidate,
+  CliUpdateSource,
+  CliUpdateTarget,
+  CliUpdates,
+} from "./update/types.js";

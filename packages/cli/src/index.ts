@@ -29,3 +29,12 @@ export type {
   CliRegistryOptions,
   CliRuntime,
 } from "./types.js";
+export { standaloneInstallation } from "./update/installation.js";
+export type { StandaloneProcess } from "./update/installation.js";
+export type {
+  CliStandaloneInstallation,
+  CliUpdateCandidate,
+  CliUpdateSource,
+  CliUpdateTarget,
+  CliUpdates,
+} from "./update/types.js";

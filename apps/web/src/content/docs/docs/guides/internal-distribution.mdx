@@ -34,6 +34,10 @@ page.
     Derives every content entrypoint, compiles with Bun, then exercises the binary on a
     deterministic seeded machine.
   </Card>
+  <Card title="Self-updating binary" icon="rocket">
+    A second entry point declares a private release source and a standalone installation, so the
+    compiled executable replaces itself while the package entry point cannot.
+  </Card>
 </CardGrid>
 
 ## Follow the implementation
@@ -59,14 +63,18 @@ page.
    It selects policy and onboarding defaults. The MCP server appears in the normal setup picker;
    use `acmedev setup --add mcp` to reopen that step after the first setup.
 
-5. Read [the process boundary](https://github.com/tryaura/aura/blob/main/examples/acme-distribution/src/main.boundary.ts).
-   This is the only module that reads ambient process state, and it composes rather than discovers
-   the plugin list.
+5. Read [the composition boundary](https://github.com/tryaura/aura/blob/main/examples/acme-distribution/src/distro.boundary.ts)
+   and the two entry points that use it —
+   [`main.boundary.ts`](https://github.com/tryaura/aura/blob/main/examples/acme-distribution/src/main.boundary.ts)
+   for a package-manager run and
+   [`standalone-main.boundary.ts`](https://github.com/tryaura/aura/blob/main/examples/acme-distribution/src/standalone-main.boundary.ts)
+   for the compiled binary. These are the only modules that read ambient process state, and they
+   compose rather than discover the plugin list.
 
 6. Read [the build script](https://github.com/tryaura/aura/blob/main/examples/acme-distribution/build.mjs)
    and [content entrypoints](https://github.com/tryaura/aura/blob/main/examples/acme-distribution/content-entrypoints.mjs).
-   Every Markdown and JSON asset must be passed to Bun; omitted assets otherwise disappear without
-   a build error.
+   Bun compiles the standalone entry point, and every Markdown and JSON asset must be passed to it;
+   omitted assets otherwise disappear without a build error.
 
 7. Run the source checks, then the clean-room package verification from an Aura checkout.
 
@@ -98,6 +106,101 @@ server-side validation and abuse controls, or acquire a narrowly scoped user cre
 runtime.
 
 </details>
+
+## Let the executable update itself
+
+An internal binary is copied onto laptops by hand or by a provisioning script, so without this step
+every machine stays on whatever version it was given. Aura's updater replaces that executable in
+place — and only that executable.
+
+Two gates guard it, and both must hold: the distribution declares `updates`, and the process
+boundary that knows it is a compiled binary declares `installation`. That is why the example has
+**two entry points**. `main.boundary.ts` declares neither, so an `npx` or npm-global run of the same
+distribution cannot reach installation code even though it composes the same plugins. Ownership is
+declared by the artifact that knows it is one, never inferred from `npm_execpath`, `PATH`, or the
+command name.
+
+<Steps>
+
+1. Read [the update source](https://github.com/tryaura/aura/blob/main/examples/acme-distribution/src/updates.ts).
+   It names a private GitHub Enterprise Server release repository and names its credential by
+   variable rather than embedding one — a build-time constant would ship one reusable token inside
+   every copy of the executable. Aura reads the variable at the moment of the request: the value
+   never reaches the update cache, a cache key, a diagnostic, a subprocess environment, a URL, or a
+   cross-origin redirect. Grant it repository **Contents: read** and nothing else.
+
+2. Read [the standalone entry point](https://github.com/tryaura/aura/blob/main/examples/acme-distribution/src/standalone-main.boundary.ts).
+   `standaloneInstallation` narrows the three values you pass it and returns `undefined` when no
+   release targets this machine — a Windows build, or an architecture added after your Aura version
+   — so the capability is only ever supplied when it is true. It never goes looking for those values
+   itself.
+
+3. Publish releases the updater can pin. Per release: one archive per target named exactly
+   `acmedev-<target>.tar.gz` for `darwin-arm64`, `darwin-x64`, `linux-arm64`, or `linux-x64`; each
+   archive containing exactly the executable named `acmedev` and a `LICENSE` and nothing else — no
+   directories, symlinks, hard links, or extra files; a `v<canonical semver>` tag greater than the
+   version it replaces; and a SHA-256 digest per asset exposed by the release API. Draft, attach
+   every asset, confirm the set, then publish — publication is what makes the release immutable, and
+   an immutable release cannot be corrected in place.
+
+</Steps>
+
+:::caution[Immutable releases are the trust boundary]
+With `requireImmutable: true`, Aura installs a release only when the API reports `immutable: true`.
+The digest it verifies against comes out of the release metadata, so it is only meaningful if that
+release cannot later be republished with different bytes. If your GitHub Enterprise Server cannot
+report immutability and per-asset digests, the provider fails closed — use the signed-manifest
+source below rather than weakening the installer.
+:::
+
+<details>
+  <summary>When GitHub is not the source</summary>
+
+For an internal artifact service, serve one stable URL returning a signed envelope of
+`{ schemaVersion, payload, signature }`, where `payload` is base64url-encoded UTF-8 JSON and
+`signature` is a base64url Ed25519 signature over the decoded payload bytes. The payload names one
+version and, per target, a `downloadUrl`, a `sha256`, and a `size`. Configure it with the raw
+32-byte Ed25519 public keys, base64 encoded:
+
+```ts title="src/updates.ts"
+export const ACME_UPDATES: CliUpdates = {
+  disableEnvironmentVariable: "ACMEDEV_UPDATE",
+  source: {
+    kind: "signed-manifest",
+    manifestUrl: "https://releases.acme.example/acmedev/latest.json",
+    tokenEnvironmentVariable: "ACMEDEV_RELEASE_TOKEN",
+    trustedPublicKeys: ["<base64 current key>", "<base64 next key>"],
+  },
+};
+```
+
+Trust more than one key so a release still signed by the outgoing key can distribute the binary that
+trusts its replacement; retire the old key only once that release has rolled out. Keep private
+signing keys in release infrastructure — never in source, package metadata, or the binary.
+
+The manifest URL may be a stable "latest" reference. The asset URLs it names may not: each must
+contain the version it resolves to, so a publication race cannot change the bytes behind a digest
+Aura has already accepted. Move the latest-manifest reference only after every artifact is in place.
+
+</details>
+
+### What your users will see
+
+Nothing, most of the time. On an interactive run that finds a newer release:
+
+```text
+Updating Acme Dev 1.3.0 -> 1.4.0...
+Updated Acme Dev to 1.4.0. The new version will be used on your next run.
+```
+
+The command they asked for keeps running on the version already in memory, with its own exit code.
+Aura checks at most once a day, holds a per-executable lock so two shells cannot install at once,
+verifies the digest, runs the staged binary once to confirm it reports the version the release
+claimed, and keeps the old executable as `acmedev.previous`.
+
+Startup updates never run non-interactively: any redirected stream, a set `CI`, or
+`ACMEDEV_UPDATE=off` skips the check before a single request is made. A build agent that pinned a
+version keeps it.
 
 ## Common failures
 

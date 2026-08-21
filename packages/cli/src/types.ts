@@ -7,6 +7,8 @@ import type {
   TelemetrySink,
 } from "@tryaura/aura-sdk";
 
+import type { CliStandaloneInstallation, CliUpdates } from "./update/types.js";
+
 /** Process status produced by every Aura CLI command. */
 export type CliExitCode = 0 | 1 | 2 | 3;
 
@@ -53,6 +55,14 @@ export interface CliDistro {
    * environment disables the sink outright.
    */
   readonly telemetry?: TelemetrySink | undefined;
+  /**
+   * Where this distribution's standalone releases come from.
+   *
+   * Absent, the distribution never updates itself. Present, it still updates only when the process
+   * boundary also supplies {@link CliRuntime.installation} — a package-manager entry point declares
+   * no standalone executable, so it cannot reach the installer whatever this field says.
+   */
+  readonly updates?: CliUpdates | undefined;
 }
 
 /**
@@ -77,6 +87,14 @@ export interface CliRuntime {
   readonly cwd?: string | undefined;
   /** Base environment inherited by probes. */
   readonly environmentVariables?: Readonly<Record<string, string | undefined>> | undefined;
+  /**
+   * The standalone executable this process is running as, when it is one.
+   *
+   * Declared by a compiled distribution's own entry point and never inferred. Absent — which is
+   * every npm, `npx`, and source invocation — the run has no executable to replace, and the
+   * updater stops before it makes a single request.
+   */
+  readonly installation?: CliStandaloneInstallation | undefined;
   /** Base home directory before a `--home` override. Defaults to the operating-system home. */
   readonly homeDir?: string | undefined;
   /**

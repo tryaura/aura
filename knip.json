@@ -8,10 +8,10 @@
   },
   "workspaces": {
     "examples/*": {
-      "entry": ["src/main.boundary.ts"]
+      "entry": ["src/main.boundary.ts", "src/standalone-main.boundary.ts"]
     },
     "distros/*": {
-      "entry": ["src/**/*.test.ts", "src/**/*.smoke.ts"],
+      "entry": ["src/standalone-main.boundary.ts", "src/**/*.test.ts", "src/**/*.smoke.ts"],
       "includeEntryExports": true
     },
     "packages/sdk": {
@@ -22,14 +22,7 @@
     },
     "packages/cli": {
       "entry": ["type-tests/*.ts"],
-      "ignoreDependencies": [
-        "diff",
-        "ignore",
-        "semver",
-        "smol-toml",
-        "toml-eslint-parser",
-        "undici"
-      ]
+      "ignoreDependencies": ["diff", "ignore", "smol-toml", "toml-eslint-parser", "undici"]
     },
     "plugins/*": {
       "includeEntryExports": true

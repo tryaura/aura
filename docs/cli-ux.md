@@ -189,6 +189,48 @@ checks · `3` operational failures. Finding health remains visible through the r
 severity counts. Setup and undo also use `1` for incomplete user-driven flows. `runCli` normalizes
 any other code to 2.
 
+## Automatic updates
+
+Standalone distributions may install a newer release before the requested command runs. Rendered by
+`packages/cli/src/update/messages.ts`; the outcome mapping lives in `packages/cli/src/update/run.ts`
+and is pinned by `startup-update.test.ts` and `install.integration.test.ts`.
+
+The updater is a guest in someone else's command. It obeys three rules:
+
+1. **It never changes the verdict.** No outcome — including a refused download — alters the exit
+   code or the stdout of the command the user asked for. `--json` stays one parseable document.
+2. **It speaks on stderr, and rarely.** Two lines for a successful update, one for a failure, none
+   for anything else. A check that found nothing, a network that was not there, and a lock another
+   updater holds are not events in the user's day.
+3. **It never claims this run was updated.** The process keeps the image it started with, and the
+   success line says so rather than sending someone to `--version` to find the old number.
+
+Exact bytes, with `<Name>` from `CliBranding.displayName`:
+
+```text
+Updating <Name> 0.4.0 -> 0.4.1...
+Updated <Name> to 0.4.1. The new version will be used on your next run.
+```
+
+| Outcome                          | Message                                                                                                                      | Requested command |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ----------------- |
+| Current, or a fresh cached check | None                                                                                                                         | Runs normally     |
+| Metadata request failed          | None                                                                                                                         | Runs normally     |
+| Another updater holds the lock   | None                                                                                                                         | Runs normally     |
+| Update installed                 | The two lines above                                                                                                          | Runs, old version |
+| Download or permission failure   | `<Name> could not install the 0.4.1 update. Update manually: <url>`                                                          | Runs normally     |
+| Digest mismatch                  | `<Name> refused the 0.4.1 update: the download did not match the release's published SHA-256 digest. Nothing was installed.` | Runs normally     |
+
+The manual-update link comes from `CliUpdates.manualUpdateUrl`, falling back to
+`CliBranding.docsUrl`; when a distribution defines neither, the sentence is dropped rather than
+placeholder-filled. The digest line never offers a link — retrying by hand is not the advice.
+
+Startup updates run only for an interactive standalone run: all three streams must be terminals,
+`CI` must be unset, and the distribution's own disable variable (`AURA_UPDATE` for the official
+binary) must not be `off`, `0`, `false`, or `no`. Machine-oriented and scripted runs stay pinned to
+the binary they selected, which is why a captured `--json` run is byte-identical whether or not a
+release exists.
+
 ## Glyph vocabulary
 
 | Glyph | Meaning                                          |

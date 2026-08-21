@@ -113,13 +113,57 @@ state below `~/agents` is created only when you later approve a setup or fix pla
 
 ## Update
 
-Run the same installation method again. The script installs the newest release by default;
-package-manager installations update with:
+The standalone binary keeps itself current. When you run `aura` interactively and a newer release
+exists, Aura installs it before your command runs and says so in two lines:
+
+```text
+Updating Aura 0.4.0 -> 0.4.1...
+Updated Aura to 0.4.1. The new version will be used on your next run.
+```
+
+The command you asked for keeps running on the version already in memory, with its own output and
+exit status; the new one takes over on your next invocation. An update that cannot happen is never
+an error — at worst you get one line pointing at the
+[releases page](https://github.com/tryaura/aura/releases).
+
+Only the standalone binary does this. A package-manager installation is owned by that package
+manager, and Aura never touches an executable it does not own:
 
 ```sh
 npm update -g @tryaura/aura-cli
 pnpm update --global @tryaura/aura-cli
 ```
+
+Aura checks at most once a day. It installs only a release GitHub reports as immutable, verifies
+the download against the SHA-256 digest published with that release, runs the new binary once to
+confirm it reports the version it claimed, and only then replaces the old one.
+
+### When updates are skipped
+
+No request is made at all when:
+
+- the run is not interactive — any of stdin, stdout, or stderr is redirected;
+- `CI` is set;
+- `AURA_UPDATE` is `off`, `0`, `false`, or `no`; or
+- the `aura` on your `PATH` is a symlink, which means something else manages that name.
+
+That is what keeps a pinned version pinned: a script or pipeline that installed `v0.4.0` is still
+running `0.4.0` tomorrow. To opt out everywhere:
+
+```sh
+export AURA_UPDATE=off
+```
+
+### Going back a version
+
+Every update keeps the previous executable beside the new one:
+
+```sh
+mv "$HOME/.aura/bin/aura.previous" "$HOME/.aura/bin/aura"
+```
+
+Aura never performs that move for you. To stay on the older version afterwards, set
+`AURA_UPDATE=off` — otherwise the next interactive run installs the newer release again.
 
 ## Uninstall
 
