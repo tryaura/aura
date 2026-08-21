@@ -31,10 +31,10 @@ Both are environment variables:
 | Variable           | Default        | Purpose                                       |
 | ------------------ | -------------- | --------------------------------------------- |
 | `AURA_INSTALL_DIR` | `~/.aura/bin`  | Where the binary is written.                  |
-| `AURA_VERSION`     | latest release | Install a specific tag, for example `v0.3.0`. |
+| `AURA_VERSION`     | latest release | Install a specific tag, for example `v0.3.1`. |
 
 ```sh
-AURA_INSTALL_DIR=/usr/local/bin AURA_VERSION=v0.3.0 curl -fsSL https://tryaura.sh/install | sh
+AURA_INSTALL_DIR=/usr/local/bin AURA_VERSION=v0.3.1 curl -fsSL https://tryaura.sh/install | sh
 ```
 
 ## npm
