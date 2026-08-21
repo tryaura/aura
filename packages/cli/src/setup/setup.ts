@@ -24,7 +24,7 @@ import { presetCheckSummary } from "./preset-policy.js";
 import { createSnippetCatalog } from "./snippets.js";
 import { SETUP_STEPS } from "./steps/index.js";
 import { type GatherStart } from "./gather.js";
-import type { GatheredSetup, SetupPresetContext, SetupStep } from "./types.js";
+import type { GatheredSetup, SetupPresetContext, SetupStep, SetupStepContext } from "./types.js";
 import type { WizardIo } from "./wizard-types.js";
 
 /** Everything one `setup` run needs, so the flow does not reach back into the command object. */
@@ -104,8 +104,7 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
     stdout.write("\nLeft everything as it was.\n");
     return finish(1, "aborted");
   }
-  const { activeChecks, configured, effectiveModel, effectiveScan, projected, scan } = booted;
-  const model = scan.model;
+  const { activeChecks, configured, effectiveModel, effectiveScan } = booted;
 
   const steps = request.steps ?? SETUP_STEPS;
   // After the early return, and only when a selected step reads them: the duplicate scan among the
@@ -114,40 +113,7 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
     ? gatherFindings(activeChecks, effectiveModel, io, configured.config)
     : undefined;
 
-  const catalogs = createSetupCatalogs({
-    config: configured.config,
-    environment,
-    interactive: request.interactive,
-    model: effectiveModel,
-    noCache: request.noCache,
-    preset: configured.preset,
-    presetNotes: [
-      ...configured.notes,
-      ...projected.diagnostics.map((diagnostic) => diagnostic.message),
-    ],
-    presetOrigin: configured.presetOrigin,
-    registry: request.registry,
-  });
-  const preset = setupPresetContext(request, configured.config, configured.preset);
-  const repoPreset = booted.repoPreset;
-
-  const stepContext = {
-    appCatalog: buildAppCatalog(request.registry.adapters, model, scan.skipped),
-    ...(initialFindings === undefined ? {} : { findings: initialFindings }),
-    interactive: request.interactive,
-    isEnvironmentVariableSet: (name: string) => environment.readVariable(name) !== undefined,
-    manifest: model.manifest,
-    mcpCatalog: catalogs.mcpCatalog,
-    model: effectiveModel,
-    skillCatalog: catalogs.skillCatalog,
-    snippetCatalog: createSnippetCatalog(
-      request.registry.snippets,
-      model.manifest,
-      preset?.snippets ?? [],
-    ),
-    ...(preset === undefined ? {} : { preset }),
-    ...(repoPreset === undefined ? {} : { repoPreset }),
-  };
+  const stepContext = buildStepContext(request, booted, environment, initialFindings);
 
   // The confirmation can send the user ← back into the last step, so gather → plan → confirm
   // repeats until the plan is accepted, declined, or aborted. Nothing is written inside the loop.
@@ -200,7 +166,7 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
     mcpCatalog: request.registry.mcpServers,
     skills: request.registry.skills,
   });
-  const effectiveRescan = projectRescan(rescanned, configured.config);
+  const effectiveRescan = projectRescan(rescanned, configured.config, configured.repoPreset);
   return finish(endOnGreen(request, effectiveRescan, activeChecks, configured.config), "applied", {
     actions: setupActions(ready.gathered),
     appliedOperationCount: result.appliedOperationCount,
@@ -210,6 +176,73 @@ export async function runSetup(request: SetupRequest): Promise<CliExitCode> {
 /** A pass that never reached a plan has no choices to report, which is not the same as none made. */
 function plannedActions(gathered: GatheredSetup | undefined): TelemetrySetupActions | undefined {
   return gathered === undefined ? undefined : setupActions(gathered);
+}
+
+type ReadySetupBoot = Extract<Awaited<ReturnType<typeof bootSetup>>, { status: "ready" }>;
+
+/** Assembles the catalogs and the immutable context every wizard step reads. */
+function buildStepContext(
+  request: SetupRequest,
+  booted: ReadySetupBoot,
+  environment: SetupRequest["environment"],
+  initialFindings: ReturnType<typeof gatherFindings> | undefined,
+): Omit<SetupStepContext, "selections"> {
+  const { configured, effectiveModel, repoPreset, scan } = booted;
+  const model = scan.model;
+  const catalogs = buildCatalogs(request, booted, environment);
+  const preset = setupPresetContext(request, configured.config, configured.preset);
+
+  return {
+    appCatalog: buildAppCatalog(request.registry.adapters, model, scan.skipped),
+    ...(initialFindings === undefined ? {} : { findings: initialFindings }),
+    interactive: request.interactive,
+    isEnvironmentVariableSet: (name: string) => environment.readVariable(name) !== undefined,
+    manifest: model.manifest,
+    mcpCatalog: catalogs.mcpCatalog,
+    model: effectiveModel,
+    skillCatalog: catalogs.skillCatalog,
+    snippetCatalog: buildSnippetCatalog(request, booted, preset),
+    ...(preset === undefined ? {} : { preset }),
+    ...(repoPreset === undefined ? {} : { repoPreset }),
+  };
+}
+
+function buildCatalogs(
+  request: SetupRequest,
+  booted: ReadySetupBoot,
+  environment: SetupRequest["environment"],
+): ReturnType<typeof createSetupCatalogs> {
+  const { configured, effectiveModel, projected, repoPreset } = booted;
+  return createSetupCatalogs({
+    config: configured.config,
+    environment,
+    interactive: request.interactive,
+    model: effectiveModel,
+    noCache: request.noCache,
+    preset: configured.preset,
+    presetNotes: [
+      ...configured.notes,
+      ...projected.diagnostics.map((diagnostic) => diagnostic.message),
+    ],
+    presetOrigin: configured.presetOrigin,
+    registry: request.registry,
+    repoSkills: repoPreset?.contentSet?.skills ?? [],
+  });
+}
+
+/** The snippet catalog, with the trusted repository's bodies and default selections folded in. */
+function buildSnippetCatalog(
+  request: SetupRequest,
+  booted: ReadySetupBoot,
+  preset: SetupPresetContext | undefined,
+): ReturnType<typeof createSnippetCatalog> {
+  const repoPreset = booted.repoPreset;
+  return createSnippetCatalog(
+    request.registry.snippets,
+    booted.scan.model.manifest,
+    [...(preset?.snippets ?? []), ...(repoPreset?.preset?.snippets ?? [])],
+    repoPreset?.contentSet?.snippets ?? [],
+  );
 }
 
 function setupPresetContext(

@@ -411,22 +411,50 @@ A repository's `.aura/preset.json` is a configuration layer above the selected t
 below the user's manifest — and it arrives by cloning, not by anything the user selected, so it
 applies only after the user trusts it for that repository.
 
-- Interactive `setup` asks once, before the wizard opens, after one note naming the preset and a
-  validated capability summary. The summary lists required MCP servers, allowed skill sources,
-  selected skills and snippets, and every skill-directory URL (plus its token variable), so
-  repository-controlled network endpoints are visible before consent. Check policy spells out each
-  enabled or disabled check, severity, and threshold before the prompt, for example
-  `Checks: SEC-001: disabled; TOK-001: thresholds {"approxTokens":12000}`. The effective values also
-  print in the plan summary's read-only policy group once the layer applies. The opening note is
-  `This repository provides the preset "<name>" at .aura/preset.json.` The prompt is
-  `Trust the repository preset at .aura/preset.json? Its settings apply to every Aura run in this
-repository until the file changes.` Inside a linked worktree the prompt is preceded by one more
+- Interactive `setup` asks once, before the wizard opens, after one note naming the preset and one
+  aligned row per thing the repository would introduce:
+
+  ```
+  Repository preset "Valencia repository entities" — .aura/preset.json
+
+    mcp      repo/docs "repo-docs" → stdio "npx", args ["-y", "docs-mcp"], env DOCS_TOKEN
+    skill    release-runbook (2 files)
+    snippet  repo/commit-guidance (55 B)
+    sources  repo:workspace
+
+  Trust it? Nothing installs until you pick it; applies to every run here until the file changes.
+  ```
+
+  Rows carry the kind terms `mcp`, `skill`, `snippet`, `directory`, `sources`, and `checks`, in
+  that order, padded to one shared column. One row per entity, never one per field: a snippet the
+  preset both provides and selects is one snippet, and naming it twice is what made this screen
+  long enough to skim past. Policy that points at content the repository does not provide keeps a
+  row saying where it comes from — `mcp official/github · required, from the catalog`,
+  `skill directory:acme/review · selected`, `snippet official/engineering · selected` — and a
+  provided server the preset also requires carries a trailing ` · required`. `directory` prints
+  every skill-directory URL plus its token variable
+  (`Acme Skills → https://skills.acme.example · token ACME_TOKEN`), so repository-controlled
+  network endpoints are visible before consent. `checks` spells out each enabled or disabled
+  check, severity, and threshold (`SEC-001: disabled; TOK-001: thresholds {"approxTokens":12000}`);
+  the effective values also print in the plan summary's read-only policy group once the layer
+  applies. A provided MCP server carries its full executable surface verbatim (escaped):
+  `stdio "<command>"` plus `args [...]` and `env ...` when set, or `http <url>`. A snippet's body
+  is never echoed into the consent prompt — the byte count says there is one, and the picker's `p`
+  overlay is where it is read. A preset with nothing to review prints
+  `No check, MCP, skill, or snippet settings.` in place of the rows. The opening note is
+  `Repository preset "<name>" — .aura/preset.json`, dropping the quoted name when the preset
+  carries none. The prompt is
+  `Trust it? Nothing installs until you pick it; applies to every run here until the file changes.`
+  — the two-tier contract rides in the one line the user is certain to read, and shortens to
+  `Trust it? Applies to every run here until the file changes.` when the repository provides no
+  content of its own. Inside a linked worktree the prompt is preceded by one more
   note: `This directory is a linked worktree, so trusting these contents also applies them in every
 other worktree of the same checkout.` Accepting applies the layer for the run and records the
   acceptance — the preset's absolute path, the repository's primary Git checkout when the run is
   inside a linked worktree, and a hash of its contents — in the manifest immediately, before the
   wizard opens. Only the prompt decides: declining or aborting it records nothing, and the next
   interactive setup asks again. Aborting ends the run with `Left everything as it was.` and exit 1.
+
 - Consent outlives the run that gave it. Because the acceptance is written before the wizard, a run
   the user then backs out of, declines, or blocks still keeps it — asking a security question again
   because someone changed their mind about an unrelated step is how a person learns to accept
@@ -436,15 +464,20 @@ trust of .aura/preset.json. Left everything else as it was.` instead. `--dry-run
 again.` The record is written through the fix-plan kernel like every other file, so it makes its
   own backup: a run that records trust and then applies a plan produces two, and `undo` reverses
   them newest first — the plan, then the trust.
-- Trust binds to exact contents, and to the repository rather than the directory. A file that
+- Trust binds to exact contents, and to the repository rather than the directory. The hash covers
+  every byte the repository contributes: the preset file itself plus every snippet body under
+  `.aura/snippets/` (a repository with no snippets hashes exactly as the bare file, so existing
+  trust records keep matching). Editing, adding, or removing any snippet re-asks the same way
+  editing the preset does. Skill trees under `.aura/skills/` sit deliberately outside the hash —
+  they are offers the per-skill Review gates, not bytes an unattended run could apply. A file that
   changes after acceptance is untrusted again, and the next interactive setup re-asks as a change,
-  never as a first sighting (`The repository preset at .aura/preset.json changed since you trusted
-it. Trust the new contents?`) — that wording is keyed to the file in front of the user, so a
-  sibling worktree carrying different contents is a first sighting, not a change. A linked worktree
-  holding contents already accepted for its checkout applies them without asking, since anyone who
-  can write the file in one worktree can write it in all of them. Each distinct set of contents a
-  repository's user accepted keeps its own entry, so reverting the file to an earlier accepted
-  revision does not re-ask.
+  never as a first sighting (`The preset changed since you trusted it. Trust the new contents?`,
+  above the same rows and the note naming the file) — that wording is keyed to the file in front of
+  the user, so a sibling worktree carrying different contents is a first sighting, not a change. A
+  linked worktree holding contents already accepted for its checkout applies them without asking,
+  since anyone who can write the file in one worktree can write it in all of them. Each distinct
+  set of contents a repository's user accepted keeps its own entry, so reverting the file to an
+  earlier accepted revision does not re-ask.
 - Non-interactive runs never accept: `--yes` answers confirmations for the user, and the first
   application of a repository's file is exactly the decision it must not answer. `setup --yes`
   resolves without the layer and the plan summary carries the held notice (below). Human `check`
@@ -456,7 +489,16 @@ it.`).
 - An unreadable or invalid repository preset fails the run closed with exit 2
   (`Repository preset ".aura/preset.json" is not valid JSON. Fix or remove the file to
 continue.`): proceeding without it would silently widen whatever the file was written to lock
-  down.
+  down. A broken snippet set — an unreadable, oversized, symlinked, or non-kebab-named file under
+  `.aura/snippets/` — fails the same way: those bytes are inside the trust hash, so "some of what
+  you consented to cannot be read" is a broken preset, not a smaller one. A broken skill tree
+  under `.aura/skills/` only earns a note and drops out of the offers.
+- Held means invisible. An untrusted repository contributes no snippet, skill, or MCP rows to any
+  picker and no default ticks — trust is what admits the rows, and per-entity selection (a tick, a
+  Review install, a configure form) is what installs anything.
+- Repository snippet rows always open unticked, including when the repository preset lists them.
+  The list adds the `(from repo)` label but is not approval to append arbitrary agent instructions;
+  only an explicit interactive tick first-installs one, and `--yes` never does.
 - Applied repo-layer check settings appear in the plan summary as their own read-only policy
   group, mirroring the team preset's: values apply through configuration resolution and are never
   copied into the manifest.
@@ -503,6 +545,16 @@ leads it as an unnumbered record block; the numbers below count only what a tick
 - An uninstalled available row can be selected and previewed. A preset ticks it by default only
   while its ID is absent from the manifest and a plugin actually provides it: a disabled row that
   opened ticked would be an answer `--yes` has no way to take back.
+- A trusted repository's `.aura/snippets/*.md` files appear as offerable rows under a
+  `From this repository` group that leads the offered rows, ahead of the plugin categories —
+  they are this repository's own guidance, which is what a person running setup inside it came
+  for. Each row's id is `repo/<file-stem>`, its optional frontmatter supplies the name and
+  description, and its `p` preview is the exact body a tick would append, taken from the snapshot
+  the trust hash covered — never a re-read. An id the repository preset's `snippets` list selects
+  is labelled `(from repo)` but still opens unticked: arbitrary agent instructions require an
+  explicit interactive selection, and `--yes` never first-installs them. An installed repo snippet
+  joins the locked record block with ` · From this repository` as its note. An untrusted repository
+  contributes no rows at all.
 - A row no installed plugin provides renders disabled with `— source unavailable` and can never be
   ticked. Selecting one anyway — from a preset, a scripted answer — leaves it out of the install
   and reports it under "Selections Aura could not apply"; every other selection is still applied.
@@ -544,6 +596,19 @@ leads it as an unnumbered record block; the numbers below count only what a tick
 ### Skills step
 
 A picker over every allowed skill source, then one Review form per selected remote skill.
+
+- A trusted repository's `.aura/skills/<id>/` trees are offered as their own source,
+  `repo:workspace`, named `This repository`. Its rows lead the installable rows — after the
+  leading unavailable/truncated source rows and the `Skill packs` group, ahead of every other
+  source's entries. Each row previews the SKILL.md captured in the trusted snapshot; installs
+  copy that snapshot's bytes, never a re-read. The source flows through `allowedSkillSources`
+  like any other (`repo:workspace` must be permitted where an allowlist is in force). A skill
+  selection the repository preset makes is labelled `(from repo)` and arrives pre-selected the
+  way team-preset selections do. **The first install of a repository skill always passes the
+  Review form, and Skip stays the initial answer** — the trees arrive by cloning, not by anything
+  the user selected, so "local files" earns no exemption here; a `--yes` run can only re-apply
+  repository skills the manifest already records, and a tree whose content moved re-asks at
+  Review. An untrusted repository contributes no source and no rows.
 
 - Plugin drivers are lazy and use `driver:<namespaced-id>`. Aura never calls them during a
   workspace scan, `check`, `setup --yes`, or the post-setup rescan. Interactive setup lists a driver
@@ -691,11 +756,15 @@ entries — the rest cannot be listed until the catalog narrows upstream`). Trun
 A picker over every catalog and configured MCP server, then one form per selected server
 capturing its name, scope, and applications. Runs after Skills, before Baseline.
 
-- Rows merge three sources: catalog definitions contributed by installed plugins, entries the
-  manifest already records, and custom servers added during the step. A row's description names
-  its provenance (`Plugin: Aura Official Content`, or `Custom server`), and its label carries what
-  the run knows about it — `(preset required)`, `(configured)`, `(custom)`. Required rows sort
-  first, then configured ones, then the rest by name.
+- Rows merge four sources: catalog definitions contributed by installed plugins, definitions a
+  trusted repository preset provides inline (`provides.mcpServers`, ids namespaced `repo/<name>`),
+  entries the manifest already records, and custom servers added during the step. A row's
+  description names its provenance (`Plugin: Aura Official Content`,
+  `Repository: .aura/preset.json`, or `Custom server`), and its label carries what the run knows
+  about it — `(from preset, required)`, `(from repo, required)`, `(from repo)`, `(configured)`,
+  `(custom)`. Required rows sort first (whoever required them), then the repository's own
+  definitions, then configured ones, then the rest by name — the repository leads the optional
+  block without outranking a requirement it did not make.
 - The last row is always `Add a custom server…`. Choosing it opens the transport forms — a select
   between `Command (stdio)` and `Remote URL (HTTP)`, then the fields for that transport — and
   returns to the same picker with the new row checked. A catalog row never asks for a transport:
@@ -720,7 +789,12 @@ capturing its name, scope, and applications. Runs after Skills, before Baseline.
   more; the unmet requirement becomes a blocker naming the interactive run
   (`Required MCP catalog entry official/github is not configured yet. Run setup interactively…`).
   This is the skills-step rule applied to a credential-bearing remote endpoint: a non-interactive
-  run never first-configures one on a repository's say-so.
+  run never first-configures one on a repository's say-so. The same rule covers repository
+  definitions exactly: a repository may require its own server by listing `repo/<name>` in
+  `requiredMcpServers` — interactively that row opens pre-checked at the very top; under `--yes`
+  it is the same named blocker, never a silent install. A provided-but-not-required repo row is
+  never pre-checked; it merely leads the optional rows. A repository server's configure form
+  proposes `project` scope — its reason to exist is this repository — which the user can widen.
 - Interactively, clearing a required row asks for one explicit confirmation
   (`Override the team preset on this machine and omit official/github?`), and re-checking the row
   clears the override. Only a run that resolved the preset rewrites the recorded overrides, so an

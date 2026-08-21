@@ -55,6 +55,70 @@ describe("MCP setup catalog", () => {
     expect(catalog.entries[1]).toMatchObject({ existing: { name: "local-docs" } });
   });
 
+  it("sorts required first, then repository definitions, then configured, then by name", () => {
+    const alpha = definition("official/alpha", "Alpha", "alpha");
+    const github = definition("official/github", "GitHub", "github");
+    const repoDocs = definition("repo/docs", "Repo Docs", "repo-docs");
+    const manifest: WorkspaceModel["manifest"] = {
+      exists: true,
+      path: "/home/dev/agents/aura.json",
+      status: "ready",
+      value: {
+        apps: {},
+        mcpServers: [
+          {
+            apps: ["codex"],
+            name: "local-docs",
+            scope: "global",
+            transport: { command: "docs", type: "stdio" },
+          },
+        ],
+        ownership: {},
+        schemaVersion: 1,
+        skills: [],
+        snippets: [],
+      },
+    };
+    const model = createWorkspaceModel({
+      availableMcpServers: [alpha, github, repoDocs],
+      manifest,
+      sharedInstructions: { exists: false, path: "/home/dev/agents/AGENTS.md" },
+    });
+
+    const catalog = createMcpSetupCatalog({
+      model,
+      preset: { requiredMcpServers: ["official/github"], schemaVersion: 1 },
+      registry: createPluginRegistry([]),
+    });
+
+    expect(catalog.entries.map(mcpCatalogEntryName)).toEqual([
+      "GitHub",
+      "Repo Docs",
+      "local-docs",
+      "Alpha",
+    ]);
+    expect(catalog.entries[1]).toMatchObject({ repo: true, sourceName: undefined });
+  });
+
+  it("keeps a repo-required definition at the very top with both flags", () => {
+    const repoDocs = definition("repo/docs", "Repo Docs", "repo-docs");
+    const alpha = definition("official/alpha", "Alpha", "alpha");
+    const model = createWorkspaceModel({
+      availableMcpServers: [alpha, repoDocs],
+      manifest: { exists: false, path: "/home/dev/agents/aura.json", status: "missing" },
+      sharedInstructions: { exists: false, path: "/home/dev/agents/AGENTS.md" },
+    });
+
+    const catalog = createMcpSetupCatalog({
+      model,
+      preset: { requiredMcpServers: ["repo/docs"], schemaVersion: 1 },
+      registry: createPluginRegistry([]),
+    });
+
+    expect(catalog.entries.map(mcpCatalogEntryName)).toEqual(["Repo Docs", "Alpha"]);
+    expect(catalog.entries[0]).toMatchObject({ repo: true, required: true });
+  });
+
   it("reports required catalog ids that did not resolve", () => {
     const model = createWorkspaceModel({
       manifest: { exists: false, path: "/home/dev/agents/aura.json", status: "missing" },

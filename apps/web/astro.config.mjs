@@ -31,6 +31,10 @@ export default defineConfig({
         {
           label: "Guides",
           items: [
+            {
+              label: "Share repository-provided content",
+              slug: "docs/guides/repository-provided-content",
+            },
             { label: "Author a distribution", slug: "docs/guides/distributions" },
             {
               label: "Build an internal distribution",

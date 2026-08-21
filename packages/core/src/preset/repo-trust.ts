@@ -1,6 +1,6 @@
-import { isAbsolute, join, relative } from "node:path";
+import { dirname, isAbsolute, join, relative } from "node:path";
 
-import type { AuraManifest, AuraTeamPreset, Environment } from "@tryaura/aura-sdk";
+import type { AuraManifest, AuraTeamPreset, Environment, RepoContentSet } from "@tryaura/aura-sdk";
 
 import { hashContent } from "../content-hash.js";
 import type { ScanDiagnostic } from "../workspace/diagnostics.js";
@@ -8,6 +8,13 @@ import { findGitMainWorktreeRoot, findProjectRoot } from "../workspace/project-r
 import { createFileReader, type FileReader } from "../workspace/reader.js";
 import { resolveTeamPresetPath } from "./protocol.js";
 import { readTeamPreset } from "./read.js";
+import { readRepoContent } from "./repo-content.js";
+
+/** Selects which repository-authored content a caller needs beyond the trust hash. */
+export interface RepoPresetReadOptions {
+  /** Skill trees are omitted by read-only commands that never install them. */
+  readonly includeSkills?: boolean | undefined;
+}
 
 /**
  * The identities one repository preset may have been trusted under.
@@ -32,8 +39,20 @@ export interface RepoPresetIdentity {
 
 /** The repository preset file as read for this run, before any trust decision. */
 export interface RepoPresetState extends RepoPresetIdentity {
+  /**
+   * Repository content requested by the caller, read alongside the preset.
+   *
+   * This snapshot is what catalogs and planners consume; nothing repo-defined is ever re-read
+   * from disk after this point, so the bytes the trust hash covered are the bytes a run applies.
+   */
+  readonly contentSet?: RepoContentSet | undefined;
   readonly diagnostics: readonly ScanDiagnostic[];
-  /** Present only when the file was readable and valid. */
+  /**
+   * Present only when the file and its content set were readable and valid.
+   *
+   * Covers the preset text and every snippet body: with no snippets it is exactly the preset's
+   * own {@link hashRepoPreset}, so existing trust records keep matching.
+   */
   readonly hash?: string | undefined;
   readonly preset?: AuraTeamPreset | undefined;
   readonly status: "invalid" | "missing" | "ready";
@@ -53,6 +72,7 @@ export function hashRepoPreset(content: string): string {
 export async function readRepoPreset(
   environment: Environment,
   reader: FileReader = createFileReader(),
+  options: RepoPresetReadOptions = {},
 ): Promise<RepoPresetState> {
   // One filesystem spelling, as the workspace scan does for its own roots: a trust record outlives
   // the run that wrote it, and `/tmp` and `/private/tmp` naming the same file must compare equal.
@@ -62,10 +82,25 @@ export async function readRepoPreset(
   if (state.status !== "ready" || state.preset === undefined || state.content === undefined) {
     return { diagnostics: state.diagnostics, path, status: state.status };
   }
+  const content = await readRepoContent(
+    dirname(path),
+    state.preset,
+    state.content,
+    reader,
+    options,
+  );
+  if (content.status === "invalid") {
+    return {
+      diagnostics: [...state.diagnostics, ...content.diagnostics],
+      path,
+      status: "invalid",
+    };
+  }
   const mainWorktreePath = await resolveMainWorktreePresetPath(cwd, path, reader);
   return {
-    diagnostics: state.diagnostics,
-    hash: hashRepoPreset(state.content),
+    contentSet: content.contentSet,
+    diagnostics: [...state.diagnostics, ...content.diagnostics],
+    hash: content.hash,
     ...(mainWorktreePath === undefined ? {} : { mainWorktreePath }),
     path,
     preset: state.preset,

@@ -4,22 +4,24 @@ import type {
   AuraManifestState,
   AuraTeamPreset,
   Environment,
+  RepoContentSet,
+  WorkspaceModel,
 } from "@tryaura/aura-sdk";
 import {
   AURA_TEAM_PRESET_PATH,
   isRepoPresetTrusted,
   loadTeamPreset,
   readRepoPreset,
+  repoMcpServerDefs,
   resolveEffectiveConfig,
   type PluginRegistry,
 } from "@tryaura/core";
 
 export interface RuntimeConfigInput {
   /**
-   * Hash of repository preset contents the user accepted earlier in this run.
+   * Hash of the repository snapshot the user accepted earlier in this run.
    *
-   * A hash rather than a boolean so the layer applies only when the file still holds exactly what
-   * the user saw — a write racing the prompt falls back to untrusted instead of winning consent.
+   * A hash rather than a boolean ties consent to the same immutable snapshot configuration uses.
    */
   readonly acceptedRepoPresetHash?: string | undefined;
   readonly cliLayer?: AuraConfigurationLayer | undefined;
@@ -37,14 +39,25 @@ export interface RuntimeConfigInput {
    */
   readonly online?: boolean | undefined;
   readonly registry: PluginRegistry;
+  /** Pre-read setup snapshot, reused so consent and configuration consume identical bytes. */
+  readonly repoPresetState?: Awaited<ReturnType<typeof readRepoPreset>> | undefined;
 }
 
 /** How this run treated the repository's `.aura/preset.json`, absent when no file exists. */
-interface RuntimeRepoPreset {
+export interface RuntimeRepoPreset {
+  /**
+   * The repository's content snapshot, present only when the layer applied.
+   *
+   * Held means invisible: an untrusted repository contributes no snippet, skill, or MCP rows,
+   * so the snapshot is deliberately withheld rather than passed along "for display".
+   */
+  readonly contentSet?: RepoContentSet | undefined;
   readonly hash: string;
   /** Same path in the primary Git checkout, present only inside a linked worktree. */
   readonly mainWorktreePath?: string | undefined;
   readonly path: string;
+  /** The applied preset document itself, for the selection lists steps label `(from repo)`. */
+  readonly preset?: AuraTeamPreset | undefined;
   readonly status: "applied" | "held";
 }
 
@@ -82,7 +95,9 @@ export async function resolveRuntimeConfig(
   if (loaded.status === "invalid") {
     return loaded;
   }
-  const repo = await readRepoPreset(input.environment);
+  const repo =
+    input.repoPresetState ??
+    (await readRepoPreset(input.environment, undefined, { includeSkills: false }));
   if (repo.status === "invalid") {
     // A broken repository preset fails closed: proceeding without it would silently widen
     // whatever the file was written to lock down.
@@ -99,7 +114,11 @@ export async function resolveRuntimeConfig(
     checks: input.registry.checks,
     cli: input.cliLayer,
     distro: input.defaults,
-    knownMcpServers: new Set(input.registry.mcpServers.map((server) => server.id)),
+    knownMcpServers: new Set([
+      ...input.registry.mcpServers.map((server) => server.id),
+      // A trusted repository may require the servers it provides itself.
+      ...(repoTrusted ? (repo.preset?.provides?.mcpServers ?? []).map((server) => server.id) : []),
+    ]),
     ...(manifest === undefined
       ? {}
       : {
@@ -138,22 +157,53 @@ export async function resolveRuntimeConfig(
     : undefined;
   return {
     config: resolved.config,
-    notes: loaded.status === "ready" ? loaded.notes : [],
+    notes: [
+      ...(loaded.status === "ready" ? loaded.notes : []),
+      // Repository skill trees that could not be offered; non-fatal by design.
+      ...(repoTrusted ? repo.diagnostics.map((diagnostic) => diagnostic.message) : []),
+    ],
     ...(policyPreset === undefined ? {} : { preset: policyPreset }),
     presetOrigin:
       loaded.status === "ready" ? loaded.origin : (policyPreset?.name ?? AURA_TEAM_PRESET_PATH),
     ...(repo.status === "ready" && repo.hash !== undefined
       ? {
           repoPreset: {
+            ...(repoTrusted && repo.contentSet !== undefined
+              ? { contentSet: repo.contentSet }
+              : {}),
             hash: repo.hash,
             ...(repo.mainWorktreePath === undefined
               ? {}
               : { mainWorktreePath: repo.mainWorktreePath }),
             path: repo.path,
+            ...(repoTrusted && repo.preset !== undefined ? { preset: repo.preset } : {}),
             status: repoTrusted ? "applied" : "held",
           },
         }
       : {}),
     status: "ready",
   };
+}
+
+/**
+ * Adds a trusted repository's provided MCP definitions to the model's catalog.
+ *
+ * Run before {@link applyRequiredMcpServers} projection wherever a model is projected, so a
+ * repository can require a server it defines itself. A held repository changes nothing.
+ */
+export function withRepoMcpCatalog(
+  model: WorkspaceModel,
+  repoPreset: RuntimeRepoPreset | undefined,
+): WorkspaceModel {
+  const servers = repoPreset?.status === "applied" ? (repoPreset.contentSet?.mcpServers ?? []) : [];
+  if (servers.length === 0 || repoPreset === undefined) {
+    return model;
+  }
+  return Object.freeze({
+    ...model,
+    availableMcpServers: Object.freeze([
+      ...model.availableMcpServers,
+      ...repoMcpServerDefs(servers, repoPreset.path),
+    ]),
+  });
 }

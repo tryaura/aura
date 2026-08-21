@@ -87,15 +87,7 @@ async function gatherApprovedSkills(
     return emptyCatalogOutcome(context);
   }
 
-  const inputs: SkillStageInputs = {
-    approvedPrivateSourceIds,
-    availableSkills: context.model.availableSkills ?? [],
-    catalog: context.skillCatalog,
-    listing,
-    managedApps: managedSkillApps(context),
-    manifestSkills,
-    presetSkills: context.preset?.skills ?? [],
-  };
+  const inputs = stageInputs(context, approvedPrivateSourceIds, listing, manifestSkills);
   const opening = openingSelection(context, inputs, manifestSkills);
   noteHeldBack(inputs, io, opening.heldBack);
   const result = await runFormChain(skillStages(inputs), opening.state, io, {
@@ -134,6 +126,29 @@ function noteHeldBack(
 
 function recordedSkills(context: SetupStepContext): readonly AuraManifestSkill[] {
   return context.manifest.status === "ready" ? context.manifest.value.skills : [];
+}
+
+/** Everything the picker/review chain reads, with the repository selections folded in. */
+function stageInputs(
+  context: SetupStepContext,
+  approvedPrivateSourceIds: ReadonlySet<string>,
+  listing: Awaited<ReturnType<SetupStepContext["skillCatalog"]["load"]>>,
+  manifestSkills: readonly AuraManifestSkill[],
+): SkillStageInputs {
+  const repoSelections = context.repoPreset?.preset?.skills ?? [];
+  return {
+    approvedPrivateSourceIds,
+    availableSkills: context.model.availableSkills ?? [],
+    catalog: context.skillCatalog,
+    listing,
+    managedApps: managedSkillApps(context),
+    manifestSkills,
+    presetSkills: [...(context.preset?.skills ?? []), ...repoSelections],
+    repoSelectedIdentities: new Set(
+      repoSelections.map((skill) => skillIdentity(skill.source, skill.id)),
+    ),
+    repoSkills: context.repoPreset?.contentSet?.skills ?? [],
+  };
 }
 
 function emptyCatalogOutcome(context: SetupStepContext): SetupStepUnoffered | typeof SETUP_BACK {

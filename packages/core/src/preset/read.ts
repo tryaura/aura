@@ -52,7 +52,9 @@ export async function readTeamPreset(cwd: string, reader: FileReader): Promise<T
     return failure(path, "is not valid JSON");
   }
 
-  const result = validateTeamPreset(parsed);
+  // The repository preset is the one origin allowed to author content: its bytes are what the
+  // trust prompt hashes and shows, so `provides` here is exactly what the user consented to.
+  const result = validateTeamPreset(parsed, { allowProvides: true });
   if (result.kind === "invalid") {
     return failure(path, `is not a valid team preset (${result.problem})`);
   }

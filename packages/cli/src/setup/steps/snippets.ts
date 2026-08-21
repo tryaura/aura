@@ -31,7 +31,12 @@ export const snippetsStep: SetupStep = {
       return emptyCatalogOutcome(context, io);
     }
 
-    const options = snippetOptions(catalog, installed, new Set(context.preset?.snippets ?? []));
+    const options = snippetOptions(
+      catalog,
+      installed,
+      new Set(context.preset?.snippets ?? []),
+      new Set(context.repoPreset?.preset?.snippets ?? []),
+    );
     const selectable = new Set(
       options.filter((option) => option.disabled !== true).map((option) => option.value),
     );
@@ -90,18 +95,27 @@ const RECORD_NOTE = "Aura keeps the record; the text stays where it is.";
  * checkbox has anything to do — the row is there to report the record, not to be answered with.
  * Gathering those rows under one heading is what lets the numbers below start at 1 and count only
  * what a tick would change, and it empties out any category whose every snippet is installed.
+ *
+ * Repository rows lead the offered rows: they are this repository's own guidance, which is what a
+ * person running setup inside it most likely came for. Plugin categories keep their sorted order
+ * underneath.
  */
 function snippetOptions(
   catalog: readonly SnippetCatalogEntry[],
   installed: ReadonlySet<string>,
   preset: ReadonlySet<string>,
+  repoSelected: ReadonlySet<string>,
 ): readonly WizardOption[] {
   const sorted = sortForDisplay(catalog, (entry) => [entry.category, entry.name, entry.id]);
+  const offered = sorted.filter((entry) => !installed.has(entry.id));
   return [
     ...recordBlock(sorted.filter((entry) => installed.has(entry.id))),
-    ...sorted
-      .filter((entry) => !installed.has(entry.id))
-      .map((entry) => offeredOption(entry, preset)),
+    ...offered
+      .filter((entry) => entry.origin === "repo")
+      .map((entry) => offeredOption(entry, preset, repoSelected)),
+    ...offered
+      .filter((entry) => entry.origin !== "repo")
+      .map((entry) => offeredOption(entry, preset, repoSelected)),
   ];
 }
 
@@ -126,10 +140,19 @@ function recordBlock(entries: readonly SnippetCatalogEntry[]): readonly WizardOp
 }
 
 /** A row a tick would act on, or one disabled because no installed plugin publishes its text. */
-function offeredOption(entry: SnippetCatalogEntry, preset: ReadonlySet<string>): WizardOption {
+function offeredOption(
+  entry: SnippetCatalogEntry,
+  preset: ReadonlySet<string>,
+  repoSelected: ReadonlySet<string>,
+): WizardOption {
+  const selectedBy = repoSelected.has(entry.id)
+    ? " (from repo)"
+    : preset.has(entry.id)
+      ? " (from preset)"
+      : "";
   const base = {
     group: entry.category,
-    label: `${entry.name}${preset.has(entry.id) ? " (from preset)" : ""}`,
+    label: `${entry.name}${selectedBy}`,
     value: entry.id,
     ...(entry.status === "available" ? { preview: entry.content } : {}),
   };
@@ -160,20 +183,21 @@ function snippetsPrompt(options: readonly WizardOption[]): string {
 }
 
 /**
- * What the picker opens with: every installed id, plus this run's answer or the preset.
+ * What the picker opens with: every installed id, plus this run's answer or team-preset defaults.
  *
  * Installed rows are locked, so they are seeded on every visit — there is no earlier answer that
  * could have dropped one. Their `✔` comes from the lock rather than from this seeding, so what it
- * settles is the answer the form reports back, not the checkbox the picker draws. The preset adds
- * only what it can actually contribute: a disabled row opening ticked is an answer `--yes` has no
- * way to take back.
+ * settles is the answer the form reports back, not the checkbox the picker draws. Team-preset
+ * defaults add only what their installed plugins can contribute. Repository rows deliberately
+ * open unticked even when the repository preset selects them: their bodies are arbitrary agent
+ * instructions, so a first install requires a person to select the previewable row explicitly.
  */
 function initialSelection(
   context: SetupStepContext,
   options: readonly WizardOption[],
   installed: ReadonlySet<string>,
 ): readonly string[] {
-  const preset = new Set(context.preset?.snippets ?? []);
+  const selected = new Set(context.preset?.snippets ?? []);
   const chosen = context.selections.snippets;
   const kept = [...installed];
   const added =
@@ -181,7 +205,7 @@ function initialSelection(
     options
       .filter(
         (option) =>
-          option.disabled !== true && !installed.has(option.value) && preset.has(option.value),
+          option.disabled !== true && !installed.has(option.value) && selected.has(option.value),
       )
       .map((option) => option.value);
   return [...kept, ...added];

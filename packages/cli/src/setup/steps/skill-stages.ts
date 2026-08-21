@@ -28,7 +28,12 @@ export interface SkillStageInputs {
   readonly listing: SkillCatalogListing;
   readonly managedApps: readonly ManagedSkillApp[];
   readonly manifestSkills: readonly AuraManifestSkill[];
+  /** Every default-selected skill, from the team preset and the trusted repository together. */
   readonly presetSkills: readonly SkillSelection[];
+  /** Identities the repository preset selected, for the `(from repo)` label. */
+  readonly repoSelectedIdentities: ReadonlySet<string>;
+  /** The trusted repository's skill trees, from the snapshot the trust decision covered. */
+  readonly repoSkills: readonly ResolvedSkillPack[];
 }
 
 export function skillStages(inputs: SkillStageInputs): readonly ChainStage<SkillsChainState>[] {
@@ -38,6 +43,17 @@ export function skillStages(inputs: SkillStageInputs): readonly ChainStage<Skill
 /** A remote identity's install needs a fetch, and therefore the review boundary. */
 export function isRemoteIdentity(identity: string): boolean {
   return identity.startsWith("directory:") || identity.startsWith("driver:");
+}
+
+/**
+ * A repository identity's install needs no fetch, but the review boundary all the same.
+ *
+ * The trees arrive by cloning, not by anything the user selected — "local files" is the bundled
+ * exemption's mechanism, but distribution vouching was its justification, and a checkout has
+ * neither.
+ */
+export function isRepoIdentity(identity: string): boolean {
+  return identity.startsWith("repo:");
 }
 
 /** The typed selection behind each offered identity: catalog entries plus manifest rows. */
@@ -136,7 +152,8 @@ function reviewStage(inputs: SkillStageInputs): ChainStage<SkillsChainState> {
   // Built once for the whole gather: `needsReview` runs on every selected identity for both the
   // progress test and the question list, so re-deriving these per call was quadratic by default.
   const bundled = bundledByIdentity(inputs.availableSkills);
-  const reviewable = (identity: string): boolean => needsReview(identity, recorded, bundled);
+  const repo = bundledByIdentity(inputs.repoSkills);
+  const reviewable = (identity: string): boolean => needsReview(identity, recorded, bundled, repo);
 
   return {
     apply: (state, answers) => ({
@@ -157,7 +174,7 @@ function reviewStage(inputs: SkillStageInputs): ChainStage<SkillsChainState> {
       );
       const resolutionWithBundled: SkillResolution = {
         problems: resolution.problems,
-        resolved: new Map([...resolution.resolved, ...bundled]),
+        resolved: new Map([...resolution.resolved, ...bundled, ...repo]),
       };
       const questions = state.selected
         .filter(reviewable)
@@ -186,9 +203,18 @@ function needsReview(
   identity: string,
   recorded: ReadonlyMap<string, AuraManifestSkill>,
   bundled: ReadonlyMap<string, ResolvedSkillPack>,
+  repo: ReadonlyMap<string, ResolvedSkillPack>,
 ): boolean {
   if (isRemoteIdentity(identity)) {
     return true;
+  }
+  if (isRepoIdentity(identity)) {
+    // First install always reads the tree on screen; afterwards only a moved tree re-asks. A
+    // selected repo skill the snapshot no longer carries has nothing new to install — the
+    // recorded entry converges untouched.
+    const previous = recorded.get(identity);
+    const pack = repo.get(identity);
+    return previous === undefined || (pack !== undefined && movedFrom(previous, pack));
   }
   const previous = recorded.get(identity);
   const available = bundled.get(identity);

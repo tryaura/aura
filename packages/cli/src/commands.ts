@@ -3,7 +3,6 @@ import { Command, Option } from "clipanion/lib/advanced/index.js";
 
 import type { AuraCliContext } from "./cli-context.js";
 import {
-  applyRequiredMcpServers,
   createEnvironment,
   createFileReader,
   enabledChecks,
@@ -16,6 +15,7 @@ import {
   environmentOptions,
   homeOption,
   pathOption,
+  projectConfiguredModel,
   reportUnexpectedFailure,
   writeOptionRejection,
 } from "./command-support.js";
@@ -206,7 +206,7 @@ export class CheckCommand extends Command<AuraCliContext> {
     try {
       const startedAt = environment.now();
       let scan = await scanner.run();
-      let projected = applyRequiredMcpServers(scan.model, configured.config);
+      let projected = projectConfiguredModel(scan.model, configured);
       let model = projected.model;
       let run = runChecks(activeChecks, model, configured.config);
       let fixRunDiagnostics: readonly DiagnosticSource[] = [];
@@ -237,7 +237,7 @@ export class CheckCommand extends Command<AuraCliContext> {
         fixes = outcome.fixes;
         if (outcome.applied) {
           scan = await scanner.run();
-          projected = applyRequiredMcpServers(scan.model, configured.config);
+          projected = projectConfiguredModel(scan.model, configured);
           model = projected.model;
           run = runChecks(activeChecks, model, configured.config);
         }

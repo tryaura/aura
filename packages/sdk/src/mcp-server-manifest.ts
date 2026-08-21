@@ -22,7 +22,6 @@ import type {
 const APP_ID_PATTERN = /^[a-z0-9][a-z0-9._-]*$/u;
 
 /** Parses and validates one plugin MCP catalog JSON payload. */
-// fallow-ignore-next-line complexity -- every branch reports one precise untrusted JSON field.
 export function parseMcpServerManifest(text: string): McpDefinitionResult<McpServerManifest> {
   let value: unknown;
   try {
@@ -30,7 +29,14 @@ export function parseMcpServerManifest(text: string): McpDefinitionResult<McpSer
   } catch {
     return failure("$", "must be valid JSON");
   }
+  return parseMcpServerManifestValue(value);
+}
 
+/** Validates one already-parsed MCP catalog value, as embedded in a repository preset. */
+// fallow-ignore-next-line complexity -- every branch reports one precise untrusted JSON field.
+export function parseMcpServerManifestValue(
+  value: unknown,
+): McpDefinitionResult<McpServerManifest> {
   if (!isMcpDefinitionRecord(value)) {
     return failure("$", "must be an object");
   }

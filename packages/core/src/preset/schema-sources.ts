@@ -40,7 +40,7 @@ export function collectSkills(
       return `${path}.id: must be a kebab-case skill id`;
     }
     if (typeof source !== "string" || !SKILL_SOURCE_ID_PATTERN.test(source)) {
-      return `${path}.source: must be a plugin:, directory:, or driver: source id`;
+      return `${path}.source: must be a plugin:, directory:, driver:, or repo: source id`;
     }
     const identity = `${source}/${id}`;
     if (seen.has(identity)) {
@@ -150,6 +150,9 @@ function toSourceId(id: string): SkillSourceId {
   }
   if (id.startsWith("driver:")) {
     return `driver:${id.slice("driver:".length)}`;
+  }
+  if (id.startsWith("repo:")) {
+    return `repo:${id.slice("repo:".length)}`;
   }
   return `plugin:${id.slice(id.indexOf(":") + 1)}`;
 }

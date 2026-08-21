@@ -336,7 +336,7 @@ describe("Aura manifest protocol", () => {
         snippets: [],
       },
       "$.skills[0].source",
-      "plugin:, directory:, or driver:",
+      "plugin:, directory:, driver:, or repo:",
     ],
     [
       {

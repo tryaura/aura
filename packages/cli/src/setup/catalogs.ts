@@ -2,6 +2,7 @@ import type {
   AuraEffectiveConfig,
   AuraTeamPreset,
   Environment,
+  ResolvedSkillPack,
   WorkspaceModel,
 } from "@tryaura/aura-sdk";
 import type { PluginRegistry } from "@tryaura/core";
@@ -29,6 +30,8 @@ interface SetupCatalogInputs {
   /** Where the active policy came from, in the words a user should see. */
   readonly presetOrigin: string;
   readonly registry: PluginRegistry;
+  /** The trusted repository's skill trees; empty when the repository is untrusted. */
+  readonly repoSkills?: readonly ResolvedSkillPack[] | undefined;
 }
 
 /**
@@ -55,6 +58,7 @@ export function createSetupCatalogs(inputs: SetupCatalogInputs): SetupCatalogs {
       registryDirectories: inputs.registry.skillDirectories,
       registryDrivers: inputs.registry.skillSources,
       registryPresets: inputs.registry.presets,
+      repoSkills: inputs.repoSkills,
     }),
   };
 }

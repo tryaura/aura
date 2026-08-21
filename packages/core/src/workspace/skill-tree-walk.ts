@@ -3,9 +3,9 @@
  *
  * Bundled and already-installed trees are local state Aura itself wrote, so they walk unbounded.
  * A driver-materialized tree is whatever a plugin's driver put on disk — the reviewed origin is a
- * claim, not a guarantee — so it walks under {@link DRIVER_WALK_POLICY}, which caps file size,
- * file count, and total bytes, refuses paths that will not survive a portable filesystem, and
- * refuses two paths that would alias on a case-insensitive one.
+ * claim, not a guarantee — so it walks under {@link DRIVER_WALK_POLICY}, which caps directory
+ * count, file size, file count, and total bytes, refuses paths that will not survive a portable
+ * filesystem, and refuses two paths that would alias on a case-insensitive one.
  */
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
@@ -22,6 +22,8 @@ import { portableSkillFilePathKey, skillFilePathProblem } from "../skills/path-g
 import type { FileReader, PathContents } from "./reader.js";
 
 export interface WalkedTree {
+  /** UTF-8 bytes captured while attempting the walk, including files rejected by policy. */
+  readonly bytesRead: number;
   readonly entries: readonly SharedSkillEntry[];
   readonly files: readonly ResolvedSkillFile[];
   readonly problem?: WalkProblem | undefined;
@@ -32,13 +34,16 @@ interface WalkProblem {
   readonly message: string;
 }
 
-interface WalkPolicy {
+export interface WalkPolicy {
+  readonly maxDirectories: number;
   readonly maxFileBytes: number;
   readonly maxFiles: number;
   readonly maxTotalBytes: number;
 }
 
 interface WalkState {
+  bytesRead: number;
+  directoryCount: number;
   readonly portablePaths: Set<string>;
   totalBytes: number;
 }
@@ -59,6 +64,7 @@ interface WalkRoot {
 
 /** The bounds an untrusted, driver-supplied tree is read under. */
 export const DRIVER_WALK_POLICY: WalkPolicy = Object.freeze({
+  maxDirectories: MAX_SKILL_FILES,
   maxFileBytes: MAX_SKILL_FILE_BYTES,
   maxFiles: MAX_SKILL_FILES,
   maxTotalBytes: MAX_SKILL_RESPONSE_BYTES,
@@ -81,14 +87,24 @@ export async function walkTree(
   root: string,
   reader: FileReader,
   policy?: WalkPolicy,
+  outerBoundary?: string,
 ): Promise<WalkedTree> {
   const files: ResolvedSkillFile[] = [];
   const entries: SharedSkillEntry[] = [];
-  const state: WalkState = { portablePaths: new Set(), totalBytes: 0 };
+  const state: WalkState = {
+    bytesRead: 0,
+    directoryCount: 0,
+    portablePaths: new Set(),
+    totalBytes: 0,
+  };
   const path = resolve(root);
-  const walkRoot: WalkRoot = { boundary: (await reader.realPath(path)) ?? path, path };
+  const walkRoot: WalkRoot = {
+    boundary: outerBoundary ?? (await reader.realPath(path)) ?? path,
+    path,
+  };
   const problem = await walkPath(walkRoot, path, reader, files, entries, state, policy);
   return {
+    bytesRead: state.bytesRead,
     entries: Object.freeze(entries),
     files: Object.freeze(files.sort((left, right) => comparePortablePaths(left.path, right.path))),
     ...(problem === undefined ? {} : { problem }),
@@ -134,6 +150,13 @@ async function walkPath(
     };
   }
   if (contents.entries !== undefined) {
+    if (policy !== undefined && state.directoryCount >= policy.maxDirectories) {
+      return {
+        kind: "too-large",
+        message: `${relativePath || "."} exceeds the skill directory limit`,
+      };
+    }
+    state.directoryCount += 1;
     entries.push({ kind: "directory", path });
     for (const entry of contents.entries) {
       const problem = await walkPath(
@@ -170,6 +193,8 @@ function addFile(
       message: `${relativePath} is not a readable regular file`,
     };
   }
+  const bytes = Buffer.byteLength(contents.content, "utf8");
+  state.bytesRead += bytes;
   if (contents.utf8Valid === false) {
     return {
       kind: "unsupported",
@@ -189,7 +214,6 @@ function addFile(
     if (state.portablePaths.has(portablePath)) {
       return { kind: "unsupported", message: `${relativePath} aliases another skill file` };
     }
-    const bytes = Buffer.byteLength(contents.content, "utf8");
     if (state.totalBytes + bytes > policy.maxTotalBytes) {
       return { kind: "too-large", message: `${relativePath} exceeds the skill size limit` };
     }

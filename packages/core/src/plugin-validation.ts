@@ -145,6 +145,10 @@ export function collectIdentityViolations(state: RegistryState, plugin: AuraPlug
         `or digit.`,
     );
   }
+  if (plugin.id === "repo") {
+    // The namespace repository-defined content lives under; nothing may shadow or be shadowed.
+    state.violations.push(`Plugin "${plugin.name}" declares ID "repo", which is reserved.`);
+  }
 
   if (plugin.name.trim().length === 0) {
     state.violations.push(

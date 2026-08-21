@@ -2,7 +2,9 @@ import type {
   AuraManifestSkill,
   AuraManifestMcpServer,
   AuraManifestState,
+  AuraTeamPreset,
   Finding,
+  RepoContentSet,
   ResolvedSkillPack,
   Scope,
   TelemetrySetupActions,
@@ -186,10 +188,20 @@ export interface SetupRepoPresetContext {
   readonly accepted: boolean;
   /** Check values the repo layer supplied, in the preset policy summary's wording. */
   readonly checkSummary: readonly string[];
+  /**
+   * The repository's content snapshot, present only when the layer applied.
+   *
+   * This is the only source steps and planners read repository content from: applying the
+   * snapshot's bytes rather than a re-read is what keeps "what the trust hash covered" and "what
+   * the run applies" the same thing.
+   */
+  readonly contentSet?: RepoContentSet | undefined;
   readonly hash: string;
   /** Same path in the primary Git checkout, present only inside a linked worktree. */
   readonly mainWorktreePath?: string | undefined;
   readonly path: string;
+  /** The applied preset document, for the selection lists steps label `(from repo)`. */
+  readonly preset?: AuraTeamPreset | undefined;
   /** True once the acceptance is on disk, written before the wizard opened. */
   readonly recorded: boolean;
   readonly status: "applied" | "held";

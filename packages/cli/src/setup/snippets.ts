@@ -4,9 +4,12 @@ import { fileURLToPath } from "node:url";
 
 import { createLimiter, isEmbeddedAssetPath, MAX_SNIPPET_BYTES } from "@tryaura/core";
 
-import type { AuraManifestState, Snippet } from "@tryaura/aura-sdk";
+import type { AuraManifestState, RepoSnippetEntry, Snippet } from "@tryaura/aura-sdk";
 
 export type SnippetCatalogEntry = AvailableSnippetCatalogEntry | UnavailableSnippetCatalogEntry;
+
+/** The picker group every repository-defined snippet renders under. */
+const REPO_SNIPPET_CATEGORY = "From this repository";
 
 /** Bounds simultaneous snippet handles independently of how many contributions a distro ships. */
 const MAX_CONCURRENT_SNIPPET_READS = 24;
@@ -16,6 +19,8 @@ interface SnippetCatalogEntryBase {
   readonly description: string;
   readonly id: string;
   readonly name: string;
+  /** Absent means a plugin contribution; `repo` rows come from the trusted content snapshot. */
+  readonly origin?: "repo" | undefined;
 }
 
 interface AvailableSnippetCatalogEntry extends SnippetCatalogEntryBase {
@@ -45,6 +50,7 @@ export function createSnippetCatalog(
   snippets: readonly Snippet[],
   manifest: AuraManifestState,
   presetIds: readonly string[] = [],
+  repoSnippets: readonly RepoSnippetEntry[] = [],
 ): SnippetCatalog {
   let resolved: readonly SnippetCatalogEntry[] = [];
   let pending: Promise<readonly SnippetCatalogEntry[]> | undefined;
@@ -52,10 +58,12 @@ export function createSnippetCatalog(
   return {
     entries: () => resolved,
     load: () => {
-      pending ??= resolveSnippetCatalog(snippets, manifest, presetIds).then((entries) => {
-        resolved = entries;
-        return entries;
-      });
+      pending ??= resolveSnippetCatalog(snippets, manifest, presetIds, repoSnippets).then(
+        (entries) => {
+          resolved = entries;
+          return entries;
+        },
+      );
       return pending;
     },
   };
@@ -66,8 +74,25 @@ export async function resolveSnippetCatalog(
   snippets: readonly Snippet[],
   manifest: AuraManifestState,
   presetIds: readonly string[] = [],
+  repoSnippets: readonly RepoSnippetEntry[] = [],
 ): Promise<readonly SnippetCatalogEntry[]> {
-  const registered = new Set(snippets.map((snippet) => snippet.id));
+  // No read and no failure mode: repository bodies arrive from the trusted in-memory snapshot,
+  // which is the only source a repo snippet may be applied from.
+  const repoEntries = repoSnippets.map((snippet): AvailableSnippetCatalogEntry =>
+    Object.freeze({
+      category: REPO_SNIPPET_CATEGORY,
+      content: snippet.body,
+      description: snippet.description ?? "Defined by this repository.",
+      id: snippet.id,
+      name: snippet.name,
+      origin: "repo" as const,
+      status: "available" as const,
+    }),
+  );
+  const registered = new Set([
+    ...snippets.map((snippet) => snippet.id),
+    ...repoEntries.map((entry) => entry.id),
+  ]);
   const limit = createLimiter(MAX_CONCURRENT_SNIPPET_READS);
   const resolved = await Promise.all(
     snippets.map((snippet) => limit(() => resolveSnippet(snippet))),
@@ -75,6 +100,7 @@ export async function resolveSnippetCatalog(
   const previous = manifest.status === "ready" ? manifest.value.snippets : [];
   const previousIds = new Set(previous.map((entry) => entry.id));
   return Object.freeze([
+    ...repoEntries,
     ...resolved,
     ...previous
       .map((entry) => entry.id)

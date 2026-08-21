@@ -2,7 +2,7 @@ import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import type { AuraManifestState, Snippet } from "@tryaura/aura-sdk";
+import type { AuraManifestState, RepoSnippetEntry, Snippet } from "@tryaura/aura-sdk";
 import { createWorkspaceModel } from "@tryaura/aura-sdk/testing";
 
 import { createSnippetCatalog } from "../snippets.js";
@@ -65,11 +65,18 @@ export async function askedNotes(stepContext: SetupStepContext): Promise<readonl
   return scripted.notes;
 }
 
+/** Repository-defined snippets and the ids the repo preset labels as its selections. */
+export interface RepoFixture {
+  readonly selected?: readonly string[] | undefined;
+  readonly snippets: readonly RepoSnippetEntry[];
+}
+
 export function context(
   snippets: readonly Snippet[],
   manifest: AuraManifestState,
   presetSnippets: readonly string[] = [],
   sharedContent?: string,
+  repo?: RepoFixture,
 ): SetupStepContext {
   return {
     appCatalog: [],
@@ -98,9 +105,31 @@ export function context(
             snippets: presetSnippets,
           },
         }),
+    ...(repo === undefined
+      ? {}
+      : {
+          repoPreset: {
+            accepted: true,
+            checkSummary: [],
+            contentSet: { mcpServers: [], skills: [], snippets: repo.snippets },
+            hash: "f".repeat(64),
+            path: "/workspace/.aura/preset.json",
+            preset: {
+              schemaVersion: 1 as const,
+              ...(repo.selected === undefined ? {} : { snippets: repo.selected }),
+            },
+            recorded: true,
+            status: "applied" as const,
+          },
+        }),
     selections: {},
     skillCatalog: emptySkillCatalog(),
-    snippetCatalog: createSnippetCatalog(snippets, manifest, presetSnippets),
+    snippetCatalog: createSnippetCatalog(
+      snippets,
+      manifest,
+      [...presetSnippets, ...(repo?.selected ?? [])],
+      repo?.snippets ?? [],
+    ),
   };
 }
 
