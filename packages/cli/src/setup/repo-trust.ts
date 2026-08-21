@@ -2,8 +2,8 @@ import type {
   AuraManifest,
   AuraManifestState,
   AuraManifestTrustedRepoPreset,
-  AuraTeamPreset,
   Environment,
+  RepoContentSet,
 } from "@tryaura/aura-sdk";
 import {
   AURA_TEAM_PRESET_PATH,
@@ -14,6 +14,7 @@ import {
 
 import { safe } from "../safe-text.js";
 import { presetCheckSummary } from "./preset-policy.js";
+import { hasRepoContent, repoPresetTrustPreview } from "./repo-trust-preview.js";
 import type { RuntimeConfigResult } from "../runtime-config.js";
 import type { SetupRepoPresetContext } from "./types.js";
 import type { WizardIo } from "./wizard-types.js";
@@ -39,8 +40,10 @@ export async function establishRepoPresetTrust(options: {
   readonly interactive: boolean;
   readonly io: WizardIo;
   readonly manifest: AuraManifestState;
+  /** Snapshot boot already read, reused through the trust decision. */
+  readonly repoPresetState?: Awaited<ReturnType<typeof readRepoPreset>> | undefined;
 }): Promise<RepoPresetTrustOutcome> {
-  const repo = await readRepoPreset(options.environment);
+  const repo = options.repoPresetState ?? (await readRepoPreset(options.environment));
   if (repo.status !== "ready" || repo.hash === undefined) {
     return { kind: "resolved" };
   }
@@ -52,11 +55,11 @@ export async function establishRepoPresetTrust(options: {
   const name = repo.preset?.name;
   options.io.note(
     name === undefined
-      ? `This repository provides a preset at ${AURA_TEAM_PRESET_PATH}.`
-      : `This repository provides the preset "${safe(name)}" at ${AURA_TEAM_PRESET_PATH}.`,
+      ? `Repository preset — ${AURA_TEAM_PRESET_PATH}`
+      : `Repository preset "${safe(name)}" — ${AURA_TEAM_PRESET_PATH}`,
   );
   if (repo.preset !== undefined) {
-    options.io.note(repoPresetTrustPreview(repo.preset));
+    options.io.note(repoPresetTrustPreview(repo.preset, repo.contentSet));
   }
   if (repo.mainWorktreePath !== undefined) {
     options.io.note(
@@ -66,11 +69,7 @@ export async function establishRepoPresetTrust(options: {
   // Keyed on this file alone: "changed since you trusted it" is only true of the file the user is
   // looking at, and a sibling worktree carrying different contents is a first sighting.
   const changed = (manifest?.trustedRepoPresets ?? []).some((entry) => entry.path === repo.path);
-  const confirmation = await options.io.confirm(
-    changed
-      ? `The repository preset at ${AURA_TEAM_PRESET_PATH} changed since you trusted it. Trust the new contents?`
-      : `Trust the repository preset at ${AURA_TEAM_PRESET_PATH}? Its settings apply to every Aura run in this repository until the file changes.`,
-  );
+  const confirmation = await options.io.confirm(trustPrompt(changed, repo.contentSet));
   if (confirmation === "aborted") {
     return { kind: "aborted" };
   }
@@ -79,62 +78,28 @@ export async function establishRepoPresetTrust(options: {
     : { kind: "resolved" };
 }
 
-/** Security-relevant capabilities shown before repository-controlled settings are accepted. */
-function repoPresetTrustPreview(preset: AuraTeamPreset): string {
-  const settings = [
-    checksPreview(preset.checks),
-    listPreview("Required MCP servers", preset.requiredMcpServers),
-    listPreview("Allowed skill sources", preset.allowedSkillSources),
-    ...(preset.skillDirectories ?? []).map(directoryPreview),
-    listPreview(
-      "Selected skills",
-      preset.skills?.map((skill) => `${skill.source}/${skill.id}`),
-    ),
-    listPreview("Selected snippets", preset.snippets),
-  ].filter((line) => line !== undefined);
-  return [
-    "Review these repository-controlled settings before trusting:",
-    ...(settings.length === 0 ? ["No check, MCP, skill, or snippet settings."] : settings),
-  ].join("\n");
-}
-
-/** The exact check settings the repository preset asks the user to trust. */
-function checksPreview(checks: AuraTeamPreset["checks"]): string | undefined {
-  if (checks === undefined) {
-    return undefined;
+/**
+ * The question itself, short because the note above it already named the file and its contents.
+ *
+ * The two-tier contract rides here rather than in the summary: a preset that only carries policy
+ * installs nothing either way, so promising a later tick would be noise in the one line the user
+ * is certain to read.
+ */
+function trustPrompt(changed: boolean, contentSet: RepoContentSet | undefined): string {
+  if (changed) {
+    return "The preset changed since you trusted it. Trust the new contents?";
   }
-  const settings = [
-    ...(checks.disabled ?? []).map((id) => `${safe(id)}: disabled`),
-    ...(checks.enabled ?? []).map((id) => `${safe(id)}: enabled`),
-    ...Object.entries(checks.severity ?? {}).map(
-      ([id, severity]) => `${safe(id)}: severity ${safe(severity)}`,
-    ),
-    ...Object.entries(checks.thresholds ?? {}).map(
-      ([id, thresholds]) => `${safe(id)}: thresholds ${safe(JSON.stringify(thresholds))}`,
-    ),
-  ].sort();
-  return `Checks: ${settings.length === 0 ? "(none)" : settings.join("; ")}`;
-}
-
-function directoryPreview(source: NonNullable<AuraTeamPreset["skillDirectories"]>[number]): string {
-  const token = source.kind === "private-directory" ? `; token ${safe(source.tokenEnv)}` : "";
-  return `Skill directory: ${safe(source.name)} — ${safe(source.url)}${token}`;
-}
-
-function listPreview(label: string, values: readonly string[] | undefined): string | undefined {
-  return values === undefined ? undefined : `${label}: ${listValues(values)}`;
-}
-
-function listValues(values: readonly string[]): string {
-  return values.length === 0 ? "(none)" : values.map(safe).join(", ");
+  return hasRepoContent(contentSet)
+    ? "Trust it? Nothing installs until you pick it; applies to every run here until the file changes."
+    : "Trust it? Applies to every run here until the file changes.";
 }
 
 /**
  * Whether this run's prompt accepted exactly the contents the resolved layer applied.
  *
- * The two reads of the file — the prompt's and configuration resolution's — are independent, so a
- * write that lands between them leaves the layer held. Recording trust for a layer that did not
- * apply would claim consent for settings this run never used.
+ * Boot passes one immutable snapshot through the prompt and configuration resolution. Comparing
+ * hashes here keeps this helper correct for direct callers too: trust is recorded only for the
+ * layer this run actually applied.
  */
 export function acceptedRepoPreset(
   configured: Extract<RuntimeConfigResult, { status: "ready" }>,
@@ -158,9 +123,11 @@ export function setupRepoPresetContext(
     accepted: acceptedRepoPreset(configured, acceptedHash),
     checkSummary:
       repo.status === "applied" ? presetCheckSummary(configured.config, "repo") : Object.freeze([]),
+    ...(repo.contentSet === undefined ? {} : { contentSet: repo.contentSet }),
     hash: repo.hash,
     ...(repo.mainWorktreePath === undefined ? {} : { mainWorktreePath: repo.mainWorktreePath }),
     path: repo.path,
+    ...(repo.preset === undefined ? {} : { preset: repo.preset }),
     recorded,
     status: repo.status,
   });

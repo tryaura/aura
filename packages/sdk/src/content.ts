@@ -150,7 +150,11 @@ export interface SkillSourceDriver {
 }
 
 /** Stable provenance carried by resolved packs and manifest selections. */
-export type SkillSourceId = `directory:${string}` | `driver:${string}` | `plugin:${string}`;
+export type SkillSourceId =
+  | `directory:${string}`
+  | `driver:${string}`
+  | `plugin:${string}`
+  | `repo:${string}`;
 
 /** A plugin's bundled skill collection. */
 export interface BundledSkillSource {
@@ -189,6 +193,21 @@ export interface DriverSkillSource {
   readonly name: string;
 }
 
+/**
+ * The invoking repository's own `.aura/skills` directory.
+ *
+ * Offered only after the user trusts the repository's `.aura/preset.json`, and every first
+ * install still passes the on-screen review: the trees arrive by cloning, not by anything the
+ * user selected.
+ */
+export interface RepoSkillSource {
+  readonly id: Extract<SkillSourceId, `repo:${string}`>;
+  readonly kind: "repo";
+  readonly name: string;
+  /** Absolute path of the repository skills directory. */
+  readonly path: string;
+}
+
 /** A remote skill directory Aura's built-in client can talk to. Pure config, never code. */
 export type DirectorySkillSource = PrivateDirectorySkillSource | StandardDirectorySkillSource;
 
@@ -197,6 +216,7 @@ export type SkillSource =
   | BundledSkillSource
   | DriverSkillSource
   | PrivateDirectorySkillSource
+  | RepoSkillSource
   | StandardDirectorySkillSource;
 
 /** One normalized UTF-8 file in a resolved skill pack. */

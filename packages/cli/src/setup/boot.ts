@@ -4,13 +4,20 @@ import {
   buildWorkspaceModel,
   createFileReader,
   enabledChecks,
+  isRepoPresetTrusted,
   readAuraManifest,
+  readRepoPreset,
   resolveAuraManifestPath,
   type RequiredMcpProjection,
   type WorkspaceScan,
 } from "@tryaura/core";
 
-import { resolveRuntimeConfig, type RuntimeConfigResult } from "../runtime-config.js";
+import {
+  resolveRuntimeConfig,
+  withRepoMcpCatalog,
+  type RuntimeConfigResult,
+  type RuntimeRepoPreset,
+} from "../runtime-config.js";
 import { establishRepoPresetTrust } from "./repo-trust.js";
 import { trackBootScan } from "./scan-loading.js";
 import type { SetupRequest } from "./setup.js";
@@ -64,11 +71,23 @@ export async function bootSetup(
   if (manifest.status === "read-only") {
     return { message: manifest.problem.message, status: "invalid" };
   }
+  const initialRepoPreset = await readRepoPreset(environment, undefined, {
+    includeSkills: request.interactive,
+  });
+  const manifestValue = manifest.status === "ready" ? manifest.value : undefined;
+  const repoPresetState =
+    !request.interactive &&
+    initialRepoPreset.status === "ready" &&
+    initialRepoPreset.hash !== undefined &&
+    isRepoPresetTrusted(manifestValue, initialRepoPreset, initialRepoPreset.hash)
+      ? await readRepoPreset(environment)
+      : initialRepoPreset;
   const trust = await establishRepoPresetTrust({
     environment,
     interactive: request.interactive,
     io: request.io,
     manifest,
+    repoPresetState,
   });
   if (trust.kind === "aborted") {
     return { status: "aborted" };
@@ -97,6 +116,7 @@ export async function bootSetup(
     // preset reference is not the thing that puts this command online.
     online: true,
     registry: request.registry,
+    repoPresetState,
   });
   if (configured.status === "invalid") {
     scanCancellation.abort();
@@ -104,10 +124,16 @@ export async function bootSetup(
   }
 
   const scan = await settleScan(request.io);
-  // After resolution, because only then is it known whether the layer the prompt described is the
-  // layer this run applied — a file rewritten between the two reads leaves it held.
+  // After resolution, because only then is it known whether the accepted snapshot became the
+  // applied layer. The same snapshot fed both stages, so a later filesystem write cannot win the
+  // consent decision or change what this run plans.
   const trusted = await bootRepoPresetTrust(request, configured, trust.acceptedHash, scan);
-  const projected = applyRequiredMcpServers(trusted.scan.model, configured.config);
+  // Repository-provided MCP definitions join the catalog before requirement projection, so a
+  // repository can require a server it defines itself.
+  const projected = applyRequiredMcpServers(
+    withRepoMcpCatalog(trusted.scan.model, configured.repoPreset),
+    configured.config,
+  );
   return {
     activeChecks: enabledChecks(request.registry.checks, configured.config),
     configured,
@@ -128,8 +154,12 @@ export async function bootSetup(
 export function projectRescan(
   rescanned: WorkspaceScan,
   config: AuraEffectiveConfig,
+  repoPreset: RuntimeRepoPreset | undefined,
 ): WorkspaceScan {
-  const projection = applyRequiredMcpServers(rescanned.model, config);
+  const projection = applyRequiredMcpServers(
+    withRepoMcpCatalog(rescanned.model, repoPreset),
+    config,
+  );
   return {
     ...rescanned,
     diagnostics: [...rescanned.diagnostics, ...projection.diagnostics],

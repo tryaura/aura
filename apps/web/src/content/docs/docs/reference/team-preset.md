@@ -104,6 +104,66 @@ changes do not update or remove their text. Existing managed skills stay at thei
 until an interactive review accepts the displayed one. Non-interactive setup never changes managed
 skills, and the summary lists the skill changes it held back.
 
+## Repository-provided content
+
+The repository layer is the one preset origin that may _define_ content rather than only select
+what installed plugins publish. Three shapes are read, all gated behind the same trust decision:
+
+Follow [Share content from a repository](/docs/guides/repository-provided-content/) for a
+copyable, end-to-end setup using all three entity types.
+
+```
+.aura/
+  preset.json          # may add provides.mcpServers (inline definitions)
+  snippets/<id>.md     # auto-discovered; optional frontmatter (name, description); body = rest
+  skills/<id>/SKILL.md # auto-discovered skill trees
+```
+
+- **Snippets** are discovered from `.aura/snippets/*.md`. The file stem must be kebab-case and
+  becomes the id `repo/<stem>`; optional YAML frontmatter supplies `name` and `description`. The
+  trust hash covers the preset file _plus every snippet body_, so any snippet edit re-asks
+  consent. Listing `"repo/<stem>"` in the preset's `snippets` array labels it `(from repo)`, but
+  repository rows always open unticked: arbitrary agent instructions require an explicit
+  interactive selection before their first install, and `--yes` never appends them. In the picker,
+  repository snippets lead the offered rows under `From this repository`. A broken snippet set
+  (unreadable, oversized, symlinked, or badly named file) fails the run closed. At most 64 snippets
+  are read.
+- **Skills** are discovered from `.aura/skills/<id>/` (kebab-case directory names, each with a
+  `SKILL.md`; frontmatter supplies name, description, and version). They are offered as the
+  skill source `repo:workspace`, named `This repository`, whose rows lead the installable rows in
+  the picker. Skill trees sit _outside_ the trust hash: they are offers, and the per-skill Review
+  form (default Skip) gates every first install and every content change — a `--yes` run only
+  re-applies repository skills the manifest already records. The source participates in
+  `allowedSkillSources` like any other; pre-select one with
+  `{ "id": "<id>", "source": "repo:workspace" }` in `skills`. Installs copy the trusted
+  snapshot's bytes into `~/agents/skills/<id>` and link apps to it as usual. Broken trees earn a
+  note and drop out. At most 32 skills are read, under the same per-skill file and size bounds as
+  fetched skills.
+- **MCP servers** live inline in the preset under `provides.mcpServers`, as full catalog
+  definitions (the `McpServerManifest` shape) whose ids must be namespaced `repo/<name>` — the
+  `repo` namespace is reserved against plugins. Inline is deliberate: the command line or
+  endpoint is covered by the preset file's own hash and is spelled out verbatim in the trust
+  prompt. Provided servers sort ahead of the optional rows in the MCP picker with the provenance
+  `Repository: .aura/preset.json`, propose `project` scope, and are never pre-checked on their
+  own. A repository may require its own server by also listing `repo/<name>` in
+  `requiredMcpServers`: interactively that pre-checks the row at the top; non-interactively it is
+  a named blocker, never a silent install. At most 16 definitions are accepted.
+
+Only the repository layer may carry `provides` — a downloaded or bundled preset presenting it
+fails validation. Setup reads repository-defined content into one in-memory snapshot and reuses it
+through consent, configuration, pickers, previews, and installs, so the bytes reviewed by a run are
+the bytes it applies even if the working tree changes mid-run. Read-only commands skip skill-tree
+discovery entirely.
+
+What `--yes` does with a trusted repository, per entity:
+
+| Entity                     | First install                    | Previously installed        |
+| -------------------------- | -------------------------------- | --------------------------- |
+| Repository snippet         | never (explicit tick required)   | locked record row           |
+| Skill                      | never (Review defaults Skip)     | converges from the manifest |
+| MCP server (provided only) | never                            | converges from the manifest |
+| MCP server (repo-required) | blocker naming interactive setup | converges from the manifest |
+
 A revision that is not newer — a rollback, or a pair of versions this build cannot order — is
 offered for review too, labelled a switch rather than an update. Aura keeps the recorded revision
 either way, so a revision that was never offered would be one you could never resolve. Plugins must
@@ -132,7 +192,7 @@ review; snippet versions remain contribution metadata and are not stored after i
   absent from the manifest. `skills` uses source-qualified `{ "id", "source" }` entries. Optional
   unavailable content remains visible so setup can explain the problem.
 - `allowedSkillSources` is exhaustive when present. It accepts up to 256 `plugin:`, `directory:`,
-  or `driver:` source IDs.
+  `driver:`, or `repo:` source IDs.
 - Driver sources use `driver:<plugin-id>/<driver-id>`. Disallowed drivers are filtered before their
   listing method can run. Plugin-level `disabledSkillSources` is applied first, so the effective
   catalog is the intersection of registered sources, plugin denylisting, and this allowlist.

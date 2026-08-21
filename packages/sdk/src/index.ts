@@ -63,6 +63,7 @@ export type {
   McpServerDef,
   Preset,
   PrivateDirectorySkillSource,
+  RepoSkillSource,
   ResolvedSkillFile,
   ResolvedSkillListing,
   ResolvedSkillPack,
@@ -82,7 +83,7 @@ export {
   parseMcpServerDefinition,
 } from "./mcp-definition.js";
 export { defineOwnProperty, jsonPropertyPath } from "./mcp-definition-values.js";
-export { parseMcpServerManifest } from "./mcp-server-manifest.js";
+export { parseMcpServerManifest, parseMcpServerManifestValue } from "./mcp-server-manifest.js";
 export type {
   HttpMcpServerDefinition,
   McpCredentialEnvironmentVariable,
@@ -254,6 +255,7 @@ export {
 export type { AtImportContext } from "./imports.js";
 export type { AuraPlugin } from "./plugin.js";
 export type { AuraTeamPreset } from "./team-preset.js";
+export type { AuraTeamPresetProvides, RepoContentSet, RepoSnippetEntry } from "./repo-content.js";
 export type {
   AuraCheckConfiguration,
   AuraConfigurationLayer,

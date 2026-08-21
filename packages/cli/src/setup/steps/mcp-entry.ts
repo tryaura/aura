@@ -67,7 +67,9 @@ async function configureEntry(
   }
 
   const defaultName = seed?.name ?? catalog?.serverName ?? "custom";
-  const defaultScope = seed?.scope ?? "global";
+  // A repository-defined server proposes project scope: its reason to exist is this repository,
+  // and the smaller blast radius is the right opening answer for a cloned definition.
+  const defaultScope = seed?.scope ?? (entry.repo === true ? "project" : "global");
   const apps = appChoices(context, catalog?.supportedApps, seed?.apps ?? []);
   if (apps.eligible.length === 0 && (seed?.apps.length ?? 0) === 0) {
     io.note("No detected, managed, compatible application can receive this MCP server.");

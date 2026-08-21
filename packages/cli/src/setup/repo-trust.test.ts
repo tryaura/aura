@@ -26,9 +26,9 @@ describe("establishRepoPresetTrust", () => {
 
     expect(outcome).toEqual({ acceptedHash: hashRepoPreset(PRESET), kind: "resolved" });
     expect(harness.confirmPrompts).toEqual([
-      "Trust the repository preset at .aura/preset.json? Its settings apply to every Aura run in this repository until the file changes.",
+      "Trust it? Applies to every run here until the file changes.",
     ]);
-    expect(harness.io.notes[0]).toContain('provides the preset "Repo policy"');
+    expect(harness.io.notes[0]).toBe('Repository preset "Repo policy" — .aura/preset.json');
     expect(harness.io.notes[1]).toContain("No check, MCP, skill, or snippet settings.");
   });
 
@@ -66,15 +66,15 @@ describe("establishRepoPresetTrust", () => {
 
     const preview = harness.io.notes[1] ?? "";
     expect(preview).toContain(
-      'Checks: runtime/CHECK: severity error; runtime/DISABLED: disabled; runtime/ENABLED: enabled; runtime/OTHER: thresholds {"approxTokens":12000}',
+      'checks     runtime/CHECK: severity error; runtime/DISABLED: disabled; runtime/ENABLED: enabled; runtime/OTHER: thresholds {"approxTokens":12000}',
     );
-    expect(preview).toContain("Required MCP servers: official/github");
-    expect(preview).toContain("Allowed skill sources: directory:acme");
+    expect(preview).toContain("mcp        official/github · required, from the catalog");
+    expect(preview).toContain("sources    directory:acme");
     expect(preview).toContain(
-      "Skill directory: Acme Skills — https://skills.acme.example; token ACME_TOKEN",
+      "directory  Acme Skills → https://skills.acme.example · token ACME_TOKEN",
     );
-    expect(preview).toContain("Selected skills: directory:acme/review");
-    expect(preview).toContain("Selected snippets: official/engineering");
+    expect(preview).toContain("skill      directory:acme/review · selected");
+    expect(preview).toContain("snippet    official/engineering · selected");
   });
 
   it("never calls confirm when the run answers its own questions", async () => {
@@ -120,7 +120,7 @@ describe("establishRepoPresetTrust", () => {
 
     expect(outcome).toEqual({ acceptedHash: hashRepoPreset(PRESET), kind: "resolved" });
     expect(harness.confirmPrompts).toEqual([
-      "The repository preset at .aura/preset.json changed since you trusted it. Trust the new contents?",
+      "The preset changed since you trusted it. Trust the new contents?",
     ]);
   });
 

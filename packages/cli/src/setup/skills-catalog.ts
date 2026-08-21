@@ -19,7 +19,8 @@ import {
 } from "@tryaura/core";
 
 import { resolveSkillSelections } from "./skill-catalog-resolution.js";
-import { loadListing } from "./skills-catalog-listing.js";
+import { skillIdentity } from "./skill-planner-paths.js";
+import { allowedRepoSkills, loadListing } from "./skills-catalog-listing.js";
 import type { SkillSelection } from "./types.js";
 
 /** The allowlist in force, in the shape the planner can enforce synchronously. */
@@ -150,11 +151,24 @@ export interface SkillCatalogInputs {
   readonly registryDrivers?: readonly SkillSourceDriver[] | undefined;
   /** Plugin-shipped presets, offered as skill packs when they declare a skill selection. */
   readonly registryPresets?: readonly Preset[] | undefined;
+  /**
+   * Skill trees from the trusted repository snapshot, already resolved with their tree hashes.
+   *
+   * Absent or empty when the repository is untrusted: a held repository contributes no rows.
+   * These are the only packs that never touch the network — reviews and installs read exactly
+   * the bytes the snapshot captured.
+   */
+  readonly repoSkills?: readonly ResolvedSkillPack[] | undefined;
 }
 
 export function createSkillCatalog(inputs: SkillCatalogInputs): SkillCatalog {
   const collected = collectSkillDirectorySources(inputs.registryDirectories, inputs.preset);
   const packs = new Map<string, ResolvedSkillPack>();
+  // Seeded up front so `resolve()` answers repository selections from the snapshot: the memo is
+  // checked before any source lookup, so these identities never reach a directory or driver.
+  for (const skill of allowedRepoSkills(inputs)) {
+    packs.set(skillIdentity(skill.source.id, skill.id), skill);
+  }
   const failures = new Map<string, string>();
   const pending = new Map<string, Promise<SkillCatalogListing>>();
   const driverListings = new Map<string, Promise<DriverSkillListingResult>>();

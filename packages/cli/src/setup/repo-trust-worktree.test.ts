@@ -52,7 +52,7 @@ describe("establishRepoPresetTrust in a linked worktree", () => {
 
     expect(outcome).toEqual({ acceptedHash: hashRepoPreset(other), kind: "resolved" });
     expect(harness.confirmPrompts).toEqual([
-      "Trust the repository preset at .aura/preset.json? Its settings apply to every Aura run in this repository until the file changes.",
+      "Trust it? Applies to every run here until the file changes.",
     ]);
   });
 

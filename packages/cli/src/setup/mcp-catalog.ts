@@ -11,6 +11,8 @@ export interface McpSetupCatalogEntry {
   readonly catalog?: ResolvedMcpServerDef | undefined;
   readonly existing?: AuraManifestMcpServer | undefined;
   readonly key: string;
+  /** True for a definition the trusted repository preset provides; sorts ahead of the rest. */
+  readonly repo?: boolean | undefined;
   readonly required: boolean;
   readonly sourceName?: string | undefined;
 }
@@ -47,6 +49,7 @@ export function createMcpSetupCatalog(inputs: McpSetupCatalogInputs): McpSetupCa
       entries.push({
         catalog,
         key: `catalog:${catalog.id}`,
+        ...(isRepoCatalogId(catalog.id) ? { repo: true } : {}),
         required: requiredIds.has(catalog.id),
         sourceName: owner?.name,
       });
@@ -58,6 +61,7 @@ export function createMcpSetupCatalog(inputs: McpSetupCatalogInputs): McpSetupCa
         catalog,
         existing: match.server,
         key: `manifest:${String(match.index)}`,
+        ...(isRepoCatalogId(catalog.id) ? { repo: true } : {}),
         required: requiredIds.has(catalog.id),
         sourceName: owner?.name,
       });
@@ -73,6 +77,9 @@ export function createMcpSetupCatalog(inputs: McpSetupCatalogInputs): McpSetupCa
       ...(catalog === undefined ? {} : { catalog }),
       existing: server,
       key: `manifest:${String(index)}`,
+      ...(server.catalogId !== undefined && isRepoCatalogId(server.catalogId)
+        ? { repo: true }
+        : {}),
       required: server.catalogId !== undefined && requiredIds.has(server.catalogId),
       sourceName:
         server.catalogId === undefined
@@ -92,9 +99,20 @@ export function createMcpSetupCatalog(inputs: McpSetupCatalogInputs): McpSetupCa
   });
 }
 
+/**
+ * Required rows first (they carry blocker semantics whoever asked for them), then this
+ * repository's own definitions, then configured rows, then everything else by name. Repo rows
+ * lead the optional block — they are what a person running setup inside the repository came for —
+ * without outranking a requirement they did not make.
+ */
 function compareEntries(left: McpSetupCatalogEntry, right: McpSetupCatalogEntry): number {
   if (left.required !== right.required) {
     return left.required ? -1 : 1;
+  }
+  const leftRepo = left.repo === true;
+  const rightRepo = right.repo === true;
+  if (leftRepo !== rightRepo) {
+    return leftRepo ? -1 : 1;
   }
   const leftConfigured = left.existing !== undefined;
   const rightConfigured = right.existing !== undefined;
@@ -102,6 +120,11 @@ function compareEntries(left: McpSetupCatalogEntry, right: McpSetupCatalogEntry)
     return leftConfigured ? -1 : 1;
   }
   return entryName(left).localeCompare(entryName(right));
+}
+
+/** The `repo/` namespace is reserved against plugins, so the prefix alone is provenance. */
+function isRepoCatalogId(id: string): boolean {
+  return id.startsWith("repo/");
 }
 
 /** User-facing name used by the picker and deterministic sorting. */

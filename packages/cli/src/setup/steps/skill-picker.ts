@@ -68,11 +68,7 @@ export function pickerOptions(inputs: SkillStageInputs): readonly WizardOption[]
   const unsupported = !hasSkillsHome(inputs.managedApps);
   const preset = new Set(inputs.presetSkills.map((skill) => skillIdentity(skill.source, skill.id)));
 
-  const entryRows = sortForDisplay(inputs.listing.entries, (entry) => [
-    entry.sourceName,
-    entry.name,
-    entry.id,
-  ]).map((entry): WizardOption => ({
+  const entryRow = (entry: SkillStageInputs["listing"]["entries"][number]): WizardOption => ({
     description: `${entry.description} · v${entry.version}`,
     get disabled() {
       return unsupported || inputs.listing.verification?.isMissing(entry.identity) === true;
@@ -86,10 +82,29 @@ export function pickerOptions(inputs: SkillStageInputs): readonly WizardOption[]
         : undefined;
     },
     group: entry.sourceName,
-    label: `${entry.name}${preset.has(entry.identity) ? " (from preset)" : ""}`,
+    label: `${entry.name}${selectedBySuffix(entry.identity)}`,
     ...previewField(inputs, entry),
     value: entry.identity,
-  }));
+  });
+  const selectedBySuffix = (identity: string): string =>
+    inputs.repoSelectedIdentities.has(identity)
+      ? " (from repo)"
+      : preset.has(identity)
+        ? " (from preset)"
+        : "";
+  const sortedEntries = sortForDisplay(inputs.listing.entries, (entry) => [
+    entry.sourceName,
+    entry.name,
+    entry.id,
+  ]);
+  // This repository's skills lead the installable rows: they are what a person running setup
+  // inside the repository came for. Other sources keep their sorted order underneath.
+  const repoEntryRows = sortedEntries
+    .filter((entry) => entry.sourceId.startsWith("repo:"))
+    .map(entryRow);
+  const entryRows = sortedEntries
+    .filter((entry) => !entry.sourceId.startsWith("repo:"))
+    .map(entryRow);
 
   const manifestRows = inputs.manifestSkills.flatMap((skill): readonly WizardOption[] => {
     const identity = skillIdentity(skill.source, skill.id);
@@ -177,23 +192,31 @@ export function pickerOptions(inputs: SkillStageInputs): readonly WizardOption[]
   ]);
   const presetRows = inputs.presetSkills
     .filter((skill) => !represented.has(skillIdentity(skill.source, skill.id)))
-    .map((skill): WizardOption => ({
-      description: "Selected by the active team preset, but unavailable in this run.",
-      disabled: true,
-      disabledNote: "preset selection unavailable",
-      group: skill.source,
-      label: `${skill.id} (from preset)`,
-      value: skillIdentity(skill.source, skill.id),
-    }));
+    .map((skill): WizardOption => {
+      const identity = skillIdentity(skill.source, skill.id);
+      const fromRepo = inputs.repoSelectedIdentities.has(identity);
+      return {
+        description: fromRepo
+          ? "Selected by the repository preset, but unavailable in this run."
+          : "Selected by the active team preset, but unavailable in this run.",
+        disabled: true,
+        disabledNote: fromRepo ? "repo selection unavailable" : "preset selection unavailable",
+        group: skill.source,
+        label: `${skill.id} ${fromRepo ? "(from repo)" : "(from preset)"}`,
+        value: identity,
+      };
+    });
 
   // Unavailable and truncated sources lead. They are the only rows nothing preselects, so behind
   // the picker's initial row window they would be the one class of row that can fall off the first
   // frame entirely — and a source being down or cut short is exactly what has to be visible
   // without searching for it. Packs come next: most users check one pack and never open search.
+  // Then this repository's skills, ahead of every other installable row.
   return [
     ...sourceRows,
     ...truncatedRows,
     ...packRows,
+    ...repoEntryRows,
     ...entryRows,
     ...manifestRows,
     ...presetRows,

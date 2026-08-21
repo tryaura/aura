@@ -2,6 +2,7 @@ import type {
   DirectorySkillSource,
   DriverSkillSource,
   PrivateDirectorySkillSource,
+  ResolvedSkillPack,
 } from "@tryaura/aura-sdk";
 import {
   createLimiter,
@@ -50,7 +51,10 @@ export interface SkillListingRequest {
  * of both. Only the draining is ordered, which is what keeps the picker's rows stable.
  */
 export async function loadListing(request: SkillListingRequest): Promise<SkillCatalogListing> {
-  const entries: SkillCatalogEntry[] = [...bundledEntries(request.inputs)];
+  const entries: SkillCatalogEntry[] = [
+    ...repoEntries(request.inputs),
+    ...bundledEntries(request.inputs),
+  ];
   const notes = [...request.notes];
   const unavailableSources: UnavailableSkillSource[] = request.unapproved.map((source) => ({
     hint: `connection not approved; token ${source.tokenEnv}`,
@@ -213,6 +217,36 @@ function memoizedDriverListing(
   const listing = listDriverSkills(request.inputs.environment, source);
   request.driverListings.set(source.id, listing);
   return listing;
+}
+
+/** Repository skills the active allowlist admits; the source id is `repo:workspace`. */
+export function allowedRepoSkills(
+  inputs: Pick<SkillCatalogInputs, "preset" | "repoSkills">,
+): readonly ResolvedSkillPack[] {
+  return (inputs.repoSkills ?? []).filter((skill) =>
+    isSkillSourceAllowed(inputs.preset, skill.source.id),
+  );
+}
+
+/**
+ * This repository's own skills, resolved from the trusted snapshot rather than any fetch.
+ *
+ * `remote` stays false — no fetch is needed — but the review stage still gates their first
+ * install by identity: trees that arrive by cloning get the same on-screen reading a directory
+ * skill does.
+ */
+function repoEntries(inputs: SkillCatalogInputs): readonly SkillCatalogEntry[] {
+  return allowedRepoSkills(inputs).map((skill) => ({
+    description: skill.description,
+    id: skill.id,
+    identity: skillIdentity(skill.source.id, skill.id),
+    name: skill.name,
+    preview: skill.files.find((file) => file.path === "SKILL.md")?.content,
+    remote: false,
+    sourceId: skill.source.id,
+    sourceName: skill.source.name,
+    version: skill.version,
+  }));
 }
 
 function bundledEntries(inputs: SkillCatalogInputs): readonly SkillCatalogEntry[] {

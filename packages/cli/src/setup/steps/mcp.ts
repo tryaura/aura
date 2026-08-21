@@ -222,19 +222,30 @@ function requiredCatalogIds(entries: readonly WorkingMcpEntry[]): readonly strin
 }
 
 function serverOption(entry: WorkingMcpEntry): WizardOption {
-  const configured = entry.selectedServer !== undefined || entry.existing !== undefined;
-  const tags = [
-    ...(entry.required ? ["from preset", "required"] : []),
-    ...(configured ? [entry.catalog === undefined ? "custom" : "configured"] : []),
-  ];
+  const tags = serverTags(entry);
   const suffix = tags.length === 0 ? "" : ` (${tags.join(", ")})`;
-  const provenance =
-    entry.sourceName === undefined ? "Custom server" : `Plugin: ${entry.sourceName}`;
   return {
-    description: provenance,
+    description: serverProvenance(entry),
     label: `${safe(mcpCatalogEntryName(entry))}${suffix}`,
     value: entry.key,
   };
+}
+
+/** What the run knows about a row: who selected it, whether it is required or configured. */
+function serverTags(entry: WorkingMcpEntry): readonly string[] {
+  const configured = entry.selectedServer !== undefined || entry.existing !== undefined;
+  const origin = entry.repo === true ? "from repo" : "from preset";
+  return [
+    ...(entry.required ? [origin, "required"] : entry.repo === true ? [origin] : []),
+    ...(configured ? [entry.catalog === undefined ? "custom" : "configured"] : []),
+  ];
+}
+
+function serverProvenance(entry: WorkingMcpEntry): string {
+  if (entry.repo === true) {
+    return "Repository: .aura/preset.json";
+  }
+  return entry.sourceName === undefined ? "Custom server" : `Plugin: ${entry.sourceName}`;
 }
 
 function hasManagedMcpApp(context: SetupStepContext): boolean {

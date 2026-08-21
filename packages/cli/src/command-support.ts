@@ -4,13 +4,35 @@ import type { Readable, Writable } from "node:stream";
 // Deep import on purpose: see the note in run.boundary.ts.
 import { Option } from "clipanion/lib/advanced/index.js";
 
-import type { TelemetryCommand } from "@tryaura/aura-sdk";
-import { describeFailure, type EnvironmentBootOptions } from "@tryaura/core";
+import type { TelemetryCommand, WorkspaceModel } from "@tryaura/aura-sdk";
+import {
+  applyRequiredMcpServers,
+  describeFailure,
+  type EnvironmentBootOptions,
+  type RequiredMcpProjection,
+} from "@tryaura/core";
 
+import { withRepoMcpCatalog, type RuntimeConfigResult } from "./runtime-config.js";
 import { safe } from "./safe-text.js";
 import { commandFailedEvent } from "./telemetry-events.js";
 import type { TelemetryRecorder } from "./telemetry.js";
 import type { CliBranding, CliExitCode } from "./types.js";
+
+/**
+ * Projects preset requirements onto a check scan's model.
+ *
+ * A trusted repository's provided MCP definitions join the catalog first, so a repository can
+ * require a server it defines itself and `check` reports that requirement the way setup would.
+ */
+export function projectConfiguredModel(
+  model: WorkspaceModel,
+  configured: Extract<RuntimeConfigResult, { status: "ready" }>,
+): RequiredMcpProjection {
+  return applyRequiredMcpServers(
+    withRepoMcpCatalog(model, configured.repoPreset),
+    configured.config,
+  );
+}
 
 /** The `--home` override every scanning command shares. */
 export function homeOption(): string | undefined {

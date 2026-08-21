@@ -76,6 +76,39 @@ export function bundledPack(treeHash: string, version = "1.0.0"): ResolvedSkillP
   };
 }
 
+export const REPO_IDENTITY = skillIdentity("repo:workspace", "release-runbook");
+
+export function repoPack(treeHash: string, version = "1.0.0"): ResolvedSkillPack {
+  return {
+    description: "Cut a release.",
+    files: [{ content: "# Release runbook\n", path: "SKILL.md" }],
+    id: "release-runbook",
+    name: "Release runbook",
+    source: {
+      id: "repo:workspace",
+      kind: "repo",
+      name: "This repository",
+      path: "/workspace/.aura/skills",
+    },
+    treeHash,
+    version,
+  };
+}
+
+export function repoEntry(pack: ResolvedSkillPack): SkillCatalogEntry {
+  return {
+    description: pack.description,
+    id: pack.id,
+    identity: skillIdentity(pack.source.id, pack.id),
+    name: pack.name,
+    preview: pack.files.find((file) => file.path === "SKILL.md")?.content,
+    remote: false,
+    sourceId: pack.source.id,
+    sourceName: pack.source.name,
+    version: pack.version,
+  };
+}
+
 interface CatalogOptions {
   readonly entries?: readonly SkillCatalogEntry[];
   readonly notes?: readonly string[];
@@ -164,6 +197,23 @@ export function skillStepContext(
             snippets: [],
           },
         }),
+    ...(options.repo === undefined
+      ? {}
+      : {
+          repoPreset: {
+            accepted: true,
+            checkSummary: [],
+            contentSet: { mcpServers: [], skills: options.repo.skills, snippets: [] },
+            hash: "f".repeat(64),
+            path: "/workspace/.aura/preset.json",
+            preset: {
+              schemaVersion: 1 as const,
+              ...(options.repo.selected === undefined ? {} : { skills: options.repo.selected }),
+            },
+            recorded: true,
+            status: "applied" as const,
+          },
+        }),
     selections:
       options.selectedAppIds === undefined
         ? options.manifestMissing === true
@@ -184,6 +234,13 @@ interface SkillStepContextOptions {
   readonly manifestAppIds?: readonly string[];
   readonly manifestMissing?: boolean;
   readonly presetSkills?: NonNullable<SetupStepContext["preset"]>["skills"];
+  /** Applied repository preset content: skill trees plus the selections it makes by default. */
+  readonly repo?:
+    | {
+        readonly selected?: NonNullable<SetupStepContext["preset"]>["skills"] | undefined;
+        readonly skills: readonly ResolvedSkillPack[];
+      }
+    | undefined;
   readonly selectedAppIds?: readonly string[];
 }
 

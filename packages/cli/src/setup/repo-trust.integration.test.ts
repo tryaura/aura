@@ -12,8 +12,8 @@ import { runSetup, type SetupRequest } from "./setup.js";
 import { createScriptedWizardIo, type ScriptedWizardScript } from "./wizard-scripted.js";
 
 const PRESET = JSON.stringify({ name: "Repo policy", schemaVersion: 1 });
-const TRUST_PROMPT =
-  "Trust the repository preset at .aura/preset.json? Its settings apply to every Aura run in this repository until the file changes.";
+const TRUST_PROMPT = "Trust it? Applies to every run here until the file changes.";
+const TRUST_NOTE = 'Repository preset "Repo policy"';
 
 const temporaryDirectories: string[] = [];
 
@@ -50,7 +50,7 @@ describe("repository preset trust across a setup run", () => {
     const second = fixture.request({ forms: ["aborted"] });
     await runSetup(second);
 
-    expect(second.io.notes.some((note) => note.includes("provides the preset"))).toBe(false);
+    expect(second.io.notes.some((note) => note.includes(TRUST_NOTE))).toBe(false);
   });
 
   it("keeps the acceptance when the user declines the plan at the confirmation", async () => {
@@ -106,7 +106,7 @@ describe("repository preset trust across a setup run", () => {
     const second = fixture.request({ confirmations: ["declined"], forms: ["aborted"] });
     await runSetup(second);
 
-    expect(second.io.notes.some((note) => note.includes("provides the preset"))).toBe(true);
+    expect(second.io.notes.some((note) => note.includes(TRUST_NOTE))).toBe(true);
   });
 
   it("writes nothing on a dry run and says the next run will ask again", async () => {
@@ -173,7 +173,7 @@ describe("repository preset trust across a setup run", () => {
     const request = fixture.request({ forms: ["aborted"] });
     await runSetup(request);
 
-    expect(request.io.notes.some((note) => note.includes("provides the preset"))).toBe(false);
+    expect(request.io.notes.some((note) => note.includes(TRUST_NOTE))).toBe(false);
     expect(request.io.confirmPrompts).not.toContain(TRUST_PROMPT);
   });
 });

@@ -95,6 +95,21 @@ describe("readRepoPreset", () => {
 
     expect(reader.reads.some((path) => path.endsWith("/.git"))).toBe(false);
   });
+
+  it("skips skill discovery when the caller only needs trust-hashed content", async () => {
+    const skillsRoot = "/workspace/.aura/skills";
+    const reader = createMemoryReader({
+      [PATH]: DOCUMENT,
+      [skillsRoot]: DIRECTORY,
+      [`${skillsRoot}/review`]: DIRECTORY,
+      [`${skillsRoot}/review/SKILL.md`]: "Review.\n",
+    });
+
+    const state = await readRepoPreset(environment(), reader, { includeSkills: false });
+
+    expect(state.contentSet?.skills).toEqual([]);
+    expect(reader.reads).not.toContain(skillsRoot);
+  });
 });
 
 describe("hashRepoPreset", () => {

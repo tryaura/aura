@@ -45,3 +45,5 @@ guarantees Aura does enforce.
 ## Next
 
 - [Installation](/docs/installation) — install the CLI and run your first scan.
+- [Share content from a repository](/docs/guides/repository-provided-content/) — commit
+  project-specific snippets, skills, and MCP definitions beside your code.

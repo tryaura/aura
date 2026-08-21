@@ -1,8 +1,8 @@
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { platform, tmpdir } from "node:os";
 import { dirname, isAbsolute, join, normalize, relative, sep } from "node:path";
 
-import { hashRepoPreset, MAX_TRUSTED_REPO_PRESETS } from "@tryaura/core";
+import { hashRepoContentSet, MAX_TRUSTED_REPO_PRESETS } from "@tryaura/core";
 
 import { readInvocations, validateShim, writeShim } from "./shims.js";
 import type { SeedContent, SeedRoots, ShimResponse, TestSeed, TestSeedBuilder } from "./types.js";
@@ -145,7 +145,9 @@ async function recordTrustedPresets(
     const content = await readFile(path, "utf8").catch(() => {
       throw new Error(`trustWorkspacePreset needs the seeded workspace file: ${relativePath}`);
     });
-    added.push({ hash: hashRepoPreset(content), path });
+    // The trust hash covers the preset plus every snippet body beside it, exactly as the CLI
+    // computes it — a content-free repository reduces to the bare file hash.
+    added.push({ hash: hashRepoContentSet(content, await seededSnippets(dirname(path))), path });
   }
   const addedPaths = new Set(added.map((entry) => entry.path));
   const trustedRepoPresets = [
@@ -165,6 +167,22 @@ async function recordTrustedPresets(
     `${JSON.stringify({ ...manifest, trustedRepoPresets }, undefined, 2)}\n`,
     { encoding: "utf8", mode: 0o600 },
   );
+}
+
+/** The snippet files beside a seeded preset, in the shape the composite hash consumes. */
+async function seededSnippets(
+  auraDir: string,
+): Promise<readonly { readonly id: string; readonly text: string }[]> {
+  const root = join(auraDir, "snippets");
+  const names = await readdir(root).catch(() => [] as string[]);
+  const files: { id: string; text: string }[] = [];
+  for (const name of names.filter((entry) => !entry.startsWith(".") && entry.endsWith(".md"))) {
+    files.push({
+      id: `repo/${name.slice(0, -".md".length)}`,
+      text: await readFile(join(root, name), "utf8"),
+    });
+  }
+  return files;
 }
 
 function parseSeedManifest(source: string, path: string): Record<string, unknown> {

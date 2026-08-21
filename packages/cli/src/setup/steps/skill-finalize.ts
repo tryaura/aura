@@ -2,8 +2,10 @@ import type { AuraManifestSkill, ResolvedSkillPack } from "@tryaura/aura-sdk";
 
 import type { SkillResolution } from "../skills-catalog.js";
 import type { SkillSelection } from "../types.js";
+import { skillIdentity } from "../skill-planner-paths.js";
 import {
   isRemoteIdentity,
+  isRepoIdentity,
   manifestByIdentity,
   selectionsByIdentity,
   type SkillsChainState,
@@ -42,11 +44,23 @@ export async function finalizeSkills(
           inputs.approvedPrivateSourceIds,
         );
 
+  const repoPacks = new Map(
+    inputs.repoSkills.map((pack) => [skillIdentity(pack.source.id, pack.id), pack]),
+  );
   const selected: SkillSelection[] = [];
   const resolved: ResolvedSkillPack[] = [];
   for (const identity of state.selected) {
     const selection = offered.get(identity);
     if (selection === undefined) {
+      continue;
+    }
+    if (isRepoIdentity(identity)) {
+      // Same fate rules as a remote skill — reviewed install or nothing new — with the pack
+      // taken from the trusted snapshot instead of a fetch.
+      finalizeRemote(identity, selection, state, repoPacks.get(identity), recorded.get(identity), {
+        resolved,
+        selected,
+      });
       continue;
     }
     if (!isRemoteIdentity(identity)) {

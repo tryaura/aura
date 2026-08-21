@@ -31,7 +31,7 @@ export { AuraManifestValidationError } from "./schema-values.js";
 const APP_ID_PATTERN = /^[a-z0-9][a-z0-9._-]*$/u;
 const MCP_CATALOG_ID_PATTERN = /^[a-z0-9][a-z0-9._-]*\/[a-zA-Z0-9][a-zA-Z0-9._-]*$/u;
 const SKILL_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
-const SKILL_SOURCE_PATTERN = /^(?:directory|driver|plugin):[^\s:]+$/u;
+const SKILL_SOURCE_PATTERN = /^(?:directory|driver|plugin|repo):[^\s:]+$/u;
 const OVERRIDE_KEY_PATTERN = /^[a-z][a-zA-Z0-9]{0,63}$/u;
 
 /** Room for several future override kinds without leaving the forward-compat window unbounded. */
@@ -172,13 +172,16 @@ function skills(value: JsonValue | undefined): readonly AuraManifestSkill[] {
 function requiredSkillSource(value: JsonObject, path: string): SkillSourceId {
   const source = requiredString(value, "source", path);
   if (!SKILL_SOURCE_PATTERN.test(source)) {
-    throw invalid(`${path}.source`, "must be a plugin:, directory:, or driver: source ID");
+    throw invalid(`${path}.source`, "must be a plugin:, directory:, driver:, or repo: source ID");
   }
   if (source.startsWith("plugin:")) {
     return `plugin:${source.slice("plugin:".length)}`;
   }
   if (source.startsWith("directory:")) {
     return `directory:${source.slice("directory:".length)}`;
+  }
+  if (source.startsWith("repo:")) {
+    return `repo:${source.slice("repo:".length)}`;
   }
   return `driver:${source.slice("driver:".length)}`;
 }

@@ -10,6 +10,7 @@ import {
   MAX_JSON_DEPTH,
   MCP_CATALOG_ID_PATTERN,
 } from "./schema-common.js";
+import { collectProvides } from "./schema-provides.js";
 import { collectAllowedSources, collectDirectories, collectSkills } from "./schema-sources.js";
 
 /**
@@ -22,26 +23,31 @@ export type TeamPresetParseResult =
   | { readonly kind: "invalid"; readonly problem: string }
   | { readonly kind: "preset"; readonly preset: AuraTeamPreset };
 
+/** How the validator treats fields only one preset origin may carry. */
+export interface TeamPresetValidationOptions {
+  /**
+   * Whether `provides` — repository-authored MCP definitions — is acceptable.
+   *
+   * Only the repository preset reader passes true. A preset that arrives by selection or
+   * download must not be able to smuggle in content the repository trust prompt never showed.
+   */
+  readonly allowProvides?: boolean | undefined;
+}
+
 /** Validates and freezes one parsed JSON document as a data-only team preset. */
-export function validateTeamPreset(value: unknown): TeamPresetParseResult {
+export function validateTeamPreset(
+  value: unknown,
+  options: TeamPresetValidationOptions = {},
+): TeamPresetParseResult {
   if (!isRecord(value)) {
     return invalid("$: must be an object");
   }
-  const depthProblem = documentDepthProblem(value, "$", 0);
-  if (depthProblem !== undefined) {
-    return invalid(depthProblem);
-  }
-  if (value["schemaVersion"] !== 1) {
-    return invalid("$.schemaVersion: must be 1");
+  const problemBeforeFields = envelopeProblem(value, options);
+  if (problemBeforeFields !== undefined) {
+    return invalid(problemBeforeFields);
   }
 
   const name = value["name"];
-  if (
-    name !== undefined &&
-    (typeof name !== "string" || name.trim().length === 0 || name.length > 128)
-  ) {
-    return invalid("$.name: must be a non-empty string of at most 128 characters");
-  }
   const checks = collectChecks(value["checks"]);
   const allowed = collectAllowedSources(value["allowedSkillSources"]);
   const directories = collectDirectories(value["skillDirectories"]);
@@ -52,6 +58,7 @@ export function validateTeamPreset(value: unknown): TeamPresetParseResult {
   );
   const snippets = collectIds(value["snippets"], "$.snippets", CONTENT_ID_PATTERN);
   const skills = collectSkills(value["skills"]);
+  const provides = collectProvides(value["provides"]);
   const problem = firstProblem([
     checks,
     allowed,
@@ -59,6 +66,7 @@ export function validateTeamPreset(value: unknown): TeamPresetParseResult {
     requiredMcpServers,
     snippets,
     skills,
+    provides,
   ]);
   if (problem !== undefined) {
     return invalid(problem);
@@ -69,6 +77,7 @@ export function validateTeamPreset(value: unknown): TeamPresetParseResult {
     preset: Object.freeze({
       ...(Array.isArray(allowed) ? { allowedSkillSources: allowed } : {}),
       ...(isChecks(checks) ? { checks } : {}),
+      ...(typeof provides === "object" ? { provides } : {}),
       ...(Array.isArray(requiredMcpServers) ? { requiredMcpServers } : {}),
       ...(typeof name === "string" ? { name } : {}),
       schemaVersion: 1,
@@ -81,6 +90,31 @@ export function validateTeamPreset(value: unknown): TeamPresetParseResult {
 
 function invalid(problem: string): TeamPresetParseResult {
   return { kind: "invalid", problem };
+}
+
+/** Checks the document envelope — depth, version, origin gate, name — before any field walks. */
+function envelopeProblem(
+  value: Record<string, unknown>,
+  options: TeamPresetValidationOptions,
+): string | undefined {
+  const depthProblem = documentDepthProblem(value, "$", 0);
+  if (depthProblem !== undefined) {
+    return depthProblem;
+  }
+  if (value["schemaVersion"] !== 1) {
+    return "$.schemaVersion: must be 1";
+  }
+  if (options.allowProvides !== true && value["provides"] !== undefined) {
+    return "$.provides: only the repository preset may provide content";
+  }
+  const name = value["name"];
+  if (
+    name !== undefined &&
+    (typeof name !== "string" || name.trim().length === 0 || name.length > 128)
+  ) {
+    return "$.name: must be a non-empty string of at most 128 characters";
+  }
+  return undefined;
 }
 
 /**
