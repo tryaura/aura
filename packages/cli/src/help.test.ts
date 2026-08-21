@@ -15,6 +15,10 @@ describe("help screens", () => {
     expect(renderRootHelp(BRANDING)).toMatchInlineSnapshot(`
       "Acme Doctor 1.2.3 — Agent setup doctor
 
+        Every AI coding agent keeps its own rules and its own tool settings, in its own
+        files. Aura reads all of them, tells you where they disagree or are broken, and
+        fixes them after you say yes - so every agent works from the same instructions.
+
         Get started
           acme setup               Set up this machine interactively and converge it
 
@@ -40,6 +44,8 @@ describe("help screens", () => {
     const help = renderRootHelp(bare);
 
     expect(help.startsWith("Aura\n")).toBe(true);
+    // The paragraph explains the tool, not the distribution, so it survives bare branding.
+    expect(help).toContain("Every AI coding agent keeps its own rules");
     expect(help).not.toContain("Docs:");
     // Without a version the flag is never registered (run.boundary.ts), so the row must not advertise it.
     expect(help).not.toContain("--version");
