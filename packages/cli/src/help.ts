@@ -53,6 +53,7 @@ export function renderRootHelp(branding: CliBranding): string {
       { rows: [NO_COLOR_ROW], title: "Advanced" },
     ],
     branding.docsUrl === undefined ? [] : [`Docs: ${branding.docsUrl}`],
+    ROOT_INTRO,
   );
 }
 
@@ -224,6 +225,18 @@ export function renderUnknownCommand(branding: CliBranding, input: string): stri
 /** The one flag every screen shares, because it is consumed before any command parses. */
 const NO_COLOR_ROW: HelpRow = { term: "--no-color", text: "Disable terminal colors" };
 
+/**
+ * The root screen's one paragraph: what Aura is for, in the words of someone who has not read the
+ * docs yet. It sits above "Get started" because a first-time reader needs the problem before the
+ * command. Hand-wrapped at 80 columns — the renderer aligns columns, it never reflows prose — and
+ * carried only by the root screen, since every other screen is reached by someone who already knows.
+ */
+const ROOT_INTRO: readonly string[] = [
+  "Every AI coding agent keeps its own rules and its own tool settings, in its own",
+  "files. Aura reads all of them, tells you where they disagree or are broken, and",
+  "fixes them after you say yes - so every agent works from the same instructions.",
+];
+
 /** Test and CI plumbing, present on every command and interesting to almost nobody. */
 function advancedRows(): readonly HelpRow[] {
   return [
@@ -257,11 +270,15 @@ function renderHelpScreen(
   header: string,
   sections: readonly HelpSection[],
   footers: readonly string[],
+  intro: readonly string[] = [],
 ): string {
   const width = Math.max(
     ...sections.flatMap((section) => section.rows.map((row) => row.term.length)),
   );
   const lines = [header];
+  if (intro.length > 0) {
+    lines.push("", ...intro.map((line) => `  ${line}`));
+  }
   for (const section of sections) {
     lines.push("", `  ${section.title}`);
     for (const row of section.rows) {
