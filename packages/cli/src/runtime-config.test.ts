@@ -26,7 +26,7 @@ describe("runtime configuration", () => {
           return { installed: true };
         }),
       ],
-      apiVersion: 1,
+      apiVersion: 2,
       id: "runtime-adapter",
       name: "Runtime adapter",
       version: "1.0.0",
@@ -255,7 +255,7 @@ function readyManifest(
 
 function runtimePlugin(detect: Parameters<typeof defineCheck>[0]["detect"]) {
   return definePlugin({
-    apiVersion: 1,
+    apiVersion: 2,
     checks: [
       defineCheck({
         defaultSeverity: "info",

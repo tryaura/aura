@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { Readable, Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
 
@@ -81,10 +81,10 @@ export function writePlanAt(root: string, name: string, content: string): FixPla
 export function model(root = FIXTURE_ROOT): WorkspaceModel {
   return createWorkspaceModel({
     cwd: root,
-    homeDir: root,
-    manifest: { exists: false, path: join(root, "agents", "aura.json"), status: "missing" },
+    homeDir: dirname(root),
+    manifest: { exists: false, path: join(root, "aura.json"), status: "missing" },
     projectRoot: root,
-    sharedInstructions: { exists: false, path: join(root, "agents", "AGENTS.md") },
+    sharedInstructions: { exists: false, path: join(root, "AGENTS.md") },
   });
 }
 

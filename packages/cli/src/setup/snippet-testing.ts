@@ -18,7 +18,7 @@ export function snippet(id: string, path: string, category: string, name: string
 
 export function snippetPlugin(snippets: readonly Snippet[]) {
   return definePlugin({
-    apiVersion: 1,
+    apiVersion: 2,
     checks: [
       defineCheck({
         defaultSeverity: "info",

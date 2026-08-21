@@ -74,7 +74,7 @@ const configured = defineCheck({
 });
 
 export default definePlugin({
-  apiVersion: 1,
+  apiVersion: 2,
   checks: [configured],
   id: "acme",
   name: "Acme policy",
@@ -82,7 +82,7 @@ export default definePlugin({
 });
 ```
 
-Aura v1 accepts only `apiVersion: 1`. Namespace contributions under the plugin ID. Plugins run with the executable's full privileges, so distribute and review them as trusted dependencies.
+This Aura build accepts only `apiVersion: 2`. Namespace contributions under the plugin ID. Plugins run with the executable's full privileges, so distribute and review them as trusted dependencies.
 
 For a private registry, publish under a scope such as `@acme/aura-plugin`, configure its token only in distribution CI, and install it into the distribution project. End users receive the compiled distro; they do not install plugins at runtime. Never place registry tokens in source, metadata, assets, or binaries.
 

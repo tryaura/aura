@@ -37,7 +37,6 @@ function workspaceWithVariable(isSet: boolean): WorkspaceModel {
           {
             apps: ["claude-code"],
             name: "docs",
-            scope: "global",
             transport: { command: "docs-mcp", env: ["DOCS_TOKEN"], type: "stdio" },
           },
         ],

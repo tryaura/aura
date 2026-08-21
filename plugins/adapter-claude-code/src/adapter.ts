@@ -4,7 +4,6 @@ import {
   defineAdapter,
   detectExecutable,
   parseInstalledSkills,
-  SHARED_INSTRUCTIONS_TEMPLATE_TOKEN,
   skillDirectorySpecs,
   type AdapterFileSpec,
   type AdapterFilesInput,
@@ -32,7 +31,6 @@ import { parsePermissionSettings } from "./settings.js";
 const GLOBAL_INSTRUCTIONS_SEGMENTS = Object.freeze([".claude", "CLAUDE.md"]);
 const SKILL_DIRECTORIES: readonly AdapterSkillDirectory[] = Object.freeze([
   { entryPath: "~/.claude/skills", id: SOURCE_IDS.skillsGlobal },
-  { entryPath: "./.claude/skills", id: SOURCE_IDS.skillsProject },
 ]);
 
 export const claudeCodeAdapter = defineAdapter({
@@ -79,11 +77,6 @@ export const claudeCodeAdapter = defineAdapter({
       ],
       skills: parseInstalledSkills(CLAUDE_CODE_ADAPTER_ID, input, SKILL_DIRECTORIES),
     };
-  },
-  projectSharedLink: {
-    entryPath: "./CLAUDE.md",
-    kind: "import-line",
-    lineTemplate: `@${SHARED_INSTRUCTIONS_TEMPLATE_TOKEN}`,
   },
   sharedLink: {
     entryPath: "~/.claude/CLAUDE.md",

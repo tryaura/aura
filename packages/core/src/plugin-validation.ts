@@ -1,10 +1,11 @@
 import type { Adapter, AuraPlugin } from "@tryaura/aura-sdk";
 
 import { canonicalSemver } from "./plugin-validation-version.js";
-import { sharedLinkViolations } from "./workspace/shared-links.js";
+import { collectSharedLinkDeclarationViolations } from "./plugin-validation-links.js";
+import { collectSkillDirectoryViolations } from "./plugin-validation-skills.js";
 
 /** The plugin contract supported by this Aura core build. */
-export const SUPPORTED_PLUGIN_API_VERSION = 1;
+export const SUPPORTED_PLUGIN_API_VERSION = 2;
 
 /**
  * A plugin presented to the runtime registry.
@@ -184,18 +185,8 @@ export function collectAdapterViolations(
       );
     }
     collectSharedLinkCapabilityViolations(state, adapter, plugin);
-    for (const [name, scope, link] of [
-      ["sharedLink", "global", adapter.sharedLink],
-      ["projectSharedLink", "project", adapter.projectSharedLink],
-    ] as const) {
-      if (link !== undefined) {
-        for (const violation of sharedLinkViolations(link, scope)) {
-          state.violations.push(
-            `${formatPlugin(plugin)} adapter "${adapter.id}" declares invalid ${name}: ${violation}.`,
-          );
-        }
-      }
-    }
+    collectSkillDirectoryViolations(state, adapter, formatPlugin(plugin));
+    collectSharedLinkDeclarationViolations(state, adapter, formatPlugin(plugin));
   }
 }
 

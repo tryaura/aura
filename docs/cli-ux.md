@@ -232,7 +232,7 @@ When the active step runs a sequence of internal forms (a chain step like Instru
 **sub-row** prefixed with `└` maps that step's internal progress around the live form:
 
 ```
- └ ✔ Global │ ▶ Sources ☐ │ Duplicates ☐
+ └ ✔ Personal │ ▶ Sources ☐ │ Duplicates ☐
 ```
 
 - The live form's questions appear individually (`▶ Duplicate 2 ☐`); a completed or upcoming
@@ -242,23 +242,13 @@ When the active step runs a sequence of internal forms (a chain step like Instru
 - The sub-row is an honest map: a conditional stage appears the moment its precondition holds and
   disappears when it stops holding. A stage behind the live form shows `☐` even when a
   remembered answer will re-seed it.
-- Both instruction scopes flow through one sub-row; the `Global` / `Project` action tabs double
-  as scope section markers, so repeated stage names read unambiguously left to right:
-  `✔ Global │ ✔ Sources │ ▶ Project ☐ │ Sources ☐`.
-- The Project action offers a final `Skip project instructions` option that the Global action does
-  not: declining the global scope would leave the shared-source and application-link checks failing,
-  so setup could not end on green. A declined scope contributes only its action tab — no Sources or
-  Duplicates tabs follow it, by the same honest-map rule:
-  `✔ Global │ ✔ Sources │ ▶ Project ☐`.
-- A scope whose target already holds instructions and whose scan found nothing to merge into it is
+- Instructions setup has one `Personal` action. Repository instruction files remain visible to
+  checks, but never appear as setup sources and Aura never links, archives, or rewrites them.
+- A target that already holds instructions and whose scan found nothing to merge into it is
   settled: it contributes no tabs to the sub-row, and the step states what it found instead of
   asking a question whose every answer either changes nothing or overwrites text Aura did not write.
-- Declining is not undoing, and the option says so where it matters: when the project target already
-  has content, the option's description names the file and states that it, and anything linking to
-  it, stay as they are. Otherwise the only thing a skip-only run would say about an earlier run's
-  target and link is that everything had already converged.
-- The same reasoning binds the answers a scope can settle on, not just the ones it is shown: an
-  action that was not on that scope's menu falls back to the proposed one, and a Global scope whose
+- The same reasoning binds the answers the target can settle on, not just the ones it is shown: an
+  action that was not on the menu falls back to the proposed one, and a Personal target whose
   Sources form ends up empty is a blocker rather than a silent decline through the back door.
 - **A recommended row leads its menu.** Wherever a question recommends an answer, that row is `1.`,
   carries a dim `(Recommended)` after its label, and is the row the form opens marked and with the
@@ -270,7 +260,7 @@ When the active step runs a sequence of internal forms (a chain step like Instru
 - On the instruction action menu that row is `Combine found instructions`, wherever the scan found
   anything to combine — the answer the step exists to give. It leads even where a target exists to
   keep, so `Keep existing shared file` follows it; the remaining order is unchanged, least invasive
-  first with the opt-out last. A scope with nothing to combine recommends nothing, and its menu is
+  first. A target with nothing to combine recommends nothing, and its menu is
   that build order as it stands.
 - **Consolidating is a migration, not a copy**, and every surface that offers it says so: the
   option's description, and a footer line on `setup --help`. The sources it merges are backed up
@@ -754,7 +744,8 @@ entries — the rest cannot be listed until the catalog narrows upstream`). Trun
 ### MCP step
 
 A picker over every catalog and configured MCP server, then one form per selected server
-capturing its name, scope, and applications. Runs after Skills, before Baseline.
+capturing its name and applications. Every selection is personal/global. Runs after Skills, before
+Baseline.
 
 - Rows merge four sources: catalog definitions contributed by installed plugins, definitions a
   trusted repository preset provides inline (`provides.mcpServers`, ids namespaced `repo/<name>`),
@@ -781,7 +772,7 @@ capturing its name, scope, and applications. Runs after Skills, before Baseline.
   the manifest targets that this build does not ship stays checked but disabled
   (`— adapter is not available in this build`).
 - A name is refused when it is unusable as a configuration key, and when another server selected in
-  this run already claims it at the same scope for one of the same applications — that pair is one
+  this run already claims it for one of the same applications — that pair is one
   key in one file, and the manifest declines to record two of them. Added custom servers are named
   `custom`, `custom-2`, … so accepting the defaults is never that collision.
 - **A preset-required server the manifest does not already record is pre-checked only for an
@@ -793,8 +784,8 @@ capturing its name, scope, and applications. Runs after Skills, before Baseline.
   definitions exactly: a repository may require its own server by listing `repo/<name>` in
   `requiredMcpServers` — interactively that row opens pre-checked at the very top; under `--yes`
   it is the same named blocker, never a silent install. A provided-but-not-required repo row is
-  never pre-checked; it merely leads the optional rows. A repository server's configure form
-  proposes `project` scope — its reason to exist is this repository — which the user can widen.
+  never pre-checked; it merely leads the optional rows. A trusted repository server definition is
+  an input to the user's global desired state; Aura never installs it into repository files.
 - Interactively, clearing a required row asks for one explicit confirmation
   (`Override the team preset on this machine and omit official/github?`), and re-checking the row
   clears the override. Only a run that resolved the preset rewrites the recorded overrides, so an

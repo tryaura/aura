@@ -55,24 +55,16 @@ export function planInstructions(context: SetupStepContext): InstructionPlan {
   const ownership = new Map<string, string[]>();
   const inventory = instructionInventory(context.model);
   const clusters = duplicateClusters(context.findings ?? []);
-  // A scope Aura will not configure is dropped here rather than in each planner below: wiring every
-  // app to a target the wizard just said it could not read safely — or that the user declined —
-  // would contradict what the user was told, and leave a machine full of links to a file Aura never
-  // wrote.
-  const scopeSelections = [selections.global, selections.project].filter(
-    (selection): selection is InstructionScopeSelection =>
-      selection !== undefined && selection.action !== "blocked" && selection.action !== "skip",
-  );
-
-  // A scope can also decline itself: consolidating a selection that composes to nothing leaves no
-  // target to link to, and only the survivors are what `planLinks` may wire. Spelled as a loop
-  // because `planScope` plans as it answers; a `filter` would hide that behind a pure-looking read.
-  const linked: InstructionScopeSelection[] = [];
-  for (const selection of scopeSelections) {
-    if (planScope(context, selection, inventory, clusters, state)) {
-      linked.push(selection);
-    }
-  }
+  // A target Aura will not configure is dropped here rather than in the planners below: wiring
+  // every app to a file the wizard just said it could not read safely would contradict what the
+  // user was told, and leave a machine full of links to a file Aura never wrote. The target can
+  // also decline itself — consolidating a selection that composes to nothing leaves nothing to
+  // link to — which is why `planScope` answers with whether it planned anything.
+  const selection = selections.global;
+  const linked =
+    selection.action !== "blocked" && planScope(context, selection, inventory, clusters, state)
+      ? [selection]
+      : [];
 
   const linkOperations = planLinks(context, linked, state.archived, ownership, state.manualSteps);
   for (const [path, archive] of state.archived) {
@@ -150,26 +142,14 @@ function planScope(
     context.model,
     existing,
   );
-  // Nothing selected, or nothing of it left to write. Declining this one scope is the whole of the
-  // response wherever the tier survives being declined: a blocker would abort the run and write
-  // nothing anywhere, including the other scope the user did configure.
-  //
-  // The global tier does not survive it. INS-001 and INS-002 fire at error severity against a
-  // missing shared source, which is why the action menu withholds its opt-out there — and an empty
-  // selection must not become the way around that, leaving a run that applies everything else and
-  // then fails its own closing checklist.
+  // Nothing selected, or nothing of it left to write. Personal instructions cannot be skipped:
+  // setup must leave applications connected to a non-empty global shared source.
   if (content.trim().length === 0) {
-    if (selection.scope === "global") {
-      state.blockers.push({
-        path: selection.targetPath,
-        reason:
-          "No selected instruction content is available to consolidate. Select a source, or choose the starter template.",
-      });
-      return false;
-    }
-    state.manualSteps.push(
-      `Configure ${selection.targetPath} on the next run: select at least one project source to consolidate, or choose the starter template. Aura wrote nothing there.`,
-    );
+    state.blockers.push({
+      path: selection.targetPath,
+      reason:
+        "No selected instruction content is available to consolidate. Select a source, or choose the starter template.",
+    });
     return false;
   }
   planConsolidatedTarget(context, selection, existing, content, state);

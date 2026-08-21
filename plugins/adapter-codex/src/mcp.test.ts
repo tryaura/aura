@@ -196,22 +196,14 @@ args = ["@example/mcp", "--token", "plain-secret", "ghp_deadbeef", "--verbose"]
       refusal: expect.stringContaining("outside Aura's managed Codex section"),
     });
     expect(
-      write(
-        existing,
-        [{ name: "docs", scope: "global", transport: { command: "npx", type: "stdio" } }],
-        [],
-      ),
+      write(existing, [{ name: "docs", transport: { command: "npx", type: "stdio" } }], []),
     ).toEqual({ refusal: expect.stringContaining("outside Aura's managed Codex section") });
   });
 
   it("ignores marker text inside multiline strings and refuses malformed markers", () => {
     const spoof = 'note = """\n# aura:begin MCP\n# aura:end MCP\n"""\n';
     const output = content(
-      write(
-        spoof,
-        [{ name: "docs", scope: "global", transport: { command: "npx", type: "stdio" } }],
-        [],
-      ),
+      write(spoof, [{ name: "docs", transport: { command: "npx", type: "stdio" } }], []),
     );
     const malformed = { refusal: expect.stringContaining("markers are malformed") };
 
@@ -230,7 +222,6 @@ args = ["@example/mcp", "--token", "plain-secret", "ghp_deadbeef", "--verbose"]
         [
           {
             name: "remote",
-            scope: "global",
             transport: {
               headers: { "X-Key": "Token ${TOKEN}" },
               type: "http",

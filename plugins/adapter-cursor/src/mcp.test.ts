@@ -161,7 +161,6 @@ describe("Cursor MCP configuration", () => {
       desired: [
         {
           name: "remote",
-          scope: "project",
           transport: {
             headers: { Authorization: "Bearer ${TOKEN}" },
             type: "http",

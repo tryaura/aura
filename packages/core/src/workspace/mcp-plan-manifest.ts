@@ -1,7 +1,7 @@
 import type { AuraManifest, McpServer, OwnedServerEntry, WorkspaceModel } from "@tryaura/aura-sdk";
 
 /**
- * Merges preset-required servers under the manifest's own, keyed by scope and name.
+ * Merges preset-required servers under the manifest's own, keyed by name.
  *
  * The manifest is written last and wins, matching the layer precedence everywhere else. A preset
  * that requires a server the user already configured must not silently repoint its transport:
@@ -15,9 +15,8 @@ export function desiredEntries(
   const result = new Map<string, OwnedServerEntry>();
   for (const server of [...(model.requiredMcpServers ?? []), ...manifest.mcpServers]) {
     if (server.apps.includes(appId)) {
-      result.set(`${server.scope}\0${server.name}`, {
+      result.set(server.name, {
         name: server.name,
-        scope: server.scope,
         transport: server.transport,
       });
     }
@@ -42,7 +41,7 @@ export function withOwnership(
 /** Drops one application from a desired server, and the entry entirely once nobody wants it. */
 export function withoutServer(manifest: AuraManifest, server: McpServer): AuraManifest {
   const mcpServers = manifest.mcpServers.flatMap((entry) => {
-    if (entry.name !== server.name || entry.scope !== server.scope) {
+    if (entry.name !== server.name) {
       return [entry];
     }
     const apps = entry.apps.filter((appId) => appId !== server.appId);

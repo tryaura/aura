@@ -47,15 +47,15 @@ const commonCheckFields = {
 } satisfies Pick<Check, "defaultSeverity" | "detect" | "explain" | "id" | "scope" | "title">;
 
 definePlugin({
-  // @ts-expect-error API v1 plugins must use the literal version 1.
-  apiVersion: 2,
+  // @ts-expect-error A plugin written against the previous contract must not type-check as current.
+  apiVersion: 1,
   id: "invalid-version",
   name: "Invalid version",
   version: "1.0.0",
 });
 
 // @ts-expect-error Plugins must declare an id and a version.
-definePlugin({ apiVersion: 1, name: "Missing identity" });
+definePlugin({ apiVersion: 2, name: "Missing identity" });
 
 defineCheck({
   defaultSeverity: "warn",

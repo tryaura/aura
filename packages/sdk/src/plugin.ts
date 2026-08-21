@@ -29,10 +29,15 @@ export interface AuraPlugin {
   /**
    * The SDK contract this plugin was written against.
    *
-   * Aura v1 loads only `1` and refuses anything else, so a plugin built for a future SDK fails
-   * loudly at load time instead of misbehaving at run time.
+   * Aura loads only the version this build supports and refuses anything else, so a plugin built
+   * for a different SDK fails loudly at load time instead of misbehaving at run time.
+   *
+   * `2` dropped `Adapter.projectSharedLink`, `scope` from `AuraManifestMcpServer`,
+   * `OwnedServerEntry`, `InstalledSkill`, and `ResolvedSkillDirectory`, and required every
+   * `capabilities.skills.directories` entry to be a `~/...` path. A plugin still declaring `1`
+   * cannot satisfy those rules, which is why the number moved rather than the registry guessing.
    */
-  readonly apiVersion: 1;
+  readonly apiVersion: 2;
   /** Rules this plugin evaluates against the workspace. */
   readonly checks?: readonly Check[] | undefined;
   /** Exact source IDs this plugin removes from the distribution when they are present. */

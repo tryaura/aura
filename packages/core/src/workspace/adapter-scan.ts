@@ -20,7 +20,7 @@ import { type AdapterFileDiscovery, discoverAdapterFiles } from "./discovery.js"
 import type { DocumentResolver } from "./documents.js";
 import type { FileReader } from "./reader.js";
 import type { McpProber } from "./mcp-probes.js";
-import { resolveAdapterProjectSharedLink, resolveAdapterSharedLink } from "./shared-links.js";
+import { resolveAdapterSharedLink } from "./shared-links.js";
 import { evaluateSupport, isComparableRange } from "./support.js";
 import { createAppMcpConvergence } from "./mcp-convergence.js";
 import { rememberMcpConvergence } from "./mcp-plan.js";
@@ -97,16 +97,9 @@ export async function scanAdapter(adapter: Adapter, context: ScanContext): Promi
 
   diagnostics.push(...discovery.diagnostics);
 
-  let projectSharedLink: ResolvedSharedLink | undefined;
   let sharedLink: ResolvedSharedLink | undefined;
   try {
     sharedLink = resolveAdapterSharedLink(adapter, context.environment, discovery.files);
-    projectSharedLink = resolveAdapterProjectSharedLink(
-      adapter,
-      context.environment,
-      discovery.files,
-      await context.projectRoot,
-    );
   } catch (error) {
     diagnostics.push(failure(adapter, "files", error));
   }
@@ -138,14 +131,13 @@ export async function scanAdapter(adapter: Adapter, context: ScanContext): Promi
     metadata: snapshot.metadata,
     skills: snapshot.skills,
     skillDirectories: (adapter.capabilities?.skills?.directories ?? []).map((directory) =>
-      resolveSkillDirectory(directory, context.environment.homeDir, context.environment.cwd),
+      resolveSkillDirectory(directory, context.environment.homeDir),
     ),
     // Contents are dropped here: they were consumed by parse and are not retained beside the
     // documents parsed out of them.
     sourceFiles: [...discovery.files.values()]
       .filter((file) => file.spec.kind !== "probe")
       .map(toStatus),
-    ...(projectSharedLink === undefined ? {} : { projectSharedLink }),
     ...(sharedLink === undefined ? {} : { sharedLink }),
     support: evaluateSupport(adapter.supportedRange, detection.version),
     ...(adapter.synthetic === undefined ? {} : { synthetic: adapter.synthetic }),

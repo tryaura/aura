@@ -86,7 +86,6 @@ async function gatherMcp(context: SetupStepContext, io: WizardIo): Promise<Setup
       const server: AuraManifestMcpServer = {
         apps: [],
         name: nextCustomName(entries),
-        scope: "global",
         transport,
       };
       entries.push({

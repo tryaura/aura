@@ -48,7 +48,6 @@ describe("Aura manifest protocol", () => {
           catalogId: "official/docs",
           name: "docs",
           note: "keep",
-          scope: "global",
           transport: {
             headers: { Authorization: "Bearer ${DOCS_TOKEN}" },
             retry: true,

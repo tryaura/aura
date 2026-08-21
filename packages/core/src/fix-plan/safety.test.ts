@@ -54,6 +54,40 @@ describe("fix-plan path safety", () => {
     }
   });
 
+  it("rejects every mutation kind inside a repository", async () => {
+    const fixture = await createFixture();
+    const project = join(fixture.root, "project");
+    await mkdir(project);
+    const model = { ...fixture.model, cwd: project, projectRoot: project };
+    const target = join(project, "target.md");
+    const plans: readonly FixPlan[] = [
+      { operations: [{ content: "content\n", path: target, type: "write" }], summary: "write" },
+      { operations: [{ path: target, type: "remove" }], summary: "remove" },
+      {
+        operations: [
+          { destinationPath: join(project, "moved.md"), sourcePath: target, type: "move" },
+        ],
+        summary: "move",
+      },
+      {
+        operations: [{ path: target, relativePath: "project/target.md", type: "archive" }],
+        summary: "archive",
+      },
+      {
+        operations: [
+          { path: target, target: join(fixture.home, "agents", "AGENTS.md"), type: "symlink" },
+        ],
+        summary: "symlink",
+      },
+    ];
+
+    for (const plan of plans) {
+      await expect(previewFixPlan({ model, plan })).rejects.toMatchObject({
+        code: "invalid-path",
+      });
+    }
+  });
+
   it("rejects intermediate symlinks and symlink targets that resolve outside allowed roots", async () => {
     const fixture = await createFixture();
     const outside = join(fixture.root, "outside");
@@ -329,25 +363,6 @@ describe("fix-plan path safety", () => {
     await expect(
       previewFixPlan({ model: fixture.model, plan: writePlan(undeclared) }),
     ).rejects.toMatchObject({ code: "invalid-path", path: undeclared });
-
-    const preview = await previewFixPlan({
-      managedHomeRoots: [join(fixture.home, "undeclared")],
-      model: fixture.model,
-      plan: writePlan(undeclared),
-    });
-    expect(preview.operations[0]?.effect).toBe("create");
-  });
-
-  it("refuses a managed home root outside the home directory", async () => {
-    const fixture = await createFixture();
-
-    await expect(
-      previewFixPlan({
-        managedHomeRoots: [fixture.root],
-        model: fixture.model,
-        plan: writePlan(join(fixture.workspace, "config.md")),
-      }),
-    ).rejects.toMatchObject({ code: "invalid-options" });
   });
 
   it("refuses to change a file whose previous contents it could not capture", async () => {

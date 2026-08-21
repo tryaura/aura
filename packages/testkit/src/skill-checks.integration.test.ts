@@ -28,9 +28,6 @@ describe("skill checks across supported adapters", () => {
 
     expect(first.report.findings).toEqual([]);
     await expect(readlink(join(seed.homeDir, ".claude", "skills", "review"))).resolves.toBe(shared);
-    await expect(readlink(join(seed.workspaceDir, ".claude", "skills", "review"))).resolves.toBe(
-      shared,
-    );
     await expect(readlink(join(seed.homeDir, ".codex", "skills", "review"))).resolves.toBe(shared);
 
     // The global and project links are one skill deployed twice, not two skills fighting over a

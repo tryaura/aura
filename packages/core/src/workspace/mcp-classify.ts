@@ -14,9 +14,8 @@ import type { AppMcpState } from "./mcp-convergence.js";
 /**
  * Splits desired servers into the ones Aura may write and the collisions a person has to settle.
  *
- * Scope is part of identity here. A server named `docs` in a project `.mcp.json` is not the `docs`
- * the manifest wants in user-level configuration, and treating them as one either blocks a write
- * that would not have collided or skips one that never happened.
+ * Desired servers are global-only. A server named `docs` in a project `.mcp.json` remains a
+ * read-only observation and cannot collide with the global entry Aura manages.
  */
 export function classifyDesired(
   desired: readonly OwnedServerEntry[],
@@ -50,16 +49,16 @@ function collisionBlocker(
     return "owned";
   }
   const sameName = (candidate: { readonly name: string; readonly scope: Scope }): boolean =>
-    candidate.name === entry.name && candidate.scope === entry.scope;
+    candidate.name === entry.name && candidate.scope === "global";
 
   const unusable = state.unusable.find(sameName);
   if (unusable !== undefined) {
     return {
       message:
         unusable.reason === "disabled"
-          ? `MCP server ${entry.name} is already declared in this application's ${entry.scope} configuration but is turned off there. Remove or enable it, then run the fix again.`
-          : `MCP server ${entry.name} is already declared in this application's ${entry.scope} configuration in a form Aura does not recognize, so Aura left it unchanged.`,
-      scope: entry.scope,
+          ? `MCP server ${entry.name} is already declared in this application's global configuration but is turned off there. Remove or enable it, then run the fix again.`
+          : `MCP server ${entry.name} is already declared in this application's global configuration in a form Aura does not recognize, so Aura left it unchanged.`,
+      scope: "global",
       sourceId: unusable.sourceId,
     };
   }
@@ -76,7 +75,7 @@ function collisionBlocker(
     ? undefined
     : {
         message: `MCP server ${entry.name} already exists outside Aura's ownership ledger and differs from the manifest.`,
-        scope: entry.scope,
+        scope: "global",
       };
 }
 
@@ -97,7 +96,7 @@ function normalizeDesired(
         error instanceof McpWriteError
           ? `MCP server ${entry.name} cannot be written as the manifest defines it: ${error.message}`
           : `MCP server ${entry.name} has a manifest definition Aura cannot represent.`,
-      scope: entry.scope,
+      scope: "global",
     };
   }
 }

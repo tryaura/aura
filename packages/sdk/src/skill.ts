@@ -9,7 +9,6 @@ import type {
   AdapterSourceFile,
 } from "./adapter.js";
 import type { AdapterSkillDirectory } from "./capabilities.js";
-import type { Scope } from "./common.js";
 import type {
   InstalledSkill,
   InvalidSkillFrontmatterField,
@@ -34,16 +33,11 @@ export { parseSkillReferences } from "./skill-references.js";
 export function resolveSkillDirectory(
   directory: AdapterSkillDirectory,
   homeDir: string,
-  cwd: string,
 ): ResolvedSkillDirectory {
-  const global = directory.entryPath.startsWith("~/");
-  // Both declaration prefixes — `~/` for global and `./` for project — are two characters, so the
-  // remainder is the same slice either way; only the base directory it joins onto differs.
   const path = directory.entryPath.slice(2);
   return {
     id: directory.id,
-    path: join(global ? homeDir : cwd, ...path.split("/")),
-    scope: global ? "global" : "project",
+    path: join(homeDir, ...path.split("/")),
   };
 }
 
@@ -53,18 +47,12 @@ export function skillDirectorySpecs(
   directories: readonly AdapterSkillDirectory[],
 ): readonly AdapterFileSpec[] {
   return directories.flatMap((directory) => {
-    const resolved = resolveSkillDirectory(
-      directory,
-      input.environment.homeDir,
-      input.environment.cwd,
-    );
-    const root = skillSpec(directory.id, resolved.path, resolved.scope);
+    const resolved = resolveSkillDirectory(directory, input.environment.homeDir);
+    const root = skillSpec(directory.id, resolved.path);
     const entries = input.files.get(directory.id)?.entries ?? [];
     return [
       root,
-      ...entries.flatMap((entry) =>
-        skillEntrySpecs(directory.id, entry, resolved.path, resolved.scope, input),
-      ),
+      ...entries.flatMap((entry) => skillEntrySpecs(directory.id, entry, resolved.path, input)),
     ];
   });
 }
@@ -76,7 +64,7 @@ export function parseInstalledSkills(
   directories: readonly AdapterSkillDirectory[],
 ): readonly InstalledSkill[] {
   return directories.flatMap((directory) => {
-    const resolved = resolveSkillDirectory(directory, input.homeDir, input.cwd);
+    const resolved = resolveSkillDirectory(directory, input.homeDir);
     const entries = input.files.get(directory.id)?.entries ?? [];
     return entries.flatMap((id): readonly InstalledSkill[] => {
       const skill = installedSkill(appId, input, directory, resolved, id);
@@ -109,7 +97,6 @@ function installedSkill(
     id,
     name,
     path,
-    scope: resolved.scope,
     skillFilePath,
     sourceId: directory.id,
     ...symlinkFields(child),
@@ -197,16 +184,15 @@ function skillEntrySpecs(
   rootId: string,
   entry: string,
   rootPath: string,
-  scope: Scope,
   input: AdapterFilesInput,
 ): readonly AdapterFileSpec[] {
   const childId = childSourceId(rootId, entry);
   const childPath = join(rootPath, entry);
-  const child = skillSpec(childId, childPath, scope);
+  const child = skillSpec(childId, childPath);
   if (input.files.get(childId)?.entries === undefined) {
     return [child];
   }
-  return [child, definitionSpec(`${childId}/SKILL.md`, join(childPath, "SKILL.md"), scope)];
+  return [child, definitionSpec(`${childId}/SKILL.md`, join(childPath, "SKILL.md"))];
 }
 
 function definitionStatus(
@@ -229,12 +215,12 @@ function absoluteSymlinkTarget(path: string, target: string | undefined): string
   return isAbsolute(target) ? resolve(target) : resolve(dirname(path), target);
 }
 
-function skillSpec(id: string, path: string, scope: Scope): AdapterFileSpec {
-  return { id, kind: "skills", optional: true, path, scope };
+function skillSpec(id: string, path: string): AdapterFileSpec {
+  return { id, kind: "skills", optional: true, path, scope: "global" };
 }
 
-function definitionSpec(id: string, path: string, scope: Scope): AdapterFileSpec {
-  return { ...skillSpec(id, path, scope), maxBytes: MAX_SKILL_DEFINITION_BYTES };
+function definitionSpec(id: string, path: string): AdapterFileSpec {
+  return { ...skillSpec(id, path), maxBytes: MAX_SKILL_DEFINITION_BYTES };
 }
 
 function childSourceId(rootId: string, entry: string): string {

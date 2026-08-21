@@ -7,12 +7,7 @@ export type AdapterSharedLinkKind = "import-line" | "native-copy" | "symlink";
 /** Fields every shared-link declaration carries, whatever its kind. */
 interface AdapterSharedLinkBase {
   /**
-   * Application entry path, spelled for the field it is declared in.
-   *
-   * {@link Adapter.sharedLink} takes `~/...`, resolved from home; {@link
-   * Adapter.projectSharedLink} takes `./...`, resolved from the workspace cwd. The other spelling
-   * is refused at registry time: a global declaration pointing into the workspace would make a
-   * home-scoped check demand a file in whichever repository the user was standing in.
+   * Global application entry path, spelled as `~/...` and resolved from home.
    */
   readonly entryPath: string;
 }

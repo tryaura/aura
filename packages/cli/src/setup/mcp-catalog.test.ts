@@ -11,7 +11,7 @@ describe("MCP setup catalog", () => {
     const alpha = definition("official/alpha", "Alpha", "alpha");
     const registry = createPluginRegistry([
       definePlugin({
-        apiVersion: 1,
+        apiVersion: 2,
         id: "official",
         mcpCatalog: [github, alpha],
         name: "Official MCP",
@@ -28,7 +28,6 @@ describe("MCP setup catalog", () => {
           {
             apps: ["codex"],
             name: "local-docs",
-            scope: "global",
             transport: { command: "docs", type: "stdio" },
           },
         ],
@@ -69,7 +68,6 @@ describe("MCP setup catalog", () => {
           {
             apps: ["codex"],
             name: "local-docs",
-            scope: "global",
             transport: { command: "docs", type: "stdio" },
           },
         ],

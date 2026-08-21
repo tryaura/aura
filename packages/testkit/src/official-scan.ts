@@ -41,7 +41,8 @@ function officialAdapter(id: string): Adapter {
   throw new Error(`Official adapter ${id} is missing.`);
 }
 
-function officialCheck(id: string): Check {
+/** The check with this id as the distribution ships it, whatever its fixability. */
+export function officialCheck(id: string): Check {
   for (const plugin of OFFICIAL_PLUGINS) {
     const check = plugin.checks?.find((candidate) => candidate.id === id);
     if (check !== undefined) {
@@ -49,13 +50,4 @@ function officialCheck(id: string): Check {
     }
   }
   throw new Error(`Official check ${id} is missing.`);
-}
-
-/** The guided check with this id, narrowed so a test can call `fix` without re-checking. */
-export function guidedCheck(id: string): Extract<Check, { readonly fixability: "guided" }> {
-  const check = officialCheck(id);
-  if (check.fixability !== "guided") {
-    throw new Error(`Official check ${id} is not guided.`);
-  }
-  return check;
 }

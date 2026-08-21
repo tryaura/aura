@@ -42,9 +42,11 @@ export function backupManifestPath(fixture: FixPlanFixture, backupId: string | u
 export async function createFixPlanFixture(): Promise<FixPlanFixture> {
   const root = await mkdtemp(join(tmpdir(), "aura-fix-plan-"));
   const home = join(root, "home");
-  const workspace = join(root, "workspace");
+  // Fix-plan mechanics use this as their mutation sandbox. Keep it beneath Aura's managed home
+  // root; repository paths are deliberately outside the kernel's writable surface.
+  const workspace = join(home, "fixture-config");
   await mkdir(home);
-  await mkdir(workspace);
+  await mkdir(workspace, { recursive: true });
 
   return {
     home,
@@ -58,6 +60,7 @@ export async function createFixPlanFixture(): Promise<FixPlanFixture> {
           mcpServers: [],
           skills: [],
           sourceFiles: [
+            sourceFile("config", "config", join(workspace, "app.json")),
             sourceFile("instructions", "instructions", join(home, "agents", "AGENTS.md")),
             sourceFile("skills", "skills", join(home, "agents", "skills")),
           ],

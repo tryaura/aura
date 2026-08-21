@@ -7,7 +7,6 @@ import type { McpTransport } from "./model.js";
 /** One manifest server selected for an adapter-owned configuration target. */
 export interface OwnedServerEntry {
   readonly name: string;
-  readonly scope: Scope;
   readonly transport: McpServerDefinition;
 }
 

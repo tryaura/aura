@@ -158,7 +158,7 @@ async function createFixture(directoryUrl: string): Promise<Fixture> {
             supportedRange: ">=1",
           }),
         ],
-        apiVersion: 1,
+        apiVersion: 2,
         id: "fixture-app",
         name: "Fixture App",
         version: "1.0.0",

@@ -195,9 +195,7 @@ function instructionActions(
   if (selections === undefined) {
     return [];
   }
-  return [selections.global, ...(selections.project === undefined ? [] : [selections.project])].map(
-    ({ action, scope }) => ({ action, scope }),
-  );
+  return [{ action: selections.global.action }];
 }
 
 interface SeverityCounts {

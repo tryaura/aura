@@ -65,25 +65,20 @@ export function createAppMcpConvergence(
       return blocked(classified.blockers);
     }
 
-    const scopes = (["global", "project"] satisfies readonly Scope[]).map((scope) =>
-      planScope(
-        adapter,
-        writer,
-        targets,
-        classified.owned,
-        ledgerNames,
-        scope,
-        state.secretSightings,
-      ),
+    const planned = planGlobalTarget(
+      adapter,
+      writer,
+      targets,
+      classified.owned,
+      ledgerNames,
+      state.secretSightings,
     );
-    const blockers = scopes.flatMap((result) => result.blockers);
-    const operations = scopes.flatMap((result) => result.operations);
 
-    return blockers.length > 0
-      ? blocked(blockers)
+    return planned.blockers.length > 0
+      ? blocked(planned.blockers)
       : {
           blockers: [],
-          operations,
+          operations: planned.operations,
           ownedNames: [...new Set(classified.owned.map((entry) => entry.name))].sort(),
         };
   };
@@ -94,42 +89,36 @@ interface ScopePlan {
   readonly operations: AppMcpConvergenceResult["operations"];
 }
 
-function planScope(
+function planGlobalTarget(
   adapter: Adapter,
   writer: McpWrite,
   targets: readonly AdapterSourceFile[],
   desired: readonly OwnedServerEntry[],
   ledgerNames: readonly string[],
-  scope: Scope,
   sightings: readonly McpSecretSighting[],
 ): ScopePlan {
-  const scopedDesired = desired.filter((entry) => entry.scope === scope);
-  const scopedTargets = targets.filter((target) => target.spec.scope === scope);
-  if (scopedDesired.length > 0 && scopedTargets.length === 0) {
+  const globalTargets = targets.filter((target) => target.spec.scope === "global");
+  if (desired.length > 0 && globalTargets.length === 0) {
+    return blockedScope(`${adapter.displayName} has no global MCP configuration target.`, "global");
+  }
+  if (globalTargets.length > 1) {
     return blockedScope(
-      `${adapter.displayName} has no ${scope}-scope MCP configuration target.`,
-      scope,
+      `${adapter.displayName} declares more than one global MCP write target.`,
+      "global",
     );
   }
-  if (scopedTargets.length > 1) {
-    return blockedScope(
-      `${adapter.displayName} declares more than one ${scope}-scope MCP write target.`,
-      scope,
-    );
-  }
-  const target = scopedTargets[0];
+  const target = globalTargets[0];
   return target === undefined
     ? { blockers: [], operations: [] }
-    : writeScopeTarget(adapter, writer, target, scopedDesired, ledgerNames, scope, sightings);
+    : writeGlobalTarget(adapter, writer, target, desired, ledgerNames, sightings);
 }
 
-function writeScopeTarget(
+function writeGlobalTarget(
   adapter: Adapter,
   writer: McpWrite,
   target: AdapterSourceFile,
   desired: readonly OwnedServerEntry[],
   ledgerNames: readonly string[],
-  scope: Scope,
   sightings: readonly McpSecretSighting[],
 ): ScopePlan {
   if (!needsTargetWrite(target, desired, ledgerNames)) {
@@ -137,14 +126,22 @@ function writeScopeTarget(
   }
   const unwritable = targetRefusal(target);
   if (unwritable !== undefined) {
-    return { blockers: [{ ...unwritable, scope, sourceId: target.spec.id }], operations: [] };
+    return {
+      blockers: [{ ...unwritable, scope: "global", sourceId: target.spec.id }],
+      operations: [],
+    };
   }
 
   const written = runWriter(writer, target, desired, ledgerNames);
   if ("refusal" in written) {
     return {
       blockers: [
-        { message: written.refusal, path: target.spec.path, scope, sourceId: target.spec.id },
+        {
+          message: written.refusal,
+          path: target.spec.path,
+          scope: "global",
+          sourceId: target.spec.id,
+        },
       ],
       operations: [],
     };
@@ -155,7 +152,7 @@ function writeScopeTarget(
         {
           message: `${adapter.displayName}'s MCP configuration at ${target.spec.path} is larger than Aura will rewrite in one operation, so Aura left it unchanged.`,
           path: target.spec.path,
-          scope,
+          scope: "global",
           sourceId: target.spec.id,
         },
       ],
@@ -165,7 +162,7 @@ function writeScopeTarget(
 
   const operation: WriteFileOperation = {
     content: written.content,
-    mode: scope === "global" ? 0o600 : 0o644,
+    mode: 0o600,
     path: target.spec.path,
     precondition: targetPrecondition(target),
     type: "write",

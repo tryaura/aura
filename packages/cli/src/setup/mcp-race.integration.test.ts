@@ -104,7 +104,6 @@ async function seed(fixture: Fixture): Promise<void> {
       {
         apps: ["claude-code"],
         name: "custom-docs",
-        scope: "global",
         transport: { command: "docs-mcp", type: "stdio" },
       },
     ],
@@ -146,7 +145,7 @@ function configPath(homeDir: string): string {
 function plugin(): AuraPlugin {
   return definePlugin({
     adapters: [adapter()],
-    apiVersion: 1,
+    apiVersion: 2,
     checks: [
       defineCheck({
         defaultSeverity: "error",

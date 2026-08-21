@@ -20,7 +20,6 @@ export const CLAUDE_CODE_SOURCE_IDS = Object.freeze({
   settingsLocal: "claude-code.settings.local",
   settingsProject: "claude-code.settings.project",
   skillsGlobal: "claude-code.skills.global",
-  skillsProject: "claude-code.skills.project",
 });
 
 export const CLAUDE_CODE_ADAPTER_ID = "claude-code";

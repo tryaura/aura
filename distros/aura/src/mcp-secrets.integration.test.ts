@@ -166,7 +166,6 @@ function manifest() {
       {
         apps: ["claude-code"],
         name: "managed",
-        scope: "global",
         transport: { command: "new-command", type: "stdio" },
       },
     ],

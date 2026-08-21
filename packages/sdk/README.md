@@ -10,7 +10,7 @@ reference bundled content.
 ## Plugin contributions
 
 Create plugins with `definePlugin`. A plugin declares an `id`, a `name`, a `version`, and
-`apiVersion: 1`. Every contribution slot is optional:
+`apiVersion: 2`. Every contribution slot is optional:
 
 - `adapters` detect an agent application, declare the files core should read, and parse those
   supplied contents into a normalized snapshot.
@@ -23,7 +23,7 @@ Create plugins with `definePlugin`. A plugin declares an `id`, a `name`, a `vers
 - `presets` references JSON definitions following the
   [team preset format](https://tryaura.sh/docs/reference/team-preset/).
 
-Aura v1 accepts only plugins with `apiVersion: 1`. The registry validates versions, IDs, and
+This Aura build accepts only plugins with `apiVersion: 2`. The registry validates versions, IDs, and
 collisions before use. Checks, snippets, MCP catalog entries, presets, and skill-source drivers are
 normally namespaced under the plugin's own ID, so plugin `acme` contributes `acme/rules`. Adapter
 IDs are global application identities, and skill-directory IDs are global source identities;
@@ -176,7 +176,7 @@ const check = defineCheck({
 
 export default definePlugin({
   adapters: [adapter],
-  apiVersion: 1,
+  apiVersion: 2,
   checks: [check],
   id: "acme",
   name: "Acme",
@@ -249,8 +249,8 @@ file is held once rather than twice. `Adapter.installHint` becomes `AppModel.ins
 checks to give application-specific update guidance without guessing how an adapter was installed.
 
 An adapter that supports manifest-driven MCP fixes may provide the pure `mcpWrite` serializer. Core
-calls it once per declared `kind: "mcp"` target with an `McpWriteInput`: that file's existing
-contents, the desired `OwnedServerEntry` values for the target scope, and the names from Aura's
+calls it for the declared global `kind: "mcp"` target with an `McpWriteInput`: that file's existing
+contents, the desired `OwnedServerEntry` values, and the names from Aura's
 ownership ledger. It returns `{ content }` or `{ refusal }` — refusal is in the signature so the
 compiler asks what happens to configuration the serializer cannot represent, and `mcpWriteResult`
 wraps a body that raises `McpWriteError` across its own call stack. Core keeps the captured bytes

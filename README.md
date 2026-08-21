@@ -52,10 +52,28 @@ aura setup
 The wizard:
 
 1. detects Claude Code, Codex, and Cursor and asks which applications Aura should manage;
-2. creates or consolidates global and project instructions, archiving migrated originals for undo;
+2. creates or consolidates personal instructions under `~/agents`, archiving migrated home-level originals for undo;
 3. offers seven install-once snippets for Git, safety, Atlassian, TypeScript, and Python guidance;
-4. records desired state and ownership in `~/agents/aura.json`; and
-5. previews one combined plan, asks once, applies it atomically, then rescans the machine.
+4. records desired state and ownership in `~/agents/aura.json`;
+5. links selected skills from `~/agents/skills` into each application's global skill directory; and
+6. previews one combined plan, asks once, applies it atomically, then rescans the machine.
+
+Aura may inspect repository instructions and MCP files for diagnostics, but setup, fixes, and undo
+never modify the current project or worktree.
+
+### Upgrading from a release that wrote to repositories
+
+Earlier releases also wrote inside the repository you ran them in. Aura no longer manages those
+files, and it cannot remove them for you, because removing them is a write to a repository. Both
+are safe to delete by hand:
+
+- `<repo>/.claude/skills/` — symlinks into `~/agents/skills`. The same skills are now linked only
+  into each application's global directory, so the project copies are redundant.
+- an `# aura:begin ENV-003` block in `<repo>/.gitignore` — `aura check` reports it once so the
+  rules become yours; keep them and delete the two marker comments, or delete the block.
+
+An `~/agents/aura.json` written by an earlier release needs no edit: a `scope` on an MCP entry is
+ignored on read and dropped the next time Aura writes the file.
 
 Setup is convergent: rerunning it with the same selections produces no changes. `--yes` accepts
 the least-invasive defaults without prompts, while `--detail` includes full file diffs and may

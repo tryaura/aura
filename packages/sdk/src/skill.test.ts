@@ -15,22 +15,10 @@ const DIRECTORY: AdapterSkillDirectory = {
 };
 
 describe("skill adapter helpers", () => {
-  it("resolves global and project directory declarations", () => {
-    expect(resolveSkillDirectory(DIRECTORY, "/home/dev", "/workspace")).toEqual({
+  it("resolves a global directory declaration", () => {
+    expect(resolveSkillDirectory(DIRECTORY, "/home/dev")).toEqual({
       id: "codex.skills.global",
       path: "/home/dev/.codex/skills",
-      scope: "global",
-    });
-    expect(
-      resolveSkillDirectory(
-        { entryPath: "./.claude/skills", id: "claude.skills.project" },
-        "/home/dev",
-        "/workspace",
-      ),
-    ).toEqual({
-      id: "claude.skills.project",
-      path: "/workspace/.claude/skills",
-      scope: "project",
     });
   });
 
@@ -139,7 +127,6 @@ describe("skill adapter helpers", () => {
         id: "invalid",
         name: "invalid",
         path: "/home/dev/.codex/skills/invalid",
-        scope: "global",
         skillFilePath: "/home/dev/.codex/skills/invalid/SKILL.md",
         sourceId: "codex.skills.global",
       },
@@ -149,7 +136,6 @@ describe("skill adapter helpers", () => {
         id: "review",
         name: "review",
         path: "/home/dev/.codex/skills/review",
-        scope: "global",
         skillFilePath: "/home/dev/.codex/skills/review/SKILL.md",
         sourceId: "codex.skills.global",
         version: "2.3.4",

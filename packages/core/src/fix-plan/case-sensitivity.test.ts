@@ -36,10 +36,7 @@ describe("case sensitivity detection", () => {
     const fixture = await createFixture();
     const absent = join(fixture.root, "absent");
 
-    const policy = await createPathPolicy(
-      { ...fixture.model, cwd: absent, projectRoot: absent },
-      undefined,
-    );
+    const policy = await createPathPolicy({ ...fixture.model, cwd: absent, projectRoot: absent });
 
     // The two defaults have to disagree. Folding spellings together only ever refuses work, so an
     // undecided probe may do it; matching a path against an allowed root grants a write, so it may

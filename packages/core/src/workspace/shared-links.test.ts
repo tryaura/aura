@@ -75,39 +75,6 @@ describe("shared instruction model", () => {
     });
   });
 
-  it("names the shared source relatively for a project entry, and says the scope", async () => {
-    const wrapper: AdapterFileSpec = {
-      id: "wrapper",
-      kind: "instructions",
-      path: "/workspace/.agent/aura.md",
-      scope: "project",
-    };
-    const adapter = {
-      ...createTestAdapter({ files: () => [wrapper] }),
-      projectSharedLink: {
-        entryPath: "./.agent/aura.md",
-        kind: "native-copy" as const,
-        lineTemplate: "@file {{sharedInstructions}}\n",
-      },
-    };
-
-    const { model } = await buildWorkspaceModel({
-      adapters: [adapter],
-      environment: createTestEnvironment(),
-      reader: createMemoryReader(),
-    });
-
-    // The whole team shares this file, so it names the repository's own AGENTS.md by a relative
-    // path. An absolute one would resolve to nothing on every checkout but the author's.
-    expect(model.apps[0]?.projectSharedLink).toEqual({
-      content: "@file ../AGENTS.md\n",
-      entryPath: "/workspace/.agent/aura.md",
-      kind: "native-copy",
-      scope: "project",
-    });
-    expect(model.apps[0]).not.toHaveProperty("sharedLink");
-  });
-
   it("reports a shared-link entry that files() did not declare", async () => {
     const adapter = {
       ...createTestAdapter(),

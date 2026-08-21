@@ -19,7 +19,6 @@ describe("Claude Code MCP writing", () => {
         desired: [
           {
             name: "owned",
-            scope: "global",
             transport: { command: "npx", env: ["TOKEN"], type: "stdio" },
           },
         ],
@@ -40,7 +39,7 @@ describe("Claude Code MCP writing", () => {
   it("leaves a file written on one line compact", () => {
     const output = content(
       writeMcpServers({
-        desired: [{ name: "docs", scope: "global", transport: { command: "npx", type: "stdio" } }],
+        desired: [{ name: "docs", transport: { command: "npx", type: "stdio" } }],
         existingContent: '{"theme":"dark","projects":{"/repo":{"history":[]}}}',
         ledgerNames: [],
       }),
@@ -52,7 +51,7 @@ describe("Claude Code MCP writing", () => {
 
   it("refuses malformed JSON and unowned same-name collisions", () => {
     const desired: readonly OwnedServerEntry[] = [
-      { name: "docs", scope: "global", transport: { command: "new", type: "stdio" } },
+      { name: "docs", transport: { command: "new", type: "stdio" } },
     ];
 
     expect(writeMcpServers({ desired, existingContent: "{", ledgerNames: [] })).toEqual({

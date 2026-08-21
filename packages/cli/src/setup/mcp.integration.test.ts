@@ -57,7 +57,6 @@ describe("MCP setup integration", () => {
         apps: ["claude-code", "cursor"],
         catalogId: "fixture/github",
         name: "github",
-        scope: "global",
         transport: githubDefinition().transportTemplate,
       },
     ]);
@@ -94,7 +93,6 @@ describe("MCP setup integration", () => {
         {
           apps: ["claude-code"],
           name: "custom-docs",
-          scope: "global",
           transport: { command: "docs-mcp", type: "stdio" },
         },
       ],
@@ -136,7 +134,7 @@ describe("MCP setup integration", () => {
 function mcpPlugin(definitionPath: string): AuraPlugin {
   return definePlugin({
     adapters: ["claude-code", "codex", "cursor"].map(adapter),
-    apiVersion: 1,
+    apiVersion: 2,
     checks: [
       defineCheck({
         defaultSeverity: "error",

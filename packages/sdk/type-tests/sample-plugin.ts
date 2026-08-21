@@ -255,7 +255,7 @@ const check = defineCheck({
 
 export const samplePlugin = definePlugin({
   adapters: [adapter],
-  apiVersion: 1,
+  apiVersion: 2,
   checks: [check],
   disabledSkillSources: ["directory:optional-default"],
   id: "example",

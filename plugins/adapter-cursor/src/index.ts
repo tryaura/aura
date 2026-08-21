@@ -15,7 +15,7 @@ export {
 
 export default definePlugin({
   adapters: [cursorAdapter],
-  apiVersion: 1,
+  apiVersion: 2,
   id: "adapter-cursor",
   name: "Cursor Adapter",
   version: "0.0.0",

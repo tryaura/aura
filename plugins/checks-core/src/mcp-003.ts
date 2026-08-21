@@ -87,7 +87,7 @@ function unsetEnvironmentFindings(model: WorkspaceModel): readonly DetectedFindi
         metadata: {
           kind: "environment",
           serverName: server.name,
-          serverScope: server.scope,
+          serverScope: "global",
           variableName,
         },
         severity: "info",
@@ -212,10 +212,7 @@ function manualRemoval(
   const selected =
     model.manifest.status === "ready" &&
     model.manifest.value.mcpServers.some(
-      (entry) =>
-        entry.name === server.name &&
-        entry.scope === server.scope &&
-        entry.apps.includes(server.appId),
+      (entry) => entry.name === server.name && entry.apps.includes(server.appId),
     );
   return {
     manualSteps: [

@@ -38,13 +38,13 @@ export function desiredMcpTargets(model: WorkspaceModel): readonly DesiredMcpTar
       if (!detected.has(appId) || manifest.value.apps[appId]?.managed !== true) {
         continue;
       }
-      result.set(`${appId}\0${server.scope}\0${server.name}`, {
+      result.set(`${appId}\0${server.name}`, {
         appId,
         name: server.name,
         ...("requiredBy" in server && typeof server.requiredBy === "string"
           ? { requiredBy: server.requiredBy }
           : {}),
-        scope: server.scope,
+        scope: "global",
         transport: server.transport,
       });
     }
@@ -87,31 +87,6 @@ export function configuredFor(
   );
 }
 
-/**
- * Whether MCP-005, rather than MCP-001, owns this target's absent expected-scope entry.
- *
- * Takes the desired list rather than deriving it: the caller evaluates this once per target, and
- * recomputing the manifest's selection inside that loop rebuilt the whole list every time.
- */
-export function hasMisplacedServerFor(
-  model: WorkspaceModel,
-  desired: readonly DesiredMcpTarget[],
-  target: DesiredMcpTarget,
-): boolean {
-  return model.mcpServers.some(
-    (server) =>
-      server.appId === target.appId &&
-      server.name === target.name &&
-      server.scope !== target.scope &&
-      !desired.some(
-        (candidate) =>
-          candidate.appId === server.appId &&
-          candidate.name === server.name &&
-          candidate.scope === server.scope,
-      ),
-  );
-}
-
 /** Turns one application's convergence blockers into findings a user can act on. */
 function blockerFindings(
   appId: string,
@@ -135,7 +110,9 @@ function blockerFindings(
  * Downgrades findings whose application cannot converge, optionally reporting why.
  *
  * Only one check reports the blockers themselves. Both would describe the same obstruction in the
- * same words, and a user reading two copies has to work out that it is one problem.
+ * same words, and a user reading two copies has to work out that it is one problem. Where MCP-001
+ * and MCP-005 do both fire for one server, they describe two different remedies and each names the
+ * other, which is the distinction this rule turns on.
  */
 export function withBlockers(
   findings: readonly DetectedFinding[],

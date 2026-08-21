@@ -94,7 +94,6 @@ export type {
   SharedInstructionLinkPlan,
   SharedInstructionLinkPlanOptions,
 } from "./workspace/shared-link-plan.js";
-export { projectSharedInstructionsPath } from "./workspace/shared-links.js";
 export { describeFailure } from "./workspace/diagnostics.js";
 export {
   mcpConvergenceBlockers,

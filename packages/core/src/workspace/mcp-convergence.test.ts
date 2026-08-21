@@ -236,7 +236,6 @@ function manifest(mcpServerNames: readonly string[], managed: boolean): AuraMani
       {
         apps: ["fake"],
         name: "managed",
-        scope: "global",
         transport: { command: "manifest-command", type: "stdio" },
       },
     ],

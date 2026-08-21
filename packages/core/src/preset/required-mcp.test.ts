@@ -61,7 +61,6 @@ describe("applyRequiredMcpServers", () => {
         catalogId: "official/docs",
         name: "docs",
         requiredBy: "Acme platform",
-        scope: "global",
         transport: { command: "docs-mcp", type: "stdio" },
       },
     ]);
@@ -109,7 +108,6 @@ describe("applyRequiredMcpServers", () => {
             {
               apps: ["claude-code"],
               name: "docs",
-              scope: "global",
               transport: { command: "my-own-docs", type: "stdio" },
             },
           ],

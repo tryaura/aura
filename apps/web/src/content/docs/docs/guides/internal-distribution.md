@@ -313,7 +313,7 @@ function contentUrl(path: string): string {
 
 export default definePlugin({
   adapters: [acmeAgentAdapter],
-  apiVersion: 1,
+  apiVersion: 2,
   id: "acme",
   mcpCatalog: [
     {

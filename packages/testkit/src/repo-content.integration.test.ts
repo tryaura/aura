@@ -84,7 +84,7 @@ function distro(): CliDistro {
     branding: { command: "fixture", displayName: "Fixture Doctor" },
     plugins: [
       definePlugin({
-        apiVersion: 1,
+        apiVersion: 2,
         checks: [
           defineCheck({
             defaultSeverity: "info",

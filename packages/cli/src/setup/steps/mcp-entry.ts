@@ -1,4 +1,4 @@
-import { mcpServerNameProblem, type AuraManifestMcpServer, type Scope } from "@tryaura/aura-sdk";
+import { mcpServerNameProblem, type AuraManifestMcpServer } from "@tryaura/aura-sdk";
 
 import { safe } from "../../safe-text.js";
 import { catalogEntryId, catalogEntryName, type AppCatalogEntry } from "../catalog.js";
@@ -67,9 +67,6 @@ async function configureEntry(
   }
 
   const defaultName = seed?.name ?? catalog?.serverName ?? "custom";
-  // A repository-defined server proposes project scope: its reason to exist is this repository,
-  // and the smaller blast radius is the right opening answer for a cloned definition.
-  const defaultScope = seed?.scope ?? (entry.repo === true ? "project" : "global");
   const apps = appChoices(context, catalog?.supportedApps, seed?.apps ?? []);
   if (apps.eligible.length === 0 && (seed?.apps.length ?? 0) === 0) {
     io.note("No detected, managed, compatible application can receive this MCP server.");
@@ -77,7 +74,6 @@ async function configureEntry(
   }
 
   let name = defaultName;
-  let scope: Scope = defaultScope;
   // A server nothing has targeted yet — a catalog row on its first visit, or a custom one added
   // during this step — proposes every application that can take it. Proposing none would be a
   // form whose own default the next question refuses.
@@ -85,17 +81,6 @@ async function configureEntry(
   for (;;) {
     const result = await io.ask([
       textQuestion("mcp-name", "Name", "Configuration name", name),
-      {
-        id: "mcp-scope",
-        initial: [scope],
-        kind: "select",
-        label: "Scope",
-        options: [
-          { label: "Global", value: "global" },
-          { label: "Project", value: "project" },
-        ],
-        prompt: "Where should applications configure this server?",
-      },
       {
         id: "mcp-apps",
         initial: selectedApps,
@@ -113,10 +98,8 @@ async function configureEntry(
     }
 
     name = answerText(result["mcp-name"]);
-    const selectedScope = selectedValues(result["mcp-scope"])[0];
-    scope = selectedScope === "project" ? "project" : "global";
     selectedApps = selectedValues(result["mcp-apps"]);
-    const problem = entryProblem(name, scope, selectedApps, taken);
+    const problem = entryProblem(name, selectedApps, taken);
     if (problem !== undefined) {
       io.note(problem);
       // Re-asking is what a person does with the correction. A run answering its own questions
@@ -130,7 +113,6 @@ async function configureEntry(
       apps: Object.freeze([...new Set(selectedApps)]),
       ...(catalog === undefined ? {} : { catalogId: catalog.id }),
       name,
-      scope,
       transport,
     });
   }
@@ -146,7 +128,6 @@ async function configureEntry(
  */
 function entryProblem(
   name: string,
-  scope: Scope,
   apps: readonly string[],
   taken: readonly AuraManifestMcpServer[],
 ): string | undefined {
@@ -159,13 +140,10 @@ function entryProblem(
   }
   const selected = new Set(apps);
   const clash = taken.some(
-    (server) =>
-      server.name === name &&
-      server.scope === scope &&
-      server.apps.some((app) => selected.has(app)),
+    (server) => server.name === name && server.apps.some((app) => selected.has(app)),
   );
   return clash
-    ? `MCP server $.name ${name} is already configured at ${scope} scope for an application selected here. Choose another name.`
+    ? `MCP server $.name ${name} is already configured globally for an application selected here. Choose another name.`
     : undefined;
 }
 

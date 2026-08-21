@@ -9,7 +9,6 @@ describe("Aura manifest MCP definitions", () => {
     const source = manifestWithMcp({
       apps: ["codex", "cursor"],
       name: "github",
-      scope: "project",
       transport: {
         args: ["-y", "@modelcontextprotocol/server-github"],
         command: "npx",
@@ -34,7 +33,6 @@ describe("Aura manifest MCP definitions", () => {
       manifestWithMcp({
         apps: ["codex"],
         name: "bad/name",
-        scope: "global",
         transport: validStdio(),
       }),
       "$.mcpServers[0].name",
@@ -44,7 +42,6 @@ describe("Aura manifest MCP definitions", () => {
       manifestWithMcp({
         apps: ["codex"],
         name: "constructor",
-        scope: "global",
         transport: validStdio(),
       }),
       "$.mcpServers[0].name",
@@ -52,19 +49,8 @@ describe("Aura manifest MCP definitions", () => {
     ],
     [
       manifestWithMcp({
-        apps: ["codex"],
-        name: "github",
-        scope: "personal",
-        transport: validStdio(),
-      }),
-      "$.mcpServers[0].scope",
-      "global",
-    ],
-    [
-      manifestWithMcp({
         apps: ["codex", "codex"],
         name: "github",
-        scope: "global",
         transport: validStdio(),
       }),
       "$.mcpServers[0].apps[1]",
@@ -74,7 +60,6 @@ describe("Aura manifest MCP definitions", () => {
       manifestWithMcp({
         apps: ["codex"],
         name: "github",
-        scope: "global",
         transport: { command: "npx", env: ["TOKEN=value"], type: "stdio" },
       }),
       "$.mcpServers[0].transport.env[0]",
@@ -84,7 +69,6 @@ describe("Aura manifest MCP definitions", () => {
       manifestWithMcp({
         apps: ["cursor"],
         name: "github",
-        scope: "global",
         transport: {
           headers: { Authorization: "Bearer ghp_deadbeef ${GITHUB_TOKEN}" },
           type: "http",
@@ -98,7 +82,6 @@ describe("Aura manifest MCP definitions", () => {
       manifestWithMcp({
         apps: ["codex"],
         name: "github",
-        scope: "global",
         transport: {
           command: "npx",
           headers: { Authorization: "Bearer ghp_deadbeef" },
@@ -109,7 +92,7 @@ describe("Aura manifest MCP definitions", () => {
       "must not appear on a stdio transport",
     ],
     [
-      manifestWithMcp({ apps: [], name: "github", scope: "global", transport: validStdio() }),
+      manifestWithMcp({ apps: [], name: "github", transport: validStdio() }),
       "$.mcpServers[0].apps",
       "at least one application",
     ],
@@ -128,8 +111,8 @@ describe("Aura manifest MCP definitions", () => {
     const source = {
       apps: {},
       mcpServers: [
-        { apps: ["codex", "cursor"], name: "github", scope: "global", transport: validStdio() },
-        { apps: ["cursor"], name: "github", scope: "global", transport: validStdio() },
+        { apps: ["codex", "cursor"], name: "github", transport: validStdio() },
+        { apps: ["cursor"], name: "github", transport: validStdio() },
       ],
       ownership: {},
       schemaVersion: 1,
@@ -145,7 +128,28 @@ describe("Aura manifest MCP definitions", () => {
     });
   });
 
-  it("keeps one name usable in both scopes, which are different files", () => {
+  it.each(["global", "project"])(
+    "migrates a legacy %s-scope entry instead of refusing the manifest",
+    (scope) => {
+      const source = manifestWithMcp({
+        apps: ["codex"],
+        name: "github",
+        scope,
+        transport: validStdio(),
+      });
+
+      const state = parseAuraManifest(JSON.stringify(source), PATH);
+      if (state.status !== "ready") {
+        throw new Error("expected a ready manifest");
+      }
+
+      expect(state.value.mcpServers[0]).not.toHaveProperty("scope");
+      // The next converging write is the migration: serializing drops the property for good.
+      expect(JSON.stringify(serializeAuraManifest(state.value))).not.toContain("scope");
+    },
+  );
+
+  it("still refuses two legacy entries that differ only by scope", () => {
     const source = {
       apps: {},
       mcpServers: [
@@ -158,7 +162,15 @@ describe("Aura manifest MCP definitions", () => {
       snippets: [],
     };
 
-    expect(parseAuraManifest(JSON.stringify(source), PATH).status).toBe("ready");
+    const state = parseAuraManifest(JSON.stringify(source), PATH);
+
+    expect(state).toMatchObject({
+      problem: {
+        jsonPath: "$.mcpServers[1].apps[0]",
+        message: expect.stringContaining("no longer separates MCP servers by scope"),
+      },
+      status: "read-only",
+    });
   });
 });
 

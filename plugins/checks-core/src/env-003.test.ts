@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import type { GitignoreModel } from "@tryaura/aura-sdk";
 
 import { env003 } from "./env-003.js";
-import { reconcileGitignoreBlock } from "./gitignore-block.js";
 import { requireFinding } from "./testing.js";
 import { gitignore, projectModel } from "./testing-repository.js";
 
@@ -39,7 +38,6 @@ describe("ENV-003", () => {
     const content = "/.claude/settings.local.json\n!/AGENTS.md\n!/CLAUDE.md\n!/.mcp.json\n";
 
     expect(env003.detect(projectModel(gitignore(content)))).toEqual([]);
-    expect(reconcileGitignoreBlock("")).not.toContain(".bak");
   });
 
   it("accepts a personal rule that lives in info/exclude instead of the shared file", () => {
@@ -50,7 +48,7 @@ describe("ENV-003", () => {
     expect(env003.detect(projectModel(shared))).toHaveLength(1);
   });
 
-  it("gives root .gitignore precedence over info/exclude and converges after fixing", () => {
+  it("gives root .gitignore precedence over info/exclude and reports manual repair", () => {
     const local = gitignore("/AGENTS.md\n", true, "/repo/.git/info/exclude");
     const completeShared = gitignore(
       "/.claude/settings.local.json\n!/AGENTS.md\n!/CLAUDE.md\n!/.mcp.json\n",
@@ -58,17 +56,9 @@ describe("ENV-003", () => {
     expect(env003.detect(projectModel(completeShared, { infoExclude: local }))).toEqual([]);
 
     const incompleteShared = gitignore("/.claude/settings.local.json\n!/CLAUDE.md\n!/.mcp.json\n");
-    const workspace = projectModel(incompleteShared, { infoExclude: local });
-    const detected = env003.detect(workspace)[0];
-    const finding = requireFinding(detected, "ENV-003", "project", "warn");
-    const operation = env003.fix(finding, workspace)?.operations[0];
-    if (operation?.type !== "write") {
-      throw new Error("expected a .gitignore write");
-    }
-
-    expect(
-      env003.detect(projectModel(gitignore(operation.content), { infoExclude: local })),
-    ).toEqual([]);
+    const detected = env003.detect(projectModel(incompleteShared, { infoExclude: local }))[0];
+    expect(requireFinding(detected, "ENV-003", "project", "warn")).toBeDefined();
+    expect(env003.fixability).toBe("manual");
   });
 
   it("lets root .gitignore override a negation from info/exclude", () => {
@@ -141,82 +131,42 @@ describe("ENV-003", () => {
     );
   });
 
-  it("fixes a missing gitignore with one write operation", () => {
+  it("leaves a missing gitignore for manual repair", () => {
     const workspace = projectModel(gitignore("", false));
     const detected = env003.detect(workspace)[0];
-    const finding = requireFinding(detected, "ENV-003", "project", "warn");
-    const plan = env003.fix(finding, workspace);
-
-    expect(plan).toEqual({
-      operations: [
-        {
-          content:
-            "# aura:begin ENV-003\n" +
-            "# Managed by Aura. Personal agent state stays local; team configuration stays shareable.\n" +
-            "/.claude/settings.local.json\n" +
-            "/.claude/skills/\n" +
-            "!/AGENTS.md\n" +
-            "!/CLAUDE.md\n" +
-            "!/.mcp.json\n" +
-            "# aura:end ENV-003\n",
-          path: "/repo/.gitignore",
-          type: "write",
-        },
-      ],
-      summary: "Update Aura's managed agent-file rules in .gitignore.",
-    });
+    expect(requireFinding(detected, "ENV-003", "project", "warn")).toBeDefined();
+    expect(env003.fixability).toBe("manual");
   });
 
-  it("preserves unrelated bytes and CRLF, moves the managed block last, and converges", () => {
-    const original =
-      "# keep\r\nnode_modules/\r\n# aura:begin ENV-003\r\nold-rule\r\n# aura:end ENV-003\r\n/dist\r\n";
-    const once = reconcileGitignoreBlock(original);
-    if (once === undefined) {
-      throw new Error("expected valid managed block");
-    }
-    const twice = reconcileGitignoreBlock(once);
+  it("reports a complete managed block an earlier release left behind", () => {
+    const content =
+      "node_modules/\n# aura:begin ENV-003\n/.claude/settings.local.json\n/.claude/skills/\n!/AGENTS.md\n!/CLAUDE.md\n!/.mcp.json\n# aura:end ENV-003\n";
+    const finding = env003
+      .detect(projectModel(gitignore(content)))
+      .find((candidate) => candidate.id === "managed-block-abandoned");
 
-    expect(once).toContain("# keep\r\nnode_modules/\r\n/dist\r\n");
-    expect(once.endsWith("# aura:end ENV-003\r\n")).toBe(true);
-    expect(once.replaceAll("\r\n", "")).not.toContain("\n");
-    expect(twice).toBe(once);
+    expect(finding?.fixability).toBe("manual");
+    expect(finding?.severity).toBe("info");
+    expect(finding?.details).toContain("no longer maintains it");
+    expect(finding?.details).toContain("/repo/.claude/skills");
   });
 
-  it("follows the document's first line ending rather than any CRLF anywhere in it", () => {
-    const mostlyLf = reconcileGitignoreBlock("node_modules/\ndist/\r\ncoverage/\n");
+  it("reports a half-removed block, because finishing the removal is still someone's job", () => {
+    const finding = env003
+      .detect(projectModel(gitignore("# aura:begin ENV-003\n/.claude/settings.local.json\n")))
+      .find((candidate) => candidate.id === "managed-block-abandoned");
 
-    expect(mostlyLf?.endsWith("# aura:end ENV-003\n")).toBe(true);
-    expect(mostlyLf).not.toContain("settings.local.json\r\n");
+    expect(finding?.details).toContain("without the other");
   });
 
-  it("separates and converges a managed block after a file without a trailing newline", () => {
-    const once = reconcileGitignoreBlock("node_modules/");
+  it("says nothing about a managed block in a file that never had one", () => {
+    const content = "/.claude/settings.local.json\n!/AGENTS.md\n!/CLAUDE.md\n!/.mcp.json\n";
 
-    expect(once?.startsWith("node_modules/\n# aura:begin ENV-003\n")).toBe(true);
-    expect(once === undefined ? undefined : reconcileGitignoreBlock(once)).toBe(once);
-  });
-
-  it.each([
-    ["duplicate begin", "# aura:begin ENV-003\n# aura:begin ENV-003\n# aura:end ENV-003\n"],
-    ["missing end", "# aura:begin ENV-003\n"],
-    ["reversed markers", "# aura:end ENV-003\n# aura:begin ENV-003\n"],
-    ["marker suffix", "# aura:begin ENV-003 old\n# aura:end ENV-003\n"],
-    ["indented marker", " # aura:begin ENV-003\n# aura:end ENV-003\n"],
-  ])("fails closed for %s markers", (_case, content) => {
-    const workspace = projectModel(gitignore(content));
-    const findings = env003.detect(workspace);
-    const detected = findings.find((finding) => finding.id === "gitignore-policy");
-    const finding = requireFinding(detected, "ENV-003", "project", "warn");
-
-    expect(env003.fix(finding, workspace)).toBeUndefined();
-    expect(findings).toContainEqual({
-      details:
-        "Repair the duplicate, incomplete, reversed, suffixed, or indented ENV-003 markers before running the automatic fix again.",
-      fixability: "manual",
-      id: "managed-block-malformed",
-      locations: [{ path: "/repo/.gitignore" }],
-      message: "Aura's managed ENV-003 block has malformed markers.",
-    });
+    expect(
+      env003
+        .detect(projectModel(gitignore(content)))
+        .some((candidate) => candidate.id === "managed-block-abandoned"),
+    ).toBe(false);
   });
 
   it("reports an unreadable gitignore without offering a fix", () => {
@@ -227,9 +177,7 @@ describe("ENV-003", () => {
       problem: "denied",
     });
     const detected = env003.detect(workspace)[0];
-    const finding = requireFinding(detected, "ENV-003", "project", "warn");
-
     expect(detected?.id).toBe("gitignore-unreadable");
-    expect(env003.fix(finding, workspace)).toBeUndefined();
+    expect(detected?.fixability).toBe("manual");
   });
 });

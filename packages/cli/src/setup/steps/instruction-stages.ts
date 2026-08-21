@@ -1,7 +1,5 @@
 import { basename } from "node:path";
 
-import type { Scope } from "@tryaura/aura-sdk";
-
 import {
   describeInstructionSource,
   type DuplicateCluster,
@@ -22,7 +20,6 @@ import {
 
 export const TEMPLATE_VALUE = "template";
 export const CONSOLIDATE_VALUE = "consolidate";
-export const SKIP_VALUE = "skip";
 
 /** What the chain has gathered for one scope so far; every field appears once its form resolves. */
 export interface ScopeDraft {
@@ -31,12 +28,14 @@ export interface ScopeDraft {
   readonly selectedSources?: readonly string[] | undefined;
 }
 
-export type ChainState = Readonly<Record<Scope, ScopeDraft>>;
+export interface ChainState {
+  readonly global: ScopeDraft;
+}
 
 export interface ScopeInput {
   readonly blocked: boolean;
   readonly clusters: readonly DuplicateCluster[];
-  readonly scope: Scope;
+  readonly scope: "global";
   readonly sources: readonly InstructionSource[];
   readonly targetContentValue: string | undefined;
   readonly targetPath: string;
@@ -82,7 +81,7 @@ export function scopeStages(input: ScopeInput): readonly ChainStage<ChainState>[
   return [
     {
       isApplicable: () => !input.blocked,
-      label: input.scope === "global" ? "Global" : "Project",
+      label: "Personal",
       apply: (state, answers) =>
         update(state, { action: settled(answers[actionId], offered, fallback) }),
       questions: (state) =>
@@ -93,7 +92,7 @@ export function scopeStages(input: ScopeInput): readonly ChainStage<ChainState>[
                 id: actionId,
                 initial: [draft(state).action ?? fallback],
                 kind: "select",
-                label: input.scope === "global" ? "Global" : "Project",
+                label: "Personal",
                 options,
                 prompt: `How should Aura configure ${input.targetPath}?`,
               },
@@ -117,7 +116,7 @@ export function scopeStages(input: ScopeInput): readonly ChainStage<ChainState>[
                   label: source.path,
                   value: source.path,
                 })),
-                prompt: `Which ${input.scope} instruction files should Aura consolidate?`,
+                prompt: "Which personal instruction files should Aura consolidate?",
               },
             ]
           : undefined,
@@ -183,10 +182,8 @@ function settled(
  * advice, the mark and the cursor on row `1.` together, and leaves the rest of the menu in the
  * order it was built. A scope with nothing to combine recommends nothing and keeps that order.
  *
- * The opt-out is offered on the project scope only. Declining the global scope would leave INS-001
- * and INS-002 firing at error severity, so setup could not end on green — an answer the wizard
- * offers should not be one the closing checklist then fails the run over. The project tier has no
- * error-severity counterpart, so a declined project scope still ends green.
+ * Personal instructions cannot be skipped because setup must leave applications connected to the
+ * global shared source.
  */
 function actionOptions(input: ScopeInput): readonly WizardOption[] {
   const options: WizardOption[] = [];
@@ -210,18 +207,6 @@ function actionOptions(input: ScopeInput): readonly WizardOption[] {
     label: "Use starter template",
     value: TEMPLATE_VALUE,
   });
-  if (input.scope === "project") {
-    options.push({
-      // Declining is not undoing: an earlier run's target and the link pointing at it survive this
-      // answer untouched, and a converged summary saying "nothing to do" would be the only thing
-      // the user ever heard about them.
-      description: hasTargetContent(input)
-        ? `Aura writes nothing here and adds no project-level link; ${basename(input.targetPath)} and anything already linking to it stay as they are.`
-        : "Aura writes nothing here and adds no project-level link.",
-      label: "Skip project instructions",
-      value: SKIP_VALUE,
-    });
-  }
   return recommendedFirst(options);
 }
 

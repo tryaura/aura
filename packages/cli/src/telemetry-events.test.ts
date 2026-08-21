@@ -84,13 +84,6 @@ const SELECTIONS: SetupSelections = {
       selectedSources: ["/home/user/.claude/CLAUDE.md"],
       targetPath: "/home/user/agents/AGENTS.md",
     },
-    project: {
-      action: "skip",
-      duplicateWinners: {},
-      scope: "project",
-      selectedSources: [],
-      targetPath: "/home/user/project/AGENTS.md",
-    },
   },
   mcp: {
     servers: [
@@ -98,13 +91,11 @@ const SELECTIONS: SetupSelections = {
         apps: ["claude-code"],
         catalogId: "official/context7",
         name: "context7",
-        scope: "global",
         transport: { type: "http", url: "https://mcp.context7.com/mcp" },
       },
       {
         apps: ["claude-code"],
         name: "my-private-server",
-        scope: "project",
         transport: { type: "http", url: "https://internal.example.com/mcp" },
       },
     ],
@@ -197,10 +188,7 @@ describe("setupActions", () => {
   it("lists final distribution-owned choices and counts external selections", () => {
     expect(setupActions({ offered: EVERY_CATEGORY, selections: PRIVATE_SELECTIONS })).toEqual({
       applications: ["claude-code"],
-      instructions: [
-        { action: "consolidate", scope: "global" },
-        { action: "skip", scope: "project" },
-      ],
+      instructions: [{ action: "consolidate" }],
       mcpServers: { catalogIds: ["official/context7"], customCount: 1 },
       skills: {
         bundled: [{ id: "review", source: "plugin:official" }],

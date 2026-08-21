@@ -1,5 +1,4 @@
 import type { FileProblem } from "./adapter.js";
-import type { Scope } from "./common.js";
 import type { SkillSourceId } from "./content.js";
 import type { AuraCheckConfiguration } from "./configuration.js";
 import type { McpServerDefinition } from "./mcp-definition-types.js";
@@ -70,8 +69,6 @@ export interface AuraManifestMcpServer {
   readonly catalogId?: string | undefined;
   /** Server key written into each target application's configuration. */
   readonly name: string;
-  /** Whether the server belongs in user-level or workspace-level configuration. */
-  readonly scope: Scope;
   /** How each target application reaches the server. */
   readonly transport: McpServerDefinition;
 }

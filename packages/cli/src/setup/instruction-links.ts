@@ -42,7 +42,7 @@ function planAppLinks(
   manualSteps: string[],
 ): FileOperation[] {
   return scopeSelections.flatMap((selection) => {
-    const link = selection.scope === "global" ? app.sharedLink : app.projectSharedLink;
+    const link = app.sharedLink;
     if (link === undefined) {
       return [];
     }

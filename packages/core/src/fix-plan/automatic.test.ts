@@ -209,7 +209,7 @@ describe("prepareAutomaticFixes", () => {
     // `PathPolicy.caseInsensitive` widens whenever `detectCaseSensitivity` cannot decide, so a
     // case-sensitive volume can still reach this policy. Coalescing under it would merge two
     // genuinely distinct files into one write and never write the second spelling at all.
-    const policy = { ...(await createPathPolicy(fixture.model, undefined)), caseInsensitive: true };
+    const policy = { ...(await createPathPolicy(fixture.model)), caseInsensitive: true };
     const plan: FixPlan = {
       operations: [
         { content: "one\n", path: join(fixture.model.cwd, "AGENTS.md"), type: "write" },

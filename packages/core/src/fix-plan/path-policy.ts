@@ -41,16 +41,13 @@ export interface PathPolicy {
 }
 
 /** Resolves the roots and filesystem traits a plan is validated against. */
-export async function createPathPolicy(
-  model: WorkspaceModel,
-  managedHomeRoots: readonly string[] | undefined,
-): Promise<PathPolicy> {
+export async function createPathPolicy(model: WorkspaceModel): Promise<PathPolicy> {
   const workspaceRoot = resolve(model.projectRoot ?? model.cwd);
   const sensitivity = await detectCaseSensitivity(workspaceRoot);
   return {
     caseInsensitive: sensitivity !== "sensitive",
     reservedRoots: Object.freeze([backupRoot(model.homeDir)]),
-    roots: resolveAllowedRoots(model, managedHomeRoots),
+    roots: resolveAllowedRoots(model),
     rootsCaseInsensitive: sensitivity === "insensitive",
   };
 }

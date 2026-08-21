@@ -149,6 +149,5 @@ export function generalAnswers(name: string, appIds: readonly string[]): WizardA
   return {
     "mcp-apps": { kind: "options", values: appIds },
     "mcp-name": { kind: "text", text: name },
-    "mcp-scope": { kind: "options", values: ["global"] },
   };
 }

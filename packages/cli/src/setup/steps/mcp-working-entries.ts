@@ -33,11 +33,7 @@ export function workingEntries(context: SetupStepContext): WorkingMcpEntry[] {
 function matchesEntry(server: AuraManifestMcpServer, entry: McpSetupCatalogEntry): boolean {
   const existing = entry.existing;
   if (existing !== undefined) {
-    return (
-      existing.catalogId === server.catalogId &&
-      existing.name === server.name &&
-      existing.scope === server.scope
-    );
+    return existing.catalogId === server.catalogId && existing.name === server.name;
   }
   return entry.catalog?.id === server.catalogId;
 }
@@ -53,7 +49,7 @@ export function nextCustomKey(entries: readonly WorkingMcpEntry[]): string {
 /**
  * A default name no other row has taken.
  *
- * Two servers cannot share one name in one application and scope — the manifest refuses to record
+ * Two servers cannot share one name in one application — the manifest refuses to record
  * it — so seeding every custom server with `custom` would turn "add two, accept the defaults" into
  * a plan the manifest declines to hold.
  */
