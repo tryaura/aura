@@ -38,10 +38,14 @@ implementation together.
 
 Rendered by `packages/cli/src/help.ts`; exact layouts pinned in `help.test.ts`.
 
-- `aura` / `aura --help` / `aura -h` — root screen: Get started → Everyday use → Help → Advanced,
-  then a `Docs:` footer when branding defines one. The Help section lists `aura <command> --help`,
-  and an `aura --version` row exactly when branding carries a version (which is also when the flag
-  is registered at all). Advanced carries `--no-color` alone.
+- `aura` / `aura --help` / `aura -h` — root screen: a three-line plain-English paragraph on what
+  Aura is for, then Get started → Everyday use → Help → Advanced, then a `Docs:` footer when
+  branding defines one. The paragraph is the one piece of prose in the help surface, and the root
+  screen is the only screen that carries it: every other screen is reached by someone who already
+  knows what the tool does. It is hand-wrapped at 80 columns because the renderer aligns columns
+  and never reflows text. The Help section lists `aura <command> --help`, and an `aura --version`
+  row exactly when branding carries a version (which is also when the flag is registered at all).
+  Advanced carries `--no-color` alone.
 - `aura check --help` — Everyday use, Narrow it down, Reporting, Configuration, Fixing behavior,
   Scripting, Advanced, then the exit-code footer. "Narrow it down" scopes what runs; "Reporting"
   (`--verbose`, `--detail`) controls how much the run says about it.
