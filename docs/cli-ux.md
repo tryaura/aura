@@ -189,6 +189,66 @@ checks · `3` operational failures. Finding health remains visible through the r
 severity counts. Setup and undo also use `1` for incomplete user-driven flows. `runCli` normalizes
 any other code to 2.
 
+## Automatic updates
+
+Standalone distributions may install a newer release before the requested command runs. Both the
+lines and the outcome mapping live in `packages/cli/src/update/run.ts`, pinned by
+`startup-update.test.ts` and `install.integration.test.ts`.
+
+The updater is a guest in someone else's command. It obeys three rules:
+
+1. **It never changes the verdict.** No outcome — including a refused download — alters the exit
+   code or the stdout of the command the user asked for. `--json` stays one parseable document.
+2. **It speaks on stderr, and rarely.** Two lines for a successful update, one for a failure, none
+   for anything else. A check that found nothing, a network that was not there, and a lock another
+   updater holds are not events in the user's day.
+3. **It never claims this run was updated.** The process keeps the image it started with, and the
+   success line says so rather than sending someone to `--version` to find the old number.
+
+Exact bytes, with `<Name>` from `CliBranding.displayName`:
+
+```text
+Updating <Name> 0.5.0 -> 0.5.1...
+Updated <Name> to 0.5.1. The new version will be used on your next run.
+```
+
+Between those two lines the archive download paints one repainting frame, erased before the outcome
+line is written:
+
+```text
+  Downloading… 42%
+```
+
+It exists because the download is the only part of an update the user waits on, and a release
+archive is tens of megabytes: on a thin connection an unchanging line is indistinguishable from a
+hung command. Painted through `terminal-frame.ts` like the scan surface, only when stderr is a
+terminal — so a captured run is byte-identical to one where it never existed, and the two lines
+above remain the whole message contract. The percentage stops at 99 until the transfer completes.
+
+| Outcome                          | Message                                                                                                                      | Requested command |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ----------------- |
+| Current, or a fresh cached check | None                                                                                                                         | Runs normally     |
+| Metadata request failed          | None                                                                                                                         | Runs normally     |
+| Another updater holds the lock   | None                                                                                                                         | Runs normally     |
+| Update installed                 | The two lines above                                                                                                          | Runs, old version |
+| Download or permission failure   | `<Name> could not install the 0.5.1 update. Update manually: <url>`                                                          | Runs normally     |
+| Digest mismatch                  | `<Name> refused the 0.5.1 update: the download did not match the release's published SHA-256 digest. Nothing was installed.` | Runs normally     |
+
+A command-derived debug variable — `AURA_UPDATE_DEBUG` for the official binary — traces every gate
+and outcome to stderr as `update: <what happened>`. It is a developer affordance
+for whoever is wiring a distribution up, deliberately outside this contract: off by default, never
+suggested to a user, and free to change shape. Rendered by `update/diagnostics.ts`.
+
+The manual-update link comes from `CliUpdates.manualUpdateUrl`, falling back to
+`CliBranding.docsUrl`; when a distribution defines neither, the sentence is dropped rather than
+placeholder-filled. The digest line never offers a link — retrying by hand is not the advice.
+
+Startup updates run only for an interactive standalone run: all three streams must be terminals,
+`CI` must be unset, and the command-derived disable variable (`AURA_UPDATE` for the official binary)
+must not be `off`, `0`, `false`, or `no`. Variable names uppercase `branding.command` and replace
+non-alphanumeric runs with `_`. Machine-oriented and scripted runs stay pinned to the binary they
+selected, which is why a captured `--json` run is byte-identical whether or not a release exists.
+
 ## Glyph vocabulary
 
 | Glyph | Meaning                                          |

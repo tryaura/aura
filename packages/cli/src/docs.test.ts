@@ -6,7 +6,7 @@ import { renderCheckHelp, renderRootHelp, renderSetupHelp, renderUndoHelp } from
 import { setupAddKinds } from "./setup/steps/index.js";
 import { parseCheckReport } from "./test-support/check-output-schema.js";
 
-const BRANDING = { command: "aura", displayName: "Aura", version: "0.4.0" };
+const BRANDING = { command: "aura", displayName: "Aura", version: "0.5.1" };
 const CLI_REFERENCE = new URL(
   "../../../apps/web/src/content/docs/docs/reference/cli.mdx",
   import.meta.url,

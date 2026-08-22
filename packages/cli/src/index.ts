@@ -1,4 +1,4 @@
-export { runCli } from "./run.boundary.js";
+export { runCli, runStandaloneCli } from "./run.boundary.js";
 export { createHttpTelemetrySink } from "./http-telemetry-sink.js";
 export type {
   HttpTelemetryDeliveryFailure,
@@ -29,3 +29,4 @@ export type {
   CliRegistryOptions,
   CliRuntime,
 } from "./types.js";
+export type { CliUpdates } from "./update/types.js";

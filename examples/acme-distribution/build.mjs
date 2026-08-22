@@ -14,7 +14,9 @@ const result = spawnSync(
   "bun",
   [
     "build",
-    "src/main.boundary.ts",
+    // The standalone entry: the only one that declares the installation capability the updater
+    // needs, so the compiled artifact is the only one that can replace itself.
+    "src/standalone-main.boundary.ts",
     ...(await contentEntrypoints(root)),
     "--compile",
     "--asset-naming=[dir]/[name].[ext]",

@@ -1,18 +1,21 @@
 {
   "$schema": "./node_modules/fallow/schema.json",
   "entry": [
-    "packages/cli/type-tests/*.ts",
-    "packages/sdk/type-tests/*.ts",
-    "distros/aura/src/*.smoke.ts",
     "apps/web/src/styles/docs.css",
-    "packages/cli/src/bin.ts",
-    "packages/cli/src/index.release.ts",
-    "packages/*/tsdown*.config.ts",
+    "distros/aura/src/*.smoke.ts",
+    "distros/aura/src/standalone-main.boundary.ts",
     "examples/acme-distribution/build.mjs",
     "examples/acme-distribution/smoke.mjs",
     "examples/acme-distribution/src/main.boundary.ts",
+    "examples/acme-distribution/src/standalone-main.boundary.ts",
+    "packages/*/tsdown*.config.ts",
+    "packages/cli/src/bin.ts",
+    "packages/cli/src/index.release.ts",
+    "packages/cli/type-tests/*.ts",
+    "packages/sdk/type-tests/*.ts",
     "scripts/docs-content.test.mjs",
     "scripts/toolchain-docs.test.mjs",
+    "scripts/verify-archive.test.mjs",
     "scripts/verify-workflows.test.mjs"
   ],
   "ignoreDependencies": [

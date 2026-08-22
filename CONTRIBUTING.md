@@ -76,7 +76,7 @@ check` notes it as held until then.
 ## Releases and versioning
 
 - `0.0.0` marks a private, unpublished package. The publishable trio — `@tryaura/aura-sdk`,
-  `@tryaura/aura-cli`, `@tryaura/aura-testkit` — sits at `0.4.0` and is kept in lockstep;
+  `@tryaura/aura-cli`, `@tryaura/aura-testkit` — sits at `0.5.1` and is kept in lockstep;
   `scripts/verify-packages.mjs` asserts every public manifest against the SDK's version.
 - `pnpm verify:packages` is the clean-room check: it packs the trio, validates tarball contents
   and manifests (no install hooks, no private-dependency leaks), installs only those tarballs into
@@ -96,6 +96,17 @@ check` notes it as held until then.
   which stamps the tag version into `distros/aura`, compiles and smoke-tests the binary
   (`verify:binary`), and packages it with the `LICENSE`. Checksummed tarballs are attached to the
   GitHub release.
+- **Publication is draft-first, and the order is load-bearing.** The `publish` job checks the exact
+  artifact set, attests it, creates a _draft_ release, reads the attached assets back from the API,
+  publishes, and only then asserts the release is immutable and every archive exposes a SHA-256
+  digest. Publishing is what freezes a release, so everything that can fail has to fail while the
+  release can still be thrown away. The standalone updater installs only immutable releases with
+  per-asset digests, so a release missing either would be one no binary can install — the workflow
+  fails instead. This requires **Settings → General → Immutable releases** to be enabled on the
+  repository; it applies only to releases published after the setting is turned on.
+- The compiled binary is built from `distros/aura/src/standalone-main.boundary.ts`, not `main.ts`.
+  That entry alone calls `runStandaloneCli` with its process and update source; the npm `bin` stays
+  on `main.ts` and calls `runCli`, whose API has no update capability.
 - Because the version is stamped only in release CI, a source build's `aura --version` reports
   `0.0.0`.
 
