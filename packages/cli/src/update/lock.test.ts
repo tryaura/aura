@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, stat, utimes, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, stat, unlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -19,7 +19,11 @@ describe("updater exclusion", () => {
 
     expect(first.kind).toBe("acquired");
     expect(second.kind).toBe("held");
-    expect(JSON.parse(await readFile(lockPath, "utf8"))).toEqual({ pid: 4_242, startedAt: NOW });
+    expect(JSON.parse(await readFile(lockPath, "utf8"))).toMatchObject({
+      pid: 4_242,
+      startedAt: NOW,
+      token: expect.any(String),
+    });
   });
 
   it("lets the next updater in once the holder releases", async () => {
@@ -28,6 +32,21 @@ describe("updater exclusion", () => {
     await (first.kind === "acquired" ? first.lock.release() : Promise.resolve());
 
     expect((await acquireUpdateLock({ host: host(), lockPath, now: NOW })).kind).toBe("acquired");
+  });
+
+  it("does not release a successor that reused the lock path", async () => {
+    const lockPath = await scratchLock();
+    const first = await acquireUpdateLock({ host: host(), lockPath, now: NOW });
+    await unlink(lockPath);
+    await writeFile(
+      lockPath,
+      JSON.stringify({ pid: 9_001, startedAt: NOW, token: "successor" }),
+      "utf8",
+    );
+
+    await (first.kind === "acquired" ? first.lock.release() : Promise.resolve());
+
+    expect(JSON.parse(await readFile(lockPath, "utf8"))).toMatchObject({ token: "successor" });
   });
 
   it("waits on a fresh lock whatever its owner is doing", async () => {
@@ -59,6 +78,19 @@ describe("updater exclusion", () => {
     const lock = await acquireUpdateLock({ host: host({ alive: false }), lockPath, now: NOW });
     expect(lock.kind).toBe("acquired");
     expect(JSON.parse(await readFile(lockPath, "utf8"))).toMatchObject({ pid: 4_242 });
+  });
+
+  it("lets only one updater reclaim the same stale lock", async () => {
+    const lockPath = await scratchLock();
+    await writeFile(lockPath, JSON.stringify({ pid: 9_001, startedAt: STALE }), "utf8");
+
+    const attempts = await Promise.all([
+      acquireUpdateLock({ host: host({ alive: false }), lockPath, now: NOW }),
+      acquireUpdateLock({ host: host({ alive: false }), lockPath, now: NOW }),
+    ]);
+
+    expect(attempts.filter((attempt) => attempt.kind === "acquired")).toHaveLength(1);
+    expect(attempts.filter((attempt) => attempt.kind === "held")).toHaveLength(1);
   });
 
   /**

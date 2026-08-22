@@ -1,6 +1,7 @@
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { gunzipSync, gzipSync } from "node:zlib";
 
 import { describe, expect, it } from "vitest";
 
@@ -20,6 +21,27 @@ describe("release archive extraction", () => {
     expect(failure).toBeUndefined();
     expect(await readFile(join(directory, "staged"), "utf8")).toBe("#!/bin/sh\necho 1.4.0\n");
     expect(await readFile(join(directory, "license"), "utf8")).toBe("Apache-2.0\n");
+  });
+
+  /**
+   * The executable is not "extracted" because a header announced it — a stream that stops halfway
+   * through the body leaves a partial file, and reporting that as the required entry hands the
+   * caller a truncated program to go and verify.
+   */
+  it("reports an executable whose body never finished arriving", async () => {
+    const directory = await scratch();
+    const archive = join(directory, "archive.tar.gz");
+    const whole = tarGzip([{ content: "x".repeat(2_000), name: EXECUTABLE }]);
+    await writeFile(archive, gzipSync(gunzipSync(whole).subarray(0, 512 + 800)));
+
+    expect(
+      await extractArchive({
+        archivePath: archive,
+        entries: { [EXECUTABLE]: join(directory, "staged") },
+        maxBytes: 1_024 * 1_024,
+        requiredEntry: EXECUTABLE,
+      }),
+    ).toBe("missing-executable");
   });
 
   it("reports an archive that never carried the executable", async () => {
@@ -83,6 +105,24 @@ describe("release archive extraction", () => {
       requiredEntry: EXECUTABLE,
     });
     expect(failure).toBe("unreadable-archive");
+  });
+
+  it("stops decompressing once the tar terminator is complete", async () => {
+    const directory = await scratch();
+    const archive = join(directory, "archive.tar.gz");
+    const release = tarGzip([{ content: "ok\n", name: EXECUTABLE }]);
+    const compressedTrailer = gzipSync(Buffer.alloc(4 * 1_024 * 1_024, 1));
+    await writeFile(archive, Buffer.concat([release, compressedTrailer]));
+
+    expect(
+      await extractArchive({
+        archivePath: archive,
+        entries: { [EXECUTABLE]: join(directory, "staged") },
+        maxBytes: 1_024,
+        requiredEntry: EXECUTABLE,
+      }),
+    ).toBeUndefined();
+    expect(await readFile(join(directory, "staged"), "utf8")).toBe("ok\n");
   });
 });
 

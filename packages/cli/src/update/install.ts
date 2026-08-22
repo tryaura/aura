@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { copyFile, link, lstat, open, rename, rm } from "node:fs/promises";
+import { chmod, copyFile, link, lstat, open, rename, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import { acquireUpdateLock } from "./lock.js";
@@ -31,6 +31,8 @@ export interface InstallRequest {
   readonly executablePath: string;
   readonly host: UpdateHost;
   readonly now: number;
+  /** Drawn while the archive streams, when the caller has a terminal to draw on. */
+  readonly onProgress?: ((received: number, total: number) => void) | undefined;
   readonly probeEnvironment: Readonly<Record<string, string>>;
 }
 
@@ -72,14 +74,18 @@ async function transact(request: InstallRequest, directory: string): Promise<Ins
   if (installed !== undefined && !isNewerVersion(request.candidate.version, installed)) {
     return { kind: "skipped" };
   }
-  if (!(await isRegularFile(request.executablePath))) {
+  const executableMode = await regularFileMode(request.executablePath);
+  if (executableMode === undefined) {
     return { kind: "failed" };
   }
 
+  // Every path the transaction can create is invented here, so the cleanup below names all of
+  // them. One built deeper in — inside the swap, say — is one a failed rename leaves behind.
   const scratch = join(directory, `.${request.command}-${randomUUID()}`);
   const paths = {
     archive: `${scratch}.tar.gz`,
     license: `${scratch}.LICENSE`,
+    previous: `${scratch}.previous`,
     staged: `${scratch}.staged`,
   };
   try {
@@ -88,8 +94,10 @@ async function transact(request: InstallRequest, directory: string): Promise<Ins
       candidate: request.candidate,
       downloadHeaders: request.downloadHeaders,
       entryName: request.command,
+      executableMode,
       host: request.host,
       licensePath: paths.license,
+      ...(request.onProgress === undefined ? {} : { onProgress: request.onProgress }),
       probeEnvironment: request.probeEnvironment,
       stagedPath: paths.staged,
     });
@@ -99,7 +107,7 @@ async function transact(request: InstallRequest, directory: string): Promise<Ins
     await swap(request, directory, paths);
     return { kind: "installed" };
   } finally {
-    await discard([paths.archive, paths.license, paths.staged]);
+    await discard([paths.archive, paths.license, paths.previous, paths.staged]);
   }
 }
 
@@ -107,9 +115,9 @@ async function transact(request: InstallRequest, directory: string): Promise<Ins
 async function swap(
   request: InstallRequest,
   directory: string,
-  paths: { readonly license: string; readonly staged: string },
+  paths: { readonly license: string; readonly previous: string; readonly staged: string },
 ): Promise<void> {
-  await retainPrevious(request, directory);
+  await retainPrevious(request, paths.previous);
   await replaceLicense(directory, paths.license);
   await rename(paths.staged, request.executablePath);
   await syncDirectory(directory);
@@ -122,8 +130,7 @@ async function swap(
  * filesystems that refuse links. The intermediate rename is what makes the copy appear whole: a
  * reader either sees the previous `.previous` or the new one, never a partially written file.
  */
-async function retainPrevious(request: InstallRequest, directory: string): Promise<void> {
-  const temporary = join(directory, `.${request.command}-${randomUUID()}.previous`);
+async function retainPrevious(request: InstallRequest, temporary: string): Promise<void> {
   try {
     await link(request.executablePath, temporary);
   } catch {
@@ -142,9 +149,13 @@ async function replaceLicense(directory: string, staged: string): Promise<void> 
   const installed = join(directory, "LICENSE");
   // Both sides are optional: an archive may omit the file, and an installation may never have kept
   // one. Neither is a reason to abandon a transaction whose executable already verified.
-  if (!(await isRegularFile(installed)) || !(await isRegularFile(staged))) {
+  const mode = await regularFileMode(installed);
+  if (mode === undefined || !(await isRegularFile(staged))) {
     return;
   }
+  // The extractor writes every entry `0600`. Carrying the replaced file's own mode over is what
+  // keeps a shared installation's license readable by the users who could read it before.
+  await chmod(staged, mode);
   await rename(staged, installed);
 }
 
@@ -168,10 +179,15 @@ async function syncDirectory(directory: string): Promise<void> {
 }
 
 async function isRegularFile(path: string): Promise<boolean> {
+  return (await regularFileMode(path)) !== undefined;
+}
+
+async function regularFileMode(path: string): Promise<number | undefined> {
   try {
-    return (await lstat(path)).isFile();
+    const status = await lstat(path);
+    return status.isFile() ? status.mode & 0o777 : undefined;
   } catch {
-    return false;
+    return undefined;
   }
 }
 

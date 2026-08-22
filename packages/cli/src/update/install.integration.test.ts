@@ -10,6 +10,7 @@ import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { runCli } from "../run.boundary.js";
+import { eraseFrame } from "../terminal-frame.js";
 import { BRANDING, distro } from "../testing.js";
 import { tarGzip } from "./tar-fixture.js";
 import type { CliDistro, CliRuntime } from "../types.js";
@@ -35,15 +36,18 @@ afterEach(async () => {
  * installed one. The only thing standing in for production is the server.
  */
 describe("standalone update through runCli", () => {
-  it("installs the release and leaves this run on the version it started with", async () => {
+  it("installs the release while the requested command completes", async () => {
     const world = await world1();
 
     const exitCode = await runCli(world.distro, world.runtime);
 
-    expect(exitCode).toBe(0);
-    // The requested command ran, and reported the version this process was compiled as.
-    expect(world.stdout()).toBe(`${BRANDING.version}\n`);
-    expect(world.stderr()).toBe(
+    expect(exitCode, world.stderr()).toBe(2);
+    expect(world.stdout()).not.toBe("");
+    // The download frame is painted and erased in between, so the two contract lines are what the
+    // user is left looking at. Asserted on the settled screen rather than the raw byte stream,
+    // which is the difference between pinning the message and pinning the animation.
+    expect(world.stderr()).toContain("Downloading…");
+    expect(settled(world.stderr())).toBe(
       `Updating ${BRANDING.displayName} ${BRANDING.version} -> ${NEXT}...\n` +
         `Updated ${BRANDING.displayName} to ${NEXT}. The new version will be used on your next run.\n`,
     );
@@ -56,6 +60,16 @@ describe("standalone update through runCli", () => {
     expect((await readdir(world.directory)).sort()).toEqual(["acme", "acme.previous"]);
   });
 
+  it("does not delay version output with an update request", async () => {
+    const world = await world1();
+    const runtime: CliRuntime = { ...world.runtime, argv: ["--version"] };
+
+    expect(await runCli(world.distro, runtime)).toBe(0);
+    expect(world.stdout()).toBe(`${BRANDING.version}\n`);
+    expect(world.requests).toEqual([]);
+    expect(await readdir(world.directory)).toEqual(["acme"]);
+  });
+
   /**
    * The npm entry point supplies no installation, which is the second of the two gates. Nothing
    * reaches the network, and nothing on disk moves.
@@ -64,7 +78,7 @@ describe("standalone update through runCli", () => {
     const world = await world1();
     const runtime: CliRuntime = { ...world.runtime, installation: undefined };
 
-    expect(await runCli(world.distro, runtime)).toBe(0);
+    expect(await runCli(world.distro, runtime)).toBe(2);
     expect(world.requests).toEqual([]);
     expect(world.stderr()).toBe("");
     expect(await readdir(world.directory)).toEqual(["acme"]);
@@ -74,7 +88,7 @@ describe("standalone update through runCli", () => {
     const world = await world1();
     const withoutUpdates: CliDistro = { ...world.distro, updates: undefined };
 
-    expect(await runCli(withoutUpdates, world.runtime)).toBe(0);
+    expect(await runCli(withoutUpdates, world.runtime)).toBe(2);
     expect(world.requests).toEqual([]);
     expect(await readdir(world.directory)).toEqual(["acme"]);
   });
@@ -89,7 +103,7 @@ describe("standalone update through runCli", () => {
       environmentVariables: { ...world.runtime.environmentVariables, ...variables },
     };
 
-    expect(await runCli(world.distro, runtime)).toBe(0);
+    expect(await runCli(world.distro, runtime)).toBe(2);
     expect(world.requests).toEqual([]);
     expect(await readdir(world.directory)).toEqual(["acme"]);
   });
@@ -98,14 +112,14 @@ describe("standalone update through runCli", () => {
     const world = await world1();
     const runtime: CliRuntime = { ...world.runtime, stdin: Readable.from([]) };
 
-    expect(await runCli(world.distro, runtime)).toBe(0);
+    expect(await runCli(world.distro, runtime)).toBe(2);
     expect(world.requests).toEqual([]);
   });
 
   it("leaves the installed executable alone when the archive is substituted", async () => {
     const world = await world1({ substitute: true });
 
-    expect(await runCli(world.distro, world.runtime)).toBe(0);
+    expect(await runCli(world.distro, world.runtime)).toBe(2);
     expect(world.stderr()).toContain("did not match the release's published SHA-256 digest");
     expect(await readFile(world.executablePath, "utf8")).toContain(`echo ${BRANDING.version}`);
     expect(await readdir(world.directory)).toEqual(["acme"]);
@@ -151,7 +165,7 @@ async function world1(options: { readonly substitute?: boolean | undefined } = {
     executablePath,
     requests,
     runtime: {
-      argv: ["--version"],
+      argv: ["check", "--json"],
       cwd: directory,
       environmentVariables: { PATH: "/usr/bin:/bin" },
       homeDir,
@@ -231,4 +245,28 @@ function capture(): { readonly stream: PassThrough; readonly text: () => string 
   const stream = Object.assign(new PassThrough(), { isTTY: true });
   stream.on("data", (chunk: Buffer) => chunks.push(chunk.toString("utf8")));
   return { stream, text: () => chunks.join("") };
+}
+
+/**
+ * The screen a terminal is left showing, with every erased frame removed.
+ *
+ * Interprets the one sequence the updater paints with — `eraseFrame`, which moves up N rows and
+ * clears below — so a byte-exact assertion can be written against the message contract instead of
+ * against the repaints that happened on the way there.
+ */
+function settled(raw: string): string {
+  // Split on the one sequence the updater paints with, so the emulation stays tied to the helper
+  // the code uses rather than to a hand-copied escape. The frame is always one row here.
+  const erase = eraseFrame(1);
+  const lines = [""];
+  for (const [index, part] of raw.split(erase).entries()) {
+    if (index > 0) {
+      lines.splice(Math.max(0, lines.length - 2));
+      lines.push("");
+    }
+    const [head = "", ...rest] = part.split("\n");
+    lines[lines.length - 1] += head;
+    lines.push(...rest);
+  }
+  return lines.join("\n");
 }

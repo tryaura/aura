@@ -1,4 +1,5 @@
-import { asRecord, asText, parseJson } from "./narrow.js";
+import { MAX_MANIFEST_FRESHNESS_MS } from "./limits.js";
+import { asRecord, asSize, asText, parseJson } from "./narrow.js";
 import {
   bearer,
   compareRelease,
@@ -52,20 +53,62 @@ function narrowManifest(
     return { kind: "failure", reason: "untrusted-release" };
   }
   const document = asRecord(parseJson(payload));
+  if (!isFresh(document?.["expiresAt"], query.now)) {
+    return { kind: "failure", reason: "untrusted-release" };
+  }
   const verdict = compareRelease(asText(document?.["version"]), query.version);
   if (verdict.kind !== "newer") {
     return verdict.kind === "current"
       ? { kind: "current", ...etagField(etag) }
       : { kind: "failure", reason: "invalid-release" };
   }
+  return candidate(source, query, document?.["assets"], verdict.version, etag, token);
+}
 
-  const archive = manifestAsset(document?.["assets"], query.target, verdict.version);
-  return archive === undefined
-    ? { kind: "failure", reason: "invalid-release" }
-    : {
-        candidate: { archive, version: verdict.version },
-        downloadHeaders: downloadHeaders(token),
-        kind: "candidate",
-        ...etagField(etag),
-      };
+/** The resolved release, with the credential attached only where it is the caller's to send. */
+function candidate(
+  source: ManifestSource,
+  query: UpdateQuery,
+  assets: unknown,
+  version: string,
+  etag: string | undefined,
+  token: string | undefined,
+): UpdateResolution {
+  const archive = manifestAsset(assets, query.target, version);
+  if (archive === undefined) {
+    return { kind: "failure", reason: "invalid-release" };
+  }
+  return {
+    candidate: { archive, version },
+    // A manifest credential authorizes the service the distribution configured, not every origin a
+    // signed payload may name. Cross-origin assets must use their own signed URL.
+    downloadHeaders: downloadHeaders(
+      sameOrigin(source.manifestUrl, archive.downloadUrl) ? token : undefined,
+    ),
+    kind: "candidate",
+    ...etagField(etag),
+  };
+}
+
+/**
+ * Whether a signed manifest is still within the window it signed for.
+ *
+ * Required, not optional: a publisher who omits the field would otherwise get a document that is
+ * valid forever, which is exactly the one an attacker wants to keep replaying. Epoch milliseconds
+ * rather than a formatted timestamp, so reading it needs no clock, locale, or calendar.
+ */
+function isFresh(expiresAt: unknown, now: number): boolean {
+  const expiry = asSize(expiresAt, Number.MAX_SAFE_INTEGER);
+  if (expiry === undefined || expiry <= now) {
+    return false;
+  }
+  return expiry - now <= MAX_MANIFEST_FRESHNESS_MS;
+}
+
+function sameOrigin(left: string, right: string): boolean {
+  try {
+    return new URL(left).origin === new URL(right).origin;
+  } catch {
+    return false;
+  }
 }

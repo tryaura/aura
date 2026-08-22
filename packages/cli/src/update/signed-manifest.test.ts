@@ -8,6 +8,9 @@ import { resolveSignedManifest } from "./signed-manifest.js";
 import type { CliUpdateSource } from "./types.js";
 
 const DIGEST = "b".repeat(64);
+const DAY = 24 * 60 * 60 * 1_000;
+/** A fixed clock, so a freshness window is a fact about the fixture rather than about the run. */
+const NOW = 1_760_000_000_000;
 const KEYS = generateKeyPairSync("ed25519");
 const OTHER = generateKeyPairSync("ed25519");
 
@@ -94,6 +97,32 @@ describe("signed manifest provider", () => {
     expect(resolution).toEqual({ kind: "failure", reason: "invalid-release" });
   });
 
+  /**
+   * A signature proves who wrote a manifest, never that it is the newest one they wrote. Without
+   * the window, anything that can replay a stale-but-valid copy pins a fleet to a release forever
+   * and the updater says nothing, because "no newer release" is the quiet path.
+   */
+  it.each([
+    { expiresAt: undefined, label: "no expiry at all" },
+    { expiresAt: NOW, label: "an expiry that has just passed" },
+    { expiresAt: NOW - DAY, label: "an expiry long past" },
+    { expiresAt: NOW + 31 * DAY, label: "a window wider than the ceiling" },
+    { expiresAt: "soon", label: "an unreadable expiry" },
+  ])("refuses a manifest with $label", async ({ expiresAt }) => {
+    const { resolution } = await resolve({ payload: { expiresAt } });
+    expect(resolution).toEqual({ kind: "failure", reason: "untrusted-release" });
+  });
+
+  it("accepts a manifest inside its signed window", async () => {
+    const { resolution } = await resolve({ payload: { expiresAt: NOW + 30 * DAY } });
+    expect(resolution).toMatchObject({ kind: "candidate" });
+  });
+
+  it("refuses a manifest replayed after its window closes", async () => {
+    const { resolution } = await resolve({ now: NOW + 2 * DAY });
+    expect(resolution).toEqual({ kind: "failure", reason: "untrusted-release" });
+  });
+
   it("reports the running version as current when the manifest names no newer release", async () => {
     const { resolution } = await resolve({ payload: { version: "1.3.0" } });
     expect(resolution).toEqual({ etag: '"manifest-1"', kind: "current" });
@@ -112,6 +141,26 @@ describe("signed manifest provider", () => {
     const candidate = resolution.kind === "candidate" ? resolution.candidate : undefined;
     expect(JSON.stringify(candidate)).not.toContain("internal-secret");
   });
+
+  it("does not forward a manifest credential to a cross-origin asset", async () => {
+    const { requests, resolution } = await resolve({
+      payload: {
+        assets: {
+          "darwin-arm64": {
+            downloadUrl:
+              "https://downloads.acme.example/acmedev/v1.4.0/acmedev-darwin-arm64.tar.gz",
+            sha256: DIGEST,
+            size: 12_345,
+          },
+        },
+      },
+      token: "ACME_MANIFEST_TOKEN",
+      variables: { ACME_MANIFEST_TOKEN: "internal-secret" },
+    });
+
+    expect(requests[0]?.headers?.["authorization"]).toBe("Bearer internal-secret");
+    expect(resolution).toMatchObject({ downloadHeaders: {} });
+  });
 });
 
 function rawPublicKey(key: KeyObject): string {
@@ -121,6 +170,7 @@ function rawPublicKey(key: KeyObject): string {
 async function resolve(
   options: {
     readonly envelope?: Readonly<Record<string, unknown>> | undefined;
+    readonly now?: number | undefined;
     readonly payload?: Readonly<Record<string, unknown>> | undefined;
     readonly signWith?: KeyObject | undefined;
     readonly tamper?: boolean | undefined;
@@ -138,6 +188,7 @@ async function resolve(
           size: 12_345,
         },
       },
+      expiresAt: NOW + DAY,
       version: "1.4.0",
       ...options.payload,
     }),
@@ -168,6 +219,7 @@ async function resolve(
       requests.push(request);
       return Promise.resolve({ body, etag: '"manifest-1"', kind: "response", status: 200 });
     },
+    now: options.now ?? NOW,
     readVariable: (name) => options.variables?.[name],
     target: "darwin-arm64",
     userAgent: "acmedev/1.3.0",

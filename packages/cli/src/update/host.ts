@@ -15,6 +15,13 @@ export interface UpdateDownloadRequest {
   readonly expectedBytes: number;
   /** Sent verbatim, and dropped on a cross-origin redirect. May carry a credential. */
   readonly headers: Readonly<Record<string, string>>;
+  /**
+   * Called as bytes land, a bounded number of times across the transfer rather than per chunk.
+   *
+   * Optional because progress is a terminal affordance, not part of the download: a caller with
+   * nowhere to draw omits it and the transfer behaves identically.
+   */
+  readonly onProgress?: ((received: number, total: number) => void) | undefined;
   readonly url: string;
 }
 

@@ -23,6 +23,19 @@ export const MAX_METADATA_BYTES = 512 * 1024;
 /** Bytes accepted for one cached metadata entry. */
 export const MAX_CACHE_BYTES = 64 * 1024;
 
+/**
+ * How far ahead of now a signed manifest's `expiresAt` may sit.
+ *
+ * A signature proves who wrote a manifest, never that it is the newest one they wrote. Without a
+ * bound, anything that can serve a stale-but-valid copy — a compromised edge, a caching proxy, a
+ * mirror left behind — pins a fleet to a release forever, and the updater reports nothing because
+ * "no newer release" is the quiet path. The window is what turns that freeze into an expiry.
+ *
+ * Capped rather than merely required, because a publisher who dates a manifest a decade out has
+ * satisfied the field and rebuilt the same problem.
+ */
+export const MAX_MANIFEST_FRESHNESS_MS = 30 * 24 * 60 * 60 * 1_000;
+
 /** Redirect hops followed while downloading an archive. */
 export const MAX_REDIRECTS = 5;
 

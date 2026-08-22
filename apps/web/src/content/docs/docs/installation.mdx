@@ -121,6 +121,10 @@ Updating Aura 0.4.0 -> 0.4.1...
 Updated Aura to 0.4.1. The new version will be used on your next run.
 ```
 
+A percentage appears between those lines while the archive downloads, and disappears when it is
+done. It is drawn only on a real terminal, so a captured or piped run looks exactly as it did
+before.
+
 The command you asked for keeps running on the version already in memory, with its own output and
 exit status; the new one takes over on your next invocation. An update that cannot happen is never
 an error — at worst you get one line pointing at the
@@ -142,6 +146,7 @@ confirm it reports the version it claimed, and only then replaces the old one.
 
 No request is made at all when:
 
+- the invocation only displays help or version information;
 - the run is not interactive — any of stdin, stdout, or stderr is redirected;
 - `CI` is set;
 - `AURA_UPDATE` is `off`, `0`, `false`, or `no`; or

@@ -40,17 +40,19 @@ export async function runCli(distro: CliDistro, runtime?: CliRuntime): Promise<C
     sink: telemetryEnabled(resolved.environmentVariables) ? distro.telemetry : undefined,
   });
 
-  // Both gates in one condition: a distribution that declares no update source and a run that
-  // declares no standalone executable each stop here, before any cache, network, or filesystem
-  // work happens. Nothing below can change the verdict or the exit code.
-  if (distro.updates !== undefined && runtime?.installation !== undefined) {
+  // A distribution that declares no update source stops here, with nothing to read a debug
+  // variable off. The second gate — a run that declares no standalone executable — is enforced
+  // inside, so the commonest wiring mistake is one the trace can name rather than a silence. Both
+  // resolve before any cache, network, or filesystem work, and neither can change the exit code.
+  if (distro.updates !== undefined) {
     await runStartupUpdate({
+      argv: resolved.argv,
       branding: distro.branding,
       environmentVariables: resolved.environmentVariables,
       homeDir: resolved.homeDir,
       host: UPDATE_HOST,
       httpGet: resolved.httpGet ?? createHttpGet(),
-      installation: runtime.installation,
+      installation: runtime?.installation,
       now: resolved.now,
       stderr: resolved.stderr,
       stdin: resolved.stdin,

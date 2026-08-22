@@ -3,6 +3,7 @@ import { readFile, mkdtemp } from "node:fs/promises";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { gzipSync } from "node:zlib";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -135,6 +136,45 @@ describe("archive download", () => {
       kind: "failure",
       reason: "unexpected-length",
     });
+  });
+
+  /**
+   * An enterprise proxy that applies its own `Content-Encoding` leaves `content-length` describing
+   * the compressed form while `fetch` hands over the decoded one. Comparing the two would fail a
+   * download that is perfectly good, on every attempt, for everyone behind that proxy.
+   */
+  it("ignores a content-length the transfer encoding has already invalidated", async () => {
+    const origin = await serve((_request, response) => {
+      response.writeHead(200, {
+        "content-encoding": "gzip",
+        "content-length": String(gzipSync(PAYLOAD).byteLength),
+      });
+      response.end(gzipSync(PAYLOAD));
+    });
+
+    expect(await download(`${origin}/archive.tar.gz`, await scratchPath())).toEqual({
+      kind: "downloaded",
+      sha256: DIGEST,
+    });
+  });
+
+  it("reports progress across the transfer without exceeding the declared length", async () => {
+    const origin = await serve((_request, response) => {
+      response.writeHead(200, { "content-length": String(PAYLOAD.length) });
+      response.end(PAYLOAD);
+    });
+    const seen: number[] = [];
+
+    await createUpdateDownload()({
+      destinationPath: await scratchPath(),
+      expectedBytes: PAYLOAD.length,
+      headers: {},
+      onProgress: (received, total) => seen.push(received / total),
+      url: `${origin}/archive.tar.gz`,
+    });
+
+    expect(seen.length).toBeGreaterThan(0);
+    expect(Math.max(...seen)).toBeLessThanOrEqual(1);
   });
 
   it("refuses a status that is not a redirect and not a body", async () => {

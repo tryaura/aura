@@ -55,6 +55,7 @@ export type CliUpdateSource =
   | {
       readonly kind: "signed-manifest";
       readonly manifestUrl: string;
+      /** Variable holding a token sent only to the manifest origin and same-origin assets. */
       readonly tokenEnvironmentVariable?: string | undefined;
       /**
        * Base64 Ed25519 public keys, 32 raw bytes each.

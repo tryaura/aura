@@ -135,6 +135,7 @@ Automatic installation runs only when all of the following are true:
 - the distribution version is canonical semver and is not `0.0.0`;
 - the target is one of the four supported targets;
 - the executable path identifies a regular file rather than a symlink;
+- the invocation is a real command rather than root help, explicit help, or version output;
 - the distribution-specific disable variable is not `off`, `0`, `false`, or `no` — the proposal
   said `off` or `1`, which reads backwards for a variable named `AURA_UPDATE`; this matches the
   existing `AURA_TELEMETRY=off` convention instead;
@@ -255,6 +256,7 @@ The signature covers the decoded payload bytes exactly. The payload contains:
 ```json
 {
   "version": "1.4.0",
+  "expiresAt": 1760000000000,
   "assets": {
     "darwin-arm64": {
       "downloadUrl": "https://releases.acme.example/acmedev/v1.4.0/acmedev-darwin-arm64.tar.gz",
@@ -264,6 +266,16 @@ The signature covers the decoded payload bytes exactly. The payload contains:
   }
 }
 ```
+
+`expiresAt` is required, is epoch milliseconds, and must be in the future by no more than
+`MAX_MANIFEST_FRESHNESS_MS` (30 days). A signature proves who wrote a manifest, never that it is the
+newest one they wrote: without a window, anything that can serve a stale-but-valid copy freezes a
+fleet on one release indefinitely, and the updater says nothing because "no newer release" is its
+quiet path. The ceiling exists because a publisher who dates a manifest a decade out has satisfied
+the field and rebuilt the problem. Publishers re-sign on a schedule shorter than the window.
+
+The GitHub provider needs no equivalent: its freshness comes from an authenticated TLS request to
+the API plus immutable releases, which is the trust boundary a manifest deliberately moves.
 
 The distribution embeds one or more trusted public keys. Supporting multiple keys allows a release
 signed by the old key to distribute a binary that trusts the replacement key before the old key is
@@ -284,6 +296,8 @@ An enterprise release pipeline must:
 5. Either publish an immutable GitHub release exposing asset digests or produce and sign the HTTPS
    manifest.
 6. Move the stable latest-manifest reference only after every artifact is available.
+7. Re-sign and republish the manifest on a schedule shorter than its `expiresAt` window, so a fleet
+   that is genuinely current does not expire into silence.
 
 The updater never accepts an asset URL that is merely "latest" after version resolution. Candidate
 URLs must remain pinned to the selected release so a publication race cannot change the downloaded
@@ -331,8 +345,12 @@ The installer performs these steps after a provider returns a newer candidate:
    names and refuses everything else — absolute paths, parent traversal, duplicates, symlinks, hard
    links, directories, devices, and extension records — so no header field decides where a byte
    lands. The staged `LICENSE` replaces one the installation already keeps and is otherwise
-   discarded, rather than adding a file the original install never wrote.
-7. Set the staged executable to mode `0755` and require it to be a regular file.
+   discarded, rather than adding a file the original install never wrote, and it carries over the
+   replaced file's permissions rather than the `0600` every extracted entry starts at. An entry
+   counts as extracted once its bytes are on disk, so a stream that ends mid-body fails the
+   required-entry check rather than staging a truncated program.
+7. Set the staged executable to the mode of the executable being replaced, and require it to be a
+   regular file.
 8. Run the staged executable with `--version` and automatic updates disabled. Require exact equality
    with the candidate version.
 9. Sync and close the staged file.
@@ -340,6 +358,10 @@ The installer performs these steps after a provider returns a newer candidate:
     it to `<command>.previous`.
 11. Atomically rename the staged executable over the current path.
 12. Sync the containing directory where supported, clean temporary files, and release the lock.
+
+Every temporary path the transaction can create — archive, license, staged executable, and the
+recovery copy — is invented in one place, so the cleanup names all of them. A path built deeper in
+is a path a failed rename leaves behind, and each one is a full copy of the executable.
 
 The currently executing process continues with its original in-memory image. It must not spawn or
 re-execute the newly downloaded program in the first implementation.
@@ -352,6 +374,16 @@ When an update is found:
 Updating Aura 0.4.0 -> 0.4.1...
 Updated Aura to 0.4.1. The new version will be used on your next run.
 ```
+
+While the archive streams, a percentage is painted between those lines and erased before the
+outcome line:
+
+```text
+  Downloading… 42%
+```
+
+Drawn through `terminal-frame.ts` like the check scan's surface, and only when stderr is a terminal.
+A captured or piped run is byte-identical to one where the frame never existed.
 
 Enterprise output uses distribution branding rather than the word Aura.
 
@@ -369,6 +401,22 @@ Behavior by outcome:
 Updater failures never change the requested command's exit code. Output goes to stderr so it cannot
 corrupt stdout, but startup updates are disabled for non-interactive and machine-oriented runs in
 the first version.
+
+### Tracing a distribution that will not update
+
+Every refusal above is silent, which is correct for a user and useless for whoever wired the
+distribution up: nine gates, one outcome, no way to tell them apart. A distribution's disable
+variable plus `_DEBUG` — `AURA_UPDATE_DEBUG` for the official binary — writes one line per step:
+
+```text
+update: skipped: no-standalone-installation
+update: resolved: candidate
+update: installed: installed
+```
+
+Derived from the disable variable rather than configured separately, so a distribution that has
+named one has named both. Off by default, never suggested to a user, and deliberately outside the
+message contract in `docs/cli-ux.md`.
 
 ## Recovery
 
@@ -410,6 +458,7 @@ packages/cli/src/update/
   stage.ts                 download, digest, extract, and verify the staged program
   install.ts               the atomic replacement transaction
   messages.ts              everything the updater says
+  diagnostics.ts           the debug trace and the download progress frame
   run.ts                   the startup orchestration
 
 distros/aura/src/update/
@@ -460,7 +509,15 @@ fixtures through `runCli`.
 
 - Extend workflow verification to require the exact four archive names and `SHA256SUMS` before a
   release is published.
-- Assert the published release is immutable and every target asset exposes a SHA-256 digest.
+- Read each built archive back with `scripts/verify-archive.mjs`, which parses the tar the way the
+  extractor does and asserts exactly `aura` and `LICENSE` as plain files. `tar -t` cannot do this
+  job: it merges AppleDouble sidecars back in and reports nothing. macOS packaging sets
+  `COPYFILE_DISABLE=1` so `bsdtar` does not write one for the executable's extended attributes in
+  the first place; the read-back is what would catch it if a future step reintroduced one.
+- Assert every draft asset exposes a usable SHA-256 digest before publishing, and that the published
+  release is immutable afterwards. Immutability is the one assertion that cannot run against a
+  draft — GitHub decides it at publication — so a failure there means fixing the repository setting
+  and cutting a new tag rather than correcting the release in place.
 - Extend compiled smoke tests to inject a local update source and verify update eligibility without
   contacting GitHub.
 - Run the full repository gate with `pnpm verify` and compiled verification with

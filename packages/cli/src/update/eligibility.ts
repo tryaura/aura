@@ -10,6 +10,7 @@ const DISABLED_VALUES: ReadonlySet<string> = new Set(["0", "false", "no", "off"]
 
 /** Everything the gate needs, so nothing below it reads the process or the filesystem to decide. */
 export interface EligibilityRequest {
+  readonly argv: readonly string[];
   readonly environmentVariables: Readonly<Record<string, string | undefined>>;
   readonly installation: CliStandaloneInstallation | undefined;
   readonly stderr: Writable;
@@ -28,6 +29,28 @@ export interface EligibleInstallation {
 }
 
 /**
+ * Why a run may not install over its own executable.
+ *
+ * Named rather than collapsed into absence. A user never sees these — every one of them is a
+ * silent, correct refusal — but a distribution author wiring up {@link CliUpdates} and getting
+ * nothing has no other way to learn which of nine clauses fired.
+ */
+export type EligibilityRefusal =
+  | "continuous-integration"
+  | "disabled"
+  | "informational-run"
+  | "no-standalone-installation"
+  | "no-update-source"
+  | "not-a-regular-file"
+  | "not-a-terminal"
+  | "unstamped-version"
+  | "unsupported-target";
+
+export type EligibilityVerdict =
+  | { readonly installation: EligibleInstallation; readonly kind: "eligible" }
+  | { readonly kind: "refused"; readonly reason: EligibilityRefusal };
+
+/**
  * Whether this run may install over its own executable.
  *
  * Every clause is a refusal, and the whole gate resolves before a single byte is requested: a run
@@ -37,27 +60,54 @@ export interface EligibleInstallation {
  */
 export async function eligibleInstallation(
   request: EligibilityRequest,
-): Promise<EligibleInstallation | undefined> {
+): Promise<EligibilityVerdict> {
   const { installation, updates, version } = request;
-  if (installation === undefined || installation.kind !== "standalone" || updates === undefined) {
-    return undefined;
+  if (updates === undefined) {
+    return { kind: "refused", reason: "no-update-source" };
+  }
+  if (installation === undefined || installation.kind !== "standalone") {
+    return { kind: "refused", reason: "no-standalone-installation" };
   }
   if (version === undefined || !isInstallableVersion(version)) {
-    return undefined;
+    return { kind: "refused", reason: "unstamped-version" };
   }
   const target = releaseTarget(installation);
-  if (target === undefined || !updatesAllowed(request)) {
-    return undefined;
+  if (target === undefined) {
+    return { kind: "refused", reason: "unsupported-target" };
+  }
+  const blocked = blockedBy(request);
+  if (blocked !== undefined) {
+    return { kind: "refused", reason: blocked };
   }
   if (!(await isReplaceableFile(installation.executablePath))) {
-    return undefined;
+    return { kind: "refused", reason: "not-a-regular-file" };
   }
-  return { executablePath: installation.executablePath, target, updates, version };
+  return {
+    installation: { executablePath: installation.executablePath, target, updates, version },
+    kind: "eligible",
+  };
 }
 
 /** The environment and terminal half of the gate, separated so its clauses stay readable. */
-function updatesAllowed(request: EligibilityRequest): boolean {
-  return !turnedOff(request) && !inContinuousIntegration(request) && ownsTerminal(request);
+function blockedBy(request: EligibilityRequest): EligibilityRefusal | undefined {
+  if (isInformationalRun(request.argv)) {
+    return "informational-run";
+  }
+  if (turnedOff(request)) {
+    return "disabled";
+  }
+  if (inContinuousIntegration(request)) {
+    return "continuous-integration";
+  }
+  return ownsTerminal(request) ? undefined : "not-a-terminal";
+}
+
+/** Help and version output must remain immediate, including the argument-free root help screen. */
+function isInformationalRun(argv: readonly string[]): boolean {
+  return (
+    argv.length === 0 ||
+    argv.some((value) => value === "--help" || value === "-h" || value === "--version")
+  );
 }
 
 function turnedOff(request: EligibilityRequest): boolean {

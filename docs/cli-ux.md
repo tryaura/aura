@@ -212,6 +212,19 @@ Updating <Name> 0.4.0 -> 0.4.1...
 Updated <Name> to 0.4.1. The new version will be used on your next run.
 ```
 
+Between those two lines the archive download paints one repainting frame, erased before the outcome
+line is written:
+
+```text
+  Downloading… 42%
+```
+
+It exists because the download is the only part of an update the user waits on, and a release
+archive is tens of megabytes: on a thin connection an unchanging line is indistinguishable from a
+hung command. Painted through `terminal-frame.ts` like the scan surface, only when stderr is a
+terminal — so a captured run is byte-identical to one where it never existed, and the two lines
+above remain the whole message contract. The percentage stops at 99 until the transfer completes.
+
 | Outcome                          | Message                                                                                                                      | Requested command |
 | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ----------------- |
 | Current, or a fresh cached check | None                                                                                                                         | Runs normally     |
@@ -220,6 +233,11 @@ Updated <Name> to 0.4.1. The new version will be used on your next run.
 | Update installed                 | The two lines above                                                                                                          | Runs, old version |
 | Download or permission failure   | `<Name> could not install the 0.4.1 update. Update manually: <url>`                                                          | Runs normally     |
 | Digest mismatch                  | `<Name> refused the 0.4.1 update: the download did not match the release's published SHA-256 digest. Nothing was installed.` | Runs normally     |
+
+A distribution's disable variable plus `_DEBUG` — `AURA_UPDATE_DEBUG` for the official binary —
+traces every gate and outcome to stderr as `update: <what happened>`. It is a developer affordance
+for whoever is wiring a distribution up, deliberately outside this contract: off by default, never
+suggested to a user, and free to change shape. Rendered by `update/diagnostics.ts`.
 
 The manual-update link comes from `CliUpdates.manualUpdateUrl`, falling back to
 `CliBranding.docsUrl`; when a distribution defines neither, the sentence is dropped rather than

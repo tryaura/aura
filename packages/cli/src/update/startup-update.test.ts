@@ -63,12 +63,46 @@ describe("startup update", () => {
     expect(run.requests).toHaveLength(1);
   });
 
+  /**
+   * Every refusal below is silent for the user, whose command is the thing they asked about, and
+   * opaque for the author of a distribution whose updates are simply not happening. The debug
+   * variable is derived from the one they already declared to turn updates off.
+   */
+  /** Silence is right for the user and useless for whoever wired the distribution up. */
+  it("names the gate that refused, and reaches no network", async () => {
+    const run = await scenario({ environmentVariables: { ACME_UPDATE_DEBUG: "1" } });
+    await runStartupUpdate({ ...run.request, installation: undefined });
+
+    expect(run.stderr()).toBe("update: skipped: no-standalone-installation\n");
+    expect(run.requests).toEqual([]);
+  });
+
+  it("traces a whole run when tracing is on", async () => {
+    const run = await scenario({ environmentVariables: { ACME_UPDATE_DEBUG: "1" } });
+    await runStartupUpdate(run.request);
+
+    expect(run.stderr()).toContain("update: resolved: candidate");
+    expect(run.stderr()).toContain("update: installed: installed");
+  });
+
   it("says nothing when the release is the running one", async () => {
     const run = await scenario({ tag: "v1.3.0" });
     await runStartupUpdate(run.request);
 
     expect(run.stderr()).toBe("");
     expect(await readUpdateCache(run.homeDir, IDENTITY, NOW.getTime())).toMatchObject({
+      outcome: "current",
+    });
+  });
+
+  /** The executable on disk is current, so anything but `current` asks for a pointless re-check. */
+  it("records a release another updater installed as current", async () => {
+    const run = await scenario();
+    await writeFile(run.executablePath, "VERSION=1.4.0\n", { mode: 0o755 });
+    await runStartupUpdate(run.request);
+
+    expect(await readUpdateCache(run.homeDir, IDENTITY, NOW.getTime())).toEqual({
+      checkedAt: NOW.getTime(),
       outcome: "current",
     });
   });
@@ -159,6 +193,7 @@ describe("startup update", () => {
 async function scenario(
   options: {
     readonly corrupt?: boolean | undefined;
+    readonly environmentVariables?: Readonly<Record<string, string | undefined>> | undefined;
     readonly httpFailure?: boolean | undefined;
     readonly tag?: string | undefined;
   } = {},
@@ -183,8 +218,9 @@ async function scenario(
     executablePath,
     homeDir,
     request: {
+      argv: ["check"],
       branding: BRANDING,
-      environmentVariables: {},
+      environmentVariables: options.environmentVariables ?? {},
       homeDir,
       host: host(options.corrupt === true),
       httpGet: (request) => {

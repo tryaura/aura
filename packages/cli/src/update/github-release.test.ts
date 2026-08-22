@@ -6,6 +6,9 @@ import type { UpdateQuery, UpdateResolution } from "./provider.js";
 import type { CliUpdateSource } from "./types.js";
 
 const DIGEST = "a".repeat(64);
+/** Fixed, because this provider never reads it: only a signed manifest has a freshness window. */
+const NOW = 1_760_000_000_000;
+
 const SOURCE: Extract<CliUpdateSource, { kind: "github-release" }> = {
   apiBaseUrl: "https://api.github.com",
   kind: "github-release",
@@ -183,6 +186,7 @@ async function resolve(
         },
       );
     },
+    now: NOW,
     readVariable: (name) => options.variables?.[name],
     target: "darwin-arm64",
     userAgent: "acme/1.3.0",

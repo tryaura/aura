@@ -25,6 +25,13 @@ describe("update installation transaction", () => {
     expect((await stat(world.executablePath)).mode & 0o777).toBe(0o755);
   });
 
+  it("preserves a restrictive executable mode", async () => {
+    const world = await world1({ executableMode: 0o700 });
+
+    expect(await install(world)).toEqual({ kind: "installed" });
+    expect((await stat(world.executablePath)).mode & 0o777).toBe(0o700);
+  });
+
   it("leaves no temporary files behind", async () => {
     const world = await world1();
     await install(world);
@@ -106,6 +113,29 @@ describe("update installation transaction", () => {
     expect(await readFile(join(world.directory, "LICENSE"), "utf8")).toBe("Apache-2.0\n");
   });
 
+  /**
+   * The extractor writes every entry `0600`. Carrying the replaced file's own mode over is what
+   * keeps a shared installation's license readable by the users who could read it before.
+   */
+  it("keeps the license readable by whoever could read it before", async () => {
+    const world = await world1();
+    await writeFile(join(world.directory, "LICENSE"), "old license\n", { mode: 0o644 });
+
+    expect(await install(world)).toEqual({ kind: "installed" });
+    expect((await stat(join(world.directory, "LICENSE"))).mode & 0o777).toBe(0o644);
+  });
+
+  /**
+   * A failed rename must not leave the recovery copy behind: it is a whole second copy of the
+   * executable, and a directory that collects one per failed attempt fills up.
+   */
+  it("leaves no temporary files behind when the transaction fails", async () => {
+    const world = await world1({ staged: "VERSION=9.9.9\n" });
+
+    expect(await install(world)).toEqual({ kind: "failed" });
+    expect(await readdir(world.directory)).toEqual(["acme"]);
+  });
+
   it("still installs when the archive carries no license", async () => {
     const world = await world1({ entries: [{ content: "VERSION=1.4.0\n", name: COMMAND }] });
     await writeFile(join(world.directory, "LICENSE"), "old license\n");
@@ -168,12 +198,13 @@ async function world1(
   options: {
     readonly candidate?: Partial<CliUpdateCandidate["archive"]> | undefined;
     readonly entries?: readonly TarFixtureEntry[] | undefined;
+    readonly executableMode?: number | undefined;
     readonly staged?: string | undefined;
   } = {},
 ): Promise<World> {
   const directory = await mkdtemp(join(tmpdir(), "aura-update-install-"));
   const executablePath = join(directory, COMMAND);
-  await writeFile(executablePath, INSTALLED, { mode: 0o755 });
+  await writeFile(executablePath, INSTALLED, { mode: options.executableMode ?? 0o755 });
 
   const archive = tarGzip(
     options.entries ?? [

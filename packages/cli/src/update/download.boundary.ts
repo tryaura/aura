@@ -8,6 +8,9 @@ import type { UpdateDownloadRequest, UpdateDownloadResult, UpdateHost } from "./
 
 const REDIRECT_STATUSES: ReadonlySet<number> = new Set([301, 302, 303, 307, 308]);
 
+/** Progress reports emitted across one download, spread evenly over its declared length. */
+const PROGRESS_STEPS = 100;
+
 /**
  * Creates the archive downloader: a bounded, TLS-only stream straight to disk.
  *
@@ -39,10 +42,26 @@ async function stream(request: UpdateDownloadRequest): Promise<UpdateDownloadRes
   // A server that announces a different length than the release metadata did is already serving
   // something other than the bytes the digest was published for.
   const declared = response.headers.get("content-length");
-  if (declared !== null && declared !== String(request.expectedBytes)) {
+  if (announcesReleaseLength(response) && declared !== String(request.expectedBytes)) {
     return { kind: "failure", reason: "unexpected-length" };
   }
   return await writeBody(response.body, request);
+}
+
+/**
+ * Whether `content-length` describes the bytes this download will actually see.
+ *
+ * A proxy that applies its own `Content-Encoding` leaves the header describing the compressed form
+ * while `fetch` hands over the decoded one, so comparing the two rejects a download that is
+ * perfectly good. The count and the digest are both re-checked once the body has been read, so
+ * skipping the header here costs nothing.
+ */
+function announcesReleaseLength(response: Response): boolean {
+  const encoding = response.headers.get("content-encoding")?.trim().toLowerCase();
+  return (
+    response.headers.get("content-length") !== null &&
+    (encoding === undefined || encoding === "" || encoding === "identity")
+  );
 }
 
 /** Streams the body to a fresh file, counting and hashing as it goes. */
@@ -52,6 +71,10 @@ async function writeBody(
 ): Promise<UpdateDownloadResult> {
   const hash = createHash("sha256");
   let received = 0;
+  // Reported by byte rather than by clock: a progress line that redraws on a timer would need a
+  // clock down here, and a hundredth of the archive is the smallest step a reader can see anyway.
+  const step = Math.ceil(request.expectedBytes / PROGRESS_STEPS);
+  let reported = 0;
   // `wx` on purpose: the installer supplies a path it just invented, and a download that would
   // land on an existing file is a collision worth failing on rather than overwriting.
   const handle = await open(request.destinationPath, "wx", 0o600);
@@ -63,6 +86,10 @@ async function writeBody(
       }
       hash.update(chunk);
       await handle.write(chunk);
+      if (received - reported >= step) {
+        reported = received;
+        request.onProgress?.(received, request.expectedBytes);
+      }
     }
     if (received !== request.expectedBytes) {
       return { kind: "failure", reason: "unexpected-length" };

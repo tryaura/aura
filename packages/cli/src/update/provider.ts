@@ -14,6 +14,8 @@ export interface UpdateQuery {
   /** Entity tag of the cached metadata, so an unchanged release costs one conditional request. */
   readonly etag?: string | undefined;
   readonly httpGet: UpdateHttpGet;
+  /** Wall clock the freshness window of a signed manifest is judged against. */
+  readonly now: number;
   /** Reads one variable at the moment of use. The value never outlives the request it authorizes. */
   readonly readVariable: (name: string) => string | undefined;
   readonly target: CliUpdateTarget;

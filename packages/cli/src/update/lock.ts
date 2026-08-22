@@ -1,4 +1,5 @@
-import { open, readFile, stat, unlink } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import { link, open, readFile, stat, unlink } from "node:fs/promises";
 
 import { LOCK_STALE_MS } from "./limits.js";
 import { asRecord, asSize, parseJson } from "./narrow.js";
@@ -43,14 +44,15 @@ export async function acquireUpdateLock(request: LockRequest): Promise<LockAttem
 }
 
 async function claim(request: LockRequest): Promise<LockAttempt> {
+  const token = randomUUID();
   try {
     const handle = await open(request.lockPath, "wx", 0o600);
     try {
-      await handle.write(JSON.stringify({ pid: request.host.pid, startedAt: request.now }));
+      await handle.write(JSON.stringify({ pid: request.host.pid, startedAt: request.now, token }));
     } finally {
       await handle.close();
     }
-    return { kind: "acquired", lock: { release: () => remove(request.lockPath) } };
+    return { kind: "acquired", lock: { release: () => removeOwned(request.lockPath, token) } };
   } catch (error) {
     // Only an existing lock means someone else is working. Anything else — a directory this user
     // cannot write to, a full disk — is a failure the user can act on.
@@ -68,7 +70,8 @@ async function claim(request: LockRequest): Promise<LockAttempt> {
  * asked about it will ever answer.
  */
 async function reclaimStale(request: LockRequest): Promise<boolean> {
-  const record = asRecord(parseJson(await read(request.lockPath)));
+  const contents = await read(request.lockPath);
+  const record = asRecord(parseJson(contents));
   const startedAt =
     asSize(record?.["startedAt"], Number.MAX_SAFE_INTEGER) ?? (await modifiedAt(request.lockPath));
   if (startedAt === undefined || request.now - startedAt < LOCK_STALE_MS) {
@@ -78,8 +81,7 @@ async function reclaimStale(request: LockRequest): Promise<boolean> {
   if (pid !== undefined && request.host.isProcessAlive(pid)) {
     return false;
   }
-  await remove(request.lockPath);
-  return true;
+  return await removeUnchanged(request.lockPath, contents);
 }
 
 /**
@@ -109,5 +111,39 @@ async function remove(path: string): Promise<void> {
     await unlink(path);
   } catch {
     // A lock already gone is the state releasing wanted.
+  }
+}
+
+/** Removes a stale lock only while it is still the exact record that was inspected. */
+async function removeUnchanged(path: string, expected: string): Promise<boolean> {
+  // Every reclaimer inspecting the same record derives the same hard-link path. Creating that link
+  // is the atomic election: only one process may proceed to unlink the shared lock name.
+  const fingerprint = createHash("sha256").update(expected, "utf8").digest("hex").slice(0, 16);
+  const reclaimPath = `${path}.reclaim-${fingerprint}`;
+  try {
+    await link(path, reclaimPath);
+  } catch {
+    return false;
+  }
+  try {
+    // The path may have changed between inspection and the hard link. The link snapshots whichever
+    // inode won that race, so comparing its contents prevents removing a successor.
+    if ((await read(reclaimPath)) !== expected || (await read(path)) !== expected) {
+      return false;
+    }
+    await unlink(path);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    await remove(reclaimPath);
+  }
+}
+
+/** A holder must never unlink a successor that reused the same path. */
+async function removeOwned(path: string, token: string): Promise<void> {
+  const record = asRecord(parseJson(await read(path)));
+  if (record?.["token"] === token) {
+    await remove(path);
   }
 }

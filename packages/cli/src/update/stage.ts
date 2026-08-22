@@ -23,9 +23,13 @@ export interface StageRequest {
   readonly downloadHeaders: Readonly<Record<string, string>>;
   /** Name of the executable inside the archive, which is the distribution's command name. */
   readonly entryName: string;
+  /** Permission bits of the executable being replaced. */
+  readonly executableMode: number;
   readonly host: UpdateHost;
   /** Temporary path the archive's `LICENSE` extracts to. */
   readonly licensePath: string;
+  /** Drawn while the archive streams, when the caller has a terminal to draw on. */
+  readonly onProgress?: ((received: number, total: number) => void) | undefined;
   /**
    * Environment the staged program is asked its version in.
    *
@@ -48,6 +52,7 @@ export async function stageExecutable(request: StageRequest): Promise<StageFailu
     destinationPath: request.archivePath,
     expectedBytes: request.candidate.archive.size,
     headers: request.downloadHeaders,
+    ...(request.onProgress === undefined ? {} : { onProgress: request.onProgress }),
     url: request.candidate.archive.downloadUrl,
   });
   if (download.kind !== "downloaded") {
@@ -80,7 +85,7 @@ function extract(request: StageRequest): ReturnType<typeof extractArchive> {
  */
 async function verifyStaged(request: StageRequest): Promise<StageFailure | undefined> {
   try {
-    await chmod(request.stagedPath, 0o755);
+    await chmod(request.stagedPath, request.executableMode);
     if (!(await lstat(request.stagedPath)).isFile()) {
       return "verification";
     }
