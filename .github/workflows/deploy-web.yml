@@ -50,8 +50,11 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      # The trailing `...` pulls in workspace dependencies, so the SDK is compiled before Wrangler
+      # bundles the Worker. Without it, `@tryaura/aura-sdk` resolves to a `dist` that never exists
+      # on a clean checkout and the upload fails at bundle time.
       - name: Build site
-        run: pnpm --filter @tryaura/web build
+        run: pnpm --filter "@tryaura/web..." build
       - name: Apply production migrations
         if: github.event_name != 'pull_request' && env.CLOUDFLARE_API_TOKEN != ''
         run: pnpm --filter @tryaura/web migrate:remote
