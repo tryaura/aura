@@ -1,0 +1,119 @@
+---
+title: Plugins
+description: Choose Aura plugin contribution slots and follow registry, content, and trust rules.
+---
+
+import { LinkCard } from "@astrojs/starlight/components";
+
+A plugin is trusted code registered in a distribution at build time. Create one with `definePlugin`
+when Aura needs a new application adapter, check, content catalog, preset, or external skill source.
+
+This release accepts `apiVersion: 2` only.
+
+## Choose a contribution
+
+| Need                                          | Slot                   | Identity                        |
+| --------------------------------------------- | ---------------------- | ------------------------------- |
+| Read a new coding application's configuration | `adapters`             | Global application ID           |
+| Inspect the normalized workspace              | `checks`               | Plugin-namespaced ID by default |
+| Offer install-once Markdown                   | `snippets`             | Plugin-namespaced ID            |
+| Bundle an Agent Skill tree                    | `skills`               | Source-local skill ID           |
+| Register an HTTP skill directory              | `skillDirectories`     | Global directory source ID      |
+| List and resolve a custom skill backend       | `skillSources`         | Plugin-namespaced driver ID     |
+| Remove an optional source from a distribution | `disabledSkillSources` | Exact source ID                 |
+| Offer an MCP server                           | `mcpCatalog`           | Plugin-namespaced catalog ID    |
+| Offer data-only team policy                   | `presets`              | Plugin-namespaced preset ID     |
+
+## Minimal plugin
+
+```ts title="src/plugin.ts"
+import { defineCheck, definePlugin } from "@tryaura/aura-sdk";
+
+const configured = defineCheck({
+  defaultSeverity: "warn",
+  detect: () => [],
+  explain: "Confirms the private policy package loaded.",
+  fixability: "manual",
+  id: "acme/ACME-001",
+  scope: "global",
+  title: "Acme policy loads",
+});
+
+export default definePlugin({
+  apiVersion: 2,
+  checks: [configured],
+  id: "acme",
+  name: "Acme policy",
+  version: "1.0.0",
+});
+```
+
+## Namespacing
+
+Checks, snippets, MCP entries, presets, and skill drivers normally use the plugin ID as a prefix.
+Adapters and skill directories are global identities. Bundled skill IDs are local to their source,
+so two sources can both offer a skill named `review` even though one installed manifest cannot
+select both at once.
+
+A distribution may grant trusted plugins bare check IDs through `bareCheckIdPlugins`. Reserve that
+privilege for checks the distribution presents as its own stable surface.
+
+## Content references
+
+Build absolute `file:` URLs relative to the plugin module:
+
+```ts title="src/content.ts"
+import { pluginContentUrl } from "@tryaura/aura-sdk";
+
+export function contentUrl(path: string): string {
+  return pluginContentUrl(import.meta.url, path);
+}
+```
+
+Working-directory-relative paths are not portable. The registry validates contribution shapes at
+boot, while setup reads content lazily and reports missing or invalid sources where they are used.
+
+## Check and adapter boundaries
+
+- Checks are synchronous and pure. They inspect `WorkspaceModel` and return findings or data-only
+  fix plans; they do not read files or process state.
+- Adapters may use the injected `Environment` during detection, declare files for core to read, and
+  parse only the supplied captured contents.
+- An MCP writer must preserve unrelated entries and refuse malformed or unrepresentable input.
+- Finding metadata appears in reports and CI. Store IDs and credential variable names, never file
+  contents or credential values.
+
+:::danger[Plugins are not sandboxed]
+Adapter detection and skill-source drivers can execute commands through the injected environment.
+Compile only reviewed plugins and treat them as production dependencies.
+:::
+
+<details>
+  <summary>Lazy skill-source driver rules</summary>
+
+Aura calls `list` once when interactive setup opens Skills and sends selected IDs to one
+`resolve` call. Resolved packs point at absolute local `file:` directories and include a
+credential-free origin URL.
+
+Aura bounds its wait to 30 seconds but cannot cancel the driver call. Cache slow work, isolate
+failures by skill, and never return command output, environment values, credentials, or raw
+caught errors as metadata.
+
+</details>
+
+<details>
+  <summary>Snippet lifecycle</summary>
+
+Installing a snippet appends plain Markdown once and records its ID and hash. Later runs show the
+record but do not update, remove, or pin the installed text. Users edit installed instructions
+directly.
+
+</details>
+
+## Next step
+
+<LinkCard
+  title="Build a distribution"
+  href="/docs/guides/distributions/"
+  description="Compose trusted plugins into a branded command and test the result."
+/>

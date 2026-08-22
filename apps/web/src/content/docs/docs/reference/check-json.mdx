@@ -1,0 +1,140 @@
+---
+title: Check JSON and exit codes
+description: Consume the frozen version 1 contracts for check reports and check explanations.
+---
+
+import { CardGrid, LinkCard } from "@astrojs/starlight/components";
+
+`aura check --json` writes exactly one JSON document to stdout, including when an operational
+failure can be represented. Use the versioned contract for CI and integrations; use human output
+for terminal workflows.
+
+Prompts, progress, and usage errors use stderr so stdout stays parseable. Version 1 remains the
+default; pass `--json-version 1` when a consumer wants to pin it explicitly.
+
+The package exports the schema as `@tryaura/aura-cli/schema/check-output-v1.json` and ships the
+same bytes at `schema/check-output-v1.schema.json`.
+
+## Check report
+
+A clean report has this shape:
+
+```json title="check-report.json"
+{
+  "kind": "check-report",
+  "schemaVersion": 1,
+  "status": "clean",
+  "summary": {
+    "categories": {
+      "ENV": {
+        "errors": 0,
+        "informational": 0,
+        "passed": 4,
+        "warnings": 0
+      }
+    },
+    "diagnostics": 0,
+    "errors": 0,
+    "exitCode": 0,
+    "informational": 0,
+    "passed": 4,
+    "warnings": 0
+  },
+  "apps": [
+    {
+      "appId": "codex",
+      "displayName": "Codex",
+      "detection": {
+        "installed": true,
+        "authenticated": true,
+        "version": "0.147.0"
+      },
+      "support": {
+        "status": "supported",
+        "supportedRange": ">=0.1",
+        "version": "0.147.0"
+      }
+    }
+  ],
+  "diagnostics": [],
+  "passedChecks": [
+    {
+      "id": "ENV-001",
+      "title": "Agent applications use supported versions"
+    }
+  ],
+  "findings": []
+}
+```
+
+`status` summarizes findings and operational health. `summary.exitCode` is the command result.
+`apps`, `diagnostics`, `passedChecks`, and `findings` are always present. `configuration` and
+`fixes` appear only when relevant.
+
+Each finding includes `checkId`, `findingId`, `severity`, `scope`, `fixability`, and `message`.
+Details, locations, metadata, and presentation are optional. Treat unknown finding IDs and optional
+fields as data rather than exhaustively switching on them.
+
+Fix status is one of:
+
+| Status    | Meaning                                                                                 |
+| --------- | --------------------------------------------------------------------------------------- |
+| `planned` | Prepared but not applied, including dry runs or declined confirmation.                  |
+| `applied` | The merged transaction completed.                                                       |
+| `failed`  | Preparation, conflict detection, or application failed and the filesystem is unchanged. |
+| `partial` | Application and rollback both failed; inspect the diagnostic immediately.               |
+
+Operation diffs appear only with `--detail` because configuration and instruction files may contain
+private text.
+
+## Check explanation
+
+```sh
+aura check --explain ENV-003 --json
+```
+
+The resulting `CheckExplanationV1` uses `kind: "check-explanation"` and includes the check's title,
+scope, effective severity, thresholds, provenance, Markdown explanation, fixability, and
+`fixesApplicable`.
+
+## CI examples
+
+Fail when any warning or error finding exists:
+
+```sh title="ci/check-aura.sh"
+aura check --json > aura-report.json
+jq -e '.status == "clean"' aura-report.json
+```
+
+Read counts without confusing them with process health:
+
+```sh
+jq '{status, errors: .summary.errors, warnings: .summary.warnings}' aura-report.json
+```
+
+## Exit codes
+
+| Code | Meaning                                                                                     |
+| ---- | ------------------------------------------------------------------------------------------- |
+| `0`  | The check completed and reported its findings, including warning or error findings.         |
+| `2`  | Invalid options/selectors, no checks, unavailable confirmation, or filesystem/fix conflict. |
+| `3`  | Adapter, check, plugin, registry, command, or fix operation failed.                         |
+
+Version 1 continues to accept legacy code `1` in the schema, but current `check` does not emit it.
+Gate configuration policy on `status` or severity counts; preserve exit codes `2` and `3` as command
+failures.
+
+## Next steps
+
+<CardGrid>
+  <LinkCard
+    title="Check and fix guide"
+    href="/docs/guides/check-and-fix/"
+    description="Use the report safely in terminal and CI workflows."
+  />
+  <LinkCard
+    title="Check catalog"
+    href="/docs/reference/checks/"
+    description="Understand every official finding family and remediation."
+  />
+</CardGrid>

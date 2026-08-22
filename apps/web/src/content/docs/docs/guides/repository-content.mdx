@@ -1,0 +1,185 @@
+---
+title: Share repository content
+description: Offer reviewed snippets, Agent Skills, and MCP servers from a committed .aura directory.
+---
+
+import { CardGrid, LinkCard, Steps } from "@astrojs/starlight/components";
+
+Repository content keeps project-specific agent guidance beside the code it governs. Use it when
+every contributor should be offered the same snippet, skill, or MCP server without building a
+private Aura distribution.
+
+After the files are committed, each teammate runs `aura setup`, reviews the repository-controlled
+behavior, and chooses what to install. Trusting the repository makes its content available; it does
+not silently install every item.
+
+:::caution[Review repository content like code]
+Snippets and skills influence agent behavior, and stdio MCP transports can run executables. Aura
+shows the content before first trust or installation, and `setup --yes` cannot approve first use.
+:::
+
+## What you will create
+
+```text title="Repository layout"
+.aura/
+├── preset.json
+├── snippets/
+│   └── commit-guidance.md
+└── skills/
+    └── release-runbook/
+        ├── SKILL.md
+        └── checklist.md
+```
+
+Only `.aura/preset.json` is required. Add the content directories you need and commit the complete
+`.aura` tree.
+
+## Add the content
+
+<Steps>
+
+1. Create a repository snippet.
+
+   ```md title=".aura/snippets/commit-guidance.md"
+   ---
+   name: Commit guidance
+   description: Repository-specific commit instructions.
+   ---
+
+   Use conventional commits and keep each commit focused.
+   ```
+
+   The kebab-case filename becomes `repo/commit-guidance`. Aura appends the Markdown body once to
+   `~/agents/AGENTS.md`; later source edits do not rewrite installed text.
+
+2. Create a repository skill.
+
+   ```md title=".aura/skills/release-runbook/SKILL.md"
+   ---
+   name: release-runbook
+   description: Prepare and verify a release from this repository.
+   metadata:
+     version: 1.0.0
+   ---
+
+   # Release runbook
+
+   1. Run the verification suite.
+   2. Review the release diff.
+   3. Follow the checklist in `checklist.md`.
+   ```
+
+   Aura reviews and copies the whole directory. Keep both the directory name and `name` kebab-case.
+
+3. Define an MCP server in the repository preset.
+
+   ```json title=".aura/preset.json"
+   {
+     "schemaVersion": 1,
+     "name": "Acme repository",
+     "snippets": ["repo/commit-guidance"],
+     "skills": [{ "id": "release-runbook", "source": "repo:workspace" }],
+     "allowedSkillSources": ["repo:workspace"],
+     "requiredMcpServers": ["repo/docs"],
+     "provides": {
+       "mcpServers": [
+         {
+           "schemaVersion": 1,
+           "id": "repo/docs",
+           "name": "Repository docs",
+           "serverName": "repo-docs",
+           "description": "Search this repository's internal documentation.",
+           "docsUrl": "https://engineering.acme.example/repo-docs-mcp",
+           "credentialEnv": [],
+           "supportedApps": ["codex"],
+           "transportTemplate": {
+             "type": "stdio",
+             "command": "repo-docs-mcp"
+           }
+         }
+       ]
+     }
+   }
+   ```
+
+   Repository MCP IDs start with `repo/`. Listing one in `requiredMcpServers` preselects it during
+   interactive setup; it still requires review before first installation.
+
+   `allowedSkillSources` is an exhaustive allowlist, so this preset offers the repository's own
+   skills and nothing else. Add each further source your team reviewed, such as
+   `"plugin:official"`, or omit the field to keep every source the distribution ships.
+
+4. Review the content from the repository root.
+
+   ```sh
+   aura setup
+   ```
+
+   Confirm that the trust screen names the selected entities and shows the MCP transport. Then
+   preview the snippet, read the skill's complete `SKILL.md`, choose the MCP targets, and review the
+   final file plan.
+
+5. Verify the result.
+
+   ```sh
+   aura check
+   ```
+
+</Steps>
+
+## What just happened?
+
+Aura hashes the preset and snippet bytes for repository trust. Skill trees have a separate review
+because every revision must show its complete definition. Accepted trust is recorded in
+`~/agents/aura.json` and shared across linked worktrees of the same primary checkout when the
+contents match.
+
+Aura never writes the committed `.aura` files. It installs approved personal state and converges
+selected applications through the normal preview and backup path.
+
+## What requires another review?
+
+| Repository change                    | Next setup run                                         |
+| ------------------------------------ | ------------------------------------------------------ |
+| Edit `preset.json` or a snippet      | Ask for repository trust again.                        |
+| Edit a skill tree                    | Keep repository trust, but require a new skill review. |
+| Change an inline MCP definition      | Ask for repository trust again.                        |
+| Run `setup --yes` before first trust | Hold all repository-provided content.                  |
+
+## Common failures
+
+**Symptom:** only repository skills appear.
+
+**Cause:** `allowedSkillSources` is an exhaustive allowlist and contains only `repo:workspace`.
+
+**Fix:** remove the field or add every source teammates should see.
+
+**Symptom:** a repository skill is missing.
+
+**Cause:** the directory is invalid, `SKILL.md` is missing or unreadable, or the tree exceeds
+content limits.
+
+**Fix:** use a kebab-case directory inside `.aura/skills`, repair its root definition and local
+references, then rerun interactive setup.
+
+**Symptom:** a required MCP server blocks unattended setup.
+
+**Cause:** first installation requires an interactive transport and application review.
+
+**Fix:** run `aura setup` in a terminal, approve or explicitly omit the requirement, and let later
+`--yes` runs converge the recorded choice.
+
+## Next steps
+
+<CardGrid>
+  <LinkCard
+    title="Configure a team preset"
+    href="/docs/guides/team-presets/"
+    description="Publish team-wide policy separately from repository-owned content."
+  />
+  <LinkCard
+    title="Repository schema"
+    href="/docs/reference/team-preset/"
+    description="Read field limits, precedence, trust, and non-interactive behavior."
+  />
+</CardGrid>

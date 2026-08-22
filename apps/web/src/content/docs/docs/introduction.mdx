@@ -1,0 +1,83 @@
+---
+title: Introduction
+description: Keep Claude Code, Codex, and Cursor working from the same reviewed configuration.
+---
+
+import { Card, CardGrid, LinkCard } from "@astrojs/starlight/components";
+
+Aura finds configuration drift between the coding agents on your machine and gives you one safe
+plan to repair it. Use it when Claude Code, Codex, and Cursor should share instructions, skills,
+and MCP servers without maintaining the same configuration three times.
+
+## The problem Aura solves
+
+Imagine a repository with these three states:
+
+| Application | Instructions              | Skills               | MCP servers    |
+| ----------- | ------------------------- | -------------------- | -------------- |
+| Claude Code | Loads the team rules      | Has `review`         | Has GitHub     |
+| Codex       | Loads an older rules file | Missing `review`     | Has GitHub     |
+| Cursor      | Loads no shared rules     | Has a stale `review` | Missing GitHub |
+
+Aura reads each application's configuration into one model and reports the differences. When a
+finding can be repaired, Aura builds a file plan, shows it to you, and waits for confirmation.
+
+:::note[The short version]
+Aura is a configuration doctor, not another coding agent. It helps the agents you already use
+agree on shared instructions, skills, and MCP servers.
+:::
+
+## What Aura can do
+
+<CardGrid>
+  <Card title="Inspect" icon="magnifying-glass">
+    Detect supported applications and explain configuration, authentication, instruction, skill, and
+    MCP findings.
+  </Card>
+  <Card title="Converge" icon="arrows-rotate">
+    Consolidate shared instructions and apply reviewed skills and MCP selections through one
+    previewable plan.
+  </Card>
+  <Card title="Recover" icon="rotate-left">
+    Back up successful writes, roll back failed transactions, and restore an earlier change with
+    `aura undo`.
+  </Card>
+</CardGrid>
+
+## What Aura writes
+
+Aura manages personal configuration below `~/agents` and the global configuration of applications
+you select. It may inspect repository files for diagnostics, but setup, fixes, and undo do not
+modify the current repository.
+
+Every write goes through the same safety path:
+
+1. Aura reads and validates the current files.
+2. It shows one combined plan; add `--detail` when you need the complete diff.
+3. It checks that the files did not change after the preview.
+4. It writes atomically and records a backup for `aura undo`.
+
+:::caution[Plugins are trusted code]
+Plugins run with the privileges of the Aura process. Install a plugin with the same care you apply
+to any other dependency. Aura makes plugin fixes previewable; it does not sandbox plugin code.
+:::
+
+## Choose your path
+
+<CardGrid>
+  <LinkCard
+    title="Run Aura for the first time"
+    href="/docs/quickstart/"
+    description="Install, preview setup, converge, verify, and learn how to undo."
+  />
+  <LinkCard
+    title="Configure a team"
+    href="/docs/guides/repository-content/"
+    description="Commit repository-owned snippets, skills, and MCP definitions."
+  />
+  <LinkCard
+    title="Extend Aura"
+    href="/docs/guides/distributions/"
+    description="Compose a branded distribution from trusted plugins."
+  />
+</CardGrid>

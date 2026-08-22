@@ -1,0 +1,69 @@
+---
+title: Check catalog
+description: Purpose, default severity, fixability, common cause, and remediation for every official Aura check.
+---
+
+import { LinkCard } from "@astrojs/starlight/components";
+
+This catalog is the human map of Aura's official checks. Run `aura check --explain <id>` for the
+canonical explanation and the effective configuration on your machine.
+
+Fixability is the default. A specific finding can become manual when the current application's file
+shape cannot be changed safely.
+
+## Environment
+
+| ID        | Default | Fix    | Common cause and remediation                                                                                           |
+| --------- | ------- | ------ | ---------------------------------------------------------------------------------------------------------------------- |
+| `ENV-001` | warn    | manual | An installed application is outside its supported range. Update it or use a supported release.                         |
+| `ENV-002` | error   | manual | An installed application is not authenticated. Complete that application's login flow.                                 |
+| `ENV-003` | warn    | manual | Repository ignore rules mix personal and shared agent state. Review the named rules and keep personal state untracked. |
+| `ENV-004` | warn    | guided | Application settings restrict the current project. Review the proposed setting-specific repair.                        |
+
+## Instructions
+
+| ID        | Default | Fix    | Common cause and remediation                                                                                      |
+| --------- | ------- | ------ | ----------------------------------------------------------------------------------------------------------------- |
+| `INS-001` | error   | auto   | The canonical shared instruction file is missing. Run setup or preview the automatic creation.                    |
+| `INS-002` | error   | auto   | A managed application does not load shared instructions. Let Aura create or repair its global link/import.        |
+| `INS-003` | warn    | manual | Equivalent guidance appears in several instruction sources. Consolidate the named paragraphs deliberately.        |
+| `INS-004` | warn    | guided | Legacy personal instruction files still carry active guidance. Choose what to consolidate and archive.            |
+| `INS-005` | info    | manual | Two instructions appear to contradict each other. Decide which rule should win and edit the source.               |
+| `INS-006` | error   | guided | An instruction import or local reference is missing or unsupported. Repair, replace, or remove the named link.    |
+| `INS-007` | info    | manual | Loaded instruction context exceeds the practical token threshold. Shorten or split the largest sources.           |
+| `INS-008` | warn    | manual | Global and project guidance conflicts with application precedence. Move or rewrite the rule at the correct scope. |
+
+## Managed state
+
+| ID        | Default | Fix    | Common cause and remediation                                                                                       |
+| --------- | ------- | ------ | ------------------------------------------------------------------------------------------------------------------ |
+| `MGD-002` | info    | guided | A reviewed managed skill has a newer or divergent source revision. Open setup and review the complete replacement. |
+| `MGD-003` | info    | manual | Aura detected an application with no manage/ignore decision. Run setup and make that decision.                     |
+
+## MCP servers
+
+| ID        | Default | Fix    | Common cause and remediation                                                                                                                           |
+| --------- | ------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `MCP-001` | warn    | auto   | A managed application is missing a desired manifest server. Preview convergence or resolve the named writer blocker.                                   |
+| `MCP-002` | warn    | auto   | An installed server differs from the manifest definition. Preview the update while preserving unrelated entries.                                       |
+| `MCP-003` | error   | guided | A configured endpoint or stdio command cannot be reached. Use `--online` for remote probes and repair credentials, transport, or command availability. |
+| `MCP-005` | warn    | manual | A personal managed server remains in project configuration. Remove the repository entry after the global desired entry is present.                     |
+
+`MCP-004` is not registered in this release while its guided credential rewrite is being redesigned.
+
+## Skills
+
+| ID        | Default | Fix    | Common cause and remediation                                                                                                                       |
+| --------- | ------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SKL-001` | error   | guided | A shared skill has invalid frontmatter, a missing definition, or a broken local reference. Repair the named tree or review its guided removal.     |
+| `SKL-002` | warn    | auto   | A manifest skill is not deployed to every supported managed application. Let Aura repair owned links or resolve the named foreign target manually. |
+| `SKL-003` | error   | auto   | An application skill link has no target. Relink/remove Aura-owned links or restore a still-selected skill through setup.                           |
+| `SKL-004` | error   | guided | Two skills expose the same invocation name in one application. Rename a skill and directory together or remove one entry.                          |
+
+## Next step
+
+<LinkCard
+  title="Understand and fix findings"
+  href="/docs/guides/check-and-fix/"
+  description="Preview repairs, narrow scans, and gate CI on report status."
+/>

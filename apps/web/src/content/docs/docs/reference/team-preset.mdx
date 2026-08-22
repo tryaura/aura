@@ -1,0 +1,107 @@
+---
+title: Team preset schema
+description: Team preset fields, reference types, precedence, repository trust, and source protocols.
+---
+
+import { LinkCard } from "@astrojs/starlight/components";
+
+A team preset is versioned JSON that configures checks and onboarding content without executing
+preset-supplied code. For a copyable workflow, start with [Configure a team preset](/docs/guides/team-presets/).
+
+## Complete schema example
+
+```json title="preset.json"
+{
+  "schemaVersion": 1,
+  "name": "Acme platform",
+  "checks": {
+    "enabled": ["INS-007"],
+    "disabled": ["MCP-002"],
+    "severity": { "INS-007": "error" },
+    "thresholds": { "INS-007": { "approxTokens": 12000 } }
+  },
+  "requiredMcpServers": ["official/github"],
+  "snippets": ["official/engineering"],
+  "skills": [{ "id": "review", "source": "plugin:official" }],
+  "allowedSkillSources": ["plugin:official", "directory:acme"],
+  "skillDirectories": [
+    {
+      "id": "directory:acme",
+      "name": "Acme Skills",
+      "url": "https://skills.acme.example",
+      "tokenEnv": "ACME_SKILLS_TOKEN"
+    }
+  ]
+}
+```
+
+## Precedence
+
+Aura resolves configuration once at boot:
+
+```text
+distribution defaults → selected preset → repository preset → manifest → CLI flags
+```
+
+Later layers replace check activation, severity, and each complete threshold object. Required MCP
+servers and skill directories are additive. Manifest skill selections replace onboarding defaults;
+installed snippet history suppresses defaults already installed.
+
+## Selecting a preset
+
+Aura chooses `--preset`, then the manifest's sticky `preset`, then the distribution default. A
+repository's `.aura/preset.json` is a separate layer and is never selected as the team preset.
+
+Supported references:
+
+- `plugin:<preset-id>` for a registered plugin contribution.
+- `npm:<package>@<exact-version>` for `package/preset.json` from the public npm registry.
+- A credential-free absolute HTTPS URL.
+- A `file:` URL.
+- An absolute or current-working-directory-relative path.
+
+Remote data has time and size limits and is cached for 24 hours. `check` requires `--online` to
+refresh remote references; `setup` may resolve them while building its reviewed pickers.
+
+## Fields
+
+| Field                         | Meaning                                                       |
+| ----------------------------- | ------------------------------------------------------------- |
+| `schemaVersion`               | Required and currently `1`.                                   |
+| `name`                        | Optional human-readable preset name.                          |
+| `checks.enabled` / `disabled` | Check IDs; one ID cannot appear in both.                      |
+| `checks.severity`             | Check ID to `info`, `warn`, or `error`.                       |
+| `checks.thresholds`           | Check-owned JSON object; invalid values fail the named layer. |
+| `requiredMcpServers`          | Additive registered catalog IDs.                              |
+| `snippets`                    | Install defaults while an ID is absent from manifest history. |
+| `skills`                      | Source-qualified `{ id, source }` onboarding defaults.        |
+| `allowedSkillSources`         | Exhaustive allowlist when present.                            |
+| `skillDirectories`            | Up to 32 credential-safe remote directory definitions.        |
+
+`allowedSkillSources` accepts `plugin:`, `directory:`, `driver:`, and `repo:` IDs. Private
+directories use a `tokenEnv` variable name; the value is read only after per-run approval and is
+never stored.
+
+## Repository preset layer
+
+`.aura/preset.json` applies above the selected team preset and below the manifest. Interactive
+setup requires first-use trust, records the accepted content hash, and asks again after relevant
+bytes change. Non-interactive commands hold untrusted repository content.
+
+Only the repository layer may define `provides.mcpServers` and discover `.aura/snippets` or
+`.aura/skills`. See [Share repository content](/docs/guides/repository-content/) for the canonical
+layout and review behavior.
+
+## Remote skill-directory protocol
+
+A directory serves `index.json` with `id`, `name`, `description`, and `version`. A request to
+`skills/<id>` returns those fields plus a bounded `files` array of `{ path, content }`. Every pack
+requires a root `SKILL.md`; unsafe or non-portable paths are rejected.
+
+## Next step
+
+<LinkCard
+  title="Configure a team preset"
+  href="/docs/guides/team-presets/"
+  description="Create, preview, load, and publish a team policy safely."
+/>

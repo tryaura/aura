@@ -30,5 +30,5 @@ To build and smoke-test the binary in place, stage the official CLI snippet asse
 pnpm verify
 ```
 
-See the [internal distribution guide](../../apps/web/src/content/docs/docs/guides/internal-distribution.md)
+See the [internal distribution guide](../../apps/web/src/content/docs/docs/guides/internal-distribution.mdx)
 for a step-by-step explanation of every file.

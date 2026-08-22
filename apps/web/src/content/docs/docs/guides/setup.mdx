@@ -1,0 +1,116 @@
+---
+title: Set up and converge
+description: Choose what Aura manages, review one file plan, and rerun setup safely.
+---
+
+import { CardGrid, LinkCard, Steps } from "@astrojs/starlight/components";
+
+`aura setup` turns your choices into a reviewed desired state for the coding agents on your
+machine. Use it for the first installation, when adding an application, or when shared content
+changes.
+
+## Outcome
+
+After setup, selected applications load the same shared instructions and the managed skills and MCP
+servers you approved. Aura records the selections and its ownership ledger in `~/agents/aura.json`.
+
+## Run the wizard
+
+<Steps>
+
+1. Preview the default path without writing.
+
+   ```sh
+   aura setup --dry-run
+   ```
+
+2. Run the interactive wizard.
+
+   ```sh
+   aura setup
+   ```
+
+3. Review each stage:
+
+   - **Applications:** choose which detected applications Aura should manage.
+   - **Instructions:** keep, link, or consolidate personal instruction files.
+   - **Snippets:** preview install-once Markdown additions.
+   - **Skills:** inspect the full `SKILL.md` before installing a tree.
+   - **MCP:** confirm server names, transports, credentials, and target applications.
+   - **Baseline:** review the final combined plan and apply it once.
+
+4. Run a check after the write.
+
+   ```sh
+   aura check
+   ```
+
+</Steps>
+
+An unchanged rerun prints `Already converged — nothing to do.` Aura still restores the manifest's
+mode to `0o600` when necessary.
+
+## Add one kind of content later
+
+After the first full setup, reopen a focused picker:
+
+```sh
+aura setup --add snippet
+aura setup --add skill
+aura setup --add mcp
+```
+
+Each shortcut retains the same preview, confirmation, transaction, backup, and post-setup check.
+
+## Interactive and unattended behavior
+
+| Command                | Prompts | Writes             | Intended use                    |
+| ---------------------- | ------- | ------------------ | ------------------------------- |
+| `aura setup`           | Yes     | After confirmation | First use and reviewed changes  |
+| `aura setup --dry-run` | No      | No                 | Preview the proposed defaults   |
+| `aura setup --yes`     | No      | Yes                | Known, non-interactive defaults |
+
+`--yes` does not establish first-use repository trust, approve a new or changed skill, append a
+repository snippet, or first-install a repository MCP server. Those actions require an interactive
+review.
+
+:::caution[Detailed previews can contain private text]
+`aura setup --detail` includes full file diffs. Do not paste that output into logs or tickets until
+you have checked it for private instructions and configuration.
+:::
+
+## What just happened?
+
+Setup converts wizard choices into data before it writes anything. Core merges the operations,
+checks for conflicting targets, locks them, saves a backup, applies the transaction, and rescans.
+Plugins describe operations but cannot bypass this path.
+
+## Common failures
+
+**Symptom:** setup says both input and output must be terminals.
+
+**Cause:** an interactive wizard was started from CI or a pipe.
+
+**Fix:** run it in a terminal, use `--dry-run`, or use `--yes` only when its held-back approvals are
+acceptable.
+
+**Symptom:** the plan changes after a repository preset edit.
+
+**Cause:** the trusted repository hash no longer matches.
+
+**Fix:** rerun interactive setup and review the new preset before accepting it.
+
+## Next steps
+
+<CardGrid>
+  <LinkCard
+    title="Manage content"
+    href="/docs/guides/managed-content/"
+    description="Add snippets, skills, or MCP servers without rerunning every setup stage."
+  />
+  <LinkCard
+    title="Undo a setup"
+    href="/docs/guides/undo-and-recover/"
+    description="Inspect backups and restore a previous transaction safely."
+  />
+</CardGrid>

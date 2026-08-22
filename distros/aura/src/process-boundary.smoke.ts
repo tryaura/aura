@@ -18,7 +18,7 @@ describe("compiled Aura process boundary", () => {
     const human = await runCompiled(seed, args);
     expect(human.exitCode).toBe(0);
     expect(human.stdout).not.toContain("[");
-    expect(human.stdout).toContain("Docs: https://tryaura.sh/docs/introduction");
+    expect(human.stdout).toContain("Docs: https://tryaura.sh/docs/quickstart");
     expect(human.stderr).toBe("");
 
     const json = await runCompiled(seed, [...args, "--json"]);

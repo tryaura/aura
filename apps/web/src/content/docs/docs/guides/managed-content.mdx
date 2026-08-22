@@ -1,0 +1,94 @@
+---
+title: Manage snippets, skills, and MCP servers
+description: Add reviewed agent guidance and tools after the first Aura setup.
+---
+
+import { Card, CardGrid, LinkCard, Steps } from "@astrojs/starlight/components";
+
+Managed content is guidance or tooling Aura can offer to every selected coding application. Use a
+snippet for short shared instructions, a skill for a reusable workflow, and an MCP server for an
+external tool or data source.
+
+## Choose the right content type
+
+<CardGrid>
+  <Card title="Snippet" icon="file-lines">
+    A Markdown fragment appended once to `~/agents/AGENTS.md`. Aura records the installation but
+    never rewrites or removes the installed text.
+  </Card>
+  <Card title="Skill" icon="folder-tree">
+    A reviewed directory rooted at `SKILL.md`. Aura installs one shared copy and links supported
+    application skill directories to it.
+  </Card>
+  <Card title="MCP server" icon="server">
+    A credential-safe stdio or HTTP definition converged into selected applications' global MCP
+    configuration.
+  </Card>
+</CardGrid>
+
+## Add content
+
+<Steps>
+
+1. Open the focused picker.
+
+   ```sh
+   aura setup --add snippet
+   aura setup --add skill
+   aura setup --add mcp
+   ```
+
+2. Preview the content before selecting it. For skills, read the complete `SKILL.md`; for MCP,
+   inspect the command or endpoint and every requested credential variable.
+
+3. Review the final plan and apply it.
+
+4. Verify the resulting application state.
+
+   ```sh
+   aura check
+   ```
+
+</Steps>
+
+## Credential safety
+
+MCP definitions name environment variables, never credential values. A stdio transport lists
+variables such as `GITHUB_TOKEN`; an HTTP header uses a template such as
+`Bearer ${GITHUB_TOKEN}`. Aura rejects plain-text credentials in definitions it manages.
+
+:::danger[Do not store tokens in content]
+Never place credential values in a preset, plugin contribution, command argument, URL, header,
+skill, snippet, or compiled distribution. Set the named variable in the environment where the
+application runs.
+:::
+
+## What just happened?
+
+Selections become desired state in `~/agents/aura.json`. Snippets are install history; skills and
+MCP servers remain convergent desired state. Aura's ownership ledger prevents removal of
+user-authored application configuration with the same file around it.
+
+## Common failures
+
+| Symptom                            | Cause                                                          | Fix                                                                      |
+| ---------------------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| A skill is unavailable             | Its source failed, was disallowed, or returned invalid content | Read the source note, restore access, and reopen the skill picker.       |
+| A changed skill is held            | Every new tree hash requires interactive review                | Run interactive `aura setup --add skill` and review the full definition. |
+| An MCP credential is missing       | A declared environment variable is unset                       | Follow the setup URL when provided, set the variable, and rerun setup.   |
+| An MCP server cannot target an app | The app is unmanaged, unsupported, or has no safe writer       | Manage/update the app or select a supported application.                 |
+
+## Next steps
+
+<CardGrid>
+  <LinkCard
+    title="Share repository content"
+    href="/docs/guides/repository-content/"
+    description="Offer project-specific content from a committed .aura directory."
+  />
+  <LinkCard
+    title="MCP catalog schema"
+    href="/docs/reference/mcp-catalog/"
+    description="Author credential-safe stdio and HTTP server definitions."
+  />
+</CardGrid>

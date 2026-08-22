@@ -1,0 +1,124 @@
+---
+title: Build an internal distribution
+description: Tour the tested Acme example for private adapters, content, presets, telemetry, and binaries.
+---
+
+import { Card, CardGrid, LinkCard, Steps } from "@astrojs/starlight/components";
+
+This walkthrough extends the minimal distribution into a company-owned `acmedev` binary. Use it
+when your organization needs a private agent adapter, policy plugin, content catalog, or telemetry
+sink in one reviewed executable.
+
+The canonical implementation is
+[`examples/acme-distribution`](https://github.com/tryaura/aura/tree/main/examples/acme-distribution).
+The repository typechecks it on every pull request and compiles and smoke-tests it during package
+verification. Follow the linked source files instead of copying a second implementation from this
+page.
+
+## What the example contains
+
+<CardGrid>
+  <Card title="Internal adapter" icon="plug">
+    Detects `acme-agent`, declares its instruction, MCP, and skill files, parses them without I/O,
+    and provides a safe MCP writer.
+  </Card>
+  <Card title="Private content" icon="folder-tree">
+    Bundles an instruction snippet, two Agent Skills, an MCP catalog definition, and a platform
+    preset through absolute content URLs.
+  </Card>
+  <Card title="Distribution boundary" icon="box">
+    Composes official and private plugins, branding, a default preset, and an optional telemetry
+    sink at build time.
+  </Card>
+  <Card title="Compiled verification" icon="badge-check">
+    Derives every content entrypoint, compiles with Bun, then exercises the binary on a
+    deterministic seeded machine.
+  </Card>
+</CardGrid>
+
+## Follow the implementation
+
+<Steps>
+
+1. Start from [the package manifest](https://github.com/tryaura/aura/blob/main/examples/acme-distribution/package.json).
+   A real distribution pins the public CLI, SDK, and testkit packages to the same exact release.
+
+2. Read [the internal adapter](https://github.com/tryaura/aura/blob/main/examples/acme-distribution/src/internal-agent.ts).
+   Its lifecycle is the important boundary:
+
+   - `detect` may use the injected environment.
+   - `files` declares absolute paths for core to read.
+   - `parse` is synchronous and receives only captured data.
+   - `mcpWrite` preserves unrelated entries or refuses unsafe shapes.
+
+3. Read [the private plugin](https://github.com/tryaura/aura/blob/main/examples/acme-distribution/src/plugin.ts).
+   It registers the adapter, a distribution check, bundled content, a lazy skill driver, a source
+   denylist, and the default preset.
+
+4. Inspect [the platform preset](https://github.com/tryaura/aura/blob/main/examples/acme-distribution/content/presets/platform.json).
+   It selects policy and onboarding defaults. The MCP server appears in the normal setup picker;
+   use `acmedev setup --add mcp` to reopen that step after the first setup.
+
+5. Read [the process boundary](https://github.com/tryaura/aura/blob/main/examples/acme-distribution/src/main.boundary.ts).
+   This is the only module that reads ambient process state, and it composes rather than discovers
+   the plugin list.
+
+6. Read [the build script](https://github.com/tryaura/aura/blob/main/examples/acme-distribution/build.mjs)
+   and [content entrypoints](https://github.com/tryaura/aura/blob/main/examples/acme-distribution/content-entrypoints.mjs).
+   Every Markdown and JSON asset must be passed to Bun; omitted assets otherwise disappear without
+   a build error.
+
+7. Run the source checks, then the clean-room package verification from an Aura checkout.
+
+   ```sh
+   pnpm --filter acme-distribution-example typecheck
+   pnpm verify:packages
+   ```
+
+</Steps>
+
+## What just happened?
+
+The distribution fixed its trusted code and content at build time. The preset remained data-only,
+the adapter separated I/O from parsing, and every eventual filesystem change still flows through
+Aura's preview, lock, backup, rollback, and undo kernel.
+
+Skills and MCP definitions contain references rather than secrets. Private registry credentials
+belong only in distribution CI, and a compiled binary cannot keep an embedded bearer token secret.
+
+<details>
+  <summary>Optional telemetry boundary</summary>
+
+A distribution sends nothing unless it composes a telemetry sink. The example sink buffers
+privacy-safe events and flushes once under a short timeout. `DO_NOT_TRACK` or
+`AURA_TELEMETRY=off` disables the sink before it sees an event.
+
+Treat a compiled endpoint credential as public. Use a write-only ingestion endpoint with
+server-side validation and abuse controls, or acquire a narrowly scoped user credential at
+runtime.
+
+</details>
+
+## Common failures
+
+| Symptom                                       | Cause                                                                    | Fix                                                                     |
+| --------------------------------------------- | ------------------------------------------------------------------------ | ----------------------------------------------------------------------- |
+| Internal agent is not detected                | Its semver-producing executable is absent from PATH                      | Add a test shim or install the executable, then rerun the source check. |
+| Content is unavailable                        | A contribution URL is relative, missing, or points outside staged assets | Use `pluginContentUrl` and verify every asset in the compiled binary.   |
+| MCP cannot converge                           | The adapter has no matching safe writer or the current file is malformed | Implement read/write symmetry and refuse unrepresentable configuration. |
+| Binary passes `--help` but loses a skill file | The build entrypoint list omitted a nested asset                         | Derive, sort, compile, and smoke-test every content entrypoint.         |
+
+## Next steps
+
+<CardGrid>
+  <LinkCard
+    title="Plugin reference"
+    href="/docs/reference/plugins/"
+    description="Review contribution identities, content URLs, and trusted-code boundaries."
+  />
+  <LinkCard
+    title="Testkit README"
+    href="https://github.com/tryaura/aura/tree/main/packages/testkit"
+    description="Seed machines and exercise source or compiled distributions deterministically."
+  />
+</CardGrid>

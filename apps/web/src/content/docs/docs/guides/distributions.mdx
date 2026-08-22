@@ -1,0 +1,106 @@
+---
+title: Build a distribution
+description: Compose and test the smallest branded Aura command from trusted plugins.
+---
+
+import { CardGrid, LinkCard, Steps } from "@astrojs/starlight/components";
+
+An Aura distribution is a small executable that fixes its branding, plugins, registry privileges,
+and defaults at build time. Use one when a company wants a trusted `acmedev` command instead of
+asking every developer to assemble plugins locally.
+
+## Prerequisites
+
+- Use Node.js 24, pnpm, TypeScript, and Bun 1.3.14.
+- `@tryaura/aura-cli`, `@tryaura/aura-sdk`, and `@tryaura/aura-testkit` pinned to the same version.
+- A package or workspace for the distribution source.
+
+## Compose the command
+
+<Steps>
+
+1. Install the public packages at one version.
+
+   ```sh
+   pnpm add @tryaura/aura-cli@0.4.0 @tryaura/aura-sdk@0.4.0 @tryaura/aura-testkit@0.4.0
+   pnpm add --save-dev typescript @types/node
+   ```
+
+2. Create the entry point.
+
+   ```ts title="src/main.ts"
+   #!/usr/bin/env node
+   import { runCli, type CliDistro } from "@tryaura/aura-cli";
+   import { OFFICIAL_PLUGINS, OFFICIAL_REGISTRY_OPTIONS } from "@tryaura/aura-cli/plugins";
+
+   const distro: CliDistro = {
+     branding: {
+       command: "acmedev",
+       displayName: "Acme Dev",
+       description: "Keep Acme coding agents on the same configuration",
+       docsUrl: "https://engineering.acme.example/acmedev",
+       version: "0.1.0",
+     },
+     plugins: [...OFFICIAL_PLUGINS],
+     registry: OFFICIAL_REGISTRY_OPTIONS,
+   };
+
+   await runCli(distro);
+   ```
+
+3. Run and typecheck the source command.
+
+   ```sh
+   pnpm exec tsc --noEmit
+   bun run src/main.ts --help
+   bun run src/main.ts check --json
+   ```
+
+4. Add one trusted private plugin after the official list when you need internal adapters, checks,
+   presets, or content.
+
+   ```diff title="src/main.ts"
+   - plugins: [...OFFICIAL_PLUGINS],
+   + plugins: [...OFFICIAL_PLUGINS, internalPlugin],
+   ```
+
+5. Use the complete internal example for asset staging, binary compilation, and smoke testing.
+
+</Steps>
+
+## What just happened?
+
+`runCli` supplied the command shell, while the distribution supplied the product identity and the
+only plugins the process can load. End users install the resulting command; Aura does not discover
+runtime plugins from their machine.
+
+Distribution defaults are the lowest configuration layer. A selected preset, repository preset,
+manifest, and command-line flags can override them in that order.
+
+:::caution[Plugins are not sandboxed]
+Every compiled plugin runs with the full privileges of the distribution. Pin and review private
+plugins like production dependencies, and keep registry credentials in build CI only.
+:::
+
+## Common failures
+
+| Symptom                                           | Cause                                                             | Fix                                                                            |
+| ------------------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Plugin registration fails at boot                 | IDs, versions, API version, or registry privileges conflict       | Fix the named contribution; Aura refuses ambiguous registries.                 |
+| A source build works but the binary loses content | Bun did not receive every Markdown or JSON asset as an entrypoint | Derive asset entrypoints from the content directory and smoke-test the binary. |
+| Package types disagree                            | The CLI, SDK, and testkit versions drifted                        | Pin all three public packages to the same exact release.                       |
+
+## Next steps
+
+<CardGrid>
+  <LinkCard
+    title="Build the internal example"
+    href="/docs/guides/internal-distribution/"
+    description="Add an adapter, content, a preset, telemetry, compilation, and smoke coverage."
+  />
+  <LinkCard
+    title="Understand plugins"
+    href="/docs/reference/plugins/"
+    description="Choose contribution slots and follow registry and trust rules."
+  />
+</CardGrid>

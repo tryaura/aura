@@ -1,0 +1,106 @@
+---
+title: Configure a team preset
+description: Publish shared Aura policy and onboarding defaults as a versioned JSON document.
+---
+
+import { CardGrid, LinkCard, Steps } from "@astrojs/starlight/components";
+
+A team preset is data that chooses check policy and offers shared content without executing
+preset-supplied code. Use one when a team needs the same defaults across repositories or when an
+internal distribution should start from an organization-owned baseline.
+
+## Outcome
+
+You will create a versioned preset, load it explicitly, verify its effective configuration, and
+decide how the team will publish the reference.
+
+## Create and test a preset
+
+<Steps>
+
+1. Create the JSON document.
+
+   ```json title="presets/platform.json"
+   {
+     "schemaVersion": 1,
+     "name": "Acme platform",
+     "checks": {
+       "enabled": ["INS-007"],
+       "severity": { "INS-007": "error" },
+       "thresholds": { "INS-007": { "approxTokens": 12000 } }
+     },
+     "requiredMcpServers": ["official/github"],
+     "snippets": ["official/engineering"],
+     "skills": [{ "id": "review", "source": "plugin:official" }],
+     "allowedSkillSources": ["plugin:official", "directory:agenticskills"]
+   }
+   ```
+
+2. Preview onboarding with the local file.
+
+   ```sh
+   aura setup --preset ./presets/platform.json --dry-run
+   ```
+
+3. Run interactive setup and review every offered item.
+
+   ```sh
+   aura setup --preset ./presets/platform.json
+   ```
+
+4. Inspect one effective check without scanning applications.
+
+   ```sh
+   aura check --preset ./presets/platform.json --explain INS-007
+   ```
+
+5. Publish the preset as one of the supported reference types: a plugin contribution, exact npm
+   package version, credential-free HTTPS URL, `file:` URL, or path.
+
+</Steps>
+
+## How precedence works
+
+Later layers win:
+
+```text
+distribution defaults → selected team preset → repository preset → manifest → CLI flags
+```
+
+Check activation, severity, and each complete threshold object follow that order. Required MCP
+servers and skill directories are additive. A user's existing manifest skill selections remain
+authoritative after onboarding.
+
+## What just happened?
+
+`setup --preset` stores the exact reference in the manifest so later runs can resolve the same team
+policy. The preset offers defaults; users still review content and Aura records their final desired
+state separately.
+
+Downloaded npm presets are inspected as data. Aura does not install the package, import code, or
+run lifecycle scripts. Remote `check` resolution requires `--online` unless a valid cache entry is
+available.
+
+## Common failures
+
+| Symptom                                     | Cause                                                      | Fix                                                                      |
+| ------------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Unknown check or catalog ID                 | The active distribution did not register that contribution | Correct the ID or compose the required plugin before loading the preset. |
+| Remote preset is unavailable during `check` | Network access was not enabled and no cache exists         | Use `--online` or establish the cache through setup.                     |
+| A threshold fails configuration             | The owning check rejected its complete threshold object    | Use `aura check --explain <id>` and correct the named field.             |
+| Expected skills are hidden                  | `allowedSkillSources` omitted their source                 | Add the exact source IDs or omit the exhaustive allowlist.               |
+
+## Next steps
+
+<CardGrid>
+  <LinkCard
+    title="Preset schema reference"
+    href="/docs/reference/team-preset/"
+    description="Read every field, reference type, limit, and security rule."
+  />
+  <LinkCard
+    title="Build a distribution"
+    href="/docs/guides/distributions/"
+    description="Bundle a preset and trusted plugins in a branded executable."
+  />
+</CardGrid>
