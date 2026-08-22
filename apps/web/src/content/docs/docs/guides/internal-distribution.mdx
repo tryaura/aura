@@ -109,130 +109,15 @@ runtime.
 
 ## Let the executable update itself
 
-An internal binary is copied onto laptops by hand or by a provisioning script, so without this step
-every machine stays on whatever version it was given. Aura's updater replaces that executable in
-place — and only that executable.
+The example keeps package-manager and standalone entry points separate. Only the compiled entry
+calls `runStandaloneCli` with a private release source, so it can replace its own executable while
+an `npx`, npm-global, or source run cannot reach installation code.
 
-The capability is explicit at the process boundary, which is why the example has **two entry
-points**. The compiled one calls `runStandaloneCli` with its update policy and the current process;
-`main.boundary.ts` calls `runCli`, whose API has no update capability at all. An `npx` or npm-global
-run therefore cannot reach installation code even though it composes the same plugins, and ownership
-is never inferred from `npm_execpath`, `PATH`, or the command name.
-
-<Steps>
-
-1. Read [the update source](https://github.com/tryaura/aura/blob/main/examples/acme-distribution/src/updates.ts).
-   It names a private GitHub Enterprise Server release repository and names its credential by
-   variable rather than embedding one — a build-time constant would ship one reusable token inside
-   every copy of the executable. Aura reads the variable at the moment of the request: the value
-   never reaches the update cache, a cache key, a diagnostic, a subprocess environment, a URL, or a
-   cross-origin redirect. Grant it repository **Contents: read** and nothing else.
-
-2. Read [the standalone entry point](https://github.com/tryaura/aura/blob/main/examples/acme-distribution/src/standalone-main.boundary.ts).
-   It is one call: `runStandaloneCli(createAcmeDistro(), ACME_UPDATES, process)`. The runner maps
-   `process.platform` and `process.arch` to a supported release target before making a request, so a
-   Windows build or an architecture added after your Aura version quietly skips updates. Point
-   `build.mjs` at this file rather than `main.boundary.ts`.
-
-3. Publish releases the updater can pin. Per release: one archive per target named exactly
-   `acmedev-<target>.tar.gz` for `darwin-arm64`, `darwin-x64`, `linux-arm64`, or `linux-x64`; each
-   archive containing exactly the executable named `acmedev` and a `LICENSE` and nothing else — no
-   directories, symlinks, hard links, or extra files; a `v<canonical semver>` tag greater than the
-   version it replaces; and a SHA-256 digest per asset exposed by the release API. Draft, attach
-   every asset, confirm the set, then publish — publication is what makes the release immutable, and
-   an immutable release cannot be corrected in place.
-
-   The archive rule is stricter than it looks. Aura extracts by allow-listed name and refuses every
-   other tar shape, so one stray entry makes a release nobody can install. macOS packaging is where
-   that happens: `bsdtar` writes an AppleDouble `._acmedev` sidecar for any file carrying an
-   extended attribute, and a compiled executable reliably has one. Set `COPYFILE_DISABLE=1` when you
-   tar on macOS, and read the finished archive back — `tar -t` merges those sidecars in and shows
-   nothing.
-
-</Steps>
-
-:::caution[Immutable releases are the trust boundary]
-The GitHub provider installs a release only when the API reports `immutable: true`. The digest it
-verifies against comes out of the release metadata, so it is only meaningful if that release cannot
-later be republished with different bytes. If your GitHub Enterprise Server cannot
-report immutability and per-asset digests, the provider fails closed — use the signed-manifest
-source below rather than weakening the installer.
-:::
-
-<details>
-  <summary>When GitHub is not the source</summary>
-
-For an internal artifact service, serve one stable URL returning a signed envelope of
-`{ schemaVersion, payload, signature }`, where `payload` is base64url-encoded UTF-8 JSON and
-`signature` is a base64url Ed25519 signature over the decoded payload bytes. The payload names one
-version, one `expiresAt`, and, per target, a `downloadUrl`, a `sha256`, and a `size`.
-
-`expiresAt` is required, is epoch milliseconds, and must be in the future but no more than 30 days
-ahead. A signature proves who wrote a manifest, never that it is the newest one they wrote — without
-a window, anything that can serve a stale-but-valid copy (a compromised edge, a caching proxy, a
-mirror left behind) pins your fleet to one release forever, and Aura reports nothing, because "no
-newer release" is its quiet path. Re-sign the manifest on a schedule shorter than the window.
-
-The credential is sent only to same-origin assets: a signed payload may name any origin, and the
-configured token authorizes one.
-
-Configure it with the raw 32-byte Ed25519 public keys, base64 encoded:
-
-```ts title="src/updates.ts"
-export const ACME_UPDATES: CliUpdates = {
-  kind: "signed-manifest",
-  manifestUrl: "https://releases.acme.example/acmedev/latest.json",
-  tokenEnvironmentVariable: "ACMEDEV_RELEASE_TOKEN",
-  trustedPublicKeys: ["<base64 current key>", "<base64 next key>"],
-};
-```
-
-Trust more than one key so a release still signed by the outgoing key can distribute the binary that
-trusts its replacement; retire the old key only once that release has rolled out. Keep private
-signing keys in release infrastructure — never in source, package metadata, or the binary.
-
-The manifest URL may be a stable "latest" reference. The asset URLs it names may not: each must
-contain the version it resolves to, so a publication race cannot change the bytes behind a digest
-Aura has already accepted. Move the latest-manifest reference only after every artifact is in place.
-
-</details>
-
-### What your users will see
-
-Nothing, most of the time. On an interactive run that finds a newer release:
-
-```text
-Updating Acme Dev 1.3.0 -> 1.4.0...
-Updated Acme Dev to 1.4.0. The new version will be used on your next run.
-```
-
-While the archive streams, a percentage is drawn between those two lines and erased once it
-finishes. It is painted only on a real terminal, so captured and piped output stay byte-identical.
-
-The command they asked for keeps running on the version already in memory, with its own exit code.
-Aura checks at most once a day, holds a per-executable lock so two shells cannot install at once,
-verifies the digest, runs the staged binary once to confirm it reports the version the release
-claimed, and keeps the old executable as `acmedev.previous`.
-
-Startup updates never run for help or version output, or non-interactively: an informational
-invocation, any redirected stream, a set `CI`, or `ACMEDEV_UPDATE=off` skips the check before a
-single request is made. A build agent that pinned a version keeps it.
-
-### When updates are not happening
-
-Every one of those refusals is silent, which is right for your users and unhelpful for you. Set
-`ACMEDEV_UPDATE_DEBUG=1` and the updater names each step it took on stderr. Both variable names are
-derived from `branding.command`: uppercase it, replace non-alphanumeric runs with `_`, then append
-`_UPDATE` or `_UPDATE_DEBUG`.
-
-```text
-update: skipped: unsupported-target
-```
-
-The other reasons include `unstamped-version`, `informational-run`, `disabled`,
-`continuous-integration`, `not-a-terminal`, `not-a-regular-file`, and `cached-*` for a check that is
-still fresh. The trace is a development affordance, not part of the output contract — never turn it
-on for users.
+<LinkCard
+  title="Add distribution updates"
+  href="/docs/guides/distribution-updates/"
+  description="Configure GitHub or signed-manifest releases, package trusted archives, rotate keys, and diagnose skipped updates."
+/>
 
 ## Common failures
 

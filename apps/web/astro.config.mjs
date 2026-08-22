@@ -46,6 +46,7 @@ export default defineConfig({
             { label: "Understand and fix findings", slug: "docs/guides/check-and-fix" },
             { label: "Manage content", slug: "docs/guides/managed-content" },
             { label: "Undo and recover", slug: "docs/guides/undo-and-recover" },
+            { label: "Automatic updates", slug: "docs/guides/automatic-updates" },
             { label: "Troubleshooting", slug: "docs/troubleshooting" },
           ],
         },
@@ -61,6 +62,7 @@ export default defineConfig({
           items: [
             { label: "Build a distribution", slug: "docs/guides/distributions" },
             { label: "Build an internal distribution", slug: "docs/guides/internal-distribution" },
+            { label: "Add distribution updates", slug: "docs/guides/distribution-updates" },
             { label: "Plugins", slug: "docs/reference/plugins" },
           ],
         },
