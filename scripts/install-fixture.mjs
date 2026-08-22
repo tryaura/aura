@@ -105,8 +105,10 @@ export function attemptInstall(fixture, overrides = {}, installer = INSTALLER) {
     // must not be able to write into the working tree.
     cwd: fixture.root,
     encoding: "utf8",
+    // Built from nothing rather than from process.env: the installer reads HOME, SHELL, ZDOTDIR,
+    // XDG_CONFIG_HOME and the AURA_* switches, so an inherited value (GitHub's Linux runners export
+    // XDG_CONFIG_HOME) would send profile writes outside the fixture and fail only on that host.
     env: {
-      ...process.env,
       AURA_TEST_RELEASE: fixture.release,
       AURA_VERSION: "v0.0.0-test",
       HOME: fixture.home,

@@ -252,7 +252,7 @@ describe("release installer PATH snippet", () => {
     // Sourcing the profile twice must leave exactly one copy of the directory on PATH.
     const sourced = spawnSync("sh", ["-c", `. "${profile}"; . "${profile}"; printf '%s' "$PATH"`], {
       encoding: "utf8",
-      env: { ...process.env, HOME: fixture.home, PATH: SYSTEM_PATH },
+      env: { HOME: fixture.home, PATH: SYSTEM_PATH },
     });
 
     expect(snippet).toContain(`# Added by Aura installer (${target})`);
