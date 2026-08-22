@@ -60,6 +60,7 @@ function executeBinary(options: RunBinaryCheckOptions): Promise<SpawnedCheckRun>
         {
           cwd: options.seed.workspaceDir,
           env: {
+            AURA_TELEMETRY: "off",
             HOME: options.seed.homeDir,
             NO_COLOR: "1",
             PATH: options.seed.pathDir,

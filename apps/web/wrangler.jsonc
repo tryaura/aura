@@ -1,15 +1,40 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "aura-web",
+  "main": "./src/worker.ts",
   "compatibility_date": "2026-08-15",
   "workers_dev": true,
-  // No `main`: this is an assets-only deployment, so no Worker script runs.
   "assets": {
+    "binding": "ASSETS",
     "directory": "./dist",
     "not_found_handling": "404-page",
+    // Keep the site on the asset worker; only ingestion pays for a Worker invocation.
+    "run_worker_first": ["/api/telemetry/*"],
   },
+  "d1_databases": [
+    {
+      "binding": "TELEMETRY_DB",
+      "database_name": "aura-telemetry-production",
+      "database_id": "cab03564-3c68-4033-aac7-e85bf335c533",
+      "migrations_dir": "./migrations",
+    },
+  ],
+  "ratelimits": [
+    {
+      "name": "TELEMETRY_RATE_LIMIT",
+      "namespace_id": "2026082201",
+      "simple": {
+        "limit": 10,
+        "period": 60,
+      },
+    },
+  ],
   "observability": {
-    "enabled": true,
+    // Invocation logs include request metadata and headers, so telemetry keeps them disabled.
+    "enabled": false,
+  },
+  "triggers": {
+    "crons": ["0 3 * * *"],
   },
   "routes": [
     {

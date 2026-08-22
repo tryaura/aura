@@ -30,6 +30,7 @@ export async function runCompiled(
       cwd: seed.workspaceDir,
       encoding: "utf8",
       env: {
+        AURA_TELEMETRY: "off",
         HOME: seed.homeDir,
         PATH: seed.pathDir,
         ...environmentVariables,
