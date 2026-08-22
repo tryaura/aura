@@ -52,7 +52,7 @@
     "@tryaura/core": "workspace:*",
     "@types/node": "24.13.3",
     "diff": "9.0.0",
-    "vitest": "4.1.10"
+    "vitest": "4.1.11"
   },
   "engines": {
     "node": ">=24"
