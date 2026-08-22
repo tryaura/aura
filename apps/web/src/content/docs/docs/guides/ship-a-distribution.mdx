@@ -1,13 +1,14 @@
 ---
-title: Build an internal distribution
-description: Tour the tested Acme example for private adapters, content, presets, telemetry, and binaries.
+title: Ship a distribution
+description: Extend the quickstart into a compiled, self-updating binary with private plugins and content.
 ---
 
 import { Card, CardGrid, LinkCard, Steps } from "@astrojs/starlight/components";
 
-This walkthrough extends the minimal distribution into a company-owned `acmedev` binary. Use it
-when your organization needs a private agent adapter, policy plugin, content catalog, or telemetry
-sink in one reviewed executable.
+[Build a distribution](/docs/guides/distributions/) ends with a command you run from source. This
+walkthrough takes it the rest of the way: a compiled, self-updating `acmedev` binary you hand to
+your team. Use it when your organization needs a private agent adapter, policy plugin, content
+catalog, or telemetry sink in one reviewed executable.
 
 The canonical implementation is
 [`examples/acme-distribution`](https://github.com/tryaura/aura/tree/main/examples/acme-distribution).
