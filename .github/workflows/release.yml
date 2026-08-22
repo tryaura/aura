@@ -191,7 +191,7 @@ jobs:
           AURA_TAG: ${{ github.ref_name }}
           GH_TOKEN: ${{ github.token }}
         run: |
-          missing="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${AURA_TAG}" \
+          missing="$(gh release view "${AURA_TAG}" --repo "${GITHUB_REPOSITORY}" --json assets \
             --jq '.assets[] | select(.name | endswith(".tar.gz")) | select((.digest // "") | test("^sha256:[0-9a-f]{64}$") | not) | .name')"
           if [ -n "${missing}" ]; then
             echo "::error::Release assets without a usable SHA-256 digest: ${missing}"

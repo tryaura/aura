@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+
 import { describe, expect, it } from "vitest";
 
 import { auditWorkflowSource } from "./verify-workflows.mjs";
@@ -5,6 +7,20 @@ import { auditWorkflowSource } from "./verify-workflows.mjs";
 const SHA = "0123456789abcdef0123456789abcdef01234567";
 
 describe("GitHub Actions workflow policy", () => {
+  it("keeps checkout-free release validation draft-aware", async () => {
+    const source = await readFile(
+      new URL("../.github/workflows/release.yml", import.meta.url),
+      "utf8",
+    );
+
+    expect(source).toContain(
+      'missing="$(gh release view "${AURA_TAG}" --repo "${GITHUB_REPOSITORY}" --json assets',
+    );
+    expect(source).toContain(
+      'run: gh release edit "${AURA_TAG}" --repo "${GITHUB_REPOSITORY}" --draft=false',
+    );
+  });
+
   it("accepts SHA-pinned external actions and repository-local actions", () => {
     const source = `name: Test
 on: push
