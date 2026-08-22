@@ -92,10 +92,22 @@ jobs:
         run: pnpm run verify:binary
       # Apache-2.0 §4 requires the license text to travel with every redistribution, so the
       # tarball carries it next to the binary.
+      # `COPYFILE_DISABLE` is what keeps bsdtar from writing an AppleDouble `._aura` sidecar for the
+      # extended attributes macOS puts on every executable. The updater's extractor allow-lists
+      # entries by name, so that sidecar is an archive no darwin user can install.
       - name: Package
+        env:
+          COPYFILE_DISABLE: "1"
         run: |
           cp LICENSE distros/aura/dist/LICENSE
           tar -czf "aura-${{ matrix.target }}.tar.gz" -C distros/aura/dist aura LICENSE
+      # Read the way the updater reads, not the way `tar -t` does: `tar -t` merges AppleDouble
+      # sidecars back and reports nothing. This is the only step that would catch a packaging
+      # change producing an archive the extractor refuses, so it imports the extractor's own header
+      # parser from the checked-out source rather than reimplementing it — a second copy of those
+      # rules drifts, and a drifted gate passes an archive that is already immutable.
+      - name: Verify the archive the updater will extract
+        run: node scripts/verify-archive.mjs "aura-${{ matrix.target }}.tar.gz" aura LICENSE
       - name: Upload artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -121,21 +133,90 @@ jobs:
       - name: Generate checksums
         working-directory: artifacts
         run: sha256sum aura-*.tar.gz > SHA256SUMS
+      # A published release is immutable, so its assets cannot be corrected in place. The set is
+      # checked here, before publication, rather than discovered by an updater that finds two
+      # assets for one target and refuses every release until the next tag.
+      - name: Verify the artifact set
+        working-directory: artifacts
+        run: |
+          expected="SHA256SUMS
+          aura-darwin-arm64.tar.gz
+          aura-darwin-x64.tar.gz
+          aura-linux-arm64.tar.gz
+          aura-linux-x64.tar.gz"
+          actual="$(ls -1 | LC_ALL=C sort)"
+          if [ "${actual}" != "${expected}" ]; then
+            echo "::error::Unexpected release artifacts."
+            echo "expected:"; echo "${expected}"
+            echo "actual:"; echo "${actual}"
+            exit 1
+          fi
       - name: Attest release artifacts
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: |
             artifacts/aura-*.tar.gz
             artifacts/SHA256SUMS
-      - name: Create release
+      # Draft first, publish last. Publication is what freezes the tag and its assets, so every
+      # check that can run against a draft runs while the release can still be thrown away. The
+      # immutability assertion below is the one that cannot: GitHub decides immutability at
+      # publication, so there is nothing to read until the release is already public.
+      - name: Create draft release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
+          draft: true
           files: |
             artifacts/aura-*.tar.gz
             artifacts/SHA256SUMS
           generate_release_notes: true
           fail_on_unmatched_files: true
-
+      # Read back from the API rather than trusting the upload step: an asset that failed to
+      # attach is the case the updater sees as a release missing its target.
+      - name: Confirm the draft carries every asset
+        env:
+          AURA_TAG: ${{ github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          attached="$(gh release view "${AURA_TAG}" --json assets --jq '.assets[].name' | LC_ALL=C sort)"
+          expected="$(cd artifacts && ls -1 | LC_ALL=C sort)"
+          if [ "${attached}" != "${expected}" ]; then
+            echo "::error::Draft release assets do not match the built artifacts."
+            echo "attached:"; echo "${attached}"
+            exit 1
+          fi
+      # The updater verifies against the API's per-asset digest, so prove those fields are usable
+      # while the draft can still be replaced. Once published, an immutable release is permanent.
+      - name: Assert every draft archive exposes a SHA-256 digest
+        env:
+          AURA_TAG: ${{ github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          missing="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${AURA_TAG}" \
+            --jq '.assets[] | select(.name | endswith(".tar.gz")) | select((.digest // "") | test("^sha256:[0-9a-f]{64}$") | not) | .name')"
+          if [ -n "${missing}" ]; then
+            echo "::error::Release assets without a usable SHA-256 digest: ${missing}"
+            exit 1
+          fi
+      - name: Publish release
+        env:
+          AURA_TAG: ${{ github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "${AURA_TAG}" --draft=false
+      # The updater installs a release only when the API reports it immutable, so a release that is
+      # not fails here rather than silently never reaching anyone's binary. This runs after
+      # publication because that is when the field acquires a value, which means a failure leaves a
+      # published release that no updater will accept: fix the setting and cut a new tag rather
+      # than trying to correct this one. Enable Settings -> General -> Immutable releases first.
+      - name: Assert the published release is immutable
+        env:
+          AURA_TAG: ${{ github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          immutable="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${AURA_TAG}" --jq '.immutable')"
+          if [ "${immutable}" != "true" ]; then
+            echo "::error::Release ${AURA_TAG} is not immutable, so automatic updates will refuse it."
+            exit 1
+          fi
   # The registry authenticates this job by its OIDC identity, so there is no npm token anywhere in
   # the repository. Each package names this workflow as its trusted publisher on npmjs.com; a run
   # from any other workflow or repository cannot mint a credential for them.

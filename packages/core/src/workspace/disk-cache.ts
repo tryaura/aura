@@ -30,9 +30,15 @@ export interface CacheLocation {
   readonly path: string;
 }
 
-/** Resolves one entry's location below `~/agents/.cache/<namespace>/<sha256(key)>`. */
+/**
+ * Resolves one entry's location below `~/agents/.cache/<namespace>/<sha256(key)>`.
+ *
+ * Takes the home directory rather than a whole {@link Environment} so a caller that runs before
+ * one exists — the startup updater, which decides whether to check for a release at all — reaches
+ * the same directory layout as every other cache instead of inventing a second one.
+ */
 export function cacheLocation(
-  environment: Environment,
+  environment: Pick<Environment, "homeDir">,
   namespace: string,
   key: string,
 ): CacheLocation {

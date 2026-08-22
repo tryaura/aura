@@ -161,7 +161,7 @@ async function main() {
       [
         ...bunArguments,
         "build",
-        "src/main.boundary.ts",
+        "src/standalone-main.boundary.ts",
         ...contentEntries,
         "--compile",
         "--asset-naming=[dir]/[name].[ext]",

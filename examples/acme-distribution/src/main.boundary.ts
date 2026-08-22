@@ -1,31 +1,8 @@
 #!/usr/bin/env node
-import process from "node:process";
+import { runCli } from "@tryaura/aura-cli";
 
-import { runCli, type CliDistro } from "@tryaura/aura-cli";
-import { OFFICIAL_PLUGINS, OFFICIAL_REGISTRY_OPTIONS } from "@tryaura/aura-cli/plugins";
+import { createAcmeDistro } from "./distro.boundary.js";
 
-import internalPlugin from "./plugin.js";
-import { createAcmeTelemetrySink } from "./telemetry.js";
-
-// This entry point is the distribution's process boundary — the one place composition may read
-// the environment, the same way the CLI's own boundary does. A real distribution would compose
-// its collector endpoint at build time instead of routing it through a variable like this.
-const telemetryFile = process.env["ACME_TELEMETRY_FILE"];
-
-const distro: CliDistro = {
-  branding: {
-    command: "acmedev",
-    description: "Acme's agent configuration doctor",
-    displayName: "Acme Dev",
-    docsUrl: "https://engineering.acme.example/acmedev",
-    version: "0.4.0",
-  },
-  defaultPreset: "plugin:acme/platform",
-  plugins: [...OFFICIAL_PLUGINS, internalPlugin],
-  registry: OFFICIAL_REGISTRY_OPTIONS,
-  ...(telemetryFile === undefined || telemetryFile === ""
-    ? {}
-    : { telemetry: createAcmeTelemetrySink(telemetryFile) }),
-};
-
-await runCli(distro);
+// The package-manager entry point uses the runner with no updater capability, so it cannot replace
+// an executable that package manager owns.
+await runCli(createAcmeDistro());

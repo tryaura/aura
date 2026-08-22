@@ -8,7 +8,7 @@ import { Builtins, Cli, type Command } from "clipanion/lib/advanced/index.js";
 import { HelpCommand as ClipanionHelpCommand } from "clipanion/lib/advanced/HelpCommand.js";
 import { UnknownSyntaxError } from "clipanion/lib/errors.js";
 
-import { createPluginRegistry } from "@tryaura/core";
+import { createHttpGet, createPluginRegistry } from "@tryaura/core";
 
 import { writeRunFailure } from "./command-support.js";
 import { CheckCommand, type AuraCliContext } from "./commands.js";
@@ -25,10 +25,38 @@ import { SetupCommand } from "./setup/command.js";
 import { setupAddKinds } from "./setup/steps/index.js";
 import { createTelemetryRecorder, telemetryEnabled, type TelemetryRecorder } from "./telemetry.js";
 import { UndoCommand } from "./undo/command.js";
+import { UPDATE_HOST } from "./update/host.boundary.js";
+import { runStartupUpdate } from "./update/run.js";
+import type { CliUpdates } from "./update/types.js";
 import type { CliBranding, CliDistro, CliExitCode, CliRuntime } from "./types.js";
 
+type StandaloneProcess = Pick<NodeJS.Process, "arch" | "execPath" | "platform">;
+
+interface StartupUpdate {
+  readonly current: StandaloneProcess;
+  readonly updates: CliUpdates;
+}
+
 /** Runs one build-time-composed Aura distribution. */
-export async function runCli(distro: CliDistro, runtime?: CliRuntime): Promise<CliExitCode> {
+export function runCli(distro: CliDistro, runtime?: CliRuntime): Promise<CliExitCode> {
+  return run(distro, runtime);
+}
+
+/** Runs a compiled standalone distribution that explicitly owns its executable. */
+export function runStandaloneCli(
+  distro: CliDistro,
+  updates: CliUpdates,
+  current: StandaloneProcess,
+  runtime?: CliRuntime,
+): Promise<CliExitCode> {
+  return run(distro, runtime, { current, updates });
+}
+
+async function run(
+  distro: CliDistro,
+  runtime: CliRuntime | undefined,
+  startupUpdate?: StartupUpdate,
+): Promise<CliExitCode> {
   const resolved = resolveRuntime(runtime, distro.branding);
   // The user's environment always wins over the distribution: an opted-out run gets a recorder
   // whose sink is absent, which is indistinguishable from a distribution that sends nothing.
@@ -37,6 +65,23 @@ export async function runCli(distro: CliDistro, runtime?: CliRuntime): Promise<C
     now: resolved.now,
     sink: telemetryEnabled(resolved.environmentVariables) ? distro.telemetry : undefined,
   });
+
+  if (startupUpdate !== undefined) {
+    await runStartupUpdate({
+      argv: resolved.argv,
+      branding: distro.branding,
+      current: startupUpdate.current,
+      environmentVariables: resolved.environmentVariables,
+      homeDir: resolved.homeDir,
+      host: UPDATE_HOST,
+      httpGet: resolved.httpGet ?? createHttpGet(),
+      now: resolved.now,
+      stderr: resolved.stderr,
+      stdin: resolved.stdin,
+      stdout: resolved.stdout,
+      updates: startupUpdate.updates,
+    });
+  }
 
   const verdict = await runResolved(distro, resolved, telemetry);
   // Recorded events flush — bounded, never throwing — before the exit code is applied.
