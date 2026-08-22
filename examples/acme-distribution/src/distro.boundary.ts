@@ -17,7 +17,7 @@ export function createAcmeDistro(): CliDistro {
       description: "Acme's agent configuration doctor",
       displayName: "Acme Dev",
       docsUrl: "https://engineering.acme.example/acmedev",
-      version: "0.5.0",
+      version: "0.5.1",
     },
     defaultPreset: "plugin:acme/platform",
     plugins: [...OFFICIAL_PLUGINS, internalPlugin],

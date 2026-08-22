@@ -177,7 +177,7 @@ jobs:
           AURA_TAG: ${{ github.ref_name }}
           GH_TOKEN: ${{ github.token }}
         run: |
-          attached="$(gh release view "${AURA_TAG}" --json assets --jq '.assets[].name' | LC_ALL=C sort)"
+          attached="$(gh release view "${AURA_TAG}" --repo "${GITHUB_REPOSITORY}" --json assets --jq '.assets[].name' | LC_ALL=C sort)"
           expected="$(cd artifacts && ls -1 | LC_ALL=C sort)"
           if [ "${attached}" != "${expected}" ]; then
             echo "::error::Draft release assets do not match the built artifacts."
@@ -201,7 +201,7 @@ jobs:
         env:
           AURA_TAG: ${{ github.ref_name }}
           GH_TOKEN: ${{ github.token }}
-        run: gh release edit "${AURA_TAG}" --draft=false
+        run: gh release edit "${AURA_TAG}" --repo "${GITHUB_REPOSITORY}" --draft=false
       # The updater installs a release only when the API reports it immutable, so a release that is
       # not fails here rather than silently never reaching anyone's binary. This runs after
       # publication because that is when the field acquires a value, which means a failure leaves a

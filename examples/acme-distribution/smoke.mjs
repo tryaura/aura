@@ -128,7 +128,7 @@ try {
 
   const [checkRun, setupRun, undoRun] = events;
   for (const event of events) {
-    assert.equal(event.distroVersion, "0.5.0");
+    assert.equal(event.distroVersion, "0.5.1");
     assert.match(event.at, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
   }
   assert.equal(checkRun.exitCode, 0);
