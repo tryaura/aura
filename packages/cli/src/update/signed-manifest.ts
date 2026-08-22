@@ -1,5 +1,9 @@
-import { MAX_MANIFEST_FRESHNESS_MS } from "./limits.js";
-import { asRecord, asSize, asText, parseJson } from "./narrow.js";
+import { createPublicKey, verify, type KeyObject } from "node:crypto";
+
+import { isAllowedHttpUrl } from "@tryaura/core";
+
+import { MAX_ARCHIVE_BYTES, MAX_MANIFEST_FRESHNESS_MS } from "./limits.js";
+import { asDigest, asRecord, asSize, asText, parseJson } from "./narrow.js";
 import {
   bearer,
   compareRelease,
@@ -8,11 +12,15 @@ import {
   fetchMetadata,
   sourceToken,
 } from "./metadata.js";
-import { manifestAsset, verifyEnvelope } from "./signed-envelope.js";
 import type { UpdateQuery, UpdateResolution } from "./provider.js";
-import type { CliUpdateSource } from "./types.js";
+import type { CliUpdates, UpdateCandidate, UpdateTarget } from "./types.js";
 
-type ManifestSource = Extract<CliUpdateSource, { kind: "signed-manifest" }>;
+type ManifestSource = Extract<CliUpdates, { kind: "signed-manifest" }>;
+
+const ED25519_SPKI_PREFIX = Buffer.from("302a300506032b6570032100", "hex");
+const ED25519_KEY_BYTES = 32;
+const ED25519_SIGNATURE_BYTES = 64;
+const BASE64URL_PATTERN = /^[A-Za-z0-9_-]+={0,2}$/u;
 
 /**
  * Resolves a release from one signed HTTPS manifest.
@@ -35,7 +43,7 @@ export async function resolveSignedManifest(
 
   if (response.kind !== "body") {
     return response.kind === "unchanged"
-      ? { kind: "unchanged" }
+      ? { etag: query.etag, kind: "current" }
       : { kind: "failure", reason: "network" };
   }
   return narrowManifest(source, query, response.body, response.etag, token);
@@ -53,8 +61,11 @@ function narrowManifest(
     return { kind: "failure", reason: "untrusted-release" };
   }
   const document = asRecord(parseJson(payload));
+  // Named apart from an untrusted signature on purpose. Both stop the update silently, and the two
+  // have opposite fixes: one is an attack, the other is a publisher who dated a manifest outside
+  // MAX_MANIFEST_FRESHNESS_MS and whose fleet then stops updating with nothing to read.
   if (!isFresh(document?.["expiresAt"], query.now)) {
-    return { kind: "failure", reason: "untrusted-release" };
+    return { kind: "failure", reason: "stale-manifest" };
   }
   const verdict = compareRelease(asText(document?.["version"]), query.version);
   if (verdict.kind !== "newer") {
@@ -79,7 +90,7 @@ function candidate(
     return { kind: "failure", reason: "invalid-release" };
   }
   return {
-    candidate: { archive, version },
+    candidate: { ...archive, version },
     // A manifest credential authorizes the service the distribution configured, not every origin a
     // signed payload may name. Cross-origin assets must use their own signed URL.
     downloadHeaders: downloadHeaders(
@@ -111,4 +122,78 @@ function sameOrigin(left: string, right: string): boolean {
   } catch {
     return false;
   }
+}
+
+/** Returns the payload only when one trusted key verifies its exact bytes. */
+function verifyEnvelope(
+  envelope: unknown,
+  trustedPublicKeys: readonly string[],
+): string | undefined {
+  const document = asRecord(envelope);
+  if (document === undefined || document["schemaVersion"] !== 1) {
+    return undefined;
+  }
+  const payload = decodeBase64Url(asText(document["payload"]));
+  const signature = decodeBase64Url(asText(document["signature"]));
+  if (payload === undefined || signature?.byteLength !== ED25519_SIGNATURE_BYTES) {
+    return undefined;
+  }
+  const accepted = trustedPublicKeys
+    .map((key) => publicKey(key))
+    .some((key) => key !== undefined && verifySignature(key, payload, signature));
+  return accepted ? payload.toString("utf8") : undefined;
+}
+
+function manifestAsset(
+  assets: unknown,
+  target: UpdateTarget,
+  version: string,
+): Omit<UpdateCandidate, "version"> | undefined {
+  const entry = asRecord(asRecord(assets)?.[target]);
+  const downloadUrl = asText(entry?.["downloadUrl"]);
+  const sha256 = asDigest(entry?.["sha256"]);
+  const size = asSize(entry?.["size"], MAX_ARCHIVE_BYTES);
+  if (downloadUrl === undefined || sha256 === undefined || size === undefined) {
+    return undefined;
+  }
+  return isPinnedUrl(downloadUrl, version) ? { downloadUrl, sha256, size } : undefined;
+}
+
+function isPinnedUrl(raw: string, version: string): boolean {
+  try {
+    const url = new URL(raw);
+    return isAllowedHttpUrl(url) && `${url.pathname}${url.search}`.includes(version);
+  } catch {
+    return false;
+  }
+}
+
+function verifySignature(key: KeyObject, payload: Buffer, signature: Buffer): boolean {
+  try {
+    return verify(null, payload, key, signature);
+  } catch {
+    return false;
+  }
+}
+
+function publicKey(encoded: string): KeyObject | undefined {
+  const raw = Buffer.from(encoded, "base64");
+  if (raw.byteLength !== ED25519_KEY_BYTES) {
+    return undefined;
+  }
+  try {
+    return createPublicKey({
+      format: "der",
+      key: Buffer.concat([ED25519_SPKI_PREFIX, raw]),
+      type: "spki",
+    });
+  } catch {
+    return undefined;
+  }
+}
+
+function decodeBase64Url(value: string | undefined): Buffer | undefined {
+  return value === undefined || !BASE64URL_PATTERN.test(value)
+    ? undefined
+    : Buffer.from(value, "base64url");
 }

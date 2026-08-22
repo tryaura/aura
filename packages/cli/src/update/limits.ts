@@ -39,8 +39,16 @@ export const MAX_MANIFEST_FRESHNESS_MS = 30 * 24 * 60 * 60 * 1_000;
 /** Redirect hops followed while downloading an archive. */
 export const MAX_REDIRECTS = 5;
 
-/** Milliseconds one archive download may take, start to finish. */
-export const DOWNLOAD_TIMEOUT_MS = 300_000;
+/**
+ * Milliseconds the whole startup update may spend before the user's command starts.
+ *
+ * The one number that bounds the wait, because it is the only one the user experiences. Every step
+ * below has its own ceiling, but a per-step bound is not an aggregate: metadata, a probe of the
+ * installed binary, the transfer, and a probe of the staged one each finishing just inside their
+ * own limit is a command that has not started yet. The download is given whatever is left of this,
+ * so a slow transfer is abandoned rather than allowed to consume the sum of the other steps too.
+ */
+export const STARTUP_UPDATE_BUDGET_MS = 240_000;
 
 /** Milliseconds one metadata request may take. */
 export const METADATA_TIMEOUT_MS = 10_000;

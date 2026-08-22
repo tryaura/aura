@@ -8,6 +8,10 @@ export interface TarFixtureEntry {
   /** Target of a link entry, written into the header's linkname field. */
   readonly linkName?: string | undefined;
   readonly name: string;
+  /** Added to the computed header checksum, so a case can produce one that does not verify. */
+  readonly checksumOffset?: number | undefined;
+  /** ustar `prefix`, which a reader must join to `name` to recover the whole path. */
+  readonly prefix?: string | undefined;
   /** ustar type flag. `0` is a regular file, `2` a symlink, `5` a directory. */
   readonly typeflag?: string | undefined;
 }
@@ -40,12 +44,14 @@ function header(entry: TarFixtureEntry, size: number): Buffer {
   block.write(entry.typeflag ?? "0", 156, "utf8");
   block.write((entry.linkName ?? "").slice(0, 100), 157, "utf8");
   block.write("ustar\u000000", 257, "utf8");
+  block.write((entry.prefix ?? "").slice(0, 155), 345, "utf8");
   block.write("        ", 148, "utf8");
   let sum = 0;
   for (const byte of block) {
     sum += byte;
   }
-  block.write(`${sum.toString(8).padStart(6, "0")}\u0000 `, 148, "utf8");
+  const checksum = sum + (entry.checksumOffset ?? 0);
+  block.write(`${checksum.toString(8).padStart(6, "0")}\u0000 `, 148, "utf8");
   return block;
 }
 

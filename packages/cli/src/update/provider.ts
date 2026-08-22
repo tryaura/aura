@@ -2,7 +2,7 @@ import type { HttpGetRequest, HttpGetResult } from "@tryaura/aura-sdk";
 
 import { resolveGitHubRelease } from "./github-release.js";
 import { resolveSignedManifest } from "./signed-manifest.js";
-import type { CliUpdateCandidate, CliUpdateSource, CliUpdateTarget } from "./types.js";
+import type { CliUpdates, UpdateCandidate, UpdateTarget } from "./types.js";
 
 /** The bounded, TLS-only, redirect-refusing GET every provider fetches its metadata with. */
 export type UpdateHttpGet = (request: HttpGetRequest) => Promise<HttpGetResult>;
@@ -18,7 +18,7 @@ export interface UpdateQuery {
   readonly now: number;
   /** Reads one variable at the moment of use. The value never outlives the request it authorizes. */
   readonly readVariable: (name: string) => string | undefined;
-  readonly target: CliUpdateTarget;
+  readonly target: UpdateTarget;
   readonly userAgent: string;
   /** Version currently installed, which a candidate must be strictly newer than. */
   readonly version: string;
@@ -28,15 +28,12 @@ export interface UpdateQuery {
 export type UpdateResolution =
   /** No release is newer than the running one. */
   | { readonly etag?: string | undefined; readonly kind: "current" }
-  /** The server confirmed the cached metadata is still current. */
-  | { readonly kind: "unchanged" }
   | {
-      readonly candidate: CliUpdateCandidate;
+      readonly candidate: UpdateCandidate;
       /**
        * Headers the archive download must carry, built fresh per lookup.
        *
-       * Kept out of {@link CliUpdateCandidate} on purpose: the candidate is the value that gets
-       * cached, and a credential must never reach the cache.
+       * Kept beside the candidate so a credential can never enter persistent update state.
        */
       readonly downloadHeaders: Readonly<Record<string, string>>;
       readonly etag?: string | undefined;
@@ -50,14 +47,15 @@ export type UpdateResolution =
        * `network` is a request that did not complete or a status the provider cannot use;
        * `invalid-release` a readable response that does not describe exactly one usable release
        * for this target; `untrusted-release` a signature, immutability, or origin requirement that
-       * did not hold.
+       * did not hold; `stale-manifest` a correctly signed manifest outside the window it signed
+       * for, which is a publisher mistake rather than an attack and must not read as one.
        */
-      readonly reason: "invalid-release" | "network" | "untrusted-release";
+      readonly reason: "invalid-release" | "network" | "stale-manifest" | "untrusted-release";
     };
 
 /** Turns one distribution-specific source into a validated candidate. */
 export function resolveUpdateSource(
-  source: CliUpdateSource,
+  source: CliUpdates,
   query: UpdateQuery,
 ): Promise<UpdateResolution> {
   return source.kind === "github-release"
@@ -68,33 +66,25 @@ export function resolveUpdateSource(
 /**
  * The cache key one source's metadata is stored under.
  *
- * Includes everything that changes what a lookup means and nothing that authorizes it: pointing a
- * distribution at a different repository is a different entry, while rotating its token is not.
+ * Includes every build-time field that changes lookup or trust and never includes a credential
+ * value. The complete manifest URL and trusted keys ensure either change selects a new cache entry.
  */
-export function sourceIdentity(source: CliUpdateSource, command: string): string {
+export function sourceIdentity(source: CliUpdates, command: string): string {
   if (source.kind === "github-release") {
-    return [
+    return JSON.stringify([
       "github-release",
-      normalizeOrigin(source.apiBaseUrl),
+      source.apiBaseUrl ?? "https://api.github.com",
       source.owner,
       source.repository,
+      source.tokenEnvironmentVariable ?? "",
       command,
-    ].join("|");
+    ]);
   }
-  return ["signed-manifest", normalizeOrigin(source.manifestUrl), command].join("|");
-}
-
-/**
- * A URL reduced to origin and path, with any embedded credential dropped.
- *
- * A `https://user:token@host/` base would otherwise put a secret in a cache key, which is a file
- * on disk that outlives the run that wrote it.
- */
-function normalizeOrigin(raw: string): string {
-  try {
-    const url = new URL(raw);
-    return `${url.origin}${url.pathname.replace(/\/+$/u, "")}`;
-  } catch {
-    return raw;
-  }
+  return JSON.stringify([
+    "signed-manifest",
+    source.manifestUrl,
+    source.tokenEnvironmentVariable ?? "",
+    source.trustedPublicKeys,
+    command,
+  ]);
 }

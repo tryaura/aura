@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 import { installUpdate, type InstallOutcome } from "./install.js";
 import { tarGzip, type TarFixtureEntry } from "./tar-fixture.js";
 import type { UpdateDownloadResult, UpdateHost } from "./host.js";
-import type { CliUpdateCandidate } from "./types.js";
+import type { UpdateCandidate } from "./types.js";
 
 const NOW = Date.parse("2026-08-21T12:00:00.000Z");
 const COMMAND = "acme";
@@ -59,27 +59,39 @@ describe("update installation transaction", () => {
   it("refuses a staged program that reports a different version", async () => {
     const world = await world1({ staged: "VERSION=9.9.9\n" });
 
-    expect(await install(world)).toEqual({ kind: "failed" });
+    expect(await install(world)).toEqual({ kind: "failed", reason: "staged-version" });
     expect(await readFile(world.executablePath, "utf8")).toBe(INSTALLED);
   });
 
   it.each([
-    { entries: [{ content: "Apache-2.0\n", name: "LICENSE" }], label: "carries no executable" },
-    { entries: [{ content: "x\n", name: "payload.sh" }], label: "carries an unexpected file" },
-  ])("refuses an archive that $label", async ({ entries }) => {
+    {
+      entries: [{ content: "Apache-2.0\n", name: "LICENSE" }],
+      label: "carries no executable",
+      reason: "missing-executable",
+    },
+    {
+      entries: [{ content: "x\n", name: "payload.sh" }],
+      label: "carries an unexpected file",
+      reason: "unexpected-entry",
+    },
+  ])("refuses an archive that $label", async ({ entries, reason }) => {
     const world = await world1({ entries });
 
-    expect(await install(world)).toEqual({ kind: "failed" });
+    expect(await install(world)).toEqual({ kind: "failed", reason });
     expect(await readFile(world.executablePath, "utf8")).toBe(INSTALLED);
   });
 
-  it("reports a download that never produced bytes as a plain failure", async () => {
+  /**
+   * The reason travels: a transfer that never produced bytes and an archive the extractor refused
+   * are the same silent nothing to the user, and the only thing that tells them apart is this.
+   */
+  it("names the reason a download that never produced bytes failed", async () => {
     const world = await world1();
     const outcome = await install(world, {
       download: () => Promise.resolve({ kind: "failure", reason: "network" }),
     });
 
-    expect(outcome).toEqual({ kind: "failed" });
+    expect(outcome).toEqual({ kind: "failed", reason: "download-network" });
     expect(await readFile(world.executablePath, "utf8")).toBe(INSTALLED);
   });
 
@@ -132,7 +144,7 @@ describe("update installation transaction", () => {
   it("leaves no temporary files behind when the transaction fails", async () => {
     const world = await world1({ staged: "VERSION=9.9.9\n" });
 
-    expect(await install(world)).toEqual({ kind: "failed" });
+    expect(await install(world)).toEqual({ kind: "failed", reason: "staged-version" });
     expect(await readdir(world.directory)).toEqual(["acme"]);
   });
 
@@ -179,7 +191,7 @@ describe("update installation transaction", () => {
     const world = await world1();
     await chmod(world.directory, 0o500);
     try {
-      expect(await install(world)).toEqual({ kind: "failed" });
+      expect(await install(world)).toEqual({ kind: "failed", reason: "lock-unavailable" });
       expect(await readFile(world.executablePath, "utf8")).toBe(INSTALLED);
     } finally {
       await chmod(world.directory, 0o700);
@@ -189,14 +201,14 @@ describe("update installation transaction", () => {
 
 interface World {
   readonly archive: Buffer;
-  readonly candidate: CliUpdateCandidate;
+  readonly candidate: UpdateCandidate;
   readonly directory: string;
   readonly executablePath: string;
 }
 
 async function world1(
   options: {
-    readonly candidate?: Partial<CliUpdateCandidate["archive"]> | undefined;
+    readonly candidate?: Partial<Omit<UpdateCandidate, "version">> | undefined;
     readonly entries?: readonly TarFixtureEntry[] | undefined;
     readonly executableMode?: number | undefined;
     readonly staged?: string | undefined;
@@ -215,12 +227,10 @@ async function world1(
   return {
     archive,
     candidate: {
-      archive: {
-        downloadUrl: "https://github.com/acme/acme-cli/releases/download/v1.4.0/acme.tar.gz",
-        sha256: createHash("sha256").update(archive).digest("hex"),
-        size: archive.byteLength,
-        ...options.candidate,
-      },
+      downloadUrl: "https://github.com/acme/acme-cli/releases/download/v1.4.0/acme.tar.gz",
+      sha256: createHash("sha256").update(archive).digest("hex"),
+      size: archive.byteLength,
+      ...options.candidate,
       version: "1.4.0",
     },
     directory,
@@ -233,6 +243,7 @@ function install(world: World, overrides: Partial<UpdateHost> = {}): Promise<Ins
     candidate: world.candidate,
     command: COMMAND,
     downloadHeaders: {},
+    downloadTimeoutMs: 30_000,
     executablePath: world.executablePath,
     host: { ...host(world), ...overrides },
     now: NOW,

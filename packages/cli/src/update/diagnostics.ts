@@ -7,7 +7,6 @@ import {
   eraseFrame,
   terminalDimension,
 } from "../terminal-frame.js";
-import type { CliUpdates } from "./types.js";
 
 /**
  * The updater's two diagnostic surfaces: a trace for whoever wired the distribution up, and a
@@ -18,7 +17,7 @@ import type { CliUpdates } from "./types.js";
  * again — so redirected output, piped output, and `--json` stay byte-identical either way.
  */
 
-/** Suffix on a distribution's own disable variable, which is what names its debug variable. */
+/** Suffix on a distribution's disable variable, which is what names its debug variable. */
 const DEBUG_SUFFIX = "_DEBUG";
 
 const ENABLED_VALUES: ReadonlySet<string> = new Set(["1", "on", "true", "yes"]);
@@ -29,26 +28,31 @@ const DOWNLOAD_PROMPT = "Downloading…";
 /** Writes one trace line, or discards it. */
 export type UpdateDebug = (message: string) => void;
 
+/** The distribution-specific variable that disables startup updates. */
+export function updateEnvironmentVariable(command: string): string {
+  const name = command
+    .replace(/[^A-Za-z0-9]+/gu, "_")
+    .replace(/^_+|_+$/gu, "")
+    .toUpperCase();
+  return `${name}_UPDATE`;
+}
+
 /**
  * The debug writer for one distribution.
  *
- * Derived from `disableEnvironmentVariable` rather than configured separately: a distribution that
- * has already named the variable a user turns updates off with has named the one a developer turns
- * tracing on with, and a second field is a second thing to forget.
+ * Derived from the command name rather than configured: `acme-dev` gets `ACME_DEV_UPDATE` and its
+ * trace gets `ACME_DEV_UPDATE_DEBUG`, leaving neither as a field a distribution can mistype.
  *
  * It exists because every refusal in this subsystem is deliberately silent. That is right for the
  * user, whose command is the thing they asked about — and useless for the author of a distribution
  * whose updates are simply not happening, with nine gates and no way to tell which one fired.
  */
 export function createUpdateDebug(
-  updates: CliUpdates | undefined,
+  disableEnvironmentVariable: string,
   environmentVariables: Readonly<Record<string, string | undefined>>,
   stderr: Writable,
 ): UpdateDebug {
-  const value =
-    updates === undefined
-      ? undefined
-      : environmentVariables[`${updates.disableEnvironmentVariable}${DEBUG_SUFFIX}`];
+  const value = environmentVariables[`${disableEnvironmentVariable}${DEBUG_SUFFIX}`];
   if (value === undefined || !ENABLED_VALUES.has(value.trim().toLowerCase())) {
     return () => undefined;
   }

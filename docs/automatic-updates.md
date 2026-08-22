@@ -46,52 +46,42 @@ standalone bootstrap
   -> next invocation uses the new executable
 ```
 
-Both gates are required:
-
-1. The distribution declares an update source.
-2. The process boundary supplies a standalone installation capability.
-
-The npm entry point supplies neither standalone capability nor an executable path, so it cannot
-reach installation code even if it is run outside `npx`.
+The compiled entry point calls `runStandaloneCli(distro, updates, process)`. The npm entry calls
+`runCli`, whose signature has no update source or executable, so it cannot reach installation code.
 
 ## Public contract
 
 The type boundary, as shipped:
 
 ```ts
-export interface CliUpdates {
-  readonly disableEnvironmentVariable: string;
+export type CliUpdates = {
   readonly manualUpdateUrl?: string | undefined;
-  readonly source: CliUpdateSource;
-}
-
-export type CliUpdateSource =
+  readonly tokenEnvironmentVariable?: string | undefined;
+} & (
   | {
-      readonly apiBaseUrl: string;
+      readonly apiBaseUrl?: string | undefined;
       readonly kind: "github-release";
       readonly owner: string;
       readonly repository: string;
-      readonly requireImmutable: boolean;
-      readonly tokenEnvironmentVariable?: string | undefined;
     }
   | {
       readonly kind: "signed-manifest";
       readonly manifestUrl: string;
-      readonly tokenEnvironmentVariable?: string | undefined;
       readonly trustedPublicKeys: readonly string[];
-    };
+    }
+);
 
-export interface CliStandaloneInstallation {
-  readonly architecture: "arm64" | "x64";
-  readonly executablePath: string;
-  readonly kind: "standalone";
-  readonly platform: "darwin" | "linux";
-}
+export declare function runStandaloneCli(
+  distro: CliDistro,
+  updates: CliUpdates,
+  current: Pick<NodeJS.Process, "arch" | "execPath" | "platform">,
+  runtime?: CliRuntime,
+): Promise<CliExitCode>;
 ```
 
-`CliDistro` receives an optional `updates` field. `CliRuntime` receives an optional `installation`
-field. The compiled distribution entry point is the only production boundary that populates
-`installation`; tests inject it explicitly.
+Only `CliUpdates` and `runStandaloneCli` are public. Release targets, validated candidates, and
+installation state remain private. GitHub always requires immutable releases; its API base defaults
+to `https://api.github.com`.
 
 `manualUpdateUrl` was added during implementation: the failure message has to name somewhere to go,
 and deriving a releases page from a source URL only works for one of the two provider kinds. It
@@ -107,17 +97,14 @@ The updater normalizes platform and architecture to these release targets:
 | `linux`          | `arm64`              | `linux-arm64`  |
 | `linux`          | `x64`                | `linux-x64`    |
 
-An update provider returns only a fully validated candidate. The credential-bearing headers its
-download needs travel beside the candidate rather than inside it, because the candidate is the value
-that gets cached and a cache is a file that outlives the run that wrote it:
+An update provider returns only a fully validated private candidate. Credential-bearing headers
+travel beside it, and the cache records only a failed version rather than reusable download data:
 
 ```ts
-export interface CliUpdateCandidate {
-  readonly archive: {
-    readonly downloadUrl: string;
-    readonly sha256: string;
-    readonly size: number;
-  };
+interface UpdateCandidate {
+  readonly downloadUrl: string;
+  readonly sha256: string;
+  readonly size: number;
   readonly version: string;
 }
 ```
@@ -130,15 +117,12 @@ digests, or unexpected download origins.
 
 Automatic installation runs only when all of the following are true:
 
-- the distribution declares `updates`;
-- the runtime installation kind is `standalone`;
+- the entry point called `runStandaloneCli` with its process and update source;
 - the distribution version is canonical semver and is not `0.0.0`;
 - the target is one of the four supported targets;
 - the executable path identifies a regular file rather than a symlink;
 - the invocation is a real command rather than root help, explicit help, or version output;
-- the distribution-specific disable variable is not `off`, `0`, `false`, or `no` — the proposal
-  said `off` or `1`, which reads backwards for a variable named `AURA_UPDATE`; this matches the
-  existing `AURA_TELEMETRY=off` convention instead;
+- the command-derived disable variable is not `off`, `0`, `false`, or `no`;
 - `CI` is not set; and
 - the run owns an interactive terminal, meaning all three of stdin, stdout, and stderr.
 
@@ -148,8 +132,8 @@ interactive behavior.
 
 ## Official Aura provider
 
-The official provider is a small GitHub-specific module under `distros/aura`. It hardcodes
-`tryaura/aura`; private distributions cannot redirect the official binary to another repository.
+The shared GitHub provider reads a frozen policy under `distros/aura` that selects `tryaura/aura`;
+private distributions cannot redirect the official binary to another repository.
 
 It requests:
 
@@ -215,8 +199,7 @@ repository or GitHub Enterprise Server instance.
 
 The distribution configures:
 
-- its API base URL, owner, and repository;
-- whether immutable releases are required; and
+- its optional API base URL, owner, and repository; and
 - the name of an environment variable containing a read-only token.
 
 The token must have only repository Contents read permission. It is read at request time, is never
@@ -305,24 +288,23 @@ bytes.
 
 ## Cache and check cadence
 
-Validated release metadata is cached under:
+Update outcomes are cached under:
 
 ```text
 ~/agents/.cache/distribution-updates/<sha256(source-identity)>
 ```
 
-The source identity includes the provider kind, API or manifest origin, owner, repository, and
-distribution command. It never includes credentials.
+The source identity includes the complete build-time provider and trust configuration plus the
+distribution command. It includes credential variable names but never their values.
 
 Cache policy:
 
 - a successful current-version check is fresh for 24 hours;
-- an update candidate is never installed from cache — it is re-resolved in full first, because the
-  credential its download needs is deliberately absent from the cache and only a fresh document can
-  rebuild it;
-- the ETag is preserved and offered with `If-None-Match` only when the cached answer was "nothing
-  newer"; a cached candidate asks unconditionally, since a `304` would otherwise mean a release that
-  failed to install could never be retried;
+- an update candidate is never installed from cache; only its failed version and attempt count are
+  retained for backoff, and the source is re-resolved before every retry;
+- the ETag is preserved but offered with `If-None-Match` only when the cached answer was "nothing
+  newer"; an install failure asks unconditionally, since a `304` would otherwise hide the candidate
+  that needs to be retried;
 - transient check failures retry after one hour and remain silent;
 - installation failures use bounded exponential backoff per candidate version;
 - a future timestamp, oversized entry, invalid JSON, or changed source identity is a cache miss;
@@ -405,18 +387,44 @@ the first version.
 ### Tracing a distribution that will not update
 
 Every refusal above is silent, which is correct for a user and useless for whoever wired the
-distribution up: nine gates, one outcome, no way to tell them apart. A distribution's disable
-variable plus `_DEBUG` — `AURA_UPDATE_DEBUG` for the official binary — writes one line per step:
+distribution up. The command-derived debug variable — `AURA_UPDATE_DEBUG` for `aura` — writes one
+line per step:
 
 ```text
-update: skipped: no-standalone-installation
+update: skipped: unsupported-target
 update: resolved: candidate
 update: installed: installed
 ```
 
-Derived from the disable variable rather than configured separately, so a distribution that has
-named one has named both. Off by default, never suggested to a user, and deliberately outside the
-message contract in `docs/cli-ux.md`.
+Every step names its own reason rather than collapsing into one word, because the failures a
+distribution author has to tell apart all look identical from the outside — a silent nothing:
+
+| Step        | Reasons                                                                                                                                                                                                                            |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `skipped`   | `unstamped-version`, `unsupported-target`, `informational-run`, `disabled`, `continuous-integration`, `not-a-terminal`, `not-a-regular-file`, `cached-current`, `cached-check-failed`, `cached-install-failed`, `unexpected-error` |
+| `resolved`  | `candidate`, `current`, `network`, `invalid-release`, `untrusted-release`, `stale-manifest`                                                                                                                                        |
+| `installed` | `installed`, `skipped`, `refused`, `failed: <reason>`                                                                                                                                                                              |
+
+`failed:` carries the step that gave up: `lock-unavailable` (an install directory this user cannot
+write to), `not-a-regular-file`, `download-network`, `download-too-large`, `download-insecure-url`,
+`download-unexpected-length`, `unreadable-archive`, `unexpected-entry`, `too-large`,
+`missing-executable`, `staged-version`, or `replace-failed`. `stale-manifest` is kept apart from
+`untrusted-release` for the same reason: a manifest dated beyond `MAX_MANIFEST_FRESHNESS_MS` is a
+publisher mistake with a publisher fix, and reporting it as a failed signature sends them hunting
+for an attack.
+
+The disable variable is the uppercased command, non-alphanumeric runs replaced by `_`, plus
+`_UPDATE`; tracing appends `_DEBUG`. Both are off by default and outside the message contract.
+
+### The wait a user actually experiences
+
+`STARTUP_UPDATE_BUDGET_MS` bounds the whole startup update, not each step. Per-step ceilings do not
+add up to a promise: metadata, a probe of the installed binary, the transfer, and a probe of the
+staged one each finishing just inside their own limit is a command that has not started yet. The
+budget is anchored at the moment the check begins, and the download — the one step with no natural
+ceiling — is given whatever the earlier steps did not spend. A budget already exhausted yields a
+transfer that aborts at once, which the transaction reports like any other failed download, and the
+backoff in `cache.ts` keeps the next attempt from landing on the following command.
 
 ## Recovery
 
@@ -437,7 +445,7 @@ Proposed ownership:
 
 ```text
 packages/cli/src/update/
-  types.ts                 public source and standalone-capability types
+  types.ts                 public update config and private candidate/target types
   limits.ts                every bound the updater enforces, in one place
   narrow.ts                narrowing helpers for unknown provider responses
   target.ts                release-target mapping and canonical version comparison
@@ -445,10 +453,8 @@ packages/cli/src/update/
   cache.ts                 private update metadata cache and check cadence
   provider.ts              provider contract, dispatch, and source identity
   metadata.ts              shared bounded metadata fetch, credentials, version verdict
-  github-release.ts        public/private GitHub release provider
-  github-asset.ts          asset selection and download-URL pinning
-  signed-manifest.ts       signed HTTPS manifest provider
-  signed-envelope.ts       Ed25519 envelope verification and manifest assets
+  github-release.ts        GitHub provider, asset selection, and URL pinning
+  signed-manifest.ts       signed manifest provider and Ed25519 verification
   host.ts                  process capabilities the installer needs, as an interface
   host.boundary.ts         the real process seam: pid, signal, fork
   download.boundary.ts     bounded streaming download and redirect policy
@@ -457,15 +463,16 @@ packages/cli/src/update/
   lock.ts                  concurrent updater exclusion
   stage.ts                 download, digest, extract, and verify the staged program
   install.ts               the atomic replacement transaction
-  messages.ts              everything the updater says
   diagnostics.ts           the debug trace and the download progress frame
-  run.ts                   the startup orchestration
+  run.ts                   startup orchestration and messages
+  tar-fixture.ts           test-only tar writer, shared by the extractor suites
+  testing.ts               test-only wired distribution, shared by the startup suites
 
 distros/aura/src/update/
   official-source.ts       frozen tryaura/aura GitHub policy
 
 distros/aura/src/
-  standalone-main.boundary.ts  compiled-only bootstrap with installation capability
+  standalone-main.boundary.ts  compiled-only `runStandaloneCli` bootstrap
   main.ts                      non-standalone entry without update capability
 ```
 
@@ -503,7 +510,7 @@ to use `packages/cli/src/bin.ts` and cannot enter the installer.
 All of the above landed together, in `packages/cli/src/update/*.test.ts`.
 `install.integration.test.ts` exercises the whole chain — real narrowing, real streaming download,
 real extraction, a real fork to verify the staged program, and a real rename — against loopback
-fixtures through `runCli`.
+fixtures through `runStandaloneCli`.
 
 ### Release and binary verification
 

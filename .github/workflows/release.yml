@@ -103,7 +103,9 @@ jobs:
           tar -czf "aura-${{ matrix.target }}.tar.gz" -C distros/aura/dist aura LICENSE
       # Read the way the updater reads, not the way `tar -t` does: `tar -t` merges AppleDouble
       # sidecars back and reports nothing. This is the only step that would catch a packaging
-      # change producing an archive the extractor refuses.
+      # change producing an archive the extractor refuses, so it imports the extractor's own header
+      # parser from the checked-out source rather than reimplementing it — a second copy of those
+      # rules drifts, and a drifted gate passes an archive that is already immutable.
       - name: Verify the archive the updater will extract
         run: node scripts/verify-archive.mjs "aura-${{ matrix.target }}.tar.gz" aura LICENSE
       - name: Upload artifact

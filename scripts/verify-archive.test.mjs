@@ -1,10 +1,13 @@
-import { gzipSync } from "node:zlib";
-
 import { describe, expect, it } from "vitest";
 
+import { tarGzip } from "../packages/cli/src/update/tar-fixture.ts";
 import { archiveEntries, verifyArchive } from "./verify-archive.mjs";
 
-const BLOCK = 512;
+/**
+ * Built with the extractor suites' own fixture, not a second copy of it. Two hand-written tar
+ * writers is how a gate ends up asserting against archives the updater would never see.
+ */
+const REFUSED = "in a header the updater's extractor refuses";
 
 describe("release archive verification", () => {
   it("accepts exactly the executable and its license", () => {
@@ -33,7 +36,26 @@ describe("release archive verification", () => {
   ])("refuses $label the extractor would reject", ({ typeflag }) => {
     const archive = tarGzip([entry("aura", { typeflag }), entry("LICENSE")]);
 
-    expect(verifyArchive(archive, ["aura", "LICENSE"])).toContain("with type flag");
+    expect(verifyArchive(archive, ["aura", "LICENSE"])).toContain(REFUSED);
+  });
+
+  /**
+   * The extractor joins `prefix` to `name` and then allow-lists the result, so a gate reading only
+   * `name` would pass an archive that installs nowhere.
+   */
+  it("reads the ustar prefix the extractor joins", () => {
+    const archive = tarGzip([entry("aura", { prefix: "dist" }), entry("LICENSE")]);
+
+    expect(verifyArchive(archive, ["aura", "LICENSE"])).toBe(
+      "contains [LICENSE, dist/aura], expected [LICENSE, aura]",
+    );
+  });
+
+  /** The extractor verifies the header checksum, which is how it notices block misalignment. */
+  it("refuses a header the extractor would not checksum", () => {
+    const archive = tarGzip([entry("aura", { checksumOffset: 1 }), entry("LICENSE")]);
+
+    expect(verifyArchive(archive, ["aura", "LICENSE"])).toContain(REFUSED);
   });
 
   it("refuses an archive missing a target the release promised", () => {
@@ -48,30 +70,5 @@ describe("release archive verification", () => {
 });
 
 function entry(name, options = {}) {
-  const content = Buffer.from(options.content ?? "bytes\n", "utf8");
-  const block = Buffer.alloc(BLOCK, 0);
-  block.write(name.slice(0, 100), 0, "utf8");
-  block.write(octal(0o644, 7), 100, "utf8");
-  block.write(octal(0, 7), 108, "utf8");
-  block.write(octal(0, 7), 116, "utf8");
-  block.write(octal(content.byteLength, 11), 124, "utf8");
-  block.write(octal(0, 11), 136, "utf8");
-  block.write(options.typeflag ?? "0", 156, "utf8");
-  block.write("ustar\u000000", 257, "utf8");
-  block.write("        ", 148, "utf8");
-  let sum = 0;
-  for (const byte of block) {
-    sum += byte;
-  }
-  block.write(`${sum.toString(8).padStart(6, "0")}\u0000 `, 148, "utf8");
-  const padding = Buffer.alloc((BLOCK - (content.byteLength % BLOCK)) % BLOCK);
-  return Buffer.concat([block, content, padding]);
-}
-
-function tarGzip(blocks) {
-  return gzipSync(Buffer.concat([...blocks, Buffer.alloc(BLOCK), Buffer.alloc(BLOCK)]));
-}
-
-function octal(value, width) {
-  return `${value.toString(8).padStart(width, "0")}\0`;
+  return { content: "bytes\n", name, ...options };
 }

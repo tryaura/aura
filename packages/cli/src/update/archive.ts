@@ -32,8 +32,12 @@ export interface ArchiveRequest {
  */
 export async function extractArchive(request: ArchiveRequest): Promise<ArchiveFailure | undefined> {
   const extractor = new TarExtractor(request);
+  // Held rather than chained inline: leaving the loop destroys only the gunzip stream, and `pipe`
+  // does not carry that upstream — the archive's descriptor would stay open until garbage
+  // collection on the success path, which is the path every install takes.
+  const source = createReadStream(request.archivePath);
   try {
-    for await (const chunk of createReadStream(request.archivePath).pipe(createGunzip())) {
+    for await (const chunk of source.pipe(createGunzip())) {
       if (!(chunk instanceof Uint8Array)) {
         return "unreadable-archive";
       }
@@ -51,6 +55,7 @@ export async function extractArchive(request: ArchiveRequest): Promise<ArchiveFa
   } catch {
     return "unreadable-archive";
   } finally {
+    source.destroy();
     await extractor.close();
   }
   return (

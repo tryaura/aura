@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import type { UpdateQuery, UpdateResolution } from "./provider.js";
 import { resolveSignedManifest } from "./signed-manifest.js";
-import type { CliUpdateSource } from "./types.js";
+import type { CliUpdates } from "./types.js";
 
 const DIGEST = "b".repeat(64);
 const DAY = 24 * 60 * 60 * 1_000;
@@ -20,11 +20,9 @@ describe("signed manifest provider", () => {
 
     expect(resolution).toEqual({
       candidate: {
-        archive: {
-          downloadUrl: "https://releases.acme.example/acmedev/v1.4.0/acmedev-darwin-arm64.tar.gz",
-          sha256: DIGEST,
-          size: 12_345,
-        },
+        downloadUrl: "https://releases.acme.example/acmedev/v1.4.0/acmedev-darwin-arm64.tar.gz",
+        sha256: DIGEST,
+        size: 12_345,
         version: "1.4.0",
       },
       downloadHeaders: { accept: "application/octet-stream" },
@@ -110,7 +108,9 @@ describe("signed manifest provider", () => {
     { expiresAt: "soon", label: "an unreadable expiry" },
   ])("refuses a manifest with $label", async ({ expiresAt }) => {
     const { resolution } = await resolve({ payload: { expiresAt } });
-    expect(resolution).toEqual({ kind: "failure", reason: "untrusted-release" });
+    // Named apart from a signature that did not verify: this one is a publisher mistake with a
+    // publisher fix, and reading it as an attack leaves them nothing to act on.
+    expect(resolution).toEqual({ kind: "failure", reason: "stale-manifest" });
   });
 
   it("accepts a manifest inside its signed window", async () => {
@@ -120,7 +120,7 @@ describe("signed manifest provider", () => {
 
   it("refuses a manifest replayed after its window closes", async () => {
     const { resolution } = await resolve({ now: NOW + 2 * DAY });
-    expect(resolution).toEqual({ kind: "failure", reason: "untrusted-release" });
+    expect(resolution).toEqual({ kind: "failure", reason: "stale-manifest" });
   });
 
   it("reports the running version as current when the manifest names no newer release", async () => {
@@ -205,7 +205,7 @@ async function resolve(
     ...options.envelope,
   });
 
-  const source: Extract<CliUpdateSource, { kind: "signed-manifest" }> = {
+  const source: Extract<CliUpdates, { kind: "signed-manifest" }> = {
     kind: "signed-manifest",
     manifestUrl: "https://releases.acme.example/acmedev/latest.json",
     ...(options.token === undefined ? {} : { tokenEnvironmentVariable: options.token }),

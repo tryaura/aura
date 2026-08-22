@@ -113,12 +113,11 @@ An internal binary is copied onto laptops by hand or by a provisioning script, s
 every machine stays on whatever version it was given. Aura's updater replaces that executable in
 place — and only that executable.
 
-Two gates guard it, and both must hold: the distribution declares `updates`, and the process
-boundary that knows it is a compiled binary declares `installation`. That is why the example has
-**two entry points**. `main.boundary.ts` declares neither, so an `npx` or npm-global run of the same
-distribution cannot reach installation code even though it composes the same plugins. Ownership is
-declared by the artifact that knows it is one, never inferred from `npm_execpath`, `PATH`, or the
-command name.
+The capability is explicit at the process boundary, which is why the example has **two entry
+points**. The compiled one calls `runStandaloneCli` with its update policy and the current process;
+`main.boundary.ts` calls `runCli`, whose API has no update capability at all. An `npx` or npm-global
+run therefore cannot reach installation code even though it composes the same plugins, and ownership
+is never inferred from `npm_execpath`, `PATH`, or the command name.
 
 <Steps>
 
@@ -130,10 +129,10 @@ command name.
    cross-origin redirect. Grant it repository **Contents: read** and nothing else.
 
 2. Read [the standalone entry point](https://github.com/tryaura/aura/blob/main/examples/acme-distribution/src/standalone-main.boundary.ts).
-   `standaloneInstallation` narrows the three values you pass it and returns `undefined` when no
-   release targets this machine — a Windows build, or an architecture added after your Aura version
-   — so the capability is only ever supplied when it is true. It never goes looking for those values
-   itself.
+   It is one call: `runStandaloneCli(createAcmeDistro(), ACME_UPDATES, process)`. The runner maps
+   `process.platform` and `process.arch` to a supported release target before making a request, so a
+   Windows build or an architecture added after your Aura version quietly skips updates. Point
+   `build.mjs` at this file rather than `main.boundary.ts`.
 
 3. Publish releases the updater can pin. Per release: one archive per target named exactly
    `acmedev-<target>.tar.gz` for `darwin-arm64`, `darwin-x64`, `linux-arm64`, or `linux-x64`; each
@@ -153,9 +152,9 @@ command name.
 </Steps>
 
 :::caution[Immutable releases are the trust boundary]
-With `requireImmutable: true`, Aura installs a release only when the API reports `immutable: true`.
-The digest it verifies against comes out of the release metadata, so it is only meaningful if that
-release cannot later be republished with different bytes. If your GitHub Enterprise Server cannot
+The GitHub provider installs a release only when the API reports `immutable: true`. The digest it
+verifies against comes out of the release metadata, so it is only meaningful if that release cannot
+later be republished with different bytes. If your GitHub Enterprise Server cannot
 report immutability and per-asset digests, the provider fails closed — use the signed-manifest
 source below rather than weakening the installer.
 :::
@@ -181,13 +180,10 @@ Configure it with the raw 32-byte Ed25519 public keys, base64 encoded:
 
 ```ts title="src/updates.ts"
 export const ACME_UPDATES: CliUpdates = {
-  disableEnvironmentVariable: "ACMEDEV_UPDATE",
-  source: {
-    kind: "signed-manifest",
-    manifestUrl: "https://releases.acme.example/acmedev/latest.json",
-    tokenEnvironmentVariable: "ACMEDEV_RELEASE_TOKEN",
-    trustedPublicKeys: ["<base64 current key>", "<base64 next key>"],
-  },
+  kind: "signed-manifest",
+  manifestUrl: "https://releases.acme.example/acmedev/latest.json",
+  tokenEnvironmentVariable: "ACMEDEV_RELEASE_TOKEN",
+  trustedPublicKeys: ["<base64 current key>", "<base64 next key>"],
 };
 ```
 
@@ -225,18 +221,18 @@ single request is made. A build agent that pinned a version keeps it.
 ### When updates are not happening
 
 Every one of those refusals is silent, which is right for your users and unhelpful for you. Set
-`ACMEDEV_UPDATE_DEBUG=1` — the debug variable is your disable variable plus `_DEBUG` — and the
-updater names each step it took on stderr:
+`ACMEDEV_UPDATE_DEBUG=1` and the updater names each step it took on stderr. Both variable names are
+derived from `branding.command`: uppercase it, replace non-alphanumeric runs with `_`, then append
+`_UPDATE` or `_UPDATE_DEBUG`.
 
 ```text
-update: skipped: no-standalone-installation
+update: skipped: unsupported-target
 ```
 
-That one is the commonest wiring mistake: `runCli` received no `installation`, so the run has no
-executable to replace. The other reasons are `no-update-source`, `unstamped-version`,
-`unsupported-target`, `informational-run`, `disabled`, `continuous-integration`, `not-a-terminal`,
-`not-a-regular-file`, and `cached-*` for a check that is still fresh. The trace is a development
-affordance, not part of the output contract — never turn it on for users.
+The other reasons include `unstamped-version`, `informational-run`, `disabled`,
+`continuous-integration`, `not-a-terminal`, `not-a-regular-file`, and `cached-*` for a check that is
+still fresh. The trace is a development affordance, not part of the output contract — never turn it
+on for users.
 
 ## Common failures
 

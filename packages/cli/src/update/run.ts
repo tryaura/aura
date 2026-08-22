@@ -1,10 +1,15 @@
 import type { Readable, Writable } from "node:stream";
 
 import { attemptsFor, readUpdateCache, shouldCheck, writeUpdateCache } from "./cache.js";
-import { createUpdateDebug, startUpdateProgress, type UpdateDebug } from "./diagnostics.js";
+import {
+  createUpdateDebug,
+  startUpdateProgress,
+  updateEnvironmentVariable,
+  type UpdateDebug,
+} from "./diagnostics.js";
 import { eligibleInstallation, type EligibleInstallation } from "./eligibility.js";
 import { installUpdate, type InstallOutcome } from "./install.js";
-import { digestRefusedLine, installFailedLine, updatedLine, updatingLine } from "./messages.js";
+import { STARTUP_UPDATE_BUDGET_MS } from "./limits.js";
 import {
   resolveUpdateSource,
   sourceIdentity,
@@ -13,22 +18,22 @@ import {
 } from "./provider.js";
 import type { UpdateHost } from "./host.js";
 import type { CliBranding } from "../types.js";
-import type { CliStandaloneInstallation, CliUpdates } from "./types.js";
+import type { CliUpdates } from "./types.js";
 
 /** Everything the startup update reads, injected so a run reads nothing from the process itself. */
 export interface StartupUpdateRequest {
   readonly argv: readonly string[];
   readonly branding: CliBranding;
+  readonly current: Pick<NodeJS.Process, "arch" | "execPath" | "platform">;
   readonly environmentVariables: Readonly<Record<string, string | undefined>>;
   readonly homeDir: string;
   readonly host: UpdateHost;
   readonly httpGet: UpdateHttpGet;
-  readonly installation: CliStandaloneInstallation | undefined;
   readonly now: () => Date;
   readonly stderr: Writable;
   readonly stdin: Readable;
   readonly stdout: Writable;
-  readonly updates: CliUpdates | undefined;
+  readonly updates: CliUpdates;
 }
 
 /**
@@ -43,9 +48,18 @@ export interface StartupUpdateRequest {
  * which writes only when this distribution's debug variable asks it to.
  */
 export async function runStartupUpdate(request: StartupUpdateRequest): Promise<void> {
-  const debug = createUpdateDebug(request.updates, request.environmentVariables, request.stderr);
+  const disableEnvironmentVariable = updateEnvironmentVariable(request.branding.command);
+  const debug = createUpdateDebug(
+    disableEnvironmentVariable,
+    request.environmentVariables,
+    request.stderr,
+  );
   try {
-    const verdict = await eligibleInstallation({ ...request, version: request.branding.version });
+    const verdict = await eligibleInstallation({
+      ...request,
+      disableEnvironmentVariable,
+      version: request.branding.version,
+    });
     if (verdict.kind !== "eligible") {
       debug(`skipped: ${verdict.reason}`);
       return;
@@ -63,14 +77,14 @@ async function check(
   debug: UpdateDebug,
 ): Promise<void> {
   const now = request.now().getTime();
-  const identity = sourceIdentity(eligible.updates.source, request.branding.command);
+  const identity = sourceIdentity(request.updates, request.branding.command);
   const entry = await readUpdateCache(request.homeDir, identity, now);
   if (!shouldCheck(entry, now)) {
     debug(`skipped: cached-${entry?.outcome ?? "check"}`);
     return;
   }
 
-  const resolution = await resolveUpdateSource(eligible.updates.source, {
+  const resolution = await resolveUpdateSource(request.updates, {
     command: request.branding.command,
     // Revalidation is offered only when the cached answer was "nothing newer". A cached candidate
     // has to be re-resolved in full, because the credential its download needs is deliberately not
@@ -89,11 +103,22 @@ async function check(
       : `resolved: ${resolution.kind}`,
   );
 
-  await apply(request, eligible, { debug, entry, identity, now, resolution });
+  await apply(request, eligible, {
+    // Anchored to the moment the check started, not to the moment the install does: what the
+    // budget bounds is the wait between the user's keystroke and their command, and the metadata
+    // request and the probe of the installed binary are already part of that wait.
+    deadline: now + STARTUP_UPDATE_BUDGET_MS,
+    debug,
+    entry,
+    identity,
+    now,
+    resolution,
+  });
 }
 
 /** Everything one applied resolution needs that is not the request or the installation. */
 interface ApplyContext {
+  readonly deadline: number;
   readonly debug: UpdateDebug;
   readonly entry: Awaited<ReturnType<typeof readUpdateCache>>;
   readonly identity: string;
@@ -112,7 +137,7 @@ async function apply(
     return;
   }
   if (resolution.kind !== "candidate") {
-    // An unchanged response carries no entity tag of its own; the cached one still names the
+    // A 304 response may carry no entity tag of its own; the cached one still names the
     // representation the server just confirmed, so it survives to the next revalidation.
     const etag = resolution.kind === "current" ? (resolution.etag ?? entry?.etag) : entry?.etag;
     await writeUpdateCache(request.homeDir, identity, {
@@ -123,8 +148,8 @@ async function apply(
     return;
   }
 
-  const outcome = await install(request, eligible, resolution, now);
-  context.debug(`installed: ${outcome.kind}`);
+  const outcome = await install(request, eligible, resolution, context);
+  context.debug(`installed: ${trace(outcome)}`);
   report(request, eligible, resolution.candidate.version, outcome);
   await record(
     request,
@@ -141,7 +166,7 @@ async function install(
   request: StartupUpdateRequest,
   eligible: EligibleInstallation,
   resolution: Extract<UpdateResolution, { kind: "candidate" }>,
-  now: number,
+  context: ApplyContext,
 ): Promise<InstallOutcome> {
   const { candidate } = resolution;
   request.stderr.write(updatingLine(request.branding, eligible.version, candidate.version));
@@ -151,15 +176,23 @@ async function install(
       candidate,
       command: request.branding.command,
       downloadHeaders: resolution.downloadHeaders,
+      // Whatever the steps before it did not spend. A budget already exhausted yields a transfer
+      // that aborts at once, which the transaction reports like any other download that failed.
+      downloadTimeoutMs: Math.max(0, context.deadline - request.now().getTime()),
       executablePath: eligible.executablePath,
       host: request.host,
-      now,
+      now: context.now,
       ...(progress.report === undefined ? {} : { onProgress: progress.report }),
-      probeEnvironment: probeEnvironment(request, eligible.updates),
+      probeEnvironment: probeEnvironment(request),
     });
   } finally {
     progress.close();
   }
+}
+
+/** The debug trace for one outcome, which is the only place a failure names its reason. */
+function trace(outcome: InstallOutcome): string {
+  return outcome.kind === "failed" ? `failed: ${outcome.reason}` : outcome.kind;
 }
 
 /** One line, or none: the outcome table's message column. */
@@ -178,7 +211,7 @@ function report(
     return;
   }
   if (outcome.kind === "failed") {
-    const manual = eligible.updates.manualUpdateUrl ?? request.branding.docsUrl;
+    const manual = request.updates.manualUpdateUrl ?? request.branding.docsUrl;
     request.stderr.write(installFailedLine(request.branding, version, manual));
   }
 }
@@ -199,12 +232,11 @@ function record(
     return writeUpdateCache(request.homeDir, identity, { checkedAt: now, outcome: "current" });
   }
   return writeUpdateCache(request.homeDir, identity, {
-    candidate: resolution.candidate,
     checkedAt: now,
     ...(resolution.etag === undefined ? {} : { etag: resolution.etag }),
-    failedAt: now,
     failedAttempts: attempts + 1,
-    outcome: "candidate",
+    failedVersion: resolution.candidate.version,
+    outcome: "install-failed",
   });
 }
 
@@ -215,17 +247,14 @@ function record(
  * installer verifies a staged binary by running it, and a child that started an update of its own
  * would recurse into the directory its parent is mid-transaction on.
  */
-function probeEnvironment(
-  request: StartupUpdateRequest,
-  updates: CliUpdates,
-): Record<string, string> {
+function probeEnvironment(request: StartupUpdateRequest): Record<string, string> {
   const home = request.environmentVariables["HOME"];
   const path = request.environmentVariables["PATH"];
   return {
     ...(home === undefined ? {} : { HOME: home }),
     ...(path === undefined ? {} : { PATH: path }),
     NO_COLOR: "1",
-    [updates.disableEnvironmentVariable]: "off",
+    [updateEnvironmentVariable(request.branding.command)]: "off",
   };
 }
 
@@ -236,4 +265,28 @@ function readVariable(
 ): string | undefined {
   const value = environmentVariables[name];
   return value === undefined || value === "" ? undefined : value;
+}
+
+function updatingLine(branding: CliBranding, from: string, to: string): string {
+  return `Updating ${branding.displayName} ${from} -> ${to}...\n`;
+}
+
+function updatedLine(branding: CliBranding, to: string): string {
+  return `Updated ${branding.displayName} to ${to}. The new version will be used on your next run.\n`;
+}
+
+function installFailedLine(
+  branding: CliBranding,
+  version: string,
+  manualUpdateUrl: string | undefined,
+): string {
+  const suffix = manualUpdateUrl === undefined ? "" : ` Update manually: ${manualUpdateUrl}`;
+  return `${branding.displayName} could not install the ${version} update.${suffix}\n`;
+}
+
+function digestRefusedLine(branding: CliBranding, version: string): string {
+  return (
+    `${branding.displayName} refused the ${version} update: the download did not match the ` +
+    `release's published SHA-256 digest. Nothing was installed.\n`
+  );
 }

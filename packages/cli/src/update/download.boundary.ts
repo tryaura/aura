@@ -3,7 +3,7 @@ import { open } from "node:fs/promises";
 
 import { vetHttpUrl } from "@tryaura/core";
 
-import { DOWNLOAD_TIMEOUT_MS, MAX_REDIRECTS } from "./limits.js";
+import { MAX_REDIRECTS } from "./limits.js";
 import type { UpdateDownloadRequest, UpdateDownloadResult, UpdateHost } from "./host.js";
 
 const REDIRECT_STATUSES: ReadonlySet<number> = new Set([301, 302, 303, 307, 308]);
@@ -31,7 +31,7 @@ export function createUpdateDownload(): UpdateHost["download"] {
 }
 
 async function stream(request: UpdateDownloadRequest): Promise<UpdateDownloadResult> {
-  const signal = AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS);
+  const signal = AbortSignal.timeout(request.timeoutMs);
   const response = await follow(request, signal);
   if (typeof response === "string") {
     return { kind: "failure", reason: response };

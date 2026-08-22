@@ -3,7 +3,7 @@ import type { Readable, Writable } from "node:stream";
 
 import { isTerminal } from "../command-support.js";
 import { isInstallableVersion, releaseTarget } from "./target.js";
-import type { CliStandaloneInstallation, CliUpdateTarget, CliUpdates } from "./types.js";
+import type { UpdateTarget } from "./types.js";
 
 /** Values that turn startup updates off, matching how `AURA_TELEMETRY=off` reads today. */
 const DISABLED_VALUES: ReadonlySet<string> = new Set(["0", "false", "no", "off"]);
@@ -11,20 +11,19 @@ const DISABLED_VALUES: ReadonlySet<string> = new Set(["0", "false", "no", "off"]
 /** Everything the gate needs, so nothing below it reads the process or the filesystem to decide. */
 export interface EligibilityRequest {
   readonly argv: readonly string[];
+  readonly current: Pick<NodeJS.Process, "arch" | "execPath" | "platform">;
+  readonly disableEnvironmentVariable: string;
   readonly environmentVariables: Readonly<Record<string, string | undefined>>;
-  readonly installation: CliStandaloneInstallation | undefined;
   readonly stderr: Writable;
   readonly stdin: Readable;
   readonly stdout: Writable;
-  readonly updates: CliUpdates | undefined;
   readonly version: string | undefined;
 }
 
 /** An installation the updater may replace, with the release target already resolved. */
 export interface EligibleInstallation {
   readonly executablePath: string;
-  readonly target: CliUpdateTarget;
-  readonly updates: CliUpdates;
+  readonly target: UpdateTarget;
   readonly version: string;
 }
 
@@ -39,8 +38,6 @@ export type EligibilityRefusal =
   | "continuous-integration"
   | "disabled"
   | "informational-run"
-  | "no-standalone-installation"
-  | "no-update-source"
   | "not-a-regular-file"
   | "not-a-terminal"
   | "unstamped-version"
@@ -61,17 +58,11 @@ export type EligibilityVerdict =
 export async function eligibleInstallation(
   request: EligibilityRequest,
 ): Promise<EligibilityVerdict> {
-  const { installation, updates, version } = request;
-  if (updates === undefined) {
-    return { kind: "refused", reason: "no-update-source" };
-  }
-  if (installation === undefined || installation.kind !== "standalone") {
-    return { kind: "refused", reason: "no-standalone-installation" };
-  }
+  const { current, version } = request;
   if (version === undefined || !isInstallableVersion(version)) {
     return { kind: "refused", reason: "unstamped-version" };
   }
-  const target = releaseTarget(installation);
+  const target = releaseTarget(current);
   if (target === undefined) {
     return { kind: "refused", reason: "unsupported-target" };
   }
@@ -79,11 +70,11 @@ export async function eligibleInstallation(
   if (blocked !== undefined) {
     return { kind: "refused", reason: blocked };
   }
-  if (!(await isReplaceableFile(installation.executablePath))) {
+  if (!(await isReplaceableFile(current.execPath))) {
     return { kind: "refused", reason: "not-a-regular-file" };
   }
   return {
-    installation: { executablePath: installation.executablePath, target, updates, version },
+    installation: { executablePath: current.execPath, target, version },
     kind: "eligible",
   };
 }
@@ -111,7 +102,7 @@ function isInformationalRun(argv: readonly string[]): boolean {
 }
 
 function turnedOff(request: EligibilityRequest): boolean {
-  const value = request.environmentVariables[request.updates?.disableEnvironmentVariable ?? ""];
+  const value = request.environmentVariables[request.disableEnvironmentVariable];
   return value !== undefined && DISABLED_VALUES.has(value.trim().toLowerCase());
 }
 

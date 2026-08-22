@@ -11,6 +11,7 @@ import { createUpdateDownload } from "./download.boundary.js";
 import type { UpdateDownloadResult } from "./host.js";
 
 const PAYLOAD = "compiled-executable-bytes";
+const TIMEOUT_MS = 30_000;
 const DIGEST = createHash("sha256").update(PAYLOAD).digest("hex");
 
 const servers: Server[] = [];
@@ -170,6 +171,7 @@ describe("archive download", () => {
       expectedBytes: PAYLOAD.length,
       headers: {},
       onProgress: (received, total) => seen.push(received / total),
+      timeoutMs: TIMEOUT_MS,
       url: `${origin}/archive.tar.gz`,
     });
 
@@ -198,6 +200,7 @@ function download(
     destinationPath,
     expectedBytes: PAYLOAD.length,
     headers,
+    timeoutMs: TIMEOUT_MS,
     url,
   });
 }

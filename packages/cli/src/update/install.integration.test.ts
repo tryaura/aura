@@ -9,7 +9,7 @@ import { promisify } from "node:util";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { runCli } from "../run.boundary.js";
+import { runCli, runStandaloneCli } from "../run.boundary.js";
 import { eraseFrame } from "../terminal-frame.js";
 import { BRANDING, distro } from "../testing.js";
 import { tarGzip } from "./tar-fixture.js";
@@ -35,11 +35,16 @@ afterEach(async () => {
  * real tar extraction, a real fork to verify the staged program, and a real rename over the
  * installed one. The only thing standing in for production is the server.
  */
-describe("standalone update through runCli", () => {
+describe("standalone update through runStandaloneCli", () => {
   it("installs the release while the requested command completes", async () => {
     const world = await world1();
 
-    const exitCode = await runCli(world.distro, world.runtime);
+    const exitCode = await runStandaloneCli(
+      world.distro,
+      world.updates,
+      world.current,
+      world.runtime,
+    );
 
     expect(exitCode, world.stderr()).toBe(2);
     expect(world.stdout()).not.toBe("");
@@ -64,31 +69,19 @@ describe("standalone update through runCli", () => {
     const world = await world1();
     const runtime: CliRuntime = { ...world.runtime, argv: ["--version"] };
 
-    expect(await runCli(world.distro, runtime)).toBe(0);
+    expect(await runStandaloneCli(world.distro, world.updates, world.current, runtime)).toBe(0);
     expect(world.stdout()).toBe(`${BRANDING.version}\n`);
     expect(world.requests).toEqual([]);
     expect(await readdir(world.directory)).toEqual(["acme"]);
   });
 
   /**
-   * The npm entry point supplies no installation, which is the second of the two gates. Nothing
+   * The npm entry point calls `runCli`, whose signature carries no updater capability. Nothing
    * reaches the network, and nothing on disk moves.
    */
   it("makes no request and changes nothing for a package-manager invocation", async () => {
     const world = await world1();
-    const runtime: CliRuntime = { ...world.runtime, installation: undefined };
-
-    expect(await runCli(world.distro, runtime)).toBe(2);
-    expect(world.requests).toEqual([]);
-    expect(world.stderr()).toBe("");
-    expect(await readdir(world.directory)).toEqual(["acme"]);
-  });
-
-  it("makes no request for a distribution that declares no update source", async () => {
-    const world = await world1();
-    const withoutUpdates: CliDistro = { ...world.distro, updates: undefined };
-
-    expect(await runCli(withoutUpdates, world.runtime)).toBe(2);
+    expect(await runCli(world.distro, world.runtime)).toBe(2);
     expect(world.requests).toEqual([]);
     expect(await readdir(world.directory)).toEqual(["acme"]);
   });
@@ -103,7 +96,7 @@ describe("standalone update through runCli", () => {
       environmentVariables: { ...world.runtime.environmentVariables, ...variables },
     };
 
-    expect(await runCli(world.distro, runtime)).toBe(2);
+    expect(await runStandaloneCli(world.distro, world.updates, world.current, runtime)).toBe(2);
     expect(world.requests).toEqual([]);
     expect(await readdir(world.directory)).toEqual(["acme"]);
   });
@@ -112,14 +105,16 @@ describe("standalone update through runCli", () => {
     const world = await world1();
     const runtime: CliRuntime = { ...world.runtime, stdin: Readable.from([]) };
 
-    expect(await runCli(world.distro, runtime)).toBe(2);
+    expect(await runStandaloneCli(world.distro, world.updates, world.current, runtime)).toBe(2);
     expect(world.requests).toEqual([]);
   });
 
   it("leaves the installed executable alone when the archive is substituted", async () => {
     const world = await world1({ substitute: true });
 
-    expect(await runCli(world.distro, world.runtime)).toBe(2);
+    expect(await runStandaloneCli(world.distro, world.updates, world.current, world.runtime)).toBe(
+      2,
+    );
     expect(world.stderr()).toContain("did not match the release's published SHA-256 digest");
     expect(await readFile(world.executablePath, "utf8")).toContain(`echo ${BRANDING.version}`);
     expect(await readdir(world.directory)).toEqual(["acme"]);
@@ -128,12 +123,14 @@ describe("standalone update through runCli", () => {
 
 async function world1(options: { readonly substitute?: boolean | undefined } = {}): Promise<{
   readonly directory: string;
+  readonly current: Pick<NodeJS.Process, "arch" | "execPath" | "platform">;
   readonly distro: CliDistro;
   readonly executablePath: string;
   readonly requests: string[];
   readonly runtime: CliRuntime;
   readonly stderr: () => string;
   readonly stdout: () => string;
+  readonly updates: CliUpdates;
 }> {
   const homeDir = await mkdtemp(join(tmpdir(), "aura-update-home-"));
   const directory = await mkdtemp(join(tmpdir(), "aura-update-bin-"));
@@ -146,22 +143,19 @@ async function world1(options: { readonly substitute?: boolean | undefined } = {
   const requests: string[] = [];
   const origin = await serve(requests, bytes);
   const updates: CliUpdates = {
-    disableEnvironmentVariable: "ACME_UPDATE",
+    apiBaseUrl: `${origin}/api`,
+    kind: "github-release",
     manualUpdateUrl: "https://example.com/releases",
-    source: {
-      apiBaseUrl: `${origin}/api`,
-      kind: "github-release",
-      owner: "acme",
-      repository: "acme-cli",
-      requireImmutable: true,
-    },
+    owner: "acme",
+    repository: "acme-cli",
   };
   const stderr = capture();
   const stdout = capture();
 
   return {
     directory,
-    distro: { ...distro(), updates },
+    current: { arch: "arm64", execPath: executablePath, platform: "darwin" },
+    distro: distro(),
     executablePath,
     requests,
     runtime: {
@@ -169,12 +163,6 @@ async function world1(options: { readonly substitute?: boolean | undefined } = {
       cwd: directory,
       environmentVariables: { PATH: "/usr/bin:/bin" },
       homeDir,
-      installation: {
-        architecture: "arm64",
-        executablePath,
-        kind: "standalone",
-        platform: "darwin",
-      },
       setExitCode: () => {},
       stderr: stderr.stream,
       stdin: Object.assign(new PassThrough(), { isTTY: true }),
@@ -182,6 +170,7 @@ async function world1(options: { readonly substitute?: boolean | undefined } = {
     },
     stderr: () => stderr.text(),
     stdout: () => stdout.text(),
+    updates,
   };
 }
 

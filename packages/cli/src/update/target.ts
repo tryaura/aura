@@ -1,6 +1,6 @@
 import { gt, valid } from "semver";
 
-import type { CliStandaloneInstallation, CliUpdateTarget } from "./types.js";
+import type { UpdateTarget } from "./types.js";
 
 /**
  * The version a source build reports.
@@ -11,7 +11,7 @@ import type { CliStandaloneInstallation, CliUpdateTarget } from "./types.js";
  */
 const UNSTAMPED_VERSION = "0.0.0";
 
-const TARGETS: Readonly<Record<string, CliUpdateTarget>> = {
+const TARGETS: Readonly<Record<string, UpdateTarget>> = {
   "darwin-arm64": "darwin-arm64",
   "darwin-x64": "darwin-x64",
   "linux-arm64": "linux-arm64",
@@ -20,9 +20,9 @@ const TARGETS: Readonly<Record<string, CliUpdateTarget>> = {
 
 /** The release target for one installation, or `undefined` when no release names this machine. */
 export function releaseTarget(
-  installation: CliStandaloneInstallation,
-): CliUpdateTarget | undefined {
-  return TARGETS[`${installation.platform}-${installation.architecture}`];
+  current: Pick<NodeJS.Process, "arch" | "platform">,
+): UpdateTarget | undefined {
+  return TARGETS[`${current.platform}-${current.arch}`];
 }
 
 /**

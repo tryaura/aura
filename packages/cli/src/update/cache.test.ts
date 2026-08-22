@@ -16,16 +16,6 @@ const NOW = Date.parse("2026-08-21T12:00:00.000Z");
 const HOUR = 60 * 60 * 1_000;
 const IDENTITY = "github-release|https://api.github.com|acme|acme-cli|acme";
 
-const CANDIDATE = {
-  archive: {
-    downloadUrl:
-      "https://github.com/acme/acme-cli/releases/download/v1.4.0/acme-darwin-arm64.tar.gz",
-    sha256: "c".repeat(64),
-    size: 4_096,
-  },
-  version: "1.4.0",
-};
-
 describe("update metadata cache", () => {
   it("round-trips an entry under a private, hashed path", async () => {
     const homeDir = await scratch();
@@ -42,6 +32,7 @@ describe("update metadata cache", () => {
     expect(names[0]).toMatch(/^[0-9a-f]{64}$/u);
     // The identity is hashed, so a repository name never lands in a path an unrelated tool lists.
     expect(names[0]).not.toContain("acme");
+    expect(await readFile(join(directory, names[0] ?? ""), "utf8")).not.toContain(IDENTITY);
   });
 
   it("misses when the source identity changed", async () => {
@@ -63,7 +54,7 @@ describe("update metadata cache", () => {
     },
     {
       body: JSON.stringify({ checkedAt: NOW, identity: IDENTITY, outcome: "candidate" }),
-      label: "a candidate outcome with no candidate",
+      label: "a legacy candidate entry",
     },
     {
       body: JSON.stringify({
@@ -72,7 +63,7 @@ describe("update metadata cache", () => {
         identity: IDENTITY,
         outcome: "candidate",
       }),
-      label: "a candidate whose digest is malformed",
+      label: "a legacy full candidate",
     },
   ])("treats $label as a miss", async ({ body }) => {
     const homeDir = await scratch();
@@ -87,9 +78,10 @@ describe("update metadata cache", () => {
   it("never writes a credential into the entry", async () => {
     const homeDir = await scratch();
     await writeUpdateCache(homeDir, IDENTITY, {
-      candidate: CANDIDATE,
       checkedAt: NOW,
-      outcome: "candidate",
+      failedAttempts: 1,
+      failedVersion: "1.4.0",
+      outcome: "install-failed",
     });
     const directory = join(homeDir, "agents", ".cache", "distribution-updates");
     const [name] = await readdir(directory);
@@ -137,11 +129,10 @@ describe("update check cadence", () => {
     "backs off attempt $attempts for $elapsed ms: $expected",
     ({ attempts, elapsed, expected }) => {
       const entry: UpdateCacheEntry = {
-        candidate: CANDIDATE,
         checkedAt: NOW - elapsed,
-        failedAt: NOW - elapsed,
         failedAttempts: attempts,
-        outcome: "candidate",
+        failedVersion: "1.4.0",
+        outcome: "install-failed",
       };
       expect(shouldCheck(entry, NOW)).toBe(expected);
     },
@@ -149,11 +140,10 @@ describe("update check cadence", () => {
 
   it("counts attempts per candidate version and resets for a different release", () => {
     const entry: UpdateCacheEntry = {
-      candidate: CANDIDATE,
       checkedAt: NOW,
-      failedAt: NOW,
       failedAttempts: 3,
-      outcome: "candidate",
+      failedVersion: "1.4.0",
+      outcome: "install-failed",
     };
     expect(attemptsFor(entry, "1.4.0")).toBe(3);
     expect(attemptsFor(entry, "1.5.0")).toBe(0);

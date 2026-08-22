@@ -5,11 +5,9 @@ import {
   CHECK_RETRY_MS,
   INSTALL_BACKOFF_BASE_MS,
   INSTALL_BACKOFF_MAX_MS,
-  MAX_ARCHIVE_BYTES,
   MAX_CACHE_BYTES,
 } from "./limits.js";
-import { asDigest, asRecord, asSize, asText } from "./narrow.js";
-import type { CliUpdateCandidate } from "./types.js";
+import { asSize, asText } from "./narrow.js";
 
 /**
  * Where update metadata lives, beside every other cache Aura keeps.
@@ -20,29 +18,26 @@ import type { CliUpdateCandidate } from "./types.js";
 const NAMESPACE = "distribution-updates";
 
 const OUTCOMES: Readonly<Record<string, UpdateCacheEntry["outcome"]>> = {
-  candidate: "candidate",
   "check-failed": "check-failed",
   current: "current",
+  "install-failed": "install-failed",
 };
 
-/** What the last check concluded, and how many installations of it have already failed. */
+/** What the last check concluded, and how many installations of its version have already failed. */
 export interface UpdateCacheEntry {
-  /** The release the last successful check named, when it named a newer one. */
-  readonly candidate?: CliUpdateCandidate | undefined;
   readonly checkedAt: number;
   /** Entity tag of the metadata document, so the next check can revalidate instead of refetch. */
   readonly etag?: string | undefined;
-  readonly failedAt?: number | undefined;
   readonly failedAttempts?: number | undefined;
-  readonly outcome: "candidate" | "check-failed" | "current";
+  readonly failedVersion?: string | undefined;
+  readonly outcome: "check-failed" | "current" | "install-failed";
 }
 
 /**
  * Reads the entry for one source, or `undefined` for every reason it cannot be used.
  *
- * Corruption, truncation, a changed source identity, and a timestamp from the future are all
- * misses rather than errors. A cache is an optimization: it may cost a run one extra request, and
- * it may never be the reason a command the user asked for behaves differently.
+ * Corruption, truncation, and a timestamp from the future are all misses rather than errors. A
+ * changed source identity resolves to a different hashed path. A cache is only an optimization.
  */
 export async function readUpdateCache(
   homeDir: string,
@@ -53,7 +48,7 @@ export async function readUpdateCache(
     cacheLocation({ homeDir }, NAMESPACE, identity),
     MAX_CACHE_BYTES,
   );
-  if (value === undefined || value["identity"] !== identity) {
+  if (value === undefined) {
     return undefined;
   }
   const checkedAt = value["checkedAt"];
@@ -61,7 +56,7 @@ export async function readUpdateCache(
   if (typeof checkedAt !== "number" || checkedAt > now || typeof outcome !== "string") {
     return undefined;
   }
-  return narrowEntry(value, checkedAt, outcome, now);
+  return narrowEntry(value, checkedAt, outcome);
 }
 
 /** Stores one entry, treating any write failure as nothing having happened. */
@@ -70,10 +65,7 @@ export async function writeUpdateCache(
   identity: string,
   entry: UpdateCacheEntry,
 ): Promise<void> {
-  await writeCacheEnvelope(cacheLocation({ homeDir }, NAMESPACE, identity), {
-    identity,
-    ...entry,
-  });
+  await writeCacheEnvelope(cacheLocation({ homeDir }, NAMESPACE, identity), { ...entry });
 }
 
 /**
@@ -104,34 +96,32 @@ export function shouldCheck(entry: UpdateCacheEntry | undefined, now: number): b
  * install, not to punish the next one for it.
  */
 export function attemptsFor(entry: UpdateCacheEntry | undefined, version: string): number {
-  return entry?.candidate?.version === version ? (entry.failedAttempts ?? 0) : 0;
+  return entry?.failedVersion === version ? (entry.failedAttempts ?? 0) : 0;
 }
 
 function nextInstallAttempt(entry: UpdateCacheEntry): number {
   const attempts = entry.failedAttempts ?? 0;
-  if (attempts === 0 || entry.failedAt === undefined) {
+  if (attempts === 0) {
     return entry.checkedAt;
   }
   const delay = Math.min(INSTALL_BACKOFF_BASE_MS * 2 ** (attempts - 1), INSTALL_BACKOFF_MAX_MS);
-  return entry.failedAt + delay;
+  return entry.checkedAt + delay;
 }
 
 function narrowEntry(
   value: Record<string, unknown>,
   checkedAt: number,
   rawOutcome: string,
-  now: number,
 ): UpdateCacheEntry | undefined {
   const outcome = OUTCOMES[rawOutcome];
-  const candidate = narrowCandidate(value["candidate"]);
-  if (outcome === undefined || (outcome === "candidate" && candidate === undefined)) {
+  const failedVersion = asText(value["failedVersion"]);
+  if (outcome === undefined || (outcome === "install-failed" && failedVersion === undefined)) {
     return undefined;
   }
   return {
-    ...(candidate === undefined ? {} : { candidate }),
     checkedAt,
     ...narrowEtag(value),
-    ...narrowAttempts(value, now),
+    ...narrowFailure(value),
     outcome,
   };
 }
@@ -141,33 +131,14 @@ function narrowEtag(value: Record<string, unknown>): { readonly etag?: string } 
   return etag === undefined ? {} : { etag };
 }
 
-function narrowAttempts(
-  value: Record<string, unknown>,
-  now: number,
-): { readonly failedAt?: number; readonly failedAttempts?: number } {
-  const failedAt = asSize(value["failedAt"], now);
+function narrowFailure(value: Record<string, unknown>): {
+  readonly failedAttempts?: number;
+  readonly failedVersion?: string;
+} {
   const failedAttempts = asSize(value["failedAttempts"], Number.MAX_SAFE_INTEGER);
+  const failedVersion = asText(value["failedVersion"]);
   return {
-    ...(failedAt === undefined ? {} : { failedAt }),
     ...(failedAttempts === undefined ? {} : { failedAttempts }),
+    ...(failedVersion === undefined ? {} : { failedVersion }),
   };
-}
-
-/** Re-narrows a cached candidate: a file on disk is unknown input exactly like a server response. */
-function narrowCandidate(value: unknown): CliUpdateCandidate | undefined {
-  const record = asRecord(value);
-  const archive = narrowArchive(record?.["archive"]);
-  const version = asText(record?.["version"]);
-  return archive === undefined || version === undefined ? undefined : { archive, version };
-}
-
-function narrowArchive(value: unknown): CliUpdateCandidate["archive"] | undefined {
-  const archive = asRecord(value);
-  const downloadUrl = asText(archive?.["downloadUrl"]);
-  const sha256 = asDigest(archive?.["sha256"]);
-  const size = asSize(archive?.["size"], MAX_ARCHIVE_BYTES);
-  if (downloadUrl === undefined || sha256 === undefined || size === undefined) {
-    return undefined;
-  }
-  return { downloadUrl, sha256, size };
 }

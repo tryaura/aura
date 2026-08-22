@@ -1,43 +1,33 @@
-import { createHash } from "node:crypto";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { PassThrough } from "node:stream";
+import { readFile, writeFile } from "node:fs/promises";
 
-import type { HttpGetRequest } from "@tryaura/aura-sdk";
 import { describe, expect, it } from "vitest";
 
 import { readUpdateCache } from "./cache.js";
+import { STARTUP_UPDATE_BUDGET_MS } from "./limits.js";
 import { runStartupUpdate, type StartupUpdateRequest } from "./run.js";
 import { sourceIdentity } from "./provider.js";
-import { tarGzip } from "./tar-fixture.js";
-import type { UpdateHost } from "./host.js";
-import type { CliBranding } from "../types.js";
+import { BRANDING, IDENTITY, NOW, scenario } from "./testing.js";
 import type { CliUpdates } from "./types.js";
 
-const NOW = new Date("2026-08-21T12:00:00.000Z");
-const BRANDING: CliBranding = {
-  command: "acme",
-  displayName: "Acme Doctor",
-  docsUrl: "https://example.com/docs",
-  version: "1.3.0",
-};
-const UPDATES: CliUpdates = {
-  disableEnvironmentVariable: "ACME_UPDATE",
-  manualUpdateUrl: "https://example.com/releases",
-  source: {
-    apiBaseUrl: "https://api.github.com",
-    kind: "github-release",
-    owner: "acme",
-    repository: "acme-cli",
-    requireImmutable: true,
-  },
-};
-const IDENTITY = sourceIdentity(UPDATES.source, BRANDING.command);
-const ARCHIVE = tarGzip([{ content: "VERSION=1.4.0\n", name: "acme" }]);
-const DIGEST = createHash("sha256").update(ARCHIVE).digest("hex");
-
 describe("startup update", () => {
+  it("invalidates cached metadata when signed-manifest trust changes", () => {
+    const source: CliUpdates = {
+      kind: "signed-manifest",
+      manifestUrl: "https://releases.example/acme/latest.json?channel=stable",
+      trustedPublicKeys: ["first-key"],
+    };
+
+    expect(sourceIdentity(source, BRANDING.command)).not.toBe(
+      sourceIdentity({ ...source, trustedPublicKeys: ["next-key"] }, BRANDING.command),
+    );
+    expect(sourceIdentity(source, BRANDING.command)).not.toBe(
+      sourceIdentity(
+        { ...source, manifestUrl: "https://releases.example/acme/latest.json?channel=preview" },
+        BRANDING.command,
+      ),
+    );
+  });
+
   it("installs a newer release and says so in two lines on stderr", async () => {
     const run = await scenario();
     await runStartupUpdate(run.request);
@@ -63,17 +53,15 @@ describe("startup update", () => {
     expect(run.requests).toHaveLength(1);
   });
 
-  /**
-   * Every refusal below is silent for the user, whose command is the thing they asked about, and
-   * opaque for the author of a distribution whose updates are simply not happening. The debug
-   * variable is derived from the one they already declared to turn updates off.
-   */
   /** Silence is right for the user and useless for whoever wired the distribution up. */
   it("names the gate that refused, and reaches no network", async () => {
     const run = await scenario({ environmentVariables: { ACME_UPDATE_DEBUG: "1" } });
-    await runStartupUpdate({ ...run.request, installation: undefined });
+    await runStartupUpdate({
+      ...run.request,
+      current: { ...run.request.current, platform: "win32" },
+    });
 
-    expect(run.stderr()).toBe("update: skipped: no-standalone-installation\n");
+    expect(run.stderr()).toBe("update: skipped: unsupported-target\n");
     expect(run.requests).toEqual([]);
   });
 
@@ -83,6 +71,41 @@ describe("startup update", () => {
 
     expect(run.stderr()).toContain("update: resolved: candidate");
     expect(run.stderr()).toContain("update: installed: installed");
+  });
+
+  /**
+   * The user gets one sentence whatever went wrong, which is right for them and useless for whoever
+   * has to fix it. A transfer that never started and an archive the extractor refused are the same
+   * silent nothing from the outside; the trace is the only place they are told apart.
+   */
+  it("names which step gave up when an install fails", async () => {
+    const run = await scenario({ environmentVariables: { ACME_UPDATE_DEBUG: "1" } });
+    await runStartupUpdate({
+      ...run.request,
+      host: {
+        ...run.request.host,
+        download: () => Promise.resolve({ kind: "failure", reason: "too-large" }),
+      },
+    });
+
+    expect(run.stderr()).toContain("update: installed: failed: download-too-large");
+  });
+
+  /**
+   * A per-step ceiling is not an aggregate one. The budget is anchored where the check began, so
+   * whatever the metadata request and the probe of the installed binary spent is time the download
+   * no longer has — otherwise every step finishing just inside its own limit is a command that has
+   * not started yet.
+   */
+  it("gives the download only what is left of the startup budget", async () => {
+    const spent = 90_000;
+    const clock = [NOW, new Date(NOW.getTime() + spent)];
+    const run = await scenario({ now: () => clock.shift() ?? new Date(NOW.getTime() + spent) });
+
+    await runStartupUpdate(run.request);
+
+    expect(run.downloads).toHaveLength(1);
+    expect(run.downloads[0]?.timeoutMs).toBe(STARTUP_UPDATE_BUDGET_MS - spent);
   });
 
   it("says nothing when the release is the running one", async () => {
@@ -165,7 +188,8 @@ describe("startup update", () => {
     await runStartupUpdate(failing);
     expect(await readUpdateCache(run.homeDir, IDENTITY, NOW.getTime())).toMatchObject({
       failedAttempts: 1,
-      outcome: "candidate",
+      failedVersion: "1.4.0",
+      outcome: "install-failed",
     });
 
     await runStartupUpdate(failing);
@@ -173,8 +197,6 @@ describe("startup update", () => {
   });
 
   it.each([
-    { label: "the distribution declares no update source", patch: { updates: undefined } },
-    { label: "the run is not a standalone installation", patch: { installation: undefined } },
     { label: "the run is in CI", patch: { environmentVariables: { CI: "true" } } },
     {
       label: "the user turned updates off",
@@ -189,107 +211,3 @@ describe("startup update", () => {
     expect(await readFile(run.executablePath, "utf8")).toBe("VERSION=1.3.0\n");
   });
 });
-
-async function scenario(
-  options: {
-    readonly corrupt?: boolean | undefined;
-    readonly environmentVariables?: Readonly<Record<string, string | undefined>> | undefined;
-    readonly httpFailure?: boolean | undefined;
-    readonly tag?: string | undefined;
-  } = {},
-): Promise<{
-  readonly executablePath: string;
-  readonly homeDir: string;
-  readonly request: StartupUpdateRequest;
-  readonly requests: HttpGetRequest[];
-  readonly stderr: () => string;
-  readonly stdout: () => string;
-}> {
-  const homeDir = await mkdtemp(join(tmpdir(), "aura-startup-home-"));
-  const directory = await mkdtemp(join(tmpdir(), "aura-startup-bin-"));
-  const executablePath = join(directory, "acme");
-  await writeFile(executablePath, "VERSION=1.3.0\n", { mode: 0o755 });
-
-  const requests: HttpGetRequest[] = [];
-  const stderr = capture();
-  const stdout = capture();
-
-  return {
-    executablePath,
-    homeDir,
-    request: {
-      argv: ["check"],
-      branding: BRANDING,
-      environmentVariables: options.environmentVariables ?? {},
-      homeDir,
-      host: host(options.corrupt === true),
-      httpGet: (request) => {
-        requests.push(request);
-        return Promise.resolve(
-          options.httpFailure === true
-            ? { kind: "failure", reason: "network" }
-            : { body: release(options.tag ?? "v1.4.0"), kind: "response", status: 200 },
-        );
-      },
-      installation: {
-        architecture: "arm64",
-        executablePath,
-        kind: "standalone",
-        platform: "darwin",
-      },
-      now: () => NOW,
-      stderr: stderr.stream,
-      stdin: terminal(),
-      stdout: stdout.stream,
-      updates: UPDATES,
-    },
-    requests,
-    stderr: () => stderr.text(),
-    stdout: () => stdout.text(),
-  };
-}
-
-function release(tag: string): string {
-  return JSON.stringify({
-    assets: [
-      {
-        browser_download_url: `https://github.com/acme/acme-cli/releases/download/${tag}/acme-darwin-arm64.tar.gz`,
-        digest: `sha256:${DIGEST}`,
-        name: "acme-darwin-arm64.tar.gz",
-        size: ARCHIVE.byteLength,
-        url: "https://api.github.com/repos/acme/acme-cli/releases/assets/12",
-      },
-    ],
-    draft: false,
-    immutable: true,
-    prerelease: false,
-    tag_name: tag,
-  });
-}
-
-function host(corrupt: boolean): UpdateHost {
-  const bytes = corrupt ? tarGzip([{ content: "VERSION=6.6.6\n", name: "acme" }]) : ARCHIVE;
-  return {
-    download: async (request) => {
-      await writeFile(request.destinationPath, bytes, { flag: "wx" });
-      return { kind: "downloaded", sha256: createHash("sha256").update(bytes).digest("hex") };
-    },
-    isProcessAlive: () => false,
-    pid: 4_242,
-    probeVersion: async (path) => {
-      const contents = await readFile(path, "utf8").catch(() => "");
-      return /^VERSION=(?<version>.+)$/mu.exec(contents)?.groups?.["version"];
-    },
-  };
-}
-
-function terminal(): PassThrough {
-  return Object.assign(new PassThrough(), { isTTY: true });
-}
-
-function capture(): { readonly stream: PassThrough; readonly text: () => string } {
-  const chunks: string[] = [];
-  const stream = Object.assign(new PassThrough(), { isTTY: true });
-  stream.on("data", (chunk: Buffer) => chunks.push(chunk.toString("utf8")));
-  return { stream, text: () => chunks.join("") };
-}

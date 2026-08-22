@@ -1,26 +1,37 @@
 import { chmod, lstat } from "node:fs/promises";
 
-import { extractArchive } from "./archive.js";
+import { extractArchive, type ArchiveFailure } from "./archive.js";
 import { MAX_EXTRACTED_BYTES } from "./limits.js";
-import type { UpdateHost } from "./host.js";
-import type { CliUpdateCandidate } from "./types.js";
+import type { UpdateDownloadResult, UpdateHost } from "./host.js";
+import type { UpdateCandidate } from "./types.js";
 
-/** Why a candidate never became a staged executable. */
+/** The closed vocabulary a refused transfer reports. */
+type DownloadFailure = Extract<UpdateDownloadResult, { kind: "failure" }>["reason"];
+
+/**
+ * Why a candidate never became a staged executable.
+ *
+ * Each step keeps its own vocabulary rather than collapsing into one word. None of these reaches a
+ * user — every staging failure is silent — but a distribution author whose updates are not
+ * happening has no other way to tell a proxy stripping bytes from an archive the extractor refuses.
+ */
 export type StageFailure =
-  /** The bytes never arrived, or arrived in the wrong quantity. */
-  | "download"
   /** The bytes arrived and were not the ones the release published a digest for. */
   | "digest"
-  /** The archive was not exactly the two expected files. */
-  | "archive"
-  /** The staged program does not report the version the release claimed it would. */
-  | "verification";
+  /** The transfer, named by the reason the download gave. */
+  | `download-${DownloadFailure}`
+  /** The archive, named by the shape the extractor refused. */
+  | ArchiveFailure
+  /** The staged file could not be made executable, or is not the version the metadata named. */
+  | "staged-version";
 
 export interface StageRequest {
   /** Temporary path the archive streams to. */
   readonly archivePath: string;
-  readonly candidate: CliUpdateCandidate;
+  readonly candidate: UpdateCandidate;
   readonly downloadHeaders: Readonly<Record<string, string>>;
+  /** What is left of the startup update's budget, which is all the transfer may spend. */
+  readonly downloadTimeoutMs: number;
   /** Name of the executable inside the archive, which is the distribution's command name. */
   readonly entryName: string;
   /** Permission bits of the executable being replaced. */
@@ -50,19 +61,21 @@ export interface StageRequest {
 export async function stageExecutable(request: StageRequest): Promise<StageFailure | undefined> {
   const download = await request.host.download({
     destinationPath: request.archivePath,
-    expectedBytes: request.candidate.archive.size,
+    expectedBytes: request.candidate.size,
     headers: request.downloadHeaders,
     ...(request.onProgress === undefined ? {} : { onProgress: request.onProgress }),
-    url: request.candidate.archive.downloadUrl,
+    timeoutMs: request.downloadTimeoutMs,
+    url: request.candidate.downloadUrl,
   });
   if (download.kind !== "downloaded") {
-    return "download";
+    return `download-${download.reason}`;
   }
-  if (download.sha256 !== request.candidate.archive.sha256) {
+  if (download.sha256 !== request.candidate.sha256) {
     return "digest";
   }
-  if ((await extract(request)) !== undefined) {
-    return "archive";
+  const archive = await extract(request);
+  if (archive !== undefined) {
+    return archive;
   }
   return await verifyStaged(request);
 }
@@ -87,11 +100,11 @@ async function verifyStaged(request: StageRequest): Promise<StageFailure | undef
   try {
     await chmod(request.stagedPath, request.executableMode);
     if (!(await lstat(request.stagedPath)).isFile()) {
-      return "verification";
+      return "staged-version";
     }
   } catch {
-    return "verification";
+    return "staged-version";
   }
   const version = await request.host.probeVersion(request.stagedPath, request.probeEnvironment);
-  return version === request.candidate.version ? undefined : "verification";
+  return version === request.candidate.version ? undefined : "staged-version";
 }

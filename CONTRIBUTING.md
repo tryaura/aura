@@ -105,9 +105,8 @@ check` notes it as held until then.
   fails instead. This requires **Settings → General → Immutable releases** to be enabled on the
   repository; it applies only to releases published after the setting is turned on.
 - The compiled binary is built from `distros/aura/src/standalone-main.boundary.ts`, not `main.ts`.
-  That entry is the only one that declares a `CliStandaloneInstallation`, which is half of the gate
-  the updater needs; the npm `bin` stays on `main.ts` so an `npx` or npm-global run cannot reach
-  installation code. `distros/aura/src/standalone-entry.test.ts` pins that wiring.
+  That entry alone calls `runStandaloneCli` with its process and update source; the npm `bin` stays
+  on `main.ts` and calls `runCli`, whose API has no update capability.
 - Because the version is stamped only in release CI, a source build's `aura --version` reports
   `0.0.0`.
 

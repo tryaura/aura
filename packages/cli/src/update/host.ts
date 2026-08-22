@@ -22,6 +22,13 @@ export interface UpdateDownloadRequest {
    * nowhere to draw omits it and the transfer behaves identically.
    */
   readonly onProgress?: ((received: number, total: number) => void) | undefined;
+  /**
+   * Milliseconds the transfer may take, start to finish, redirects included.
+   *
+   * Supplied rather than fixed: the caller owns the startup update's whole budget, and the download
+   * is the step that gets whatever the earlier ones did not spend.
+   */
+  readonly timeoutMs: number;
   readonly url: string;
 }
 

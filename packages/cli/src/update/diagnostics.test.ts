@@ -2,47 +2,43 @@ import { PassThrough } from "node:stream";
 
 import { describe, expect, it } from "vitest";
 
-import { createUpdateDebug, startUpdateProgress } from "./diagnostics.js";
+import {
+  createUpdateDebug,
+  startUpdateProgress,
+  updateEnvironmentVariable,
+} from "./diagnostics.js";
 import { eraseFrame } from "../terminal-frame.js";
-import type { CliUpdates } from "./types.js";
 
-const UPDATES: CliUpdates = {
-  disableEnvironmentVariable: "ACME_UPDATE",
-  source: {
-    apiBaseUrl: "https://api.github.com",
-    kind: "github-release",
-    owner: "acme",
-    repository: "acme-cli",
-    requireImmutable: true,
-  },
-};
+const DISABLE_VARIABLE = "ACME_UPDATE";
 
 describe("update trace", () => {
   it.each(["1", "on", "true", "yes", "TRUE", " on "])("writes when the variable is %s", (value) => {
     const stderr = capture();
-    createUpdateDebug(UPDATES, { ACME_UPDATE_DEBUG: value }, stderr.stream)("skipped: disabled");
+    createUpdateDebug(
+      DISABLE_VARIABLE,
+      { ACME_UPDATE_DEBUG: value },
+      stderr.stream,
+    )("skipped: disabled");
 
     expect(stderr.text()).toBe("update: skipped: disabled\n");
   });
 
   /**
-   * Off is the default and the only state a user ever sees. A distribution that declares no
-   * updates has no variable to name, so it cannot be turned on at all.
+   * Off is the default and the only state a user ever sees.
    */
   it.each([
-    { label: "the variable is unset", updates: UPDATES, variables: {} },
-    { label: "the variable is off", updates: UPDATES, variables: { ACME_UPDATE_DEBUG: "0" } },
-    { label: "another distribution's variable is on", updates: UPDATES, variables: { OTHER: "1" } },
-    {
-      label: "there is no update source",
-      updates: undefined,
-      variables: { ACME_UPDATE_DEBUG: "1" },
-    },
-  ])("stays silent when $label", ({ updates, variables }) => {
+    { label: "the variable is unset", variables: {} },
+    { label: "the variable is off", variables: { ACME_UPDATE_DEBUG: "0" } },
+    { label: "another distribution's variable is on", variables: { OTHER: "1" } },
+  ])("stays silent when $label", ({ variables }) => {
     const stderr = capture();
-    createUpdateDebug(updates, variables, stderr.stream)("skipped: disabled");
+    createUpdateDebug(DISABLE_VARIABLE, variables, stderr.stream)("skipped: disabled");
 
     expect(stderr.text()).toBe("");
+  });
+
+  it("derives distribution-specific disable and debug variable names", () => {
+    expect(updateEnvironmentVariable("acme-dev.cli")).toBe("ACME_DEV_CLI_UPDATE");
   });
 });
 

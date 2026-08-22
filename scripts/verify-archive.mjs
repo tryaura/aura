@@ -13,6 +13,11 @@
  * signing step is all it takes. This reads the archive the way the updater does rather than the way
  * `tar -t` does, which merges those sidecars back in and shows nothing.
  *
+ * "The way the updater does" is literal: the header parser below is imported from the extractor
+ * itself, not reimplemented. A second copy of those rules is a gate that drifts, and a gate that
+ * drifts passes an archive the updater refuses — permanently, because a published release is
+ * immutable and its assets cannot be corrected in place. Node strips the types on import.
+ *
  * Usage: node scripts/verify-archive.mjs <archive.tar.gz> <entry> [entry...]
  */
 import { readFileSync } from "node:fs";
@@ -21,13 +26,15 @@ import process from "node:process";
 import { pathToFileURL } from "node:url";
 import { gunzipSync } from "node:zlib";
 
-const BLOCK = 512;
-const NAME = { length: 100, offset: 0 };
-const SIZE = { length: 12, offset: 124 };
-const TYPEFLAG_OFFSET = 156;
+import {
+  isZeroBlock,
+  parseTarHeader,
+  TAR_BLOCK_BYTES,
+} from "../packages/cli/src/update/tar-header.ts";
 
-/** Type flags for a plain file. `0` is ustar; NUL is the historic spelling of the same thing. */
-const REGULAR_TYPES = new Set(["0", "\0"]);
+/** Header field read for diagnostics only. Nothing here decides whether an entry is acceptable. */
+const NAME = { length: 100, offset: 0 };
+const TYPEFLAG_OFFSET = 156;
 
 /**
  * The sorted entry names of a gzipped tar, or the reason it is not one this updater can extract.
@@ -39,17 +46,17 @@ export function archiveEntries(gzipped) {
   const tar = gunzipSync(gzipped);
   const names = [];
   let offset = 0;
-  while (offset + BLOCK <= tar.byteLength) {
-    const block = tar.subarray(offset, offset + BLOCK);
-    if (block.every((byte) => byte === 0)) {
+  while (offset + TAR_BLOCK_BYTES <= tar.byteLength) {
+    const block = tar.subarray(offset, offset + TAR_BLOCK_BYTES);
+    if (isZeroBlock(block)) {
       break;
     }
-    const entry = header(block);
-    if (entry.problem !== undefined) {
-      return { problem: entry.problem };
+    const entry = parseTarHeader(block);
+    if (entry === undefined) {
+      return { problem: refusal(block) };
     }
     names.push(entry.name);
-    offset += BLOCK + Math.ceil(entry.size / BLOCK) * BLOCK;
+    offset += TAR_BLOCK_BYTES + Math.ceil(entry.size / TAR_BLOCK_BYTES) * TAR_BLOCK_BYTES;
   }
   return { names: names.sort() };
 }
@@ -65,29 +72,19 @@ export function verifyArchive(gzipped, expected) {
   return actual === wanted ? undefined : `contains [${actual}], expected [${wanted}]`;
 }
 
-/** One header block: a plain-file entry, or the shape the extractor would have refused. */
-function header(block) {
-  const name = text(block, NAME);
-  const type = String.fromCharCode(block[TYPEFLAG_OFFSET] ?? 0);
-  if (!REGULAR_TYPES.has(type)) {
-    return { problem: `carries ${JSON.stringify(name)} with type flag ${JSON.stringify(type)}` };
-  }
-  const size = entrySize(block);
-  return size === undefined
-    ? { problem: `carries ${JSON.stringify(name)} with an unreadable size` }
-    : { name, size };
-}
-
-/** The declared entry length, which is what advances the read to the next header. */
-function entrySize(block) {
-  const value = Number.parseInt(text(block, SIZE).trim() || "0", 8);
-  return Number.isSafeInteger(value) && value >= 0 ? value : undefined;
-}
-
-function text(block, field) {
-  const bytes = block.subarray(field.offset, field.offset + field.length);
+/**
+ * What to print about a header the extractor refused.
+ *
+ * The extractor itself refuses without saying why — deliberately, so nobody relaxes one case later
+ * — which leaves the two fields worth showing a release engineer: what the entry called itself, and
+ * the type flag that is the usual culprit. Neither is consulted to reach the verdict.
+ */
+function refusal(block) {
+  const bytes = block.subarray(NAME.offset, NAME.offset + NAME.length);
   const end = bytes.indexOf(0);
-  return bytes.subarray(0, end === -1 ? bytes.length : end).toString("utf8");
+  const name = bytes.subarray(0, end === -1 ? bytes.length : end).toString("utf8");
+  const type = String.fromCharCode(block[TYPEFLAG_OFFSET] ?? 0);
+  return `carries ${JSON.stringify(name)} with type flag ${JSON.stringify(type)}, in a header the updater's extractor refuses`;
 }
 
 function main() {

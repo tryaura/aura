@@ -10,18 +10,6 @@ import {
   type EligibilityRefusal,
   type EligibilityRequest,
 } from "./eligibility.js";
-import type { CliStandaloneInstallation, CliUpdates } from "./types.js";
-
-const UPDATES: CliUpdates = {
-  disableEnvironmentVariable: "ACME_UPDATE",
-  source: {
-    apiBaseUrl: "https://api.github.com",
-    kind: "github-release",
-    owner: "acme",
-    repository: "acme-cli",
-    requireImmutable: true,
-  },
-};
 
 let directory = "";
 let executablePath = "";
@@ -41,7 +29,6 @@ describe("update eligibility", () => {
       installation: {
         executablePath,
         target: "darwin-arm64",
-        updates: UPDATES,
         version: "1.3.0",
       },
       kind: "eligible",
@@ -59,19 +46,9 @@ describe("update eligibility", () => {
 
   /**
    * Each clause names itself. A user never sees these, but the author of a distribution whose
-   * updates are not happening has nine gates and no other way to tell which one fired.
+   * updates are not happening has no other way to tell which clause fired.
    */
   it.each([
-    {
-      label: "the distribution declares no update source",
-      patch: { updates: undefined },
-      reason: "no-update-source",
-    },
-    {
-      label: "the run declares no standalone installation",
-      patch: { installation: undefined },
-      reason: "no-standalone-installation",
-    },
     {
       label: "the distribution has no version",
       patch: { version: undefined },
@@ -92,16 +69,13 @@ describe("update eligibility", () => {
   });
 
   it.each([
-    { architecture: "arm64", platform: "darwin", target: "darwin-arm64" },
-    { architecture: "x64", platform: "darwin", target: "darwin-x64" },
-    { architecture: "arm64", platform: "linux", target: "linux-arm64" },
-    { architecture: "x64", platform: "linux", target: "linux-x64" },
-  ] as const)("resolves $platform $architecture to $target", async (machine) => {
+    { arch: "arm64", platform: "darwin", target: "darwin-arm64" },
+    { arch: "x64", platform: "darwin", target: "darwin-x64" },
+    { arch: "arm64", platform: "linux", target: "linux-arm64" },
+    { arch: "x64", platform: "linux", target: "linux-x64" },
+  ] as const)("resolves $platform $arch to $target", async (machine) => {
     const eligible = await decide({
-      installation: installation({
-        architecture: machine.architecture,
-        platform: machine.platform,
-      }),
+      current: current({ arch: machine.arch, platform: machine.platform }),
     });
     expect(eligible.kind === "eligible" ? eligible.installation.target : undefined).toBe(
       machine.target,
@@ -114,15 +88,15 @@ describe("update eligibility", () => {
    * write straight through it into a directory Aura does not own.
    */
   it("refuses to replace a symlink", async () => {
-    expect(await refusal({ installation: installation({ executablePath: symlinkPath }) })).toBe(
+    expect(await refusal({ current: current({ execPath: symlinkPath }) })).toBe(
       "not-a-regular-file",
     );
   });
 
   it("refuses an executable that is not there", async () => {
-    expect(
-      await refusal({ installation: installation({ executablePath: join(directory, "absent") }) }),
-    ).toBe("not-a-regular-file");
+    expect(await refusal({ current: current({ execPath: join(directory, "absent") }) })).toBe(
+      "not-a-regular-file",
+    );
   });
 
   it.each(["off", "0", "false", "no", "OFF", " off "])(
@@ -160,13 +134,12 @@ async function refusal(
   return verdict.kind === "refused" ? verdict.reason : undefined;
 }
 
-function installation(
-  overrides: Partial<CliStandaloneInstallation> = {},
-): CliStandaloneInstallation {
+function current(
+  overrides: Partial<Pick<NodeJS.Process, "arch" | "execPath" | "platform">> = {},
+): Pick<NodeJS.Process, "arch" | "execPath" | "platform"> {
   return {
-    architecture: "arm64",
-    executablePath,
-    kind: "standalone",
+    arch: "arm64",
+    execPath: executablePath,
     platform: "darwin",
     ...overrides,
   };
@@ -183,12 +156,12 @@ function plain(stream: "stderr" | "stdin" | "stdout"): PassThrough | Readable {
 function decide(patch: Partial<EligibilityRequest> = {}): ReturnType<typeof eligibleInstallation> {
   return eligibleInstallation({
     argv: ["check"],
+    current: current(),
+    disableEnvironmentVariable: "ACME_UPDATE",
     environmentVariables: {},
-    installation: installation(),
     stderr: terminal(),
     stdin: terminal(),
     stdout: terminal(),
-    updates: UPDATES,
     version: "1.3.0",
     ...patch,
   });

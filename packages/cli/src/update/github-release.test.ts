@@ -3,18 +3,16 @@ import { describe, expect, it } from "vitest";
 
 import { resolveGitHubRelease } from "./github-release.js";
 import type { UpdateQuery, UpdateResolution } from "./provider.js";
-import type { CliUpdateSource } from "./types.js";
+import type { CliUpdates } from "./types.js";
 
 const DIGEST = "a".repeat(64);
 /** Fixed, because this provider never reads it: only a signed manifest has a freshness window. */
 const NOW = 1_760_000_000_000;
 
-const SOURCE: Extract<CliUpdateSource, { kind: "github-release" }> = {
-  apiBaseUrl: "https://api.github.com",
+const SOURCE: Extract<CliUpdates, { kind: "github-release" }> = {
   kind: "github-release",
   owner: "acme",
   repository: "acme-cli",
-  requireImmutable: true,
 };
 
 describe("GitHub release provider", () => {
@@ -23,12 +21,10 @@ describe("GitHub release provider", () => {
 
     expect(resolution).toEqual({
       candidate: {
-        archive: {
-          downloadUrl:
-            "https://github.com/acme/acme-cli/releases/download/v1.4.0/acme-darwin-arm64.tar.gz",
-          sha256: DIGEST,
-          size: 1_024,
-        },
+        downloadUrl:
+          "https://github.com/acme/acme-cli/releases/download/v1.4.0/acme-darwin-arm64.tar.gz",
+        sha256: DIGEST,
+        size: 1_024,
         version: "1.4.0",
       },
       downloadHeaders: { accept: "application/octet-stream" },
@@ -48,7 +44,7 @@ describe("GitHub release provider", () => {
   it("revalidates with the cached entity tag", async () => {
     const { requests, resolution } = await resolve({ etag: '"cached"', status: 304 });
     expect(requests[0]?.headers?.["if-none-match"]).toBe('"cached"');
-    expect(resolution).toEqual({ kind: "unchanged" });
+    expect(resolution).toEqual({ etag: '"cached"', kind: "current" });
   });
 
   it.each([
@@ -77,7 +73,7 @@ describe("GitHub release provider", () => {
   it.each([
     { label: "a mutable release", release: { immutable: false } },
     { label: "a release that cannot report immutability", release: { immutable: undefined } },
-  ])("refuses $label when immutability is required", async ({ release }) => {
+  ])("always refuses $label", async ({ release }) => {
     const { resolution } = await resolve({ release });
     expect(resolution).toEqual({ kind: "failure", reason: "untrusted-release" });
   });
@@ -119,7 +115,7 @@ describe("GitHub release provider", () => {
   /**
    * A private release is fetched and downloaded through the API, which is the only form that
    * authenticates. The token reaches the request headers and the download headers, and nothing
-   * else: the candidate is the value that gets written to the metadata cache.
+   * else: the candidate remains ephemeral and only its failed version may reach the cache.
    */
   it("authenticates a private release without letting the token reach the candidate", async () => {
     const { requests, resolution } = await resolve({
@@ -130,7 +126,7 @@ describe("GitHub release provider", () => {
     expect(requests[0]?.headers?.["authorization"]).toBe("Bearer ghp_secret");
     expect(resolution).toMatchObject({
       candidate: {
-        archive: { downloadUrl: "https://api.github.com/repos/acme/acme-cli/releases/assets/12" },
+        downloadUrl: "https://api.github.com/repos/acme/acme-cli/releases/assets/12",
       },
       downloadHeaders: { authorization: "Bearer ghp_secret" },
     });
@@ -158,7 +154,7 @@ async function resolve(
     readonly etag?: string | undefined;
     readonly release?: Readonly<Record<string, unknown>> | undefined;
     readonly result?: HttpGetResult | undefined;
-    readonly source?: Extract<CliUpdateSource, { kind: "github-release" }> | undefined;
+    readonly source?: Extract<CliUpdates, { kind: "github-release" }> | undefined;
     readonly status?: number | undefined;
     readonly variables?: Readonly<Record<string, string>> | undefined;
   } = {},

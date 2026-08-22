@@ -12,15 +12,10 @@ import type { CliUpdates } from "@tryaura/aura-cli";
  * mutable release is exactly the case where the digest and the download disagree later.
  */
 export const AURA_UPDATES: CliUpdates = {
-  disableEnvironmentVariable: "AURA_UPDATE",
+  kind: "github-release",
   manualUpdateUrl: "https://github.com/tryaura/aura/releases/latest",
-  source: {
-    apiBaseUrl: "https://api.github.com",
-    kind: "github-release",
-    owner: "tryaura",
-    // Public releases download without authentication, so the official binary names no token
-    // variable at all: there is nothing for a hostile environment to make it send.
-    repository: "aura",
-    requireImmutable: true,
-  },
+  owner: "tryaura",
+  // Public releases download without authentication, so the official binary names no token
+  // variable at all: there is nothing for a hostile environment to make it send.
+  repository: "aura",
 };

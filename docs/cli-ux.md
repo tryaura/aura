@@ -191,9 +191,9 @@ any other code to 2.
 
 ## Automatic updates
 
-Standalone distributions may install a newer release before the requested command runs. Rendered by
-`packages/cli/src/update/messages.ts`; the outcome mapping lives in `packages/cli/src/update/run.ts`
-and is pinned by `startup-update.test.ts` and `install.integration.test.ts`.
+Standalone distributions may install a newer release before the requested command runs. Both the
+lines and the outcome mapping live in `packages/cli/src/update/run.ts`, pinned by
+`startup-update.test.ts` and `install.integration.test.ts`.
 
 The updater is a guest in someone else's command. It obeys three rules:
 
@@ -234,8 +234,8 @@ above remain the whole message contract. The percentage stops at 99 until the tr
 | Download or permission failure   | `<Name> could not install the 0.4.1 update. Update manually: <url>`                                                          | Runs normally     |
 | Digest mismatch                  | `<Name> refused the 0.4.1 update: the download did not match the release's published SHA-256 digest. Nothing was installed.` | Runs normally     |
 
-A distribution's disable variable plus `_DEBUG` — `AURA_UPDATE_DEBUG` for the official binary —
-traces every gate and outcome to stderr as `update: <what happened>`. It is a developer affordance
+A command-derived debug variable — `AURA_UPDATE_DEBUG` for the official binary — traces every gate
+and outcome to stderr as `update: <what happened>`. It is a developer affordance
 for whoever is wiring a distribution up, deliberately outside this contract: off by default, never
 suggested to a user, and free to change shape. Rendered by `update/diagnostics.ts`.
 
@@ -244,10 +244,10 @@ The manual-update link comes from `CliUpdates.manualUpdateUrl`, falling back to
 placeholder-filled. The digest line never offers a link — retrying by hand is not the advice.
 
 Startup updates run only for an interactive standalone run: all three streams must be terminals,
-`CI` must be unset, and the distribution's own disable variable (`AURA_UPDATE` for the official
-binary) must not be `off`, `0`, `false`, or `no`. Machine-oriented and scripted runs stay pinned to
-the binary they selected, which is why a captured `--json` run is byte-identical whether or not a
-release exists.
+`CI` must be unset, and the command-derived disable variable (`AURA_UPDATE` for the official binary)
+must not be `off`, `0`, `false`, or `no`. Variable names uppercase `branding.command` and replace
+non-alphanumeric runs with `_`. Machine-oriented and scripted runs stay pinned to the binary they
+selected, which is why a captured `--json` run is byte-identical whether or not a release exists.
 
 ## Glyph vocabulary
 
