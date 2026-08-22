@@ -1,0 +1,85 @@
+---
+title: CLI reference
+description: Aura commands, options, selection rules, and process exit codes.
+---
+
+import { LinkCard } from "@astrojs/starlight/components";
+
+Aura has three commands: `setup`, `check`, and `undo`. Run `aura <command> --help` for the same
+action-oriented reference in the terminal.
+
+## Global
+
+| Command or option | Purpose                                                      |
+| ----------------- | ------------------------------------------------------------ |
+| `aura --help`     | Show the command overview.                                   |
+| `aura --version`  | Print the release version.                                   |
+| `--no-color`      | Disable terminal colors; accepted before or after a command. |
+
+## `aura setup`
+
+| Option                             | Purpose                                                        |
+| ---------------------------------- | -------------------------------------------------------------- |
+| `--dry-run`                        | Stop after the plan summary and write nothing.                 |
+| `--yes`                            | Take proposed defaults without prompting.                      |
+| `--detail`                         | Include full planned file diffs; may contain private contents. |
+| `--add <kind>`                     | Open one registered addition: `snippet`, `skill`, or `mcp`.    |
+| `--preset <ref>`                   | Load a bundled, npm, HTTPS, or local team preset.              |
+| `--no-cache`                       | Bypass preset cache reads and writes.                          |
+| `--enable <id>` / `--disable <id>` | Override check activation; repeatable.                         |
+| `--severity <id>=<level>`          | Override a check with `error`, `info`, or `warn`; repeatable.  |
+| `--threshold '<id>=<JSON>'`        | Override one check's threshold object; repeatable.             |
+| `--home <absolute-path>`           | Override the home directory.                                   |
+| `--path <absolute-directories>`    | Override executable search paths.                              |
+
+`--dry-run` and `--yes` contradict each other. Interactive setup requires terminal input and output;
+otherwise choose one of those non-interactive modes.
+
+Setup exit codes: `0` applied, converged, dry-run, or declined; `1` aborted or completed with
+post-setup findings; `2` conflicts, errors, or invalid usage; `3` operational failure.
+
+## `aura check`
+
+| Option                                               | Purpose                                                                      |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `--only <filter>`                                    | Select an exact check ID, category, or application; repeatable.              |
+| `--explain <id>`                                     | Explain one check without scanning.                                          |
+| `--online`                                           | Permit bounded remote MCP probes.                                            |
+| `--fix`                                              | Prepare fixes, ask guided questions, preview, and apply after confirmation.  |
+| `--dry-run`                                          | With `--fix`, preview and write nothing.                                     |
+| `--yes`                                              | With `--fix`, apply automatic fixes without prompting.                       |
+| `--json`                                             | Emit the versioned JSON envelope.                                            |
+| `--json-version <n>`                                 | Select the JSON contract; version `1` is supported.                          |
+| `--verbose`                                          | Expand occurrences and add passed checks and applications.                   |
+| `--detail`                                           | Include plugin diagnostic detail or fix diffs; may contain private contents. |
+| `--preset`, `--no-cache`                             | Control preset resolution.                                                   |
+| `--enable`, `--disable`, `--severity`, `--threshold` | Override check configuration.                                                |
+| `--home`, `--path`                                   | Override scanning roots and executable search paths.                         |
+
+Repeated `--only` selectors are ORed within the check and application dimensions, then those
+dimensions are intersected. Exact check IDs win before category and application aliases.
+
+Check exits `0` for every completed report, `2` for usage or state conflicts, and `3` for
+operational failures. Findings do not change the process exit code.
+
+## `aura undo`
+
+| Option             | Purpose                                           |
+| ------------------ | ------------------------------------------------- |
+| `--list`           | List every available backup instead of restoring. |
+| `<backup-id>`      | Restore one named backup rather than the newest.  |
+| `--dry-run`        | Name what would be restored and write nothing.    |
+| `--yes`            | Restore without prompting.                        |
+| `--detail`         | Include underlying restoration errors.            |
+| `--home`, `--path` | Override state and executable paths.              |
+
+Undo exits `0` when restored or when there is nothing to undo, `1` when aborted or declined, `2`
+for conflicts, and `3` for operational failures.
+
+## Next step
+
+<LinkCard
+  title="Run the Quickstart"
+  href="/docs/quickstart/"
+  description="Use the core commands together in one safe first-run workflow."
+/>

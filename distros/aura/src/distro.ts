@@ -8,7 +8,7 @@ export const AURA_DISTRO: CliDistro = {
     command: "aura",
     description: "Agent Unification & Repair Assistant",
     displayName: "Aura",
-    docsUrl: "https://tryaura.sh/docs/introduction",
+    docsUrl: "https://tryaura.sh/docs/quickstart",
     version: packageManifest.version,
   },
   plugins: OFFICIAL_PLUGINS,

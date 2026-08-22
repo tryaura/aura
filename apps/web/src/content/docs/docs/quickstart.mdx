@@ -1,0 +1,115 @@
+---
+title: Quickstart
+description: Preview, apply, verify, repair, and safely undo your first Aura setup.
+---
+
+import { CardGrid, LinkCard, Steps } from "@astrojs/starlight/components";
+
+This guide takes a machine with separate coding-agent configuration and gives it one reviewed Aura
+setup. You will preview every planned write, apply it once, verify the result, and learn the safe
+recovery command.
+
+## Before you start
+
+- [Install Aura](/docs/installation/) and confirm `aura --version` works.
+- Install at least one supported application: Claude Code, Codex, or Cursor.
+- Run the commands from a repository where you use that application.
+
+## Set up your machine
+
+<Steps>
+
+1. Preview the setup without writing.
+
+   ```sh
+   aura setup --dry-run
+   ```
+
+   Aura detects applications, proposes shared instructions and managed content, and stops after the
+   plan summary. Read every target path. Add `--detail` only when you are comfortable printing full
+   instruction and configuration contents to the terminal.
+
+2. Apply the setup interactively.
+
+   ```sh
+   aura setup
+   ```
+
+   Choose the applications Aura should manage, review instruction consolidation, and select any
+   snippets, skills, or MCP servers you want. Aura shows one final plan and writes only after you
+   confirm it.
+
+3. Verify the converged state.
+
+   ```sh
+   aura check
+   ```
+
+   A clean machine ends with output shaped like this:
+
+   ```text title="Representative output"
+   ✓ 22 checks passed · 1 application detected
+   ✓ Codex 0.x — no findings
+   ```
+
+   The exact application names, versions, and check count depend on the installed release.
+
+4. Preview a repair when findings remain.
+
+   ```sh
+   aura check --fix --dry-run
+   ```
+
+   Automatic and guided repairs appear in one plan. Manual findings stay in the report with the
+   action you need to take yourself.
+
+5. Confirm that recovery is available.
+
+   ```sh
+   aura undo --dry-run
+   ```
+
+   This names the newest restorable backup without changing any files.
+
+</Steps>
+
+## What just happened?
+
+Aura created or updated its desired-state manifest at `~/agents/aura.json`. It consolidated the
+personal configuration you approved below `~/agents`, linked supported applications to that shared
+state, and recorded exactly what it owns.
+
+Aura did **not** rewrite the repository. Repository files may influence diagnostics or offer
+repository-provided content, but setup and repair write only personal and application-global state.
+
+Every successful write has a backup. If a write fails, Aura attempts to roll back the transaction;
+if you later change your mind, `aura undo` restores a recorded backup after confirmation.
+
+## Common failures
+
+| Symptom                        | Cause                                               | Fix                                                                                  |
+| ------------------------------ | --------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| An application is not detected | Its executable is not on the PATH Aura received     | Run `aura check --verbose`, then fix PATH or use `--path` with absolute directories. |
+| Setup refuses to run in CI     | The interactive wizard has no terminal              | Use `--dry-run` to inspect or `--yes` only after the defaults are appropriate.       |
+| A repository preset is held    | Repository-controlled behavior has not been trusted | Run interactive `aura setup` and review the repository content.                      |
+| The manifest is read-only      | It is invalid, unreadable, or from a newer schema   | Preserve a copy, repair it or upgrade Aura, then rerun setup.                        |
+
+## Next steps
+
+<CardGrid>
+  <LinkCard
+    title="Understand setup"
+    href="/docs/guides/setup/"
+    description="Learn what each wizard step controls and how unattended setup behaves."
+  />
+  <LinkCard
+    title="Understand findings"
+    href="/docs/guides/check-and-fix/"
+    description="Read severities, preview repairs, and gate CI correctly."
+  />
+  <LinkCard
+    title="Manage shared content"
+    href="/docs/guides/managed-content/"
+    description="Add snippets, skills, and MCP servers after the first run."
+  />
+</CardGrid>

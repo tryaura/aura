@@ -1,0 +1,116 @@
+---
+title: MCP catalog
+description: Define credential-safe stdio and HTTP MCP servers for plugins and repository presets.
+---
+
+import { LinkCard, TabItem, Tabs } from "@astrojs/starlight/components";
+
+An MCP catalog entry is a versioned JSON document that describes one server without containing its
+credentials. Plugins reference catalog files; repository presets may provide the same shape inline
+after an explicit repository-trust review.
+
+## Complete examples
+
+<Tabs>
+  <TabItem label="HTTP">
+    ```json title="content/mcp/source-control.json"
+    {
+      "schemaVersion": 1,
+      "id": "acme/source-control",
+      "name": "Acme source control",
+      "serverName": "acme-source-control",
+      "description": "Search Acme repositories, pull requests, and code owners.",
+      "docsUrl": "https://engineering.acme.example/mcp/source-control",
+      "credentialEnv": [
+        {
+          "name": "ACME_SOURCE_TOKEN",
+          "description": "Authenticates to Acme source control.",
+          "setupUrl": "https://engineering.acme.example/tokens"
+        }
+      ],
+      "supportedApps": ["claude-code", "codex", "cursor"],
+      "transportTemplate": {
+        "type": "http",
+        "url": "https://mcp.acme.example/source-control",
+        "headers": {
+          "Authorization": "Bearer ${ACME_SOURCE_TOKEN}"
+        }
+      }
+    }
+    ```
+  </TabItem>
+  <TabItem label="stdio">
+    ```json title="content/mcp/repository-docs.json"
+    {
+      "schemaVersion": 1,
+      "id": "acme/repository-docs",
+      "name": "Repository docs",
+      "serverName": "repository-docs",
+      "description": "Search Acme repository documentation.",
+      "docsUrl": "https://engineering.acme.example/mcp/repository-docs",
+      "credentialEnv": [],
+      "transportTemplate": {
+        "type": "stdio",
+        "command": "acme-repository-docs-mcp",
+        "args": ["serve"]
+      }
+    }
+    ```
+  </TabItem>
+</Tabs>
+
+## Catalog fields
+
+| Field               | Required | Meaning                                                                        |
+| ------------------- | -------- | ------------------------------------------------------------------------------ |
+| `schemaVersion`     | Yes      | Must be `1`.                                                                   |
+| `id`                | Yes      | Stable plugin-namespaced ID, or `repo/<name>` for repository-provided content. |
+| `name`              | Yes      | Human-readable catalog name.                                                   |
+| `serverName`        | Yes      | Default application configuration key.                                         |
+| `description`       | Yes      | One sentence describing the capability.                                        |
+| `docsUrl`           | Yes      | Credential-free absolute HTTP(S) documentation URL.                            |
+| `credentialEnv`     | Yes      | Credential variable declarations; use `[]` when none are needed.               |
+| `supportedApps`     | No       | Adapter allowlist; omit it to use ordinary application eligibility.            |
+| `transportTemplate` | Yes      | Credential-safe `stdio` or `http` transport.                                   |
+
+`serverName` accepts letters, digits, `.`, `_`, and `-`, but not `..` or the reserved names
+`__proto__`, `prototype`, and `constructor`. Plugin contribution `id`, `name`, and `description`
+must match the document exactly.
+
+## Credentials
+
+Each `credentialEnv` item has a required uppercase `name`, a required human-readable
+`description`, and an optional credential-free `setupUrl`. Declare every variable referenced by
+the transport exactly once.
+
+- A stdio `env` array contains variable names, never `NAME=value` assignments.
+- An HTTP header contains references such as `Bearer ${TOKEN}`.
+- Commands, arguments, URLs, metadata, and compiled binaries must not contain literal tokens.
+
+## Transport fields
+
+| Transport | Required                       | Optional                                    |
+| --------- | ------------------------------ | ------------------------------------------- |
+| `stdio`   | `type`, non-empty `command`    | `args`, unique `env` variable names         |
+| `http`    | `type`, absolute HTTP(S) `url` | `headers` using declared variable templates |
+
+HTTP URLs cannot contain username/password credentials. Header names use HTTP token grammar, and
+header values allow credential references plus short authentication-scheme framing.
+
+## Common validation failures
+
+| Failure                                   | Fix                                                                |
+| ----------------------------------------- | ------------------------------------------------------------------ |
+| Contribution and document metadata differ | Make `id`, `name`, and `description` identical.                    |
+| A transport variable is undeclared        | Add one matching `credentialEnv` object.                           |
+| `env` contains `TOKEN=value`              | Store only `TOKEN`; set its value outside the catalog.             |
+| A header contains a literal token         | Replace it with a declared `${TOKEN}` reference.                   |
+| An unsupported app is selected            | Correct `supportedApps` or choose an eligible managed application. |
+
+## Next step
+
+<LinkCard
+  title="Manage MCP servers"
+  href="/docs/guides/managed-content/"
+  description="Review and install catalog entries through the setup picker."
+/>

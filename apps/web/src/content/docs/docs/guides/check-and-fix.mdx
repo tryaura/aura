@@ -1,0 +1,120 @@
+---
+title: Understand and fix findings
+description: Read Aura check results, preview safe repairs, and gate CI on findings correctly.
+---
+
+import { CardGrid, LinkCard, Steps } from "@astrojs/starlight/components";
+
+`aura check` compares the current machine with Aura's resolved configuration and reports what does
+not match. Use it after setup, after changing an application's configuration, and in CI when agent
+configuration is part of repository health.
+
+## Read a report
+
+```sh
+aura check
+```
+
+Findings use three severities:
+
+| Severity | Meaning                                                            |
+| -------- | ------------------------------------------------------------------ |
+| `info`   | Useful state or a decision that does not make the setup unhealthy. |
+| `warn`   | Configuration drift or a risk that should be reviewed.             |
+| `error`  | A required capability is broken, unsafe, or unavailable.           |
+
+`aura check` exits `0` when the check completed, even when it found warnings or errors. Finding
+severity describes configuration health; the process exit code describes whether Aura completed.
+
+## Explain one check
+
+```sh
+aura check --explain ENV-003
+```
+
+This loads configuration but does not scan applications or repository state. The explanation names
+the check's purpose, effective severity, thresholds, and whether a fix is available.
+
+## Preview and apply repairs
+
+<Steps>
+
+1. Preview every available repair without writing.
+
+   ```sh
+   aura check --fix --dry-run
+   ```
+
+2. Review guided choices and the combined file plan.
+
+3. Apply after one confirmation.
+
+   ```sh
+   aura check --fix
+   ```
+
+4. Rerun the report.
+
+   ```sh
+   aura check
+   ```
+
+</Steps>
+
+Automatic fixes can be prepared without a question. Guided fixes need a choice. Manual findings
+stay visible and tell you what to change yourself. `--fix --yes` applies only automatic fixes and
+names the guided findings it left untouched.
+
+## Narrow the scan
+
+`--only` accepts an exact check ID, a category, or an application ID. Repeat it to combine filters:
+
+```sh
+aura check --only ENV --only claude-code
+aura check --only INS-006
+aura check --online --only MCP-003
+```
+
+Remote MCP probes run only with `--online`.
+
+## Gate CI on findings
+
+Use JSON status or severity counts, not the command exit code:
+
+```sh title="ci/check-aura.sh"
+report="$(aura check --json)"
+printf '%s\n' "$report" | jq -e '.status == "clean"'
+```
+
+The command itself exits `2` for usage or state conflicts and `3` for operational failures. Preserve
+those failures instead of turning every non-green configuration report into a command failure.
+
+## What just happened?
+
+Checks inspect a normalized snapshot. They do not read files or environment variables directly.
+Fixes return a data-only plan, which Aura previews and applies through the same backup and rollback
+kernel as setup.
+
+## Common failures
+
+| Symptom              | Cause                                                                    | Fix                                                                  |
+| -------------------- | ------------------------------------------------------------------------ | -------------------------------------------------------------------- |
+| `Nothing to check`   | Filters selected no enabled checks                                       | Remove `--only` or enable the selected check.                        |
+| Exit code `2`        | Invalid options, no checks, unavailable confirmation, or a file conflict | Read stderr, correct the named state, and rerun.                     |
+| Exit code `3`        | An adapter, plugin, check, or operation failed                           | Rerun with `--detail` locally and fix the named operational failure. |
+| A fix becomes manual | The adapter cannot safely represent or write the current shape           | Follow the finding's manual steps instead of forcing a rewrite.      |
+
+## Next steps
+
+<CardGrid>
+  <LinkCard
+    title="Browse the check catalog"
+    href="/docs/reference/checks/"
+    description="Find each official check's purpose, cause, and remediation."
+  />
+  <LinkCard
+    title="Automate with JSON"
+    href="/docs/reference/check-json/"
+    description="Use the versioned report schema and exit-code contract."
+  />
+</CardGrid>

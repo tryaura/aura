@@ -38,8 +38,8 @@ describe("documented toolchain versions", () => {
       readManifest("packages/cli/package.json"),
       read("CONTRIBUTING.md"),
       read("README.md"),
-      read("apps/web/src/content/docs/docs/guides/distributions.md"),
-      read("apps/web/src/content/docs/docs/installation.md"),
+      read("apps/web/src/content/docs/docs/guides/distributions.mdx"),
+      read("apps/web/src/content/docs/docs/installation.mdx"),
     ]);
 
     const nodeVersion = nodePin.trim();
@@ -64,10 +64,9 @@ describe("documented toolchain versions", () => {
     expect(distributions).toContain(
       `Use Node.js ${major(nodeVersion)}, pnpm, TypeScript, and Bun ${bunVersion}.`,
     );
-    expect(install).toContain(`If you already have Node.js ${major(nodeVersion)} or newer`);
-    expect(install).toContain(`Install a specific tag, for example \`${releaseTag}\`.`);
-    expect(install).toContain(
-      `AURA_INSTALL_DIR=/usr/local/bin AURA_VERSION=${releaseTag} curl -fsSL`,
-    );
+    expect(install).toContain(`Node.js ${major(nodeVersion)} or newer only when`);
+    expect(install).toContain("Install a specific tag");
+    expect(install).toContain(`example \`${releaseTag}\``);
+    expect(install).toContain(`AURA_INSTALL_DIR=/usr/local/bin AURA_VERSION=${releaseTag}`);
   });
 });

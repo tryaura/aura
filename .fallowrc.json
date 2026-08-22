@@ -11,6 +11,7 @@
     "examples/acme-distribution/build.mjs",
     "examples/acme-distribution/smoke.mjs",
     "examples/acme-distribution/src/main.boundary.ts",
+    "scripts/docs-content.test.mjs",
     "scripts/toolchain-docs.test.mjs",
     "scripts/verify-workflows.test.mjs"
   ],

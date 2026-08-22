@@ -6,6 +6,7 @@ the official `aura` command.
 
 ```sh
 npm install -g @tryaura/aura-cli
+# or: pnpm add --global @tryaura/aura-cli
 ```
 
 See the [distro authoring guide](https://tryaura.sh/docs/guides/distributions) for branding, plugin

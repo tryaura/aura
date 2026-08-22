@@ -3,15 +3,28 @@ title: Desired-state manifest
 description: The versioned ~/agents/aura.json protocol used to record what Aura manages.
 ---
 
+import { CardGrid, LinkCard } from "@astrojs/starlight/components";
+
 Aura records its desired state and ownership ledger in `~/agents/aura.json`. This path is part of
 the Aura protocol: distributions may change their command name and presentation, but they cannot
 move or rename the manifest.
+
+Think of the manifest as two lists:
+
+- **Desired state** says which applications, skills, and MCP servers Aura should keep configured.
+- **Ownership** says which exact entries Aura wrote last time, so it can update its own work without
+  deleting neighboring user-authored configuration.
+
+:::caution[Let Aura write the manifest]
+Use `aura setup` and `aura check --fix` for normal changes. Manual edits bypass interactive review
+and can put Aura into read-only mode; preserve a copy before repairing a damaged manifest.
+:::
 
 ## Schema version 1
 
 Every top-level section is required, including sections that are still empty:
 
-```json
+```json title="~/agents/aura.json"
 {
   "schemaVersion": 1,
   "preset": "plugin:official/platform",
@@ -148,9 +161,9 @@ reference is not. Header names use the HTTP token grammar.
 
 Server names contain only letters, digits, `.`, `_`, and `-`; consecutive dots and the reserved
 object-property names `__proto__`, `prototype`, and `constructor` are rejected. One name may be
-declared once per application per scope: a second entry claiming it for an application that already
-has it makes the manifest read-only, because convergence would otherwise pick a winner by position.
-Every entry names at least one application. Aura also refuses recognized credential literals in
+declared once per application: a second entry claiming it for an application that already has it
+makes the manifest read-only, because convergence would otherwise pick a winner by position. Every
+entry names at least one application. Aura also refuses recognized credential literals in
 commands, arguments, URLs, and headers. HTTP transports require an absolute HTTP(S) URL without
 embedded username or password credentials.
 
@@ -205,3 +218,23 @@ fixes. The file mode is always enforced as `0o600`, because future desired-state
 to private sources. The manifest is the only file Aura holds at a fixed mode, and the fix-plan
 kernel recognises it by path — no plan, from a plugin or otherwise, can ask for the same treatment
 elsewhere. Every other existing file keeps the permissions it already has.
+
+## Next steps
+
+<CardGrid>
+  <LinkCard
+    title="Run setup safely"
+    href="/docs/guides/setup/"
+    description="Let the wizard write the manifest through one reviewed, reversible plan."
+  />
+  <LinkCard
+    title="Read the team preset schema"
+    href="/docs/reference/team-preset/"
+    description="See which layer supplies each value the manifest finally records."
+  />
+  <LinkCard
+    title="Troubleshoot a read-only manifest"
+    href="/docs/troubleshooting/#the-manifest-is-read-only"
+    description="Repair invalid JSON, an unsupported schema, or duplicate ownership."
+  />
+</CardGrid>

@@ -1,0 +1,157 @@
+---
+title: Install Aura
+description: Install, update, verify, or uninstall the Aura CLI on macOS or Linux.
+---
+
+import { LinkCard, Steps, TabItem, Tabs } from "@astrojs/starlight/components";
+
+Install Aura with the release script, a Node.js package manager, or a downloaded archive. The
+release script is the recommended path because it selects the correct binary and verifies its
+checksum automatically.
+
+## Prerequisites
+
+- macOS or Linux on arm64 or x64.
+- A terminal and a supported shell.
+- Node.js 24 or newer only when you choose the package-manager installation.
+
+## Install
+
+<Tabs>
+  <TabItem label="Install script">
+    ```sh
+    curl -fsSL https://tryaura.sh/install | sh
+    ```
+
+    The script downloads the matching GitHub release, verifies it against `SHA256SUMS`, and
+    installs `aura` to `~/.aura/bin`.
+
+    To inspect the script first:
+
+    ```sh
+    curl -fsSL https://tryaura.sh/install -o install.sh
+    less install.sh
+    sh install.sh
+    ```
+
+  </TabItem>
+  <TabItem label="Node package manager">
+    ```sh
+    npm install -g @tryaura/aura-cli
+    ```
+
+    Or with pnpm:
+
+    ```sh
+    pnpm add --global @tryaura/aura-cli
+    ```
+
+    This path requires Node.js 24 or newer. Use the same package manager to update or remove Aura.
+
+  </TabItem>
+  <TabItem label="Release archive">
+    Download `aura-<target>.tar.gz` and `SHA256SUMS` for your platform — `darwin-arm64`,
+    `darwin-x64`, `linux-arm64`, or `linux-x64` — from
+    [GitHub Releases](https://github.com/tryaura/aura/releases), then verify and install the
+    archive from the directory holding both files:
+
+    ```sh
+    shasum -a 256 -c SHA256SUMS --ignore-missing
+    tar -xzf aura-darwin-arm64.tar.gz
+    mkdir -p "$HOME/.aura/bin"
+    mv aura "$HOME/.aura/bin/aura"
+    chmod 755 "$HOME/.aura/bin/aura"
+    ```
+
+    Verification is manual on this path, so do not skip `shasum`. Add `~/.aura/bin` to `PATH` as
+    shown below.
+
+  </TabItem>
+</Tabs>
+
+<details>
+  <summary>Install a specific version or directory</summary>
+
+The install script accepts `AURA_VERSION` and `AURA_INSTALL_DIR`. Install a specific tag, for
+example `v0.4.0`:
+
+```sh
+AURA_INSTALL_DIR=/usr/local/bin AURA_VERSION=v0.4.0 \
+  curl -fsSL https://tryaura.sh/install | sh
+```
+
+</details>
+
+## Verify the installation
+
+<Steps>
+
+1. Print the installed version.
+
+   ```sh
+   aura --version
+   ```
+
+2. If the shell cannot find `aura`, add the default installation directory to `PATH`.
+
+   ```sh title="~/.zshrc"
+   export PATH="$HOME/.aura/bin:$PATH"
+   ```
+
+3. Open a new terminal and check the command surface.
+
+   ```sh
+   aura --help
+   ```
+
+</Steps>
+
+## What just happened?
+
+Installation added one `aura` executable and did not touch coding-agent configuration. Durable
+state below `~/agents` is created only when you later approve a setup or fix plan.
+
+## Update
+
+Run the same installation method again. The script installs the newest release by default;
+package-manager installations update with:
+
+```sh
+npm update -g @tryaura/aura-cli
+pnpm update --global @tryaura/aura-cli
+```
+
+## Uninstall
+
+The release script installs one executable. Remove it without touching Aura's managed state:
+
+```sh
+rm "$HOME/.aura/bin/aura"
+```
+
+For a package-manager installation:
+
+```sh
+npm uninstall -g @tryaura/aura-cli
+pnpm remove --global @tryaura/aura-cli
+```
+
+Aura deliberately leaves `~/agents` and application configuration in place. Review and remove
+that durable state separately only when you no longer need it.
+
+## Common failure
+
+**Symptom:** `aura: command not found` after installation.
+
+**Cause:** The installation directory is not on the shell's `PATH`.
+
+**Fix:** Add the line printed by the install script to the shell profile, open a new terminal, and
+run `aura --version` again.
+
+## Next step
+
+<LinkCard
+  title="Run the Quickstart"
+  href="/docs/quickstart/"
+  description="Preview setup, converge your applications, verify the result, and learn how to undo."
+/>

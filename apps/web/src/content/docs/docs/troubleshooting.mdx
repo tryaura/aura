@@ -1,0 +1,90 @@
+---
+title: Troubleshooting
+description: Diagnose common Aura installation, setup, content, MCP, fix, and undo failures.
+---
+
+import { LinkCard } from "@astrojs/starlight/components";
+
+Start with the exact message Aura printed, then match the symptom below. Aura fails closed when it
+cannot safely understand or preserve configuration, so the repair is usually to restore readable,
+valid input—not to bypass validation.
+
+## `aura: command not found`
+
+**Cause:** The installation directory is missing from `PATH`.
+
+**Fix:** Add `~/.aura/bin` or the custom install directory to your shell profile, open a new
+terminal, and run `aura --version`.
+
+## An application is missing or unsupported
+
+**Cause:** Aura did not find the executable on its PATH, could not parse its version, or the version
+falls outside the adapter's supported range.
+
+**Fix:** Run `aura check --verbose` to see the detection scope. Install or update the application,
+authenticate it, or supply absolute search directories with `--path`.
+
+## The manifest is read-only
+
+**Cause:** `~/agents/aura.json` contains invalid JSON, an unsupported schema version, an unsafe MCP
+definition, duplicate ownership, or an unreadable known field.
+
+**Fix:** Preserve a copy first. Repair the JSON path named by Aura, restore a known-good backup, or
+upgrade Aura when the schema is newer. Aura will not overwrite an invalid manifest for you.
+
+## Repository content is held
+
+**Cause:** `.aura/preset.json` is new or changed and has not been trusted interactively.
+
+**Fix:** Run `aura setup`, read the displayed preset, snippets, and MCP transports, then accept or
+decline. `setup --yes` deliberately cannot make this trust decision.
+
+## A skill source is unavailable
+
+**Cause:** The source is hidden by `allowedSkillSources`, disabled by the distribution, offline,
+missing a private-directory token, or returned invalid content.
+
+**Fix:** Read the source-specific note, correct the allowlist or connectivity, set the named token
+variable, and reopen `aura setup --add skill`. Never place the token in the preset.
+
+## An MCP credential is missing
+
+**Cause:** A catalog entry references an environment variable that is not set where the application
+runs.
+
+**Fix:** Follow the credential's setup URL when present, set the named variable outside Aura's
+files, and rerun `aura setup --add mcp`.
+
+## A fix reports a conflict
+
+**Cause:** A target changed after Aura read or previewed it, or two planned operations claim the
+same target.
+
+**Fix:** Preserve the current file, rerun the check to build a plan from fresh contents, and resolve
+any remaining ownership or target conflict. Do not force the stale plan.
+
+## Undo fails
+
+**Cause:** The backup is unreadable, already undone, or the current files no longer satisfy restore
+preconditions.
+
+**Fix:** Run `aura undo --list`, preview a specific backup, and preserve conflicting files before
+retrying. A missing journal requires an external backup; Aura will not invent prior contents.
+
+## Get more detail safely
+
+`--detail` includes underlying adapter errors and, for previews, may include file contents. Run it
+locally and inspect the output before sharing it:
+
+```sh
+aura check --detail
+aura setup --dry-run --detail
+```
+
+## Next step
+
+<LinkCard
+  title="Browse the CLI reference"
+  href="/docs/reference/cli/"
+  description="Check every command, option, and exit-code contract."
+/>

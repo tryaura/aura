@@ -1,0 +1,75 @@
+---
+title: Undo and recover
+description: Inspect Aura backups and safely restore files changed by setup or repair.
+---
+
+import { LinkCard, Steps } from "@astrojs/starlight/components";
+
+Every successful Aura transaction saves the previous file state before replacing anything. Use
+`aura undo` when a setup or repair was valid but you want the earlier configuration back.
+
+## Preview and restore
+
+<Steps>
+
+1. List available backups.
+
+   ```sh
+   aura undo --list
+   ```
+
+2. Preview the newest restorable backup.
+
+   ```sh
+   aura undo --dry-run
+   ```
+
+   Representative output starts with `Would restore backup <backup-id>`.
+
+3. Restore the newest backup after confirmation.
+
+   ```sh
+   aura undo
+   ```
+
+4. To restore a specific backup, pass the ID from `--list`.
+
+   ```sh
+   aura undo 2026-08-16T23-47-43-937Z
+   ```
+
+5. Verify the restored state.
+
+   ```sh
+   aura check
+   ```
+
+</Steps>
+
+## What undo restores
+
+Undo uses the journal from one completed setup or fix transaction. It restores the files that
+transaction replaced and marks the backup as undone. It does not guess from current configuration
+or delete unrelated user-authored state.
+
+If applying a transaction fails, Aura attempts rollback immediately. A `partial` fix result means
+both the write and part of its rollback failed; preserve the diagnostic and inspect the named files
+before running another write.
+
+## Common failures
+
+| Symptom                  | Cause                                                          | Fix                                                                                                |
+| ------------------------ | -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `No backups.`            | Aura has not completed a write in this state directory         | Nothing needs restoring.                                                                           |
+| `Nothing to undo.`       | No backup is currently restorable                              | Use `--list` to inspect the journal.                                                               |
+| Backup is already undone | The selected transaction was restored previously               | Choose another restorable backup.                                                                  |
+| Exit code `2`            | Current files conflict with the recorded restore preconditions | Preserve the files, inspect the conflict, and resolve it before retrying.                          |
+| Backup cannot be read    | Its journal or stored bytes are unavailable                    | Keep the error, restore from an external backup, or repair the journal only with a preserved copy. |
+
+## Next step
+
+<LinkCard
+  title="Troubleshoot Aura"
+  href="/docs/troubleshooting/"
+  description="Diagnose read-only state, repository trust, source failures, and file conflicts."
+/>
