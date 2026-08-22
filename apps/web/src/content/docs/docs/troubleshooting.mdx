@@ -16,6 +16,14 @@ valid input—not to bypass validation.
 **Fix:** Add `~/.aura/bin` or the custom install directory to your shell profile, open a new
 terminal, and run `aura --version`.
 
+## The standalone binary does not update
+
+**Cause:** Aura skips update checks for package-manager, informational, non-interactive, CI,
+disabled, unstamped, symlinked, or otherwise unmanaged executions.
+
+**Fix:** Confirm the binary came from a standalone release, then review the complete eligibility
+and recovery guidance in [Automatic updates](/docs/guides/automatic-updates/).
+
 ## An application is missing or unsupported
 
 **Cause:** Aura did not find the executable on its PATH, could not parse its version, or the version

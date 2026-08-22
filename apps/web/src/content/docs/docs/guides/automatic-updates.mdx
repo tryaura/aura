@@ -1,0 +1,117 @@
+---
+title: Automatic updates
+description: Understand, control, troubleshoot, or roll back updates to the Aura standalone binary.
+---
+
+import { CardGrid, LinkCard } from "@astrojs/starlight/components";
+
+The official Aura standalone binary keeps itself current before an interactive command starts.
+Use this guide to understand when Aura updates, opt out, update another installation type, or
+restore the previous executable.
+
+## Which installation updates itself?
+
+Only the standalone binary installed by the release script or from a release archive can replace
+itself. The package-manager entry point has no updater capability, so Aura never modifies an
+executable owned by npm or pnpm.
+
+| Installation                      | How to update                                    |
+| --------------------------------- | ------------------------------------------------ |
+| `curl https://tryaura.sh/install` | Automatic before an eligible interactive command |
+| Downloaded standalone release     | Automatic before an eligible interactive command |
+| npm global                        | `npm update -g @tryaura/aura-cli`                |
+| pnpm global                       | `pnpm update --global @tryaura/aura-cli`         |
+| `npx` or `pnpm dlx`               | Rerun with the desired package version           |
+
+You can also rerun the [install script](/docs/installation/#install) to replace a standalone binary
+manually.
+
+## What happens during an update
+
+Aura checks for a release at most once a day. When it finds one, it writes progress to stderr:
+
+```text
+Updating Aura 0.5.1 -> 0.5.2...
+Updated Aura to 0.5.2. The new version will be used on your next run.
+```
+
+A percentage appears between those lines while the archive downloads and disappears when it is
+done. Progress is drawn only on a real terminal, so captured and piped output stays unchanged.
+
+The command you requested continues on the version already in memory with its normal output and
+exit status. The new executable starts on the next invocation. If the check or installation fails,
+Aura keeps the current executable and continues the command; at most, it prints one warning with a
+link to the [releases page](https://github.com/tryaura/aura/releases/latest).
+
+## How Aura verifies a release
+
+Aura installs only a final GitHub release that the API reports as immutable. Before replacing the
+current executable, it:
+
+1. Selects the archive for the current macOS or Linux architecture.
+2. Streams the archive within fixed time and size limits.
+3. Verifies the archive against the release asset's SHA-256 digest.
+4. Accepts only the expected executable and license files.
+5. Runs the staged executable and requires it to report the release version.
+6. Atomically replaces the current executable and preserves the old one as `aura.previous`.
+
+A failed check never partially installs a release. Aura also uses a per-executable lock so two
+shells cannot replace the same binary concurrently.
+
+## When Aura skips the check
+
+Aura makes no update request when:
+
+- the invocation only displays help or version information;
+- any of stdin, stdout, or stderr is redirected;
+- `CI` is set;
+- `AURA_UPDATE` is `off`, `0`, `false`, or `no`;
+- the running version is an unstamped source build; or
+- the executable is not a regular file, including when the `aura` on `PATH` is a symlink.
+
+These rules keep automation deterministic. A script or pipeline that installs a specific release
+continues to use that release.
+
+To disable automatic updates for interactive runs too, set the variable in your shell profile:
+
+```sh title="~/.zshrc"
+export AURA_UPDATE=off
+```
+
+## Restore the previous version
+
+After a successful automatic update, the previous executable remains beside the current one. For
+the default installation directory:
+
+```sh
+mv "$HOME/.aura/bin/aura.previous" "$HOME/.aura/bin/aura"
+```
+
+Aura does not perform this move automatically. Set `AURA_UPDATE=off` before the next interactive
+run if you want to remain on the restored version. If `aura.previous` does not exist, reinstall the
+required version with `AURA_VERSION` as described in the [installation guide](/docs/installation/).
+
+## Common failures
+
+| Symptom                                      | Cause                                                         | Fix                                                                                 |
+| -------------------------------------------- | ------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| Aura never checks in a terminal              | One of the skip conditions applies                            | Confirm the install is standalone and review the environment and stream conditions. |
+| Aura warns that it could not install         | The download failed or the executable directory is unwritable | Rerun the install script or install from the releases page.                         |
+| Aura refuses a release digest                | The downloaded bytes do not match the immutable release       | Keep the current version and retry later; do not install the archive manually.      |
+| The next run installs a version you restored | Automatic updates are still enabled                           | Set `AURA_UPDATE=off` before restoring `aura.previous`.                             |
+| npm or pnpm remains on an older version      | Package-manager installations do not update themselves        | Update Aura with the same package manager that installed it.                        |
+
+## Next steps
+
+<CardGrid>
+  <LinkCard
+    title="Review installation options"
+    href="/docs/installation/"
+    description="Install a standalone binary, use a package manager, or pin a specific release."
+  />
+  <LinkCard
+    title="Troubleshoot Aura"
+    href="/docs/troubleshooting/"
+    description="Diagnose installation, setup, content, fix, and undo failures."
+  />
+</CardGrid>

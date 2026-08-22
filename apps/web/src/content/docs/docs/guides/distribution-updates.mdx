@@ -1,0 +1,232 @@
+---
+title: Add distribution updates
+description: Configure, publish, verify, and troubleshoot automatic updates for a standalone Aura distribution.
+---
+
+import { CardGrid, LinkCard, Steps, TabItem, Tabs } from "@astrojs/starlight/components";
+
+Give a compiled distribution an explicit release source so it can replace only its own
+standalone executable. This guide wires the public updater API, defines the release contract, and
+shows how to verify a release before publishing it.
+
+## Prerequisites
+
+- A branded distribution built with the CLI, SDK, and testkit pinned to the same exact version.
+- A Bun-compiled executable for each supported target: `darwin-arm64`, `darwin-x64`,
+  `linux-arm64`, and `linux-x64`.
+- Either an immutable GitHub release repository with per-asset SHA-256 digests or an HTTPS artifact
+  service that can publish Ed25519-signed manifests.
+
+Start with [Ship a distribution](/docs/guides/ship-a-distribution/) if the command, plugins,
+assets, and binary build are not already working.
+
+## Declare ownership at the entry point
+
+Keep separate package-manager and standalone entry points. The package entry calls `runCli`; its
+API cannot update an executable. Only the file compiled into the standalone binary calls
+`runStandaloneCli` with the current process and a build-time update policy.
+
+```ts title="src/main.boundary.ts"
+#!/usr/bin/env node
+import { runCli } from "@tryaura/aura-cli";
+
+import { createAcmeDistro } from "./distro.boundary.js";
+
+await runCli(createAcmeDistro());
+```
+
+```ts title="src/standalone-main.boundary.ts"
+#!/usr/bin/env node
+import process from "node:process";
+
+import { runStandaloneCli } from "@tryaura/aura-cli";
+
+import { createAcmeDistro } from "./distro.boundary.js";
+import { ACME_UPDATES } from "./updates.js";
+
+await runStandaloneCli(createAcmeDistro(), ACME_UPDATES, process);
+```
+
+Point the package manifest's `bin` at compiled output from `main.boundary.ts`. Point the standalone
+build at `standalone-main.boundary.ts`. Do not infer ownership from `PATH`, a command name, or
+package-manager environment variables.
+
+## Choose a release source
+
+`CliUpdates` is a discriminated union with GitHub and signed-manifest providers. Both may name a
+`manualUpdateUrl` for failure messages and a `tokenEnvironmentVariable` for credentials read at
+request time.
+
+<Tabs>
+  <TabItem label="GitHub release">
+    Use this provider for GitHub or GitHub Enterprise Server when its API exposes immutable
+    releases and SHA-256 digests for release assets.
+
+    ```ts title="src/updates.ts"
+    import type { CliUpdates } from "@tryaura/aura-cli";
+
+    export const ACME_UPDATES: CliUpdates = {
+      apiBaseUrl: "https://ghe.acme.example/api/v3",
+      kind: "github-release",
+      manualUpdateUrl: "https://ghe.acme.example/platform/acmedev/releases/latest",
+      owner: "platform",
+      repository: "acmedev",
+      tokenEnvironmentVariable: "ACMEDEV_RELEASE_TOKEN",
+    };
+    ```
+
+    Omit `apiBaseUrl` for `github.com`. Public repositories can omit
+    `tokenEnvironmentVariable`; private repositories should use a token with only repository
+    **Contents: read** permission.
+
+    The provider rejects drafts, prereleases, mutable releases, missing or duplicate target assets,
+    noncanonical `v<semver>` tags, and assets without a usable digest. If an enterprise server does
+    not expose immutability and digests, use the signed-manifest provider.
+
+  </TabItem>
+  <TabItem label="Signed manifest">
+    Use this provider for an internal artifact service or an enterprise GitHub version that cannot
+    satisfy the GitHub provider's trust requirements.
+
+    ```ts title="src/updates.ts"
+    import type { CliUpdates } from "@tryaura/aura-cli";
+
+    export const ACME_UPDATES: CliUpdates = {
+      kind: "signed-manifest",
+      manifestUrl: "https://releases.acme.example/acmedev/latest.json",
+      manualUpdateUrl: "https://releases.acme.example/acmedev/",
+      tokenEnvironmentVariable: "ACMEDEV_RELEASE_TOKEN",
+      trustedPublicKeys: ["<base64 current raw Ed25519 public key>"],
+    };
+    ```
+
+    The stable manifest URL returns this envelope:
+
+    ```json title="latest.json"
+    {
+      "schemaVersion": 1,
+      "payload": "<base64url encoded UTF-8 JSON>",
+      "signature": "<base64url Ed25519 signature over the decoded payload bytes>"
+    }
+    ```
+
+    The decoded payload has this shape:
+
+    ```json title="payload.json"
+    {
+      "version": "1.4.0",
+      "expiresAt": 1893456000000,
+      "assets": {
+        "darwin-arm64": {
+          "downloadUrl": "https://releases.acme.example/acmedev/v1.4.0/acmedev-darwin-arm64.tar.gz",
+          "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "size": 12345678
+        }
+      }
+    }
+    ```
+
+    Set `expiresAt` at publication time to epoch milliseconds no more than 30 days in the future;
+    the number above only illustrates the field shape. Publish each target under an immutable URL
+    containing the payload version. Sign the exact decoded payload bytes with Ed25519, then encode
+    the payload and signature separately with base64url.
+
+    Keep private signing keys in release infrastructure. During rotation, ship a binary that
+    trusts both current and replacement public keys before retiring the old key. Re-sign the
+    manifest on a schedule shorter than its expiry window.
+
+  </TabItem>
+</Tabs>
+
+Credentials are never embedded in the policy: the updater reads the named variable only when it
+makes a request. It does not place the value in cache keys, diagnostics, URLs, or staged-process
+environments. It strips authorization before following a cross-origin redirect, and signed-manifest
+credentials are sent to assets only when they share the manifest origin.
+
+## Publish compatible releases
+
+<Steps>
+
+1. Build and smoke-test every target on its native platform. Stamp the distribution with the
+   canonical version the release tag will name; an unstamped `0.0.0` build cannot update.
+
+2. Package one archive per target as `<command>-<target>.tar.gz`. Each archive must contain exactly
+   the executable named by `branding.command` and `LICENSE` at its root. Directories, links, PAX
+   records, AppleDouble files, and extra entries are rejected.
+
+   ```sh
+   chmod 755 acmedev
+   COPYFILE_DISABLE=1 tar -czf acmedev-darwin-arm64.tar.gz acmedev LICENSE
+   tar -tzf acmedev-darwin-arm64.tar.gz
+   ```
+
+   From an Aura checkout, validate the tar headers with the same parser the updater uses. This
+   catches metadata entries such as AppleDouble sidecars that `tar -t` can hide:
+
+   ```sh
+   node scripts/verify-archive.mjs \
+     path/to/acmedev-darwin-arm64.tar.gz acmedev LICENSE
+   ```
+
+3. Compute the final archive's SHA-256 digest and byte size. Do this after packaging; the signed
+   manifest and GitHub release metadata must describe the exact bytes users download.
+
+4. Publish every archive before making the release discoverable. For GitHub, create a draft,
+   attach and verify all assets, then publish it as an immutable `v<canonical semver>` release. For
+   a signed manifest, publish version-specific assets first, then atomically move the stable
+   manifest URL.
+
+5. Read the published metadata and archives back from the service. Confirm every supported target,
+   exact filename, digest, size, archive entry, executable permission, and reported `--version`.
+
+</Steps>
+
+:::caution[Release metadata is a trust boundary]
+Do not weaken the common installer to accommodate mutable releases or incomplete metadata. Use the
+signed-manifest provider when the GitHub provider cannot prove immutability and integrity.
+:::
+
+## Runtime behavior and diagnostics
+
+The distribution inherits the same user-visible contract as Aura: checks happen at most daily and
+only on interactive standalone runs; the current command continues on the old in-memory version;
+failures do not change its exit code; and a successful install preserves `<command>.previous`.
+
+The opt-out and diagnostic variables derive from `branding.command`: uppercase it, replace runs of
+non-alphanumeric characters with `_`, then append `_UPDATE` or `_UPDATE_DEBUG`. For `acmedev`:
+
+```sh
+export ACMEDEV_UPDATE=off
+export ACMEDEV_UPDATE_DEBUG=1
+```
+
+Enable diagnostics only while developing or operating the distribution. They write updater gates
+and outcomes such as `update: skipped: unsupported-target` to stderr and are not a stable user
+output contract.
+
+## Common failures
+
+| Symptom                                | Cause                                                                    | Fix                                                                                  |
+| -------------------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
+| Every run reports `unstamped-version`  | The compiled branding version is `0.0.0`                                 | Stamp the release version before compiling.                                          |
+| The GitHub provider finds no candidate | The release is mutable, a draft, a prerelease, or lacks one asset        | Publish an immutable final release with exactly one correctly named target archive.  |
+| An archive is refused                  | It contains an extra entry, link, or metadata record                     | Repackage only the executable and license, then inspect the finished archive.        |
+| A manifest is stale                    | `expiresAt` passed or exceeds the 30-day freshness window                | Generate and sign a fresh payload after all immutable assets are available.          |
+| A signature is untrusted               | The payload changed, encoding is wrong, or no configured key verifies it | Sign the exact payload bytes and verify the raw 32-byte public-key configuration.    |
+| Private downloads fail                 | The named token is missing or lacks read access                          | Set the variable at runtime with the minimum repository or artifact read permission. |
+| Source runs never update               | The package entry correctly calls `runCli`                               | Test the binary compiled from the standalone entry point.                            |
+
+## Next steps
+
+<CardGrid>
+  <LinkCard
+    title="Ship a distribution"
+    href="/docs/guides/ship-a-distribution/"
+    description="Inspect the tested adapter, content, composition, build, and smoke-test boundaries."
+  />
+  <LinkCard
+    title="See the user experience"
+    href="/docs/guides/automatic-updates/"
+    description="Review the update behavior, opt-out, failure handling, and rollback users receive."
+  />
+</CardGrid>
