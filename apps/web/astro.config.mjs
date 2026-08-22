@@ -25,6 +25,7 @@ export default defineConfig({
     starlight({
       title: "Aura",
       description: "Keep every coding agent in your repo working from the same rules.",
+      favicon: "/favicon.svg",
       disable404Route: true,
       social: [{ icon: "github", label: "GitHub", href: "https://github.com/tryaura/aura" }],
       editLink: {
