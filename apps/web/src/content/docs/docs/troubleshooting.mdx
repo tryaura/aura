@@ -11,10 +11,12 @@ valid input—not to bypass validation.
 
 ## `aura: command not found`
 
-**Cause:** The installation directory is missing from `PATH`.
+**Cause:** The installer changed a profile that the current terminal has not loaded, automatic
+profile modification was disabled or failed, or a custom installation directory is missing from
+`PATH`.
 
-**Fix:** Add `~/.aura/bin` or the custom install directory to your shell profile, open a new
-terminal, and run `aura --version`.
+**Fix:** Open a new terminal after an automatic profile change. Otherwise, add the PATH snippet the
+installer printed to the named profile and run `aura --version`.
 
 ## The standalone binary does not update
 

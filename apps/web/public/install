@@ -4,13 +4,21 @@
 #
 #   curl -fsSL https://tryaura.sh/install | sh
 #
-# Downloads the release binary matching your platform from GitHub Releases, verifies it against
-# the published SHA256SUMS, and installs it. Nothing here runs with elevated privileges and
-# nothing is written outside the install directory.
+# Downloads the release binary matching your platform from GitHub Releases, verifies it against the
+# published SHA256SUMS, and installs it. Nothing runs with elevated privileges, and shell
+# configuration changes only when the install directory is not already on PATH.
 #
 # Environment:
-#   AURA_INSTALL_DIR   where to install (default: $HOME/.aura/bin)
-#   AURA_VERSION       release tag to install (default: latest)
+#   AURA_INSTALL_DIR     absolute install path; explicitly allows replacing its existing aura
+#   AURA_NO_MODIFY_PATH  set to 1 to leave shell configuration unchanged
+#   AURA_VERSION         release tag to install (default: latest)
+#
+# Everything runs from main() on the last line, so a truncated download cannot execute a
+# half-written script.
+
+set -eu
+
+REPO="tryaura/aura"
 
 abort() {
   printf 'aura: %s\n' "$1" >&2
@@ -21,16 +29,276 @@ require() {
   command -v "$1" >/dev/null 2>&1 || abort "'$1' is required but was not found on PATH."
 }
 
+cleanup() {
+  [ -z "${tmp:-}" ] || rm -rf "$tmp"
+  [ -z "${stage_dir:-}" ] || rm -rf "$stage_dir"
+}
+
+# Pin the transport for the request and for every redirect: a release URL must not be downgraded to
+# plaintext on the way to the asset.
+fetch() {
+  curl --proto '=https' --proto-redir '=https' --tlsv1.2 \
+    --fail --silent --show-error --location \
+    --connect-timeout 10 --retry 3 "$@"
+}
+
+path_contains() {
+  case ":${PATH:-}:" in
+    *":$1:"*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Usable means: on PATH already, and either a writable directory or absent with a writable ancestor
+# that mkdir -p can reach.
+candidate_is_usable() {
+  candidate="$1"
+  path_contains "$candidate" || return 1
+  if [ -e "$candidate" ]; then
+    [ -d "$candidate" ] && [ -w "$candidate" ]
+    return
+  fi
+  parent="$candidate"
+  while [ ! -e "$parent" ]; do
+    case "$parent" in
+      */?*) parent="${parent%/*}" ;;
+      *) return 1 ;;
+    esac
+    [ -n "$parent" ] || parent="/"
+  done
+  [ -d "$parent" ] && [ -w "$parent" ]
+}
+
+# Only these three locations are auto-selected. Trusting any writable PATH entry would let a stray
+# directory earlier on PATH capture the install.
+select_install_directory() {
+  for candidate in "$HOME/.local/bin" "$HOME/bin" /usr/local/bin; do
+    if candidate_is_usable "$candidate"; then
+      printf '%s\n' "$candidate"
+      return
+    fi
+  done
+  printf '%s\n' "$HOME/.aura/bin"
+}
+
+resolve_install_directory() {
+  if [ -z "${AURA_INSTALL_DIR:-}" ]; then
+    directory=$(select_install_directory)
+  else
+    # A relative value would install somewhere that depends on the caller's working directory,
+    # which is never what `curl | sh` means.
+    case "$AURA_INSTALL_DIR" in
+      /*) directory="$AURA_INSTALL_DIR" ;;
+      *) abort "AURA_INSTALL_DIR must be an absolute path; got '$AURA_INSTALL_DIR'." ;;
+    esac
+  fi
+  # A trailing slash would defeat every ":$dir:" PATH comparison below.
+  while [ "$directory" != "/" ] && [ "$directory" != "${directory%/}" ]; do
+    directory="${directory%/}"
+  done
+
+  line_feed='
+'
+  carriage_return=$(printf '\r')
+  case "$directory" in
+    *"$line_feed"* | *"$carriage_return"*)
+      abort "install directory must not contain line breaks."
+      ;;
+    *:*)
+      abort "install directory must not contain ':' because it cannot be represented safely on PATH."
+      ;;
+  esac
+  printf '%s\n' "$directory"
+}
+
+# Wrap a path so a shell reads it back literally. fish accepts the same form: outside single quotes
+# it treats \' as an escaped quote exactly as sh does.
+posix_quote() {
+  quoted=""
+  rest="$1"
+  while :; do
+    case "$rest" in
+      *"'"*)
+        quoted="$quoted${rest%%\'*}'\\''"
+        rest="${rest#*\'}"
+        ;;
+      *)
+        printf "'%s'\n" "$quoted$rest"
+        return
+        ;;
+    esac
+  done
+}
+
+# The snippet guards against re-prepending. A bare `export PATH=dir:$PATH` in a profile grows PATH
+# by one copy of dir for every nested shell.
+path_snippet() {
+  quoted=$(posix_quote "$1")
+  if [ "$2" = "fish" ]; then
+    printf 'if not contains %s $PATH\n    set -gx PATH %s $PATH\nend\n' "$quoted" "$quoted"
+    return
+  fi
+  printf 'case ":$PATH:" in\n  *:%s:*) ;;\n  *) export PATH=%s:"$PATH" ;;\nesac\n' "$quoted" "$quoted"
+}
+
+# Prints nothing for a shell whose profile this script will not guess at.
+profile_for_shell() {
+  case "$1" in
+    zsh) printf '%s/.zshrc\n' "${ZDOTDIR:-$HOME}" ;;
+    bash)
+      if [ "$2" = "darwin" ]; then
+        for candidate in "$HOME/.bash_profile" "$HOME/.bash_login" "$HOME/.profile"; do
+          if [ -e "$candidate" ]; then
+            printf '%s\n' "$candidate"
+            return
+          fi
+        done
+        printf '%s/.bash_profile\n' "$HOME"
+      else
+        printf '%s/.bashrc\n' "$HOME"
+      fi
+      ;;
+    fish) printf '%s/fish/config.fish\n' "${XDG_CONFIG_HOME:-$HOME/.config}" ;;
+  esac
+}
+
+print_path_instructions() {
+  printf '\naura: %s is not on your PATH. Add this to %s:\n\n%s\n' "$1" "$2" "$3"
+}
+
+warn_about_shadowing() {
+  existing=$(command -v aura 2>/dev/null) || existing=""
+  if [ -n "$existing" ] && [ "$existing" != "$1/aura" ]; then
+    printf 'aura: note: %s comes earlier on PATH and will run instead.\n' "$existing"
+  fi
+}
+
+configure_path() {
+  target_dir="$1"
+  if path_contains "$target_dir"; then
+    printf 'aura: the install directory is already on PATH.\n'
+    warn_about_shadowing "$target_dir"
+    printf 'aura: run `aura --version` to get started.\n'
+    return
+  fi
+
+  shell_name="${SHELL:-}"
+  shell_name="${shell_name##*/}"
+  snippet=$(path_snippet "$target_dir" "$shell_name")
+  profile=$(profile_for_shell "$shell_name" "$2")
+
+  if [ -z "$profile" ] || [ "${AURA_NO_MODIFY_PATH:-}" = "1" ]; then
+    print_path_instructions "$target_dir" "${profile:-your shell profile}" "$snippet"
+    return
+  fi
+
+  # Match on the marker, not on the snippet: the snippet spans lines and its wording may change,
+  # while the marker is what a second run has to recognise.
+  marker="# Added by Aura installer ($target_dir)"
+  if [ -f "$profile" ] && grep -Fqx "$marker" "$profile"; then
+    printf 'aura: PATH is already configured in %s.\n' "$profile"
+    printf 'aura: open a new terminal, then run `aura --version`.\n'
+    return
+  fi
+
+  if [ -e "$profile" ] && [ ! -w "$profile" ]; then
+    print_path_instructions "$target_dir" "$profile" "$snippet"
+    return
+  fi
+  if ! mkdir -p "${profile%/*}" || ! printf '\n%s\n%s' "$marker" "$snippet" >>"$profile"; then
+    print_path_instructions "$target_dir" "$profile" "$snippet"
+    return
+  fi
+
+  printf 'aura: added %s to PATH in %s.\n' "$target_dir" "$profile"
+  printf 'aura: open a new terminal, then run `aura --version`.\n'
+}
+
+resolve_version() {
+  if [ -n "${AURA_VERSION:-}" ]; then
+    version="$AURA_VERSION"
+  else
+    # Read the latest tag from the release redirect rather than the API, which is rate limited for
+    # unauthenticated callers.
+    resolved=$(fetch --head --output /dev/null --write-out '%{url_effective}' \
+      "https://github.com/$REPO/releases/latest") ||
+      abort "could not reach GitHub to resolve the latest release."
+    # Without a tag path the redirect landed on the releases index, which is what a repository with
+    # no published release returns; "${resolved##*/}" would then be the word "releases".
+    case "$resolved" in
+      */releases/tag/?*) version="${resolved##*/}" ;;
+      *) abort "GitHub did not report a latest release for $REPO." ;;
+    esac
+  fi
+
+  case "$version" in
+    v*) ;;
+    *) version="v$version" ;;
+  esac
+  # The tag is interpolated into a download URL, so hold it to characters a tag can legally carry.
+  case "$version" in
+    v) abort "could not determine a release version to install." ;;
+    *[!A-Za-z0-9._+-]*) abort "invalid release tag '$version'." ;;
+  esac
+  printf '%s\n' "$version"
+}
+
+# Exact filename match, read in shell rather than with grep or awk: a grep pattern would treat the
+# dots in the archive name as wildcards, and awk would be a fifth external dependency.
+expected_checksum() {
+  while read -r digest name; do
+    if [ "${name#\*}" = "$2" ]; then
+      printf '%s\n' "$digest"
+      return 0
+    fi
+  done <"$1"
+  return 0
+}
+
+verify_download() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    actual=$(sha256sum "$1")
+  elif command -v shasum >/dev/null 2>&1; then
+    actual=$(shasum -a 256 "$1")
+  else
+    abort "neither 'sha256sum' nor 'shasum' is available; cannot verify the download."
+  fi
+  actual="${actual%% *}"
+  expected=$(expected_checksum "$2" "$3")
+  [ -n "$expected" ] || abort "'$3' is not listed in SHA256SUMS."
+  [ "$actual" = "$expected" ] || abort "checksum mismatch for $3.
+  expected: $expected
+  actual:   $actual
+Do not use this download."
+}
+
+# Stage inside the destination so the last step is a rename on one filesystem: atomic, and it
+# replaces a binary that is currently executing instead of failing with ETXTBSY.
+install_binary() {
+  mkdir -p "$2" || abort "could not create $2."
+  if { [ -e "$2/aura" ] || [ -L "$2/aura" ]; } && [ "$3" != "1" ]; then
+    abort "refusing to replace existing $2/aura without an explicit AURA_INSTALL_DIR."
+  fi
+  stage_dir=$(mktemp -d "$2/.aura.XXXXXX") || abort "could not create a staging directory in $2."
+  staged="$stage_dir/aura"
+  cp "$1" "$staged" || abort "could not write to $2."
+  chmod 755 "$staged" || abort "could not make the staged Aura binary executable."
+  mv -f "$staged" "$2/aura" || abort "could not replace $2/aura."
+  rm -rf "$stage_dir"
+  stage_dir=""
+}
+
 main() {
-  set -eu
-
-  REPO="tryaura/aura"
-  INSTALL_DIR="${AURA_INSTALL_DIR:-$HOME/.aura/bin}"
-
   require curl
+  require grep
+  require mktemp
   require tar
 
-  # ----- platform -----------------------------------------------------------
+  install_dir=$(resolve_install_directory)
+  allow_replace="0"
+  if [ -n "${AURA_INSTALL_DIR:-}" ] || [ "$install_dir" = "$HOME/.aura/bin" ]; then
+    allow_replace="1"
+  fi
 
   os=$(uname -s)
   case "$os" in
@@ -46,101 +314,37 @@ main() {
     *) abort "unsupported architecture '$arch'." ;;
   esac
 
-  target="${os}-${arch}"
-
-  # ----- version ------------------------------------------------------------
-
-  version="${AURA_VERSION:-}"
-
-  if [ -z "$version" ]; then
-    # Resolve the latest tag from the release redirect rather than the API, which is rate limited
-    # for unauthenticated callers.
-    resolved=$(curl -fsSLI -o /dev/null -w '%{url_effective}' "https://github.com/$REPO/releases/latest" 2>/dev/null) ||
-      abort "could not reach GitHub to resolve the latest release."
-    version="${resolved##*/}"
-  fi
-
-  case "$version" in
-    v*) ;;
-    '') abort "could not determine a release version to install." ;;
-    *) version="v$version" ;;
-  esac
-
-  archive="aura-${target}.tar.gz"
+  version=$(resolve_version)
+  archive="aura-${os}-${arch}.tar.gz"
   base="https://github.com/$REPO/releases/download/$version"
 
-  # ----- download and verify ------------------------------------------------
-
   tmp=$(mktemp -d)
-  trap 'rm -rf "$tmp"' EXIT INT TERM
+  stage_dir=""
+  # An EXIT-only trap cleans up but does not stop the script: after the handler runs, execution
+  # continues past the interrupt. These two exit, and exiting runs the EXIT trap.
+  trap cleanup EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
 
-  printf 'aura: downloading %s %s\n' "$version" "$target"
-
-  curl -fsSL "$base/$archive" -o "$tmp/$archive" ||
+  printf 'aura: downloading %s %s-%s\n' "$version" "$os" "$arch"
+  fetch --output "$tmp/$archive" "$base/$archive" ||
     abort "could not download release asset '$archive' for $version. See https://github.com/$REPO/releases"
-  curl -fsSL "$base/SHA256SUMS" -o "$tmp/SHA256SUMS" ||
-    abort "could not download SHA256SUMS for $version. Refusing to install unverified binary."
+  fetch --output "$tmp/SHA256SUMS" "$base/SHA256SUMS" ||
+    abort "could not download SHA256SUMS for $version. Refusing to install an unverified binary."
 
-  if command -v sha256sum >/dev/null 2>&1; then
-    checksum=$(sha256sum "$tmp/$archive" | cut -d' ' -f1)
-  elif command -v shasum >/dev/null 2>&1; then
-    checksum=$(shasum -a 256 "$tmp/$archive" | cut -d' ' -f1)
-  else
-    abort "neither 'sha256sum' nor 'shasum' is available; cannot verify the download."
-  fi
-
-  # Exact filename match. A grep pattern would treat the dots in the archive name as wildcards.
-  expected=$(awk -v want="$archive" '{ name = $2; sub(/^\*/, "", name); if (name == want) { print $1; exit } }' "$tmp/SHA256SUMS")
-
-  [ -n "$expected" ] || abort "'$archive' is not listed in SHA256SUMS for $version."
-
-  if [ "$checksum" != "$expected" ]; then
-    abort "checksum mismatch for $archive.
-  expected: $expected
-  actual:   $checksum
-Do not use this download."
-  fi
-
+  verify_download "$tmp/$archive" "$tmp/SHA256SUMS" "$archive"
   printf 'aura: checksum verified\n'
 
-  # ----- install ------------------------------------------------------------
+  # Unpack beside the verified archive rather than over it, so an unexpected archive layout cannot
+  # land on the files this script has already read.
+  mkdir -p "$tmp/unpacked"
+  tar -xzf "$tmp/$archive" -C "$tmp/unpacked"
+  [ -f "$tmp/unpacked/aura" ] || abort "archive did not contain an 'aura' binary."
 
-  tar -xzf "$tmp/$archive" -C "$tmp"
+  install_binary "$tmp/unpacked/aura" "$install_dir" "$allow_replace"
+  printf 'aura: installed to %s/aura\n' "$install_dir"
 
-  [ -f "$tmp/aura" ] || abort "archive did not contain an 'aura' binary."
-
-  mkdir -p "$INSTALL_DIR"
-  mv "$tmp/aura" "$INSTALL_DIR/aura"
-  chmod 755 "$INSTALL_DIR/aura"
-
-  printf 'aura: installed to %s/aura\n' "$INSTALL_DIR"
-
-  # ----- PATH ---------------------------------------------------------------
-
-  case ":${PATH}:" in
-    *":$INSTALL_DIR:"*)
-      printf 'aura: run `aura --version` to get started.\n'
-      ;;
-    *)
-      shell_name="${SHELL:-}"
-      shell_name="${shell_name##*/}"
-
-      case "$shell_name" in
-        zsh) profile="~/.zshrc" ;;
-        bash) profile="~/.bashrc" ;;
-        fish) profile="~/.config/fish/config.fish" ;;
-        *) profile="your shell profile" ;;
-      esac
-
-      printf '\naura: %s is not on your PATH. Add this line to %s:\n\n' "$INSTALL_DIR" "$profile"
-
-      if [ "$shell_name" = "fish" ]; then
-        printf '  fish_add_path %s\n\n' "$INSTALL_DIR"
-      else
-        printf '  export PATH="%s:$PATH"\n\n' "$INSTALL_DIR"
-      fi
-      ;;
-  esac
+  configure_path "$install_dir" "$os"
 }
 
 main "$@"

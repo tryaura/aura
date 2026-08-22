@@ -24,7 +24,9 @@ checksum automatically.
     ```
 
     The script downloads the matching GitHub release, verifies it against `SHA256SUMS`, and
-    installs `aura` to `~/.aura/bin`.
+    installs `aura` to a safe, writable directory already on `PATH` when one is available. It
+    checks `~/.local/bin`, `~/bin`, and `/usr/local/bin` in that order. Otherwise, it installs to
+    `~/.aura/bin` and adds that directory to the detected shell profile.
 
     To inspect the script first:
 
@@ -63,8 +65,8 @@ checksum automatically.
     chmod 755 "$HOME/.aura/bin/aura"
     ```
 
-    Verification is manual on this path, so do not skip `shasum`. Add `~/.aura/bin` to `PATH` as
-    shown below.
+    Verification is manual on this path, so do not skip `shasum`. Add `~/.aura/bin` to your shell
+    profile before running `aura`.
 
   </TabItem>
 </Tabs>
@@ -72,13 +74,22 @@ checksum automatically.
 <details>
   <summary>Install a specific version or directory</summary>
 
-The install script accepts `AURA_VERSION` and `AURA_INSTALL_DIR`. Install a specific tag, for
-example `v0.5.2`:
+The install script accepts `AURA_VERSION` and `AURA_INSTALL_DIR`. `AURA_INSTALL_DIR` must be an
+absolute path. Variables must be applied to the
+shell on the right side of the pipe. Install a specific tag, for example `v0.5.2`:
 
 ```sh
-AURA_INSTALL_DIR=/usr/local/bin AURA_VERSION=v0.5.2 \
-  curl -fsSL https://tryaura.sh/install | sh
+curl -fsSL https://tryaura.sh/install | \
+  AURA_INSTALL_DIR=/usr/local/bin AURA_VERSION=v0.5.2 sh
 ```
+
+An automatically selected directory will not replace an existing `aura` executable. Pass that
+directory explicitly with `AURA_INSTALL_DIR` when you intend to replace a standalone installation.
+The directory cannot contain a colon or line break because it must be represented safely in
+`PATH` and, when needed, a shell profile.
+
+Set `AURA_NO_MODIFY_PATH=1` on that shell command to prevent the installer from changing a shell
+profile when the selected directory is not already on `PATH`.
 
 </details>
 
@@ -92,13 +103,10 @@ AURA_INSTALL_DIR=/usr/local/bin AURA_VERSION=v0.5.2 \
    aura --version
    ```
 
-2. If the shell cannot find `aura`, add the default installation directory to `PATH`.
+2. If the installer changed your shell profile, open a new terminal. If it printed manual
+   instructions instead, add the displayed snippet to the named profile.
 
-   ```sh title="~/.zshrc"
-   export PATH="$HOME/.aura/bin:$PATH"
-   ```
-
-3. Open a new terminal and check the command surface.
+3. Check the command surface.
 
    ```sh
    aura --help
@@ -108,8 +116,10 @@ AURA_INSTALL_DIR=/usr/local/bin AURA_VERSION=v0.5.2 \
 
 ## What just happened?
 
-Installation added one `aura` executable and did not touch coding-agent configuration. Durable
-state below `~/agents` is created only when you later approve a setup or fix plan.
+Installation added one `aura` executable. When no safe destination was already on `PATH`, it may
+also have added an idempotent PATH entry to your shell profile. It did not touch coding-agent
+configuration. Durable state below `~/agents` is created only when you later approve a setup or fix
+plan.
 
 The official standalone binary reports anonymous command telemetry by default. Review the exact
 fields, retention policy, and opt-out variables in [Anonymous telemetry](/docs/reference/telemetry/).
@@ -135,9 +145,12 @@ pnpm update --global @tryaura/aura-cli
 
 ## Uninstall
 
-The release script installs one executable. Remove it without touching Aura's managed state:
+The release script installs one executable. Remove it from the destination reported by the
+installer without touching Aura's managed state. For example:
 
 ```sh
+rm "$HOME/.local/bin/aura"
+# Or, when the installer used its fallback:
 rm "$HOME/.aura/bin/aura"
 ```
 
@@ -155,10 +168,11 @@ that durable state separately only when you no longer need it.
 
 **Symptom:** `aura: command not found` after installation.
 
-**Cause:** The installation directory is not on the shell's `PATH`.
+**Cause:** The installer changed a profile that the current terminal has not loaded, profile
+modification was disabled or failed, or a custom installation directory is not on `PATH`.
 
-**Fix:** Add the line printed by the install script to the shell profile, open a new terminal, and
-run `aura --version` again.
+**Fix:** Open a new terminal after an automatic profile change. Otherwise, add the snippet printed
+by the install script to the named profile and run `aura --version` again.
 
 ## Next step
 
