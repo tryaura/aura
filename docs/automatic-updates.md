@@ -353,8 +353,8 @@ re-execute the newly downloaded program in the first implementation.
 When an update is found:
 
 ```text
-Updating Aura 0.4.0 -> 0.4.1...
-Updated Aura to 0.4.1. The new version will be used on your next run.
+Updating Aura 0.5.0 -> 0.5.1...
+Updated Aura to 0.5.1. The new version will be used on your next run.
 ```
 
 While the archive streams, a percentage is painted between those lines and erased before the
