@@ -194,7 +194,7 @@ Enterprise distributions reuse the shared updater and opt into one of two releas
 
 ### Private GitHub or GitHub Enterprise Server
 
-Use the `github-release` source when the internal distribution is released from a private GitHub
+Use the `github-release` source when the distribution is released from a private GitHub
 repository or GitHub Enterprise Server instance.
 
 The distribution configures:
