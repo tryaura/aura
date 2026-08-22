@@ -31,8 +31,10 @@ release archives, updates, and uninstalling.
 - [Understand and fix findings](https://tryaura.sh/docs/guides/check-and-fix/)
 - [Manage snippets, skills, and MCP servers](https://tryaura.sh/docs/guides/managed-content/)
 - [Share repository content](https://tryaura.sh/docs/guides/repository-content/)
+- [Automatic updates](https://tryaura.sh/docs/guides/automatic-updates/)
 - [Build a distribution](https://tryaura.sh/docs/guides/distributions/)
 - [Ship a distribution](https://tryaura.sh/docs/guides/ship-a-distribution/)
+- [Add distribution updates](https://tryaura.sh/docs/guides/distribution-updates/)
 - [CLI reference](https://tryaura.sh/docs/reference/cli/)
 
 Aura may inspect repository files for diagnostics, but setup, fixes, and undo do not modify the
