@@ -157,7 +157,10 @@ describe("runCli telemetry", () => {
     expect(hostile.stderr.text).toBe(clean.stderr.text);
   });
 
-  it("records nothing when the user opted out via DO_NOT_TRACK", async () => {
+  it.each([
+    ["DO_NOT_TRACK", { DO_NOT_TRACK: "1", PATH: "/usr/bin" }],
+    ["AURA_TELEMETRY", { AURA_TELEMETRY: "off", PATH: "/usr/bin" }],
+  ])("records nothing when the user opted out via %s", async (_name, environmentVariables) => {
     const { events, sink } = capturingSink();
     const capture = createCapture(["check"]);
 
@@ -165,7 +168,7 @@ describe("runCli telemetry", () => {
       { ...distro([findingPlugin("info", [])]), telemetry: sink },
       {
         ...capture.runtime,
-        environmentVariables: { DO_NOT_TRACK: "1", PATH: "/usr/bin" },
+        environmentVariables,
         now: CLOCK,
       },
     );

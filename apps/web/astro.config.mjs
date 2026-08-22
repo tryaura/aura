@@ -72,6 +72,7 @@ export default defineConfig({
           label: "Reference",
           items: [
             { label: "CLI", slug: "docs/reference/cli" },
+            { label: "Anonymous telemetry", slug: "docs/reference/telemetry" },
             { label: "Check catalog", slug: "docs/reference/checks" },
             { label: "Check JSON and exit codes", slug: "docs/reference/check-json" },
             { label: "Desired-state manifest", slug: "docs/reference/manifest" },

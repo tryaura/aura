@@ -2,6 +2,7 @@ import type {
   HttpFailureReason,
   HttpPostRequest,
   HttpPostResult,
+  TelemetryBatchV1,
   TelemetryEvent,
   TelemetrySink,
 } from "@tryaura/aura-sdk";
@@ -86,14 +87,15 @@ export function createHttpTelemetrySink(options: HttpTelemetrySinkOptions): Tele
         if (signal.aborted) {
           break;
         }
+        const batch: TelemetryBatchV1 = {
+          events: events.slice(start, start + maxBatch),
+          kind: "aura-telemetry",
+          schemaVersion: 1,
+        };
         await deliver(
           post,
           {
-            body: JSON.stringify({
-              events: events.slice(start, start + maxBatch),
-              kind: "aura-telemetry",
-              schemaVersion: 1,
-            }),
+            body: JSON.stringify(batch),
             ...(options.headers === undefined ? {} : { headers: options.headers }),
             signal,
             timeoutMs,

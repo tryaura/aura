@@ -136,6 +136,7 @@ export type {
   SetupRunEvent,
   SetupRunOutcome,
   TelemetryAppState,
+  TelemetryBatchV1,
   TelemetryCheckCounts,
   TelemetryCheckFlags,
   TelemetryCheckState,
@@ -149,6 +150,7 @@ export type {
   UndoRunEvent,
   UndoRunOutcome,
 } from "./telemetry.js";
+export { decodeTelemetryBatchV1 } from "./telemetry-decoder.js";
 export type {
   ArchiveFileOperation,
   ArchiveFileReplacement,

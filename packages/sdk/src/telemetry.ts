@@ -213,6 +213,13 @@ export type TelemetryEvent =
   | SetupRunEvent
   | UndoRunEvent;
 
+/** The versioned payload delivered by Aura's built-in HTTP telemetry sink. */
+export interface TelemetryBatchV1 {
+  readonly events: readonly TelemetryEvent[];
+  readonly kind: "aura-telemetry";
+  readonly schemaVersion: 1;
+}
+
 /**
  * Where a distribution sends run events. Left unset on {@link CliDistro}, telemetry is a no-op.
  *

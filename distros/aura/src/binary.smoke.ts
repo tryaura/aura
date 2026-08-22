@@ -33,7 +33,7 @@ describe("compiled Aura distribution", () => {
     const version = await execFileAsync(BINARY_PATH, ["--version"], {
       cwd: seed.workspaceDir,
       encoding: "utf8",
-      env: { HOME: seed.homeDir, NO_COLOR: "1", PATH: seed.pathDir },
+      env: { AURA_TELEMETRY: "off", HOME: seed.homeDir, NO_COLOR: "1", PATH: seed.pathDir },
     });
     expect(version).toEqual({
       stderr: "",
@@ -44,7 +44,7 @@ describe("compiled Aura distribution", () => {
       const explanation = await execFileAsync(BINARY_PATH, ["check", "--explain", checkId], {
         cwd: seed.workspaceDir,
         encoding: "utf8",
-        env: { HOME: seed.homeDir, NO_COLOR: "1", PATH: seed.pathDir },
+        env: { AURA_TELEMETRY: "off", HOME: seed.homeDir, NO_COLOR: "1", PATH: seed.pathDir },
       });
       expect(explanation.stderr).toBe("");
       expect(explanation.stdout).toContain(`Aura check ${checkId}`);
@@ -53,7 +53,7 @@ describe("compiled Aura distribution", () => {
       const asJson = await execFileAsync(BINARY_PATH, ["check", "--explain", checkId, "--json"], {
         cwd: seed.workspaceDir,
         encoding: "utf8",
-        env: { HOME: seed.homeDir, NO_COLOR: "1", PATH: seed.pathDir },
+        env: { AURA_TELEMETRY: "off", HOME: seed.homeDir, NO_COLOR: "1", PATH: seed.pathDir },
       });
       expect(asJson.stderr).toBe("");
       expect(JSON.parse(asJson.stdout)).toMatchObject({

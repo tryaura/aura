@@ -51,6 +51,7 @@ describe("compiled Aura process boundary", () => {
         cwd: seed.workspaceDir,
         encoding: "utf8",
         env: {
+          AURA_TELEMETRY: "off",
           AURA_BINARY: BINARY_PATH,
           AURA_STATUS: statusFile,
           HOME: seed.homeDir,
