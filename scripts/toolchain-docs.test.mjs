@@ -67,6 +67,6 @@ describe("documented toolchain versions", () => {
     expect(install).toContain(`Node.js ${major(nodeVersion)} or newer only when`);
     expect(install).toContain("Install a specific tag");
     expect(install).toContain(`example \`${releaseTag}\``);
-    expect(install).toContain(`AURA_INSTALL_DIR=/usr/local/bin AURA_VERSION=${releaseTag}`);
+    expect(install).toContain(`AURA_INSTALL_DIR=/usr/local/bin AURA_VERSION=${releaseTag} sh`);
   });
 });

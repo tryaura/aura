@@ -14,6 +14,8 @@
     "packages/cli/type-tests/*.ts",
     "packages/sdk/type-tests/*.ts",
     "scripts/docs-content.test.mjs",
+    "scripts/install-security.test.mjs",
+    "scripts/install.test.mjs",
     "scripts/toolchain-docs.test.mjs",
     "scripts/verify-archive.test.mjs",
     "scripts/verify-workflows.test.mjs"
