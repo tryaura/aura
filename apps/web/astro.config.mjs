@@ -19,6 +19,7 @@ export default defineConfig({
    */
   redirects: {
     "/docs/guides/repository-provided-content": "/docs/guides/repository-content/",
+    "/docs/guides/internal-distribution": "/docs/guides/ship-a-distribution/",
   },
   integrations: [
     starlight({
@@ -61,7 +62,7 @@ export default defineConfig({
           label: "Extend Aura",
           items: [
             { label: "Build a distribution", slug: "docs/guides/distributions" },
-            { label: "Build an internal distribution", slug: "docs/guides/internal-distribution" },
+            { label: "Ship a distribution", slug: "docs/guides/ship-a-distribution" },
             { label: "Plugins", slug: "docs/reference/plugins" },
           ],
         },
