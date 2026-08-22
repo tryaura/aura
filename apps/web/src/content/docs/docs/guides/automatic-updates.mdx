@@ -24,7 +24,8 @@ executable owned by npm or pnpm.
 | `npx` or `pnpm dlx`               | Rerun with the desired package version           |
 
 You can also rerun the [install script](/docs/installation/#install) to replace a standalone binary
-manually.
+manually. Pass its directory explicitly with `AURA_INSTALL_DIR` when it is outside the fallback
+`~/.aura/bin` location.
 
 ## What happens during an update
 
@@ -80,11 +81,12 @@ export AURA_UPDATE=off
 
 ## Restore the previous version
 
-After a successful automatic update, the previous executable remains beside the current one. For
-the default installation directory:
+After a successful automatic update, the previous executable remains beside the current one. Find
+the active standalone executable and move its previous version into place:
 
 ```sh
-mv "$HOME/.aura/bin/aura.previous" "$HOME/.aura/bin/aura"
+aura_path=$(command -v aura)
+mv "${aura_path}.previous" "$aura_path"
 ```
 
 Aura does not perform this move automatically. Set `AURA_UPDATE=off` before the next interactive
