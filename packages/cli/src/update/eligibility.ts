@@ -53,7 +53,7 @@ export type EligibilityVerdict =
  * Every clause is a refusal, and the whole gate resolves before a single byte is requested: a run
  * that is not eligible makes no network request and touches no file. The interactive and `CI`
  * clauses are what keep a pipeline pinned to the binary it selected — a script that pinned
- * `v0.4.0` must still be running `0.4.0` an hour later.
+ * `v0.5.0` must still be running `0.5.0` an hour later.
  */
 export async function eligibleInstallation(
   request: EligibilityRequest,

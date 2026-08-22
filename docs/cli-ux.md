@@ -208,8 +208,8 @@ The updater is a guest in someone else's command. It obeys three rules:
 Exact bytes, with `<Name>` from `CliBranding.displayName`:
 
 ```text
-Updating <Name> 0.4.0 -> 0.4.1...
-Updated <Name> to 0.4.1. The new version will be used on your next run.
+Updating <Name> 0.5.0 -> 0.5.1...
+Updated <Name> to 0.5.1. The new version will be used on your next run.
 ```
 
 Between those two lines the archive download paints one repainting frame, erased before the outcome
@@ -231,8 +231,8 @@ above remain the whole message contract. The percentage stops at 99 until the tr
 | Metadata request failed          | None                                                                                                                         | Runs normally     |
 | Another updater holds the lock   | None                                                                                                                         | Runs normally     |
 | Update installed                 | The two lines above                                                                                                          | Runs, old version |
-| Download or permission failure   | `<Name> could not install the 0.4.1 update. Update manually: <url>`                                                          | Runs normally     |
-| Digest mismatch                  | `<Name> refused the 0.4.1 update: the download did not match the release's published SHA-256 digest. Nothing was installed.` | Runs normally     |
+| Download or permission failure   | `<Name> could not install the 0.5.1 update. Update manually: <url>`                                                          | Runs normally     |
+| Digest mismatch                  | `<Name> refused the 0.5.1 update: the download did not match the release's published SHA-256 digest. Nothing was installed.` | Runs normally     |
 
 A command-derived debug variable — `AURA_UPDATE_DEBUG` for the official binary — traces every gate
 and outcome to stderr as `update: <what happened>`. It is a developer affordance

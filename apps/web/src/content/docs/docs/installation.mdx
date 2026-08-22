@@ -73,10 +73,10 @@ checksum automatically.
   <summary>Install a specific version or directory</summary>
 
 The install script accepts `AURA_VERSION` and `AURA_INSTALL_DIR`. Install a specific tag, for
-example `v0.4.0`:
+example `v0.5.0`:
 
 ```sh
-AURA_INSTALL_DIR=/usr/local/bin AURA_VERSION=v0.4.0 \
+AURA_INSTALL_DIR=/usr/local/bin AURA_VERSION=v0.5.0 \
   curl -fsSL https://tryaura.sh/install | sh
 ```
 
@@ -117,8 +117,8 @@ The standalone binary keeps itself current. When you run `aura` interactively an
 exists, Aura installs it before your command runs and says so in two lines:
 
 ```text
-Updating Aura 0.4.0 -> 0.4.1...
-Updated Aura to 0.4.1. The new version will be used on your next run.
+Updating Aura 0.5.0 -> 0.5.1...
+Updated Aura to 0.5.1. The new version will be used on your next run.
 ```
 
 A percentage appears between those lines while the archive downloads, and disappears when it is
@@ -152,8 +152,8 @@ No request is made at all when:
 - `AURA_UPDATE` is `off`, `0`, `false`, or `no`; or
 - the `aura` on your `PATH` is a symlink, which means something else manages that name.
 
-That is what keeps a pinned version pinned: a script or pipeline that installed `v0.4.0` is still
-running `0.4.0` tomorrow. To opt out everywhere:
+That is what keeps a pinned version pinned: a script or pipeline that installed `v0.5.0` is still
+running `0.5.0` tomorrow. To opt out everywhere:
 
 ```sh
 export AURA_UPDATE=off
