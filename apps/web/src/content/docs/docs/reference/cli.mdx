@@ -76,6 +76,12 @@ operational failures. Findings do not change the process exit code.
 Undo exits `0` when restored or when there is nothing to undo, `1` when aborted or declined, `2`
 for conflicts, and `3` for operational failures.
 
+## Telemetry
+
+The official standalone binary sends privacy-safe command events by default. See
+[Anonymous telemetry](/docs/reference/telemetry/) for the exact fields, retention policy, and the
+`AURA_TELEMETRY=off` and `DO_NOT_TRACK=1` opt-out controls.
+
 ## Next step
 
 <LinkCard

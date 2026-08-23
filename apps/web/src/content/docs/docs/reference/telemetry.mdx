@@ -1,0 +1,80 @@
+---
+title: Anonymous telemetry
+description: What the official Aura standalone binary reports, how it is retained, and how to opt out.
+---
+
+The official Aura standalone binary sends anonymous command telemetry to help maintainers understand
+which workflows succeed, which checks need attention, and which released versions remain in use.
+Telemetry is best-effort: it is sent once as a command exits, never retried, and never changes the
+command's output or exit status.
+
+Source builds with version `0.0.0` and the Node package-manager entry point do not compose the
+official telemetry endpoint.
+
+## Opt out
+
+Set either variable in the environment that runs Aura:
+
+```sh
+export AURA_TELEMETRY=off
+```
+
+Aura also follows the shared `DO_NOT_TRACK` convention. Any non-empty value except `0` disables
+telemetry:
+
+```sh
+export DO_NOT_TRACK=1
+```
+
+The CLI checks these variables before recording an event, so an opted-out run gives the telemetry
+sink no data to send.
+
+## Collected fields
+
+Every event includes:
+
+| Field           | Meaning                                              |
+| --------------- | ---------------------------------------------------- |
+| `at`            | UTC time the event was recorded.                     |
+| `command`       | The fixed command name: `check`, `setup`, or `undo`. |
+| `distroVersion` | The released standalone binary version.              |
+| `kind`          | The fixed event variant described below.             |
+| `exitCode`      | The command's numeric exit code.                     |
+
+The event variants add only fixed vocabulary, booleans, counts, durations, and Aura-owned IDs:
+
+| Event            | Additional fields                                                                                                                   |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `check-run`      | Installed state by adapter ID; result and finding counts by check ID; totals; diagnostic count; duration; and command-option flags. |
+| `fix-run`        | Fix status by check ID, whether the run was interactive or a dry run, and the exit code.                                            |
+| `setup-run`      | Outcome, duration, applied-operation count, and offered or selected applications, instructions, MCP servers, skills, and snippets.  |
+| `undo-run`       | Outcome, restored-operation count, and skipped-backup count.                                                                        |
+| `command-failed` | The command and exit code only; no error message or diagnostic detail.                                                              |
+
+Custom MCP servers and externally sourced skills are counted rather than named. Catalog servers,
+bundled skills, adapters, checks, and snippets use identifiers owned by the official distribution.
+
+## Never collected
+
+Aura telemetry contains no persistent installation or user ID. It does not collect:
+
+- IP addresses, country or location, user-agent strings, or other request headers;
+- usernames, hostnames, environment values, or application account details;
+- filesystem paths, filenames, file contents, instruction text, diffs, or finding messages;
+- custom MCP server names or externally sourced skill names;
+- error messages or strings returned by external applications.
+
+The ingestion service uses the request IP transiently for rate limiting. Persisted Worker invocation
+logs are disabled, and the service does not write the IP or request headers to the telemetry database.
+Without an installation identifier, this data cannot measure unique or returning users.
+
+## Storage and interpretation
+
+Validated events are stored in a dedicated Cloudflare D1 database and are scheduled for deletion
+after 90 days. A database-enforced daily event ceiling bounds storage growth even if distributed
+traffic bypasses the per-address edge rate limit.
+
+The endpoint is public because a secret embedded in a downloadable binary would also be public.
+Requests are restricted to released-version syntax and the identifiers bundled into the official
+distribution, then rate limited. They still cannot be authenticated as genuine Aura runs, so
+aggregates are directional product telemetry, not an accounting, billing, or security record.
