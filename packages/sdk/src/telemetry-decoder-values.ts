@@ -10,6 +10,12 @@ import type {
   TelemetrySetupActions,
 } from "./telemetry.js";
 
+/** Distribution-owned labels: the vocabulary a sink groups by, so bounded and free of free text. */
+const TELEMETRY_LABEL = /^[a-z][a-z0-9-]{0,63}$/u;
+
+/** Entries one labelled record may carry, so a payload stays a fixed vocabulary and not a blob. */
+const MAX_LABELLED_ENTRIES = 32;
+
 const ISO_INSTANT =
   /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d\.\d{3}Z$/u;
 
@@ -74,6 +80,46 @@ export function isTelemetrySetupActions(value: unknown): value is TelemetrySetup
     isOptional(value, "mcpServers", isTelemetryMcpActions) &&
     isOptional(value, "skills", isTelemetrySkillActions) &&
     isOptional(value, "snippets", isIdentifierArray)
+  );
+}
+
+/** A distribution-owned label such as an event name, outcome, counter key, or flag key. */
+export function isTelemetryLabel(value: unknown): value is string {
+  return typeof value === "string" && TELEMETRY_LABEL.test(value);
+}
+
+/** A bounded record of {@link isTelemetryLabel} keys whose values all satisfy `isValue`. */
+export function isLabelledRecord(
+  value: unknown,
+  isValue: (input: unknown) => boolean,
+): value is Readonly<Record<string, unknown>> {
+  if (!isRecord(value)) {
+    return false;
+  }
+  const entries = Object.entries(value);
+  return (
+    entries.length <= MAX_LABELLED_ENTRIES &&
+    entries.every(([key, entry]) => isTelemetryLabel(key) && isValue(entry))
+  );
+}
+
+export function isBoolean(value: unknown): value is boolean {
+  return typeof value === "boolean";
+}
+
+/**
+ * The envelope of a distribution-registered command's event.
+ *
+ * `command` is the registered word rather than one of the built-in three, validated as a label so
+ * an arbitrary string can never reach a sink through the one field the CLI stamps for the command.
+ */
+export function isDistroEnvelope(
+  value: Readonly<Record<string, unknown>>,
+): value is Readonly<Record<string, unknown>> & Omit<TelemetryEnvelope, "command"> {
+  return (
+    isIsoInstant(value["at"]) &&
+    isTelemetryLabel(value["command"]) &&
+    isOptional(value, "distroVersion", isIdentifier)
   );
 }
 

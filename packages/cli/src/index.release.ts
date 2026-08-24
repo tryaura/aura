@@ -1,10 +1,19 @@
 import type { TelemetrySink } from "@tryaura/aura-sdk";
 
 import type { HttpTelemetrySinkOptions } from "./http-telemetry-sink.js";
-import type { CliDistro, CliExitCode, CliRuntime } from "./types.js";
+import type { CliCommandInvocation, CliDistro, CliExitCode, CliRuntime } from "./types.js";
 import type { CliUpdates } from "./update/types.js";
 
 export declare function runCli(distro: CliDistro, runtime?: CliRuntime): Promise<CliExitCode>;
+export declare function arrayFlag(
+  invocation: CliCommandInvocation,
+  flag: string,
+): readonly string[];
+export declare function booleanFlag(invocation: CliCommandInvocation, flag: string): boolean;
+export declare function stringFlag(
+  invocation: CliCommandInvocation,
+  flag: string,
+): string | undefined;
 export declare function createHttpTelemetrySink(options: HttpTelemetrySinkOptions): TelemetrySink;
 export declare function runStandaloneCli(
   distro: CliDistro,
@@ -37,10 +46,12 @@ export type {
 export type {
   CliBranding,
   CliCommandDefinition,
+  CliCommandEvent,
   CliCommandExample,
   CliCommandFlag,
   CliCommandFlagValue,
   CliCommandInvocation,
+  CliCommandTelemetry,
   CliDistro,
   CliExitCode,
   CliRegistryOptions,

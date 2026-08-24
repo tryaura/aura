@@ -24,6 +24,10 @@ This release accepts `apiVersion: 2` only.
 | Offer an MCP server                           | `mcpCatalog`           | Plugin-namespaced catalog ID    |
 | Offer data-only team policy                   | `presets`              | Plugin-namespaced preset ID     |
 
+A plugin cannot contribute a top-level command. A command word is global help-screen real estate
+that only the build-time distribution list can arbitrate; see
+[Distribution commands](/docs/reference/distribution-commands/).
+
 ## Minimal plugin
 
 ```ts title="src/plugin.ts"

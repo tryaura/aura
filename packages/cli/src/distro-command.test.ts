@@ -75,9 +75,6 @@ describe("distribution commands", () => {
     expect(invocation?.positionals).toEqual(["remote"]);
     expect(invocation?.branding).toBe(BRANDING);
     expect(invocation?.colorDepth).toBe(0);
-    expect(invocation?.cwd).toBe(capture.runtime.cwd);
-    expect(invocation?.env["PATH"]).toBe("/usr/bin");
-    expect(invocation?.homeDir).toBe("/fixture/home");
   });
 
   it("leaves undeclared flags absent and reports declared defaults", async () => {
@@ -171,6 +168,19 @@ describe("distribution commands", () => {
     expect(capture.stderr.text).toContain("Acme Doctor: remote unreachable");
   });
 
+  it("neutralizes escape sequences in a thrown error before writing it", async () => {
+    const capture = createCapture(["sync"]);
+
+    const exitCode = await runCli(
+      commandDistro([syncCommand(() => Promise.reject(new Error("remote\u001b[2J unreachable")))]),
+      capture.runtime,
+    );
+
+    expect(exitCode).toBe(3);
+    expect(capture.stderr.text).toContain("remote [2J unreachable");
+    expect(capture.stderr.text).not.toContain("\u001b");
+  });
+
   it("fails the run at startup when a definition is invalid", async () => {
     const capture = createCapture(["check"]);
 
@@ -220,6 +230,14 @@ describe("distroCommandProblems", () => {
           summary: "Flags",
           word: "flags",
         },
+        {
+          examples: [{ args: "", text: "Empty" }],
+          execute,
+          flags: [{ description: " ", flag: "--quiet", kind: "boolean" }],
+          helpFooters: ["line\nbreak"],
+          summary: "\n",
+          word: "blank",
+        },
       ]),
     ).toEqual([
       'Command "check" claims a reserved command word.',
@@ -228,6 +246,10 @@ describe("distroCommandProblems", () => {
       'Command "flags" flag "-f" must be a lowercase kebab-case long flag such as --tag.',
       'Command "flags" flag "--help" claims a reserved flag.',
       'Command "flags" flag "--tag" is declared more than once.',
+      'Command "blank" summary must be one non-empty line of text.',
+      'Command "blank" flag "--quiet" description must be one non-empty line of text.',
+      'Command "blank" example 1 must carry one non-empty line of text for both args and text.',
+      'Command "blank" help footer 1 must be one non-empty line of text.',
     ]);
   });
 });

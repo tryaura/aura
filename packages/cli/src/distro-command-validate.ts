@@ -62,8 +62,37 @@ export function distroCommandProblems(commands: readonly CliCommandDefinition[])
     } else {
       claimedWords.add(command.word);
     }
+    if (!isRenderableLine(command.summary)) {
+      problems.push(`${label} summary must be one non-empty line of text.`);
+    }
     problems.push(...flagProblems(command, label));
+    problems.push(...textProblems(command, label));
   }
+  return problems;
+}
+
+/** Whether help-screen text renders as one meaningful row: non-empty and free of line breaks. */
+function isRenderableLine(value: string): boolean {
+  return value.trim().length > 0 && !/[\n\r]/u.test(value);
+}
+
+/** Problems in the definition's remaining rendered text: examples and footers. */
+function textProblems(command: CliCommandDefinition, label: string): string[] {
+  const problems: string[] = [];
+  (command.examples ?? []).forEach((example, index) => {
+    if (!isRenderableLine(example.args) || !isRenderableLine(example.text)) {
+      problems.push(
+        `${label} example ${String(index + 1)} must carry one non-empty line of text for both args and text.`,
+      );
+    }
+  });
+  (command.helpFooters ?? []).forEach((footer, index) => {
+    if (!isRenderableLine(footer)) {
+      problems.push(
+        `${label} help footer ${String(index + 1)} must be one non-empty line of text.`,
+      );
+    }
+  });
   return problems;
 }
 
@@ -81,6 +110,9 @@ function flagProblems(command: CliCommandDefinition, label: string): string[] {
       problems.push(`${label} flag "${flag.flag}" is declared more than once.`);
     } else {
       claimedFlags.add(flag.flag);
+    }
+    if (!isRenderableLine(flag.description)) {
+      problems.push(`${label} flag "${flag.flag}" description must be one non-empty line of text.`);
     }
   }
   return problems;

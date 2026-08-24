@@ -80,6 +80,18 @@ from so the screens can never drift from what parses:
 - A misspelled word still gets the redirect screen; a bad flag on a registered command keeps
   clipanion's message, exactly as for the built-ins.
 
+A registered command runs against the same injected `Environment` the built-ins and every plugin
+use — `cwd`, `homeDir`, `now()`, `platform`, `pathEntries`, `readVariable()`, `exec()`, `httpGet()`
+— built from the process boundary alone, so a command reads nothing from `process` itself and
+behaves the same under the testkit and any embedder. `--home` and `--path` belong to the built-in
+commands and stay off a help screen that would not honour them; a command that needs a different
+root declares its own flag. It also gets a telemetry channel scoped to its own word: the
+CLI stamps the word, event kind, timestamp, and distribution version, so a command can neither
+send an unstamped event nor attribute one to a command it does not own, and the user's
+`DO_NOT_TRACK` or `AURA_TELEMETRY=off` still wins. A command that throws is recorded as
+`command-failed` with no error text, mirroring the built-ins; that label is reserved for the
+crash record, so an event a command records under it itself is dropped.
+
 The built-in words (`check`, `setup`, `undo`) and the framework's own (`help`, `version`) are
 reserved, `--help` and `--no-color` cannot be declared as flags, and an invalid or colliding
 definition fails the run at startup as an operational failure (exit code 3) rather than shadowing

@@ -3,6 +3,7 @@ import type { Readable, Writable } from "node:stream";
 import type {
   AuraConfigurationLayer,
   AuraPlugin,
+  DistroCommandEvent,
   Environment,
   TelemetrySink,
 } from "@tryaura/aura-sdk";
@@ -54,6 +55,27 @@ export interface CliCommandExample {
 export type CliCommandFlagValue = boolean | string | readonly string[] | undefined;
 
 /**
+ * One telemetry event a distribution command records, before the CLI stamps the envelope.
+ *
+ * The command word, event kind, timestamp, and distribution version are the CLI's to set, so a
+ * command can neither send an event without them nor attribute one to a command it does not own.
+ */
+export type CliCommandEvent = Omit<DistroCommandEvent, "at" | "command" | "distroVersion" | "kind">;
+
+/** The telemetry channel handed to a distribution command. */
+export interface CliCommandTelemetry {
+  /**
+   * Buffers one event for the distribution's sink.
+   *
+   * Never throws and never writes to a stream, so a sink can no more fail a distribution command
+   * than it can a built-in one. A no-op when the distribution composed no sink, or when the user
+   * opted out with `DO_NOT_TRACK` or `AURA_TELEMETRY=off`. An event under the reserved
+   * `command-failed` label is dropped: only the CLI's own crash record carries it.
+   */
+  readonly record: (event: CliCommandEvent) => void;
+}
+
+/**
  * Everything one distribution-command invocation may read.
  *
  * Every ambient value is injected, mirroring {@link CliRuntime}: a command that reads only from its
@@ -63,21 +85,30 @@ export interface CliCommandInvocation {
   readonly branding: CliBranding;
   /** Supported color depth; 0 means the run must not emit escape sequences. */
   readonly colorDepth: number;
-  /** Directory the command was invoked from. */
-  readonly cwd: string;
-  /** Environment variables captured at the process boundary. */
-  readonly env: Readonly<Record<string, string | undefined>>;
-  /** Parsed flag values keyed by the flag as declared, such as `--tag`. */
+  /**
+   * The run's injected ambient state: `cwd`, `homeDir`, `now()`, `platform`, `pathEntries`,
+   * `readVariable()`, `exec()`, and `httpGet()`.
+   *
+   * The same {@link Environment} the built-in commands and every plugin run against, captured once
+   * at the process boundary. A command that reads only from here never touches `process` itself,
+   * so it stays reproducible under the testkit and under any embedder that fills in
+   * {@link CliRuntime}. Subprocesses and network access carry the kernel's bounds, not the
+   * command's: see the SDK's `ExecRequest` and `HttpGetRequest`.
+   */
+  readonly environment: Environment;
+  /**
+   * Parsed flag values keyed by the flag as declared, such as `--tag`. The `booleanFlag`,
+   * `stringFlag`, and `arrayFlag` helpers narrow a value to its declared kind and throw on a flag
+   * the definition never declared.
+   */
   readonly flags: Readonly<Record<string, CliCommandFlagValue>>;
-  /** Home directory captured at the process boundary. */
-  readonly homeDir: string;
-  /** The run's clock. */
-  readonly now: () => Date;
   /** Positional arguments in the order given. */
   readonly positionals: readonly string[];
   readonly stderr: Writable;
   readonly stdin: Readable;
   readonly stdout: Writable;
+  /** Records run events against this command's word. */
+  readonly telemetry: CliCommandTelemetry;
 }
 
 /**
@@ -99,7 +130,7 @@ export interface CliCommandDefinition {
   readonly flags?: readonly CliCommandFlag[] | undefined;
   /** Footer lines for the command's help screen, such as an exit-code legend. */
   readonly helpFooters?: readonly string[] | undefined;
-  /** Row text on the root and unknown-command screens. No trailing period. */
+  /** Row text on the root and unknown-command screens. One non-empty line, no trailing period. */
   readonly summary: string;
   /**
    * Top-level command word, such as `sync`. Lowercase kebab-case. The built-in words (`check`,

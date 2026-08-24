@@ -165,7 +165,7 @@ export async function persistEvents(
         event.kind,
         event.command,
         event.distroVersion ?? null,
-        event.exitCode,
+        eventExitCode(event),
         eventDuration(event),
         JSON.stringify(event),
       ),
@@ -178,11 +178,23 @@ function eventDuration(event: TelemetryEvent): number | null {
     case "check-run":
     case "setup-run":
       return event.durationMs;
+    case "distro-command":
+      return event.durationMs ?? null;
     case "command-failed":
     case "fix-run":
     case "undo-run":
       return null;
   }
+}
+
+/**
+ * The exit code the row records.
+ *
+ * Every official event carries one. `distro-command` does not, and the policy already rejects the
+ * kind outright, so the fallback exists to keep the mapping total rather than to be reached.
+ */
+function eventExitCode(event: TelemetryEvent): number {
+  return event.kind === "distro-command" ? (event.exitCode ?? 0) : event.exitCode;
 }
 
 function isAllowedHost(hostname: string): boolean {
