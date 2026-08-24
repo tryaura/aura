@@ -125,6 +125,9 @@ describe("INS-007", () => {
 
     expect(findings[0]?.metadata).toMatchObject({ approxTokens: 8_001, totalBytes: 32_001 });
     expect(metadataFiles(findings[0]?.metadata)).toHaveLength(2);
+    expect(findings[0]?.details).toContain(
+      "Loaded files: /home/dev/.codex/AGENTS.md (cat -- '/home/dev/.codex/AGENTS.md'); /workspace/AGENTS.md (cat -- '/workspace/AGENTS.md')",
+    );
   });
 
   it("lists Cursor conditional rules without adding them to the effective total", () => {
