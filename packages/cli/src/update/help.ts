@@ -1,4 +1,4 @@
-import { renderHelpScreen } from "../help.js";
+import { NO_COLOR_ROW, renderHelpScreen } from "../help-layout.js";
 import type { CliBranding } from "../types.js";
 
 export function renderUpdateHelp(branding: CliBranding): string {
@@ -16,7 +16,7 @@ export function renderUpdateHelp(branding: CliBranding): string {
         title: "Everyday use",
       },
       {
-        rows: [{ term: "--no-color", text: "Disable terminal colors" }],
+        rows: [NO_COLOR_ROW],
         title: "Advanced",
       },
     ],

@@ -36,6 +36,11 @@ export type {
 } from "./report-types.js";
 export type {
   CliBranding,
+  CliCommandDefinition,
+  CliCommandExample,
+  CliCommandFlag,
+  CliCommandFlagValue,
+  CliCommandInvocation,
   CliDistro,
   CliExitCode,
   CliRegistryOptions,
