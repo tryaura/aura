@@ -1,8 +1,8 @@
 import type { ShimResponse, TestSeed } from "../types.js";
 import { createSeedBuilder } from "../seed.boundary.js";
 
-/** Verified versions plus the first version outside the adapter's supported range. */
-export type CodexFixtureVersion = "0.146.0" | "0.147.0" | "0.148.0";
+/** The minimum supported Codex version and newer releases. */
+export type CodexFixtureVersion = "0.145.0" | "0.146.0" | "0.147.0" | "0.148.0" | "0.149.0";
 
 /**
  * Which project instruction files the workspace ships.

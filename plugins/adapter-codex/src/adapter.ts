@@ -77,10 +77,7 @@ export const codexAdapter = defineAdapter({
     entryPath: "~/.codex/AGENTS.md",
     kind: "symlink",
   },
-  // Codex's configuration format churns from minor to minor, so support is pinned to the window
-  // this adapter's parsing was verified against and widened only after re-verification. Cursor's
-  // adapter takes the opposite bet: its format has been stable, so it declares a wide range.
-  supportedRange: ">=0.146.0 <0.148.0",
+  supportedRange: ">=0.146.0",
 });
 
 /** What an absent file contributes, so `parse` reads the same whether or not one was found. */

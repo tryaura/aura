@@ -14,9 +14,11 @@ import {
 
 describe("Codex versioned fixtures", () => {
   it.each([
+    ["0.145.0", "unsupported"],
     ["0.146.0", "supported"],
     ["0.147.0", "supported"],
-    ["0.148.0", "unsupported"],
+    ["0.148.0", "supported"],
+    ["0.149.0", "supported"],
   ] satisfies readonly (readonly [CodexFixtureVersion, "supported" | "unsupported"])[])(
     "feeds Codex %s into the workspace model as %s",
     async (version, support) => {
@@ -52,7 +54,7 @@ describe("Codex versioned fixtures", () => {
       });
       expect(scan.model.apps[0]?.support).toEqual({
         status: support,
-        supportedRange: ">=0.146.0 <0.148.0",
+        supportedRange: ">=0.146.0",
         version,
       });
       expect(
