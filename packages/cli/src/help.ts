@@ -20,7 +20,7 @@ interface HelpSection {
   readonly title: string;
 }
 
-export function renderRootHelp(branding: CliBranding): string {
+export function renderRootHelp(branding: CliBranding, canUpdate = false): string {
   const bin = branding.command;
   return renderHelpScreen(
     headline(branding),
@@ -34,6 +34,9 @@ export function renderRootHelp(branding: CliBranding): string {
           { term: `${bin} check`, text: "Inspect the current AI agent setup" },
           { term: `${bin} check --fix`, text: "Preview fixes and apply them after confirming" },
           { term: `${bin} undo`, text: "Restore the most recent Aura backup" },
+          ...(canUpdate
+            ? [{ term: `${bin} update`, text: "Check now, install an update, and exit" }]
+            : []),
         ],
         title: "Everyday use",
       },
@@ -202,7 +205,11 @@ export function renderUndoHelp(branding: CliBranding): string {
 }
 
 /** The unknown-command screen redirects to what exists instead of dumping a parser trace. */
-export function renderUnknownCommand(branding: CliBranding, input: string): string {
+export function renderUnknownCommand(
+  branding: CliBranding,
+  input: string,
+  canUpdate = false,
+): string {
   const bin = branding.command;
   // The input is echoed argv, which a wrapper script can fill with untrusted text; neutralize it
   // like any other text Aura did not write itself.
@@ -214,6 +221,9 @@ export function renderUnknownCommand(branding: CliBranding, input: string): stri
           { term: `${bin} setup`, text: "Set up this machine interactively and converge it" },
           { term: `${bin} check`, text: "Inspect the current AI agent setup" },
           { term: `${bin} undo`, text: "Restore the most recent Aura backup" },
+          ...(canUpdate
+            ? [{ term: `${bin} update`, text: "Check now, install an update, and exit" }]
+            : []),
         ],
         title: "Commands",
       },
@@ -222,14 +232,12 @@ export function renderUnknownCommand(branding: CliBranding, input: string): stri
   );
 }
 
-/** The one flag every screen shares, because it is consumed before any command parses. */
 const NO_COLOR_ROW: HelpRow = { term: "--no-color", text: "Disable terminal colors" };
 
 /**
  * The root screen's one paragraph: what Aura is for, in the words of someone who has not read the
- * docs yet. It sits above "Get started" because a first-time reader needs the problem before the
- * command. Hand-wrapped at 80 columns — the renderer aligns columns, it never reflows prose — and
- * carried only by the root screen, since every other screen is reached by someone who already knows.
+ * docs yet. It sits above "Get started" and is hand-wrapped because the renderer aligns columns
+ * but never reflows prose.
  */
 const ROOT_INTRO: readonly string[] = [
   "Every AI coding agent keeps its own rules and its own tool settings, in its own",
@@ -266,7 +274,7 @@ function headline(branding: CliBranding): string {
 }
 
 /** Terms align to one shared column so the eye scans a single list, not per-section islands. */
-function renderHelpScreen(
+export function renderHelpScreen(
   header: string,
   sections: readonly HelpSection[],
   footers: readonly string[],

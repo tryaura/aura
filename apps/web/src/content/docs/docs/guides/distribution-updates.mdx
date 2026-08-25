@@ -188,7 +188,7 @@ signed-manifest provider when the GitHub provider cannot prove immutability and 
 
 ## Runtime behavior and diagnostics
 
-The distribution inherits the same user-visible contract as Aura: checks happen at most daily and
+The distribution inherits the same user-visible contract as Aura: checks happen at most every two hours and
 only on interactive standalone runs; the current command continues on the old in-memory version;
 failures do not change its exit code; and a successful install preserves `<command>.previous`.
 

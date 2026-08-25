@@ -195,7 +195,13 @@ Standalone distributions may install a newer release before the requested comman
 lines and the outcome mapping live in `packages/cli/src/update/run.ts`, pinned by
 `startup-update.test.ts` and `install.integration.test.ts`.
 
-The updater is a guest in someone else's command. It obeys three rules:
+An argument-free standalone run participates in the same automatic check before rendering root
+help. `aura update` is the explicit path: it ignores cached update outcomes, installs an available
+release, reports its outcome, and exits immediately instead of dispatching another command. It
+returns `0` when current or installed, `1` when another updater owns the installation, `2` when the
+environment is ineligible, and `3` on a check or installation failure.
+
+During an automatic check, the updater is a guest in someone else's command. It obeys three rules:
 
 1. **It never changes the verdict.** No outcome — including a refused download — alters the exit
    code or the stdout of the command the user asked for. `--json` stays one parseable document.

@@ -5,16 +5,23 @@ description: Aura commands, options, selection rules, and process exit codes.
 
 import { LinkCard } from "@astrojs/starlight/components";
 
-Aura has three commands: `setup`, `check`, and `undo`. Run `aura <command> --help` for the same
-action-oriented reference in the terminal.
+Aura has three setup-management commands: `setup`, `check`, and `undo`. The standalone binary also
+provides `update`. Run `aura <command> --help` for the same action-oriented reference in the
+terminal.
 
 ## Global
 
-| Command or option | Purpose                                                      |
-| ----------------- | ------------------------------------------------------------ |
-| `aura --help`     | Show the command overview.                                   |
-| `aura --version`  | Print the release version.                                   |
-| `--no-color`      | Disable terminal colors; accepted before or after a command. |
+| Command or option | Purpose                                                         |
+| ----------------- | --------------------------------------------------------------- |
+| `aura --help`     | Show the command overview.                                      |
+| `aura --version`  | Print the release version.                                      |
+| `aura update`     | Bypass the update cache, install an available update, and exit. |
+| `--no-color`      | Disable terminal colors; accepted before or after a command.    |
+
+`aura update` exits `0` when Aura is current or installed, `1` when another update is in progress,
+`2` when the current installation or environment cannot self-update, and `3` when the check or
+installation fails. Automatic startup checks remain silent and never change another command's exit
+code.
 
 ## `aura setup`
 
