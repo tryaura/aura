@@ -18,6 +18,7 @@ import type { CliCommandDefinition } from "./types.js";
 const RESERVED_WORDS: ReadonlySet<string> = new Set([
   "check",
   "help",
+  "sessions",
   "setup",
   "undo",
   "update",

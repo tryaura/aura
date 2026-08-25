@@ -50,6 +50,10 @@ layouts pinned in `help.test.ts` and `distro-command.test.ts`.
 - `aura check --help` — Everyday use, Narrow it down, Reporting, Configuration, Fixing behavior,
   Scripting, Advanced, then the exit-code footer. "Narrow it down" scopes what runs; "Reporting"
   (`--verbose`, `--detail`) controls how much the run says about it.
+- `aura sessions --help` — Everyday use, Scripting, Advanced, then a footer stating the local-only
+  privacy contract and the exit codes. Advanced carries `--home` and `--no-color` but not `--path`:
+  the command reads transcripts, never executables, so the shared search-path override would be a
+  parse error.
 - `aura setup --help` — Everyday use, Options (including every registered `--add` kind),
   Advanced, then footers pointing at `check` and documenting setup exit codes.
 - `aura undo --help` — Everyday use, Options, Advanced, then the restore exit-code footer.
@@ -92,7 +96,7 @@ send an unstamped event nor attribute one to a command it does not own, and the 
 `command-failed` with no error text, mirroring the built-ins; that label is reserved for the
 crash record, so an event a command records under it itself is dropped.
 
-The built-in words (`check`, `setup`, `undo`) and the framework's own (`help`, `version`) are
+The built-in words (`check`, `sessions`, `setup`, `undo`) and the framework's own (`help`, `version`) are
 reserved, `--help` and `--no-color` cannot be declared as flags, and an invalid or colliding
 definition fails the run at startup as an operational failure (exit code 3) rather than shadowing
 a built-in at parse time.
@@ -218,12 +222,81 @@ whole-file credential rewrite covers every credential in that file — and the w
 distinct plan once. The fix report then carries one entry per plan, and the re-scan after applying
 is what says which findings remain.
 
+## Sessions report
+
+`aura sessions` reads the transcripts Codex keeps under `~/.codex/sessions` and summarizes, per
+project, how much agent time they held and where tool calls failed. A project collapses every
+working directory that resolves to the same repository: a directory that still exists is named
+after its git `origin` remote (following a linked worktree's `.git` file to the main checkout),
+a deleted one falls back to the `<...>/workspaces/<project>/<leaf>` shape parallel-worktree tools
+use, and anything else stays its own path. Only `.git` markers and git config files are ever
+opened — nothing of the project's own contents. A heading notes the collapse (`family_planner ·
+12 directories`) whenever a row absorbed more than one. Rendered by
+`packages/cli/src/sessions/render.ts` in the help-screen geometry, and ordered by what deserves
+action, not by inventory: a one-line header naming the source and the window, an `Overall` block,
+then `Needs attention` — only the projects showing trouble, worst first, one reason per row —
+then `Projects by agent time`, capped at five. `Overall` is one totals line (which carries token
+volume, `61.2M tokens in, 987k out`, when the transcripts reported any) plus horizontal gauges —
+time in tools as a share of wall time, tool problems as a share of all calls, cache hit as
+the share of input tokens served from the provider's cache (shown only when token data exists;
+the one gauge where high is healthy), and (only when any happened) compactions per session. Each
+gauge carries a letter grade (`A`–`D`, `F`), and the section title carries the worst of them:
+health rolls up pessimistically. When any session reported subscription rate limits, one note
+line states the window's peak (`Quota peaked at 7% of the pro plan's 7-day window`) — only the
+peak, never per-session deltas, because the counter is account-global and concurrent sessions
+would double-count. There is deliberately no dollar figure: transcripts carry no prices, and on
+a subscription plan an API-equivalent estimate would read as real money. Every graded report
+ends with the one-line legend `Grades: A great · B good · C fair · D poor · F failing`, so the
+scale never needs a manual. The bands
+are deliberately coarse so ordinary variation between windows does not flip a grade — in tools:
+A under 10%, B under 20%, C under 35%, D under 50%; tool problems: A under 2%, B under 5%, C under 10%,
+D under 20%; compactions per session: A under 0.1, B under 0.3, C under 0.6, D under 1; cache
+hit, graded on the miss share with the same bands as in tools, so A means at least 90% reused. The projects section is a bar chart: one line
+per project, the bar scaled to the busiest project's wall time, followed by the numbers behind it
+(wall, sessions, tool-problem share and check-failure count when nonzero, cached-input share when token data exists, directory spread when more than one). Bars are drawn
+with `█` fill, `▏`–`▉` partial cells, and a `░` track, so they disambiguate without color; a
+nonzero value always shows at least a sliver of ink, and labels longer than the column truncate
+with `…`. Non-success outcomes are classified conservatively: missing executables and MCP errors
+are operational failures; recognized test-runner summaries are check failures; pending GitHub
+checks and simple search no-matches are expected statuses; everything else is unknown. Compound
+shell input is named `shell batch`, never attributed to its first command. Only operational and
+unknown outcomes affect the tool-problem grade; check failures receive their own count, while
+expected statuses do not make a project unhealthy. An exit-127 pattern gets its own remediation
+row. The other reasons are compaction pressure and truncated transcripts. Attention thresholds
+are materiality bounds, not zero: a problem count below three that is also under five percent of
+the project's calls is noise, and a single compaction is routine. The attention list itself is
+capped at eight entries. Neither cap
+is silent: each counts what it withheld and points at `--verbose`, which lists every flagged
+project and replaces the chart with every project in the window. A window with nothing to
+flag simply has no `Needs attention` section. Recorded paths shorten under the effective home
+directory to `~`; every path and command name is neutralized before it reaches the terminal, and
+only safe command labels appear, never full command lines.
+
+The privacy contract is the footer's one promise: the analysis is entirely local, and neither
+`--json` nor the human report carries transcript content. `--json` emits the one machine-readable
+document — window, per-project aggregates, and per-session metrics — on stdout under the same
+seam rules as `check --json`. An empty window is a normal report (exit 0), not a failure, and a
+transcript larger than the read cap is counted as truncated rather than sinking the run.
+
+`--brief` (or `--brief=<path>`) additionally writes an agent handoff brief (default `aura-session-brief.md` in
+the working directory) and prints the one `codex exec` command that hands it to a coding agent.
+The brief is a self-contained markdown prompt built on the same premise that agent context is
+scarce: every aggregate is precomputed, and raw evidence stays on disk. Each outcome group carries
+up to two paired call/result pointers selected across sessions, plus the recorded working directory,
+git commit/branch, initial-prompt size, and the exact prompt lines needed for historical instruction
+claims. It states evidence coverage, separates operational, check, expected, and unknown outcomes,
+uses the same materiality and ordering as the human report, and includes a session-level compaction
+comparison without claiming causality. It details at most three troubled projects and ends with
+evidence-bounded investigation and output rules. `--brief`
+contradicts `--json` (the brief is the handoff document) and composes with `--days`.
+
 ## Exit codes
 
 For `check`: `0` completed check, regardless of finding severity · `2` usage/state conflicts or no
 checks · `3` operational failures. Finding health remains visible through the report status and
-severity counts. Setup and undo also use `1` for incomplete user-driven flows. `runCli` normalizes
-any other code to 2.
+severity counts. Setup and undo also use `1` for incomplete user-driven flows. `sessions` uses the
+check triple: `0` report produced, even when the window is empty · `2` invalid usage · `3`
+operational failures. `runCli` normalizes any other code to 2.
 
 ## Automatic updates
 
@@ -293,19 +366,22 @@ selected, which is why a captured `--json` run is byte-identical whether or not 
 
 ## Glyph vocabulary
 
-| Glyph | Meaning                                          |
-| ----- | ------------------------------------------------ |
-| `▶`   | Active tab/step                                  |
-| `✔`   | Completed step                                   |
-| `☐`   | Pending step, or an unchecked multiselect option |
-| `☑`   | A checked multiselect option                     |
-| `◪`   | A pack row with some, not all, members checked   |
-| `●`   | The currently selected option of a select        |
-| `○`   | An unselected select option                      |
-| `❯`   | Cursor row inside a question body                |
-| `│`   | Tab separator                                    |
-| `└`   | Sub-row connector under the active step          |
-| `·`   | Separator inside hint lines and footers          |
+| Glyph   | Meaning                                          |
+| ------- | ------------------------------------------------ |
+| `▶`     | Active tab/step                                  |
+| `✔`     | Completed step                                   |
+| `☐`     | Pending step, or an unchecked multiselect option |
+| `☑`     | A checked multiselect option                     |
+| `◪`     | A pack row with some, not all, members checked   |
+| `●`     | The currently selected option of a select        |
+| `○`     | An unselected select option                      |
+| `❯`     | Cursor row inside a question body                |
+| `│`     | Tab separator                                    |
+| `└`     | Sub-row connector under the active step          |
+| `·`     | Separator inside hint lines and footers          |
+| `█`     | Filled cell of a report bar                      |
+| `▏`–`▉` | Partial final cell of a report bar               |
+| `░`     | Empty track of a report bar                      |
 
 Plain ASCII/Unicode only, no emoji. The one animation is the loading spinner, shared by the setup
 wizard's loading frames and the check scan's progress rows; it never appears in report output, and

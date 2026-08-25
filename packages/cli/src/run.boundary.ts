@@ -17,6 +17,7 @@ import { createDistroCommandClass } from "./distro-command-class.js";
 import { formatDistroCommandProblems } from "./distro-command-validate.js";
 import { renderUnknownCommand } from "./help.js";
 import { resolveRuntime, type ResolvedRuntime } from "./resolve-runtime.boundary.js";
+import { SessionsCommand } from "./sessions/command.js";
 import { SetupCommand } from "./setup/command.js";
 import { createTelemetryRecorder, telemetryEnabled, type TelemetryRecorder } from "./telemetry.js";
 import { UndoCommand } from "./undo/command.js";
@@ -198,7 +199,7 @@ function executionContext(
   command: Command<AuraCliContext>,
   context: AuraCliContext,
 ): AuraCliContext {
-  if (command instanceof CheckCommand && command.json) {
+  if ((command instanceof CheckCommand || command instanceof SessionsCommand) && command.json) {
     return { ...context, stdout: context.stderr };
   }
   return context;
@@ -227,6 +228,7 @@ function createCli(
 
   cli.register(DefaultCommand);
   cli.register(CheckCommand);
+  cli.register(SessionsCommand);
   cli.register(SetupCommand);
   cli.register(UndoCommand);
   if (canUpdate) {
