@@ -273,13 +273,18 @@ directory to `~`; every path and command name is neutralized before it reaches t
 only safe command labels appear, never full command lines.
 
 The privacy contract is the footer's one promise: the analysis is entirely local, and neither
-`--json` nor the human report carries transcript content. `--json` emits the one machine-readable
-document — window, per-project aggregates, and per-session metrics — on stdout under the same
-seam rules as `check --json`. An empty window is a normal report (exit 0), not a failure, and a
-transcript larger than the read cap is counted as truncated rather than sinking the run.
+`--json` nor the human report carries transcript content. The human report exposes only aggregate
+metrics and neutralized command labels; `--json` additionally carries local evidence metadata such
+as transcript paths, working directories, branches, and session identifiers. It emits the one
+machine-readable document — window, per-project aggregates, and per-session metrics — on stdout
+under the same seam rules as `check --json`. An empty window is a normal report (exit 0), not a
+failure. Transcripts are parsed as bounded streams with at most four reads in flight; a transcript
+larger than the read cap is counted as truncated rather than sinking the run.
 
-`--brief` (or `--brief=<path>`) additionally writes an agent handoff brief (default `aura-session-brief.md` in
-the working directory) and prints the one `codex exec` command that hands it to a coding agent.
+`--brief` (or `--brief=<path>`) additionally writes an owner-readable agent handoff brief (default
+`aura-session-brief.md` in the working directory) and prints the one shell-quoted `codex exec`
+command that hands it to a coding agent. It refuses to replace an existing target unless the user
+also passes `--force`.
 The brief is a self-contained markdown prompt built on the same premise that agent context is
 scarce: every aggregate is precomputed, and raw evidence stays on disk. Each outcome group carries
 up to two paired call/result pointers selected across sessions, plus the recorded working directory,
@@ -287,7 +292,9 @@ git commit/branch, initial-prompt size, and the exact prompt lines needed for hi
 claims. It states evidence coverage, separates operational, check, expected, and unknown outcomes,
 uses the same materiality and ordering as the human report, and includes a session-level compaction
 comparison without claiming causality. It details at most three troubled projects and ends with
-evidence-bounded investigation and output rules. `--brief`
+evidence-bounded investigation and output rules. Every transcript-derived string is encoded as a
+single JSON literal and the prompt treats those literals as untrusted data, so a recorded path,
+branch, or tool name cannot add Markdown instructions. `--brief`
 contradicts `--json` (the brief is the handoff document) and composes with `--days`.
 
 ## Exit codes

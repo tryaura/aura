@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createFileReader } from "../workspace/reader.js";
+import { createFileReader, type FileReader } from "../workspace/reader.js";
 import { analyzeCodexSessions } from "./codex-analyze.js";
 
 const temporaryDirectories: string[] = [];
@@ -246,5 +246,49 @@ describe("analyzeCodexSessions", () => {
     expect(analysis.scannedFiles).toBe(0);
     expect(analysis.sessions).toEqual([]);
     expect(analysis.repos).toEqual([]);
+  });
+
+  it("bounds concurrent transcript reads", async () => {
+    const home = await createHome();
+    await Promise.all(
+      Array.from({ length: 8 }, (unused, index) =>
+        writeRollout(
+          home,
+          ["2026", "08", "21"],
+          `${index}.jsonl`,
+          rollout(`s${index}`, `/repo/${index}`, "2026-08-21"),
+        ),
+      ),
+    );
+    const base = createFileReader();
+    let active = 0;
+    let peak = 0;
+    const reader: FileReader = {
+      ...base,
+      read: async (path, options) => {
+        if (!path.endsWith(".jsonl")) {
+          return base.read(path, options);
+        }
+        active += 1;
+        peak = Math.max(peak, active);
+        try {
+          await new Promise<void>((resolve) => setTimeout(resolve, 5));
+          return await base.read(path, options);
+        } finally {
+          active -= 1;
+        }
+      },
+    };
+
+    const analysis = await analyzeCodexSessions({
+      days: 7,
+      homeDir: home,
+      now: new Date("2026-08-25T12:00:00.000Z"),
+      reader,
+    });
+
+    expect(analysis.sessions).toHaveLength(8);
+    expect(peak).toBeGreaterThan(1);
+    expect(peak).toBeLessThanOrEqual(4);
   });
 });

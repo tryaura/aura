@@ -19,7 +19,11 @@ export function renderSessionsHelp(branding: CliBranding): string {
         title: "Everyday use",
       },
       {
-        rows: [{ term: "--verbose", text: "List every directory instead of only the busiest" }],
+        rows: [
+          { term: "--verbose", text: "List every directory instead of only the busiest" },
+          { term: "--brief[=<path>]", text: "Write an agent handoff brief" },
+          { term: "--force", text: "Replace an existing brief target" },
+        ],
         title: "Reporting",
       },
       {

@@ -1,6 +1,7 @@
 import { basename, dirname, join } from "node:path";
 
 import type { FileReader } from "../workspace/reader.js";
+import { createLimiter } from "../workspace/concurrency.js";
 
 /**
  * Maps recorded working directories to project labels, so parallel worktrees and repeated clones
@@ -21,6 +22,7 @@ import type { FileReader } from "../workspace/reader.js";
 
 /** Bytes of a git config worth reading: the `[remote "origin"]` block sits well within this. */
 const MAX_GIT_CONFIG_BYTES = 65_536;
+const MAX_CONCURRENT_PROJECT_RESOLUTIONS = 8;
 
 const GITDIR_POINTER = /^gitdir:\s*(.+)\s*$/mu;
 
@@ -29,11 +31,20 @@ export async function resolveProjects(
   reader: FileReader,
   directories: Iterable<string>,
 ): Promise<ReadonlyMap<string, string>> {
-  const labels = new Map<string, string>();
-  for (const directory of new Set(directories)) {
-    labels.set(directory, await resolveProject(reader, directory));
-  }
-  return labels;
+  const limit = createLimiter(MAX_CONCURRENT_PROJECT_RESOLUTIONS);
+  const unique = [...new Set(directories)];
+  return new Map(
+    await Promise.all(
+      unique.map((directory) => limit(() => resolveProjectEntry(reader, directory))),
+    ),
+  );
+}
+
+async function resolveProjectEntry(
+  reader: FileReader,
+  directory: string,
+): Promise<readonly [string, string]> {
+  return [directory, await resolveProject(reader, directory)];
 }
 
 async function resolveProject(reader: FileReader, directory: string): Promise<string> {

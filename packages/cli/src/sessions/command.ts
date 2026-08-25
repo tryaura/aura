@@ -1,10 +1,15 @@
-import { writeFile } from "node:fs/promises";
+import { chmod, writeFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 
 // Deep import on purpose: see the note in run.boundary.ts.
 import { Command, Option } from "clipanion/lib/advanced/index.js";
 
-import { analyzeCodexSessions, createEnvironment, createFileReader } from "@tryaura/core";
+import {
+  analyzeCodexSessions,
+  createCodexTranscriptReader,
+  createEnvironment,
+  createFileReader,
+} from "@tryaura/core";
 
 import {
   environmentOptions,
@@ -31,7 +36,7 @@ export class SessionsCommand extends Command<AuraCliContext> {
   static override usage = Command.Usage({
     description: "Summarize recent coding agent sessions.",
     details: `
-      Reads the session transcripts Codex keeps under ~/.codex/sessions and reports, per working directory, how much agent time they held and where tool calls failed. Everything stays on this machine: no transcript content leaves it, and the report carries only counts, durations, and bare command names.
+      Reads the session transcripts Codex keeps under ~/.codex/sessions and reports, per working directory, how much agent time they held and where tool calls failed. Everything stays on this machine: no transcript content leaves it. The human report carries counts, durations, and bare command names; JSON and handoff briefs also carry local evidence metadata.
 
       Exit codes: 0 report produced, 2 invalid usage, 3 operational failures.
     `,
@@ -49,6 +54,9 @@ export class SessionsCommand extends Command<AuraCliContext> {
   });
   days = Option.String("--days", {
     description: `Look back this many days. Default ${DEFAULT_DAYS}, at most ${MAX_DAYS}.`,
+  });
+  force = Option.Boolean("--force", false, {
+    description: "Replace an existing --brief target.",
   });
   home = homeOption();
   json = Option.Boolean("--json", false, { description: "Emit JSON instead of human output." });
@@ -85,6 +93,7 @@ export class SessionsCommand extends Command<AuraCliContext> {
       homeDir: environment.homeDir,
       now: environment.now(),
       reader: createFileReader(),
+      transcriptReader: createCodexTranscriptReader(),
     });
 
     if (this.json) {
@@ -116,10 +125,26 @@ export class SessionsCommand extends Command<AuraCliContext> {
   ): Promise<void> {
     const named = typeof this.brief === "string" ? this.brief : DEFAULT_BRIEF_NAME;
     const target = isAbsolute(named) ? named : join(cwd, named);
-    await writeFile(target, renderSessionBrief(analysis, days));
+    try {
+      await writeFile(target, renderSessionBrief(analysis, days), {
+        encoding: "utf8",
+        flag: this.force ? "w" : "wx",
+        mode: 0o600,
+      });
+      if (this.force) {
+        await chmod(target, 0o600);
+      }
+    } catch (error) {
+      if (isAlreadyExists(error)) {
+        throw new Error(
+          `Brief target already exists: ${named}. Choose another path or pass --force to replace it.`,
+        );
+      }
+      throw error;
+    }
     const shown = typeof this.brief === "string" ? named : `./${DEFAULT_BRIEF_NAME}`;
     this.context.stdout.write(
-      `\nBrief written to ${named}\nRun: codex exec "Follow the instructions in ${shown}"\n`,
+      `\nBrief written to ${named}\nRun: codex exec ${shellQuote(`Follow the instructions in ${shown}`)}\n`,
     );
   }
 
@@ -129,6 +154,12 @@ export class SessionsCommand extends Command<AuraCliContext> {
     }
     if (this.brief === "") {
       return "--brief needs a file path, or no value for the default.";
+    }
+    if (typeof this.brief === "string" && /[\p{Cc}\p{Cf}]/u.test(this.brief)) {
+      return "--brief paths cannot contain control or Unicode format characters.";
+    }
+    if (this.force && !this.briefRequested()) {
+      return "--force requires --brief.";
     }
     return undefined;
   }
@@ -143,4 +174,13 @@ export class SessionsCommand extends Command<AuraCliContext> {
     }
     return parsed;
   }
+}
+
+function isAlreadyExists(error: unknown): boolean {
+  return error instanceof Error && "code" in error && error.code === "EEXIST";
+}
+
+/** One POSIX-shell argument, including paths with quotes or expansion characters. */
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", `'\\''`)}'`;
 }

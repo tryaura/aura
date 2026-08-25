@@ -221,22 +221,40 @@ describe("sessions command", () => {
     expect(exitCode).toBe(0);
     expect(capture.stdout.text).toContain(`Brief written to ${briefPath}`);
     expect(capture.stdout.text).toContain(
-      `Run: codex exec "Follow the instructions in ${briefPath}"`,
+      `Run: codex exec 'Follow the instructions in ${briefPath}'`,
     );
     const brief = await readFile(briefPath, "utf8");
     expect(brief).toContain("# Coding-agent session health brief");
-    expect(brief).toContain(`## Project: ${join(home, "repo")}`);
-    expect(brief).toContain("[invocation_error, high confidence] `npm` ×1, exit 127");
+    expect(brief).toContain(`## Project: "${join(home, "repo")}"`);
+    expect(brief).toContain('[invocation_error, high confidence] tool "npm" ×1, exit 127');
     // The evidence names both the call and result lines; payloads stay on disk.
     expect(brief).toContain(
-      `- evidence: call ${join(home, ".codex", "sessions", "2026", "08", "24", "rollout.jsonl")}:3 · result ${join(home, ".codex", "sessions", "2026", "08", "24", "rollout.jsonl")}:4`,
+      `- evidence: call "${join(home, ".codex", "sessions", "2026", "08", "24", "rollout.jsonl")}":3 · result "${join(home, ".codex", "sessions", "2026", "08", "24", "rollout.jsonl")}":4`,
     );
     expect(brief).toContain("Classification coverage: 1/1 outcomes; 0 remain unknown");
     expect(brief).toContain("Evidence below samples 1 outcomes in 1 leading groups");
-    expect(brief).toContain("commit abc123 · branch feature/session-health");
+    expect(brief).toContain('commit "abc123" · branch "feature/session-health"');
     expect(brief).toContain("initial prompt 20 chars at lines 1");
     expect(brief).toContain("A nonzero exit is not automatically a broken tool");
     expect(brief).toContain("## Output");
+  });
+
+  it("preserves an existing brief unless --force is explicit", async () => {
+    const home = await createHome();
+    await writeRollout(home, join(home, "repo"));
+    const briefPath = join(home, "brief.md");
+    await writeFile(briefPath, "keep me\n");
+
+    const refused = withClock(createCapture(["sessions", "--home", home, `--brief=${briefPath}`]));
+    expect(await runCli(distro(), refused.runtime)).toBe(3);
+    expect(refused.stderr.text).toContain("Brief target already exists");
+    expect(await readFile(briefPath, "utf8")).toBe("keep me\n");
+
+    const forced = withClock(
+      createCapture(["sessions", "--home", home, `--brief=${briefPath}`, "--force"]),
+    );
+    expect(await runCli(distro(), forced.runtime)).toBe(0);
+    expect(await readFile(briefPath, "utf8")).toContain("# Coding-agent session health brief");
   });
 
   it("refuses --brief combined with --json", async () => {
@@ -246,6 +264,13 @@ describe("sessions command", () => {
 
     expect(exitCode).toBe(2);
     expect(capture.stderr.text).toContain("--brief and --json contradict each other");
+  });
+
+  it("refuses --force without --brief", async () => {
+    const capture = createCapture(["sessions", "--force"]);
+
+    expect(await runCli(distro(), capture.runtime)).toBe(2);
+    expect(capture.stderr.text).toContain("--force requires --brief");
   });
 
   it("rejects an unusable --days value", async () => {
@@ -265,6 +290,7 @@ describe("sessions command", () => {
     expect(exitCode).toBe(0);
     expect(capture.stdout.text).toContain("sessions — Summarize recent coding agent sessions");
     expect(capture.stdout.text).toContain("Reads local transcripts only");
+    expect(capture.stdout.text).toContain("--force");
     expect(capture.stdout.text).not.toContain("--path");
   });
 });

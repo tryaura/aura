@@ -19,13 +19,27 @@ export function parseCodexSession(
   content: string,
   truncated: boolean,
 ): AgentSessionMetrics | undefined {
-  const lines = content.split("\n");
-  if (truncated) {
-    // A byte-capped read ends mid-record; the cut line would parse as garbage or not at all.
-    lines.pop();
-  }
+  const state = initialState();
+  readLines(state, content, truncated);
+  return finishSession(state, truncated);
+}
 
-  const state: ParseState = {
+/** Streaming counterpart used by the production filesystem boundary. */
+export async function parseCodexSessionLines(
+  lines: AsyncIterable<string>,
+  truncated: boolean,
+): Promise<AgentSessionMetrics | undefined> {
+  const state = initialState();
+  let lineNumber = 0;
+  for await (const line of lines) {
+    lineNumber += 1;
+    readLine(state, line, lineNumber);
+  }
+  return finishSession(state, truncated);
+}
+
+function initialState(): ParseState {
+  return {
     compactions: 0,
     cwd: undefined,
     endedAt: undefined,
@@ -49,18 +63,9 @@ export function parseCodexSession(
     turns: 0,
     userMessages: 0,
   };
+}
 
-  for (const [index, line] of lines.entries()) {
-    if (line.trim() === "") {
-      continue;
-    }
-    const record = parseTranscriptRecord(line);
-    if (record === undefined) {
-      continue;
-    }
-    readRecord(state, record, index + 1);
-  }
-
+function finishSession(state: ParseState, truncated: boolean): AgentSessionMetrics | undefined {
   if (state.recognized === 0) {
     return undefined;
   }
@@ -89,6 +94,36 @@ export function parseCodexSession(
     wallClockMs:
       state.firstMs === undefined || state.lastMs === undefined ? 0 : state.lastMs - state.firstMs,
   };
+}
+
+/** Parses one line at a time without allocating an array proportional to the transcript. */
+function readLines(state: ParseState, content: string, truncated: boolean): void {
+  let lineNumber = 0;
+  let start = 0;
+  while (start <= content.length) {
+    const newline = content.indexOf("\n", start);
+    const finalLine = newline === -1;
+    if (finalLine && truncated) {
+      return;
+    }
+    lineNumber += 1;
+    const line = content.slice(start, finalLine ? content.length : newline);
+    readLine(state, line, lineNumber);
+    if (finalLine) {
+      return;
+    }
+    start = newline + 1;
+  }
+}
+
+function readLine(state: ParseState, line: string, lineNumber: number): void {
+  if (line.trim() === "") {
+    return;
+  }
+  const record = parseTranscriptRecord(line);
+  if (record !== undefined) {
+    readRecord(state, record, lineNumber);
+  }
 }
 
 function readRecord(state: ParseState, record: Record<string, unknown>, line: number): void {
