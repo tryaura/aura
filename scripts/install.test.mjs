@@ -17,6 +17,24 @@ import {
 
 afterEach(removeFixtures);
 
+describe("release installer progress", () => {
+  it("reports each installation phase", async () => {
+    const fixture = await createFixture();
+
+    const result = runInstaller(fixture, { AURA_NO_MODIFY_PATH: "1" });
+
+    expect(result.stdout).toContain("aura: preparing installer");
+    expect(result.stdout).toContain(`aura: detected ${process.platform}-${process.arch}`);
+    expect(result.stdout).toContain("aura: resolving release");
+    expect(result.stdout).toContain(
+      `aura: downloading v0.0.0-test ${process.platform}-${process.arch}`,
+    );
+    expect(result.stdout).toContain("aura: checksum verified");
+    expect(result.stdout).toContain("aura: installed to");
+    expect(result.stdout).toContain("aura: ready");
+  });
+});
+
 describe("release installer destination selection", () => {
   it("gives an explicit install directory precedence", async () => {
     const fixture = await createFixture();
