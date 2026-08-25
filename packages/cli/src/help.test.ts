@@ -9,6 +9,7 @@ import {
 } from "./help.js";
 import { BRANDING } from "./testing.js";
 import type { CliBranding } from "./types.js";
+import { renderUpdateHelp } from "./update/help.js";
 
 describe("help screens", () => {
   it("renders the root screen action-first", () => {
@@ -49,6 +50,13 @@ describe("help screens", () => {
     expect(help).not.toContain("Docs:");
     // Without a version the flag is never registered (run.boundary.ts), so the row must not advertise it.
     expect(help).not.toContain("--version");
+  });
+
+  it("shows the update command only for a standalone entry point", () => {
+    expect(renderRootHelp(BRANDING)).not.toContain("acme update");
+    expect(renderRootHelp(BRANDING, true)).toContain(
+      "acme update              Check now, install an update, and exit",
+    );
   });
 
   it("renders the check screen grouped by task, plumbing last", () => {
@@ -151,6 +159,16 @@ describe("help screens", () => {
         Exit codes: 0 restored or nothing to undo · 1 aborted or declined at the prompt · 2 conflicts · 3 operational failures
       "
     `);
+  });
+
+  it("renders the update screen", () => {
+    expect(renderUpdateHelp(BRANDING)).toContain(
+      "acme update    Bypass the update cache, install an available update, and exit",
+    );
+    expect(renderUpdateHelp(BRANDING)).toContain("Available only in a standalone installation");
+    expect(renderUpdateHelp(BRANDING)).toContain(
+      "Exit codes: 0 current or installed · 1 another update is in progress · 2 unavailable in this environment · 3 operational failure",
+    );
   });
 
   it("redirects an unknown command instead of dumping a parser trace", () => {

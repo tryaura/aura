@@ -10,6 +10,7 @@ import {
 import { eligibleInstallation, type EligibleInstallation } from "./eligibility.js";
 import { installUpdate, type InstallOutcome } from "./install.js";
 import { STARTUP_UPDATE_BUDGET_MS } from "./limits.js";
+import { appliedUpdateOutcome, traceInstallOutcome, type StartupUpdateOutcome } from "./outcome.js";
 import {
   resolveUpdateSource,
   sourceIdentity,
@@ -24,6 +25,8 @@ import type { CliUpdates } from "./types.js";
 export interface StartupUpdateRequest {
   readonly argv: readonly string[];
   readonly branding: CliBranding;
+  /** Ignore cached outcomes and resolve the release source now. */
+  readonly bypassCache?: boolean | undefined;
   readonly current: Pick<NodeJS.Process, "arch" | "execPath" | "platform">;
   readonly environmentVariables: Readonly<Record<string, string | undefined>>;
   readonly homeDir: string;
@@ -37,17 +40,12 @@ export interface StartupUpdateRequest {
 }
 
 /**
- * Installs a newer release before the requested command runs, or does nothing at all.
- *
- * Nothing here can change what the command does or what it exits with. Every failure path is
- * swallowed: the user asked Aura to check a repository, and an update that could not happen is not
- * a reason to refuse. The successfully updated executable is used by the next invocation — this
- * process keeps running the image it started with.
- *
- * Swallowed for the user, not for the developer: each refusal names itself through {@link debug},
- * which writes only when this distribution's debug variable asks it to.
+ * Runs the silent startup check and returns its outcome for an explicit caller to report.
+ * The successfully updated executable is used by the next invocation.
  */
-export async function runStartupUpdate(request: StartupUpdateRequest): Promise<void> {
+export async function runStartupUpdate(
+  request: StartupUpdateRequest,
+): Promise<StartupUpdateOutcome> {
   const disableEnvironmentVariable = updateEnvironmentVariable(request.branding.command);
   const debug = createUpdateDebug(
     disableEnvironmentVariable,
@@ -62,12 +60,13 @@ export async function runStartupUpdate(request: StartupUpdateRequest): Promise<v
     });
     if (verdict.kind !== "eligible") {
       debug(`skipped: ${verdict.reason}`);
-      return;
+      return { kind: "skipped", reason: verdict.reason };
     }
-    await check(request, verdict.installation, debug);
+    return await check(request, verdict.installation, debug);
   } catch {
     // An updater that throws must still leave the command it interrupted able to run.
     debug("skipped: unexpected-error");
+    return { kind: "failed", reason: "unexpected" };
   }
 }
 
@@ -75,13 +74,15 @@ async function check(
   request: StartupUpdateRequest,
   eligible: EligibleInstallation,
   debug: UpdateDebug,
-): Promise<void> {
+): Promise<StartupUpdateOutcome> {
   const now = request.now().getTime();
   const identity = sourceIdentity(request.updates, request.branding.command);
-  const entry = await readUpdateCache(request.homeDir, identity, now);
+  const entry = request.bypassCache
+    ? undefined
+    : await readUpdateCache(request.homeDir, identity, now);
   if (!shouldCheck(entry, now)) {
     debug(`skipped: cached-${entry?.outcome ?? "check"}`);
-    return;
+    return { kind: "skipped", reason: "cached" };
   }
 
   const resolution = await resolveUpdateSource(request.updates, {
@@ -103,7 +104,7 @@ async function check(
       : `resolved: ${resolution.kind}`,
   );
 
-  await apply(request, eligible, {
+  return await apply(request, eligible, {
     // Anchored to the moment the check started, not to the moment the install does: what the
     // budget bounds is the wait between the user's keystroke and their command, and the metadata
     // request and the probe of the installed binary are already part of that wait.
@@ -130,11 +131,11 @@ async function apply(
   request: StartupUpdateRequest,
   eligible: EligibleInstallation,
   context: ApplyContext,
-): Promise<void> {
+): Promise<StartupUpdateOutcome> {
   const { entry, identity, now, resolution } = context;
   if (resolution.kind === "failure") {
     await writeUpdateCache(request.homeDir, identity, { checkedAt: now, outcome: "check-failed" });
-    return;
+    return { kind: "failed", reason: resolution.reason };
   }
   if (resolution.kind !== "candidate") {
     // A 304 response may carry no entity tag of its own; the cached one still names the
@@ -145,11 +146,11 @@ async function apply(
       ...(etag === undefined ? {} : { etag }),
       outcome: "current",
     });
-    return;
+    return { kind: "current" };
   }
 
   const outcome = await install(request, eligible, resolution, context);
-  context.debug(`installed: ${trace(outcome)}`);
+  context.debug(`installed: ${traceInstallOutcome(outcome)}`);
   report(request, eligible, resolution.candidate.version, outcome);
   await record(
     request,
@@ -159,6 +160,7 @@ async function apply(
     outcome,
     attemptsFor(entry, resolution.candidate.version),
   );
+  return appliedUpdateOutcome(resolution.candidate.version, outcome);
 }
 
 /** The transaction, with the progress frame painted around it and always taken back down. */
@@ -188,11 +190,6 @@ async function install(
   } finally {
     progress.close();
   }
-}
-
-/** The debug trace for one outcome, which is the only place a failure names its reason. */
-function trace(outcome: InstallOutcome): string {
-  return outcome.kind === "failed" ? `failed: ${outcome.reason}` : outcome.kind;
 }
 
 /** One line, or none: the outcome table's message column. */

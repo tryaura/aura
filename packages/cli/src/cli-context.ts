@@ -11,6 +11,8 @@ import type { CliBranding } from "./types.js";
 
 export interface AuraCliContext extends BaseContext {
   readonly branding: CliBranding;
+  /** Whether this entry point owns an executable it may update. */
+  readonly canUpdate: boolean;
   readonly cwd: string;
   /** Home directory captured at the process boundary, before any `--home` override. */
   readonly defaultHomeDir: string;

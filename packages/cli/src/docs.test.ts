@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { renderCheckHelp, renderRootHelp, renderSetupHelp, renderUndoHelp } from "./help.js";
 import { setupAddKinds } from "./setup/steps/index.js";
 import { parseCheckReport } from "./test-support/check-output-schema.js";
+import { renderUpdateHelp } from "./update/help.js";
 
 const BRANDING = { command: "aura", displayName: "Aura", version: "0.5.4" };
 const CLI_REFERENCE = new URL(
@@ -18,10 +19,11 @@ const CHECK_JSON = new URL(
 
 function helpScreens(): string {
   return [
-    renderRootHelp(BRANDING),
+    renderRootHelp(BRANDING, true),
     renderSetupHelp(BRANDING, setupAddKinds()),
     renderCheckHelp(BRANDING),
     renderUndoHelp(BRANDING),
+    renderUpdateHelp(BRANDING),
   ].join("\n");
 }
 

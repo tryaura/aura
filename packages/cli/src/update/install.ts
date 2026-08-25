@@ -35,7 +35,7 @@ type InstallFailure =
 export type InstallOutcome =
   | { readonly kind: "installed" }
   /** Another updater holds the lock, or had already installed this release. */
-  | { readonly kind: "skipped" }
+  | { readonly kind: "skipped"; readonly reason: "already-current" | "lock-held" }
   /** The bytes did not match the published digest. Nothing was staged over anything. */
   | { readonly kind: "refused" }
   | { readonly kind: "failed"; readonly reason: InstallFailure };
@@ -72,7 +72,7 @@ export async function installUpdate(request: InstallRequest): Promise<InstallOut
   });
   if (attempt.kind !== "acquired") {
     return attempt.kind === "held"
-      ? { kind: "skipped" }
+      ? { kind: "skipped", reason: "lock-held" }
       : { kind: "failed", reason: "lock-unavailable" };
   }
   try {
@@ -93,7 +93,7 @@ async function transact(request: InstallRequest, directory: string): Promise<Ins
     request.probeEnvironment,
   );
   if (installed !== undefined && !isNewerVersion(request.candidate.version, installed)) {
-    return { kind: "skipped" };
+    return { kind: "skipped", reason: "already-current" };
   }
   const executableMode = await regularFileMode(request.executablePath);
   if (executableMode === undefined) {

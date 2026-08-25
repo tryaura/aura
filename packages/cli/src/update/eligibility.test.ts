@@ -35,8 +35,11 @@ describe("update eligibility", () => {
     });
   });
 
+  it("accepts an argument-free run", async () => {
+    expect((await decide({ argv: [] })).kind).toBe("eligible");
+  });
+
   it.each([
-    { argv: [], label: "root help" },
     { argv: ["--help"], label: "explicit help" },
     { argv: ["check", "-h"], label: "command help" },
     { argv: ["--version"], label: "version output" },
