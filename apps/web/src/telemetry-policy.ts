@@ -1,4 +1,9 @@
-import type { TelemetryBatchV1, TelemetryEvent, TelemetrySetupActions } from "@tryaura/aura-sdk";
+import type {
+  CheckRunEvent,
+  TelemetryBatchV1,
+  TelemetryEvent,
+  TelemetrySetupActions,
+} from "@tryaura/aura-sdk";
 
 export const OFFICIAL_TELEMETRY_IDS = Object.freeze({
   applications: Object.freeze(["claude-code", "codex", "cursor", "legacy-instructions"]),
@@ -59,16 +64,7 @@ function isOfficialTelemetryEvent(event: TelemetryEvent): boolean {
   }
   switch (event.kind) {
     case "check-run":
-      return (
-        hasOnlyOfficialIds(
-          event.apps.map((app) => app.appId),
-          OFFICIAL_APP_IDS,
-        ) &&
-        hasOnlyOfficialIds(
-          event.checks.map((check) => check.checkId),
-          OFFICIAL_CHECK_IDS,
-        )
-      );
+      return isOfficialCheckRun(event);
     case "fix-run":
       return hasOnlyOfficialIds(
         event.fixes.map((fix) => fix.checkId),
@@ -79,7 +75,24 @@ function isOfficialTelemetryEvent(event: TelemetryEvent): boolean {
     case "command-failed":
     case "undo-run":
       return true;
+    // The official distribution registers no commands of its own, so an event attributed to one
+    // did not come from a build this service can vouch for.
+    case "distro-command":
+      return false;
   }
+}
+
+function isOfficialCheckRun(event: CheckRunEvent): boolean {
+  return (
+    hasOnlyOfficialIds(
+      event.apps.map((app) => app.appId),
+      OFFICIAL_APP_IDS,
+    ) &&
+    hasOnlyOfficialIds(
+      event.checks.map((check) => check.checkId),
+      OFFICIAL_CHECK_IDS,
+    )
+  );
 }
 
 function isOfficialSetupActions(actions: TelemetrySetupActions): boolean {

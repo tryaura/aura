@@ -56,7 +56,11 @@ export function writeOptionRejection(
 /** Writes the one-line operational failure a run reports when it cannot finish its own work. */
 export function writeRunFailure(error: unknown, branding: CliBranding, stderr: Writable): void {
   const message = error instanceof Error ? error.message : String(error);
-  stderr.write(`${branding.displayName}: ${message}\n`);
+  // A distribution command's error can quote file contents or subprocess output, so the text is
+  // neutralized line by line: escape and format characters can repaint the terminal, while the
+  // newlines Aura's own multi-line failures carry stay meaningful.
+  const neutralized = message.split("\n").map(safe).join("\n");
+  stderr.write(`${branding.displayName}: ${neutralized}\n`);
 }
 
 /**

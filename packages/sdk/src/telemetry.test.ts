@@ -4,6 +4,7 @@ import {
   type CheckRunEvent,
   type CommandFailedEvent,
   decodeTelemetryBatchV1,
+  type DistroCommandEvent,
   type FixRunEvent,
   type SetupRunEvent,
   type TelemetryEvent,
@@ -91,8 +92,22 @@ const FAILED_EVENT: CommandFailedEvent = {
   kind: "command-failed",
 };
 
+const DISTRO_COMMAND_EVENT: DistroCommandEvent = {
+  at: AT,
+  command: "sync",
+  counts: { profiles: 4 },
+  distroVersion: "1.2.3",
+  durationMs: 12,
+  event: "sync-run",
+  exitCode: 0,
+  flags: { force: true },
+  kind: "distro-command",
+  outcome: "applied",
+};
+
 const EVENTS: readonly TelemetryEvent[] = [
   CHECK_EVENT,
+  DISTRO_COMMAND_EVENT,
   FIX_EVENT,
   SETUP_EVENT,
   UNDO_EVENT,
@@ -119,7 +134,13 @@ describe("decodeTelemetryBatchV1", () => {
       kind: "setup-run",
       outcome: "aborted",
     };
-    const input = batch([...EVENTS, setupWithoutActions]);
+    const bareDistroCommand: TelemetryEvent = {
+      at: AT,
+      command: "sync",
+      event: "sync-run",
+      kind: "distro-command",
+    };
+    const input = batch([...EVENTS, setupWithoutActions, bareDistroCommand]);
 
     expect(decodeTelemetryBatchV1(input)).toEqual(input);
   });
@@ -131,6 +152,21 @@ describe("decodeTelemetryBatchV1", () => {
     ["non-canonical timestamp", batch([{ ...FAILED_EVENT, at: "2026-08-22" }])],
     ["wrong command", batch([{ ...FIX_EVENT, command: "setup" }])],
     ["unknown event field", batch([{ ...FAILED_EVENT, unexpected: "private value" }])],
+    ["shouted command word", batch([{ ...DISTRO_COMMAND_EVENT, command: "Sync" }])],
+    ["free-text event name", batch([{ ...DISTRO_COMMAND_EVENT, event: "/home/ana not found" }])],
+    ["free-text outcome", batch([{ ...DISTRO_COMMAND_EVENT, outcome: "ENOENT: no such file" }])],
+    ["non-numeric count", batch([{ ...DISTRO_COMMAND_EVENT, counts: { profiles: "four" } }])],
+    ["non-boolean flag", batch([{ ...DISTRO_COMMAND_EVENT, flags: { force: "yes" } }])],
+    ["free-text count key", batch([{ ...DISTRO_COMMAND_EVENT, counts: { "/home/ana": 1 } }])],
+    [
+      "unbounded labelled record",
+      batch([
+        {
+          ...DISTRO_COMMAND_EVENT,
+          counts: Object.fromEntries(Array.from({ length: 33 }, (_, index) => [`c${index}`, 1])),
+        },
+      ]),
+    ],
     [
       "unknown nested field",
       batch([

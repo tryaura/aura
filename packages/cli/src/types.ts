@@ -3,6 +3,7 @@ import type { Readable, Writable } from "node:stream";
 import type {
   AuraConfigurationLayer,
   AuraPlugin,
+  DistroCommandEvent,
   Environment,
   TelemetrySink,
 } from "@tryaura/aura-sdk";
@@ -24,6 +25,120 @@ export interface CliBranding {
   readonly version?: string | undefined;
 }
 
+/** One long flag a distribution command accepts. */
+export interface CliCommandFlag {
+  /** One-line help text shown on the command's help screen. No trailing period. */
+  readonly description: string;
+  /**
+   * Long flag as typed, such as `--tag`. Lowercase kebab-case. `--help` is claimed by the command
+   * framework and `--no-color` is consumed before any command parses, so neither can be declared.
+   */
+  readonly flag: string;
+  /** How the flag parses: a valueless switch, one value, or a repeatable value. */
+  readonly kind: "array" | "boolean" | "string";
+  /** Value placeholder shown on the help screen, such as `<name>`. Ignored for boolean flags. */
+  readonly placeholder?: string | undefined;
+}
+
+/** One example row on a distribution command's help screen. */
+export interface CliCommandExample {
+  /** Arguments after the executable name, such as `sync --all`. */
+  readonly args: string;
+  /** What the invocation does. No trailing period. */
+  readonly text: string;
+}
+
+/**
+ * A parsed flag value: `boolean` flags are always present, `string` flags are absent unless given,
+ * and `array` flags are always present (empty when never given).
+ */
+export type CliCommandFlagValue = boolean | string | readonly string[] | undefined;
+
+/**
+ * One telemetry event a distribution command records, before the CLI stamps the envelope.
+ *
+ * The command word, event kind, timestamp, and distribution version are the CLI's to set, so a
+ * command can neither send an event without them nor attribute one to a command it does not own.
+ */
+export type CliCommandEvent = Omit<DistroCommandEvent, "at" | "command" | "distroVersion" | "kind">;
+
+/** The telemetry channel handed to a distribution command. */
+export interface CliCommandTelemetry {
+  /**
+   * Buffers one event for the distribution's sink.
+   *
+   * Never throws and never writes to a stream, so a sink can no more fail a distribution command
+   * than it can a built-in one. A no-op when the distribution composed no sink, or when the user
+   * opted out with `DO_NOT_TRACK` or `AURA_TELEMETRY=off`. An event under the reserved
+   * `command-failed` label is dropped: only the CLI's own crash record carries it.
+   */
+  readonly record: (event: CliCommandEvent) => void;
+}
+
+/**
+ * Everything one distribution-command invocation may read.
+ *
+ * Every ambient value is injected, mirroring {@link CliRuntime}: a command that reads only from its
+ * invocation runs the same under tests, embedders, and the real process.
+ */
+export interface CliCommandInvocation {
+  readonly branding: CliBranding;
+  /** Supported color depth; 0 means the run must not emit escape sequences. */
+  readonly colorDepth: number;
+  /**
+   * The run's injected ambient state: `cwd`, `homeDir`, `now()`, `platform`, `pathEntries`,
+   * `readVariable()`, `exec()`, and `httpGet()`.
+   *
+   * The same {@link Environment} the built-in commands and every plugin run against, captured once
+   * at the process boundary. A command that reads only from here never touches `process` itself,
+   * so it stays reproducible under the testkit and under any embedder that fills in
+   * {@link CliRuntime}. Subprocesses and network access carry the kernel's bounds, not the
+   * command's: see the SDK's `ExecRequest` and `HttpGetRequest`.
+   */
+  readonly environment: Environment;
+  /**
+   * Parsed flag values keyed by the flag as declared, such as `--tag`. The `booleanFlag`,
+   * `stringFlag`, and `arrayFlag` helpers narrow a value to its declared kind and throw on a flag
+   * the definition never declared.
+   */
+  readonly flags: Readonly<Record<string, CliCommandFlagValue>>;
+  /** Positional arguments in the order given. */
+  readonly positionals: readonly string[];
+  readonly stderr: Writable;
+  readonly stdin: Readable;
+  readonly stdout: Writable;
+  /** Records run events against this command's word. */
+  readonly telemetry: CliCommandTelemetry;
+}
+
+/**
+ * One additional top-level command a distribution registers at build time.
+ *
+ * Declarative on purpose: the command framework stays an implementation detail, and the same data
+ * renders the command's row on the root and unknown-command screens, its own `--help` screen, and
+ * the parser — so the help surface can never drift from what actually parses. The definition runs
+ * with the full privileges of the process, like every other build-time contribution.
+ */
+export interface CliCommandDefinition {
+  /**
+   * Example invocations for the help screen's "Everyday use" section, most common first. Absent,
+   * the screen shows the bare command word with {@link CliCommandDefinition.summary}.
+   */
+  readonly examples?: readonly CliCommandExample[] | undefined;
+  /** Runs the command. The returned code becomes the process exit code. */
+  readonly execute: (invocation: CliCommandInvocation) => Promise<CliExitCode>;
+  readonly flags?: readonly CliCommandFlag[] | undefined;
+  /** Footer lines for the command's help screen, such as an exit-code legend. */
+  readonly helpFooters?: readonly string[] | undefined;
+  /** Row text on the root and unknown-command screens. One non-empty line, no trailing period. */
+  readonly summary: string;
+  /**
+   * Top-level command word, such as `sync`. Lowercase kebab-case. The built-in words (`check`,
+   * `setup`, `undo`) and the framework's own (`help`, `version`) are reserved.
+   */
+  readonly word: string;
+}
+
 /** Distribution-owned plugin registry policy exposed without leaking Aura's private core package. */
 export interface CliRegistryOptions {
   /** Plugins allowed to contribute bare check ids such as `INS-001`. */
@@ -33,6 +148,14 @@ export interface CliRegistryOptions {
 /** Build-time composition of one Aura distribution. */
 export interface CliDistro {
   readonly branding: CliBranding;
+  /**
+   * Additional top-level commands this distribution registers alongside the built-in ones.
+   *
+   * Distribution-owned rather than plugin-owned: a command word is global UX real estate, and the
+   * build-time list is the one place that can arbitrate it. An invalid or colliding definition
+   * fails the run at startup rather than shadowing a built-in at parse time.
+   */
+  readonly commands?: readonly CliCommandDefinition[] | undefined;
   /** Data-only defaults applied below a selected team preset. */
   readonly defaults?: AuraConfigurationLayer | undefined;
   /** Bundled preset reference used when neither the workspace nor user selected one. */

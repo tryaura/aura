@@ -1,9 +1,9 @@
 # CLI UX contract
 
 How Aura's command line looks and behaves, and why. The renderers in
-`packages/cli/src/help.ts` and `packages/cli/src/setup/wizard-render.ts` implement this contract;
-the inline snapshots in their test files pin the exact bytes. Change this document and the
-implementation together.
+`packages/cli/src/help.ts`, `packages/cli/src/help-distro-command.ts`, and
+`packages/cli/src/setup/wizard-render.ts` implement this contract; the inline snapshots in their
+test files pin the exact bytes. Change this document and the implementation together.
 
 ## Principles
 
@@ -36,7 +36,8 @@ implementation together.
 
 ## Help surface
 
-Rendered by `packages/cli/src/help.ts`; exact layouts pinned in `help.test.ts`.
+Rendered by `packages/cli/src/help.ts` and `packages/cli/src/help-distro-command.ts`; exact
+layouts pinned in `help.test.ts` and `distro-command.test.ts`.
 
 - `aura` / `aura --help` / `aura -h` — root screen: a three-line plain-English paragraph on what
   Aura is for, then Get started → Everyday use → Help → Advanced, then a `Docs:` footer when
@@ -60,6 +61,41 @@ Layout rules: terms align to one shared column across the whole screen; section 
 indented two spaces, rows four; no boxes, rules, or banner lines; no trailing periods on row
 descriptions. Clipanion's default help renderer is bypassed entirely (`runCli` intercepts the
 internal help command and unknown-command errors).
+
+### Distribution commands
+
+A distribution may register additional top-level commands at build time (`CliDistro.commands`,
+declared as data — word, summary, examples, flags — rather than framework classes). The help
+surface treats them as first-class citizens, rendered from the same definition the parser is built
+from so the screens can never drift from what parses:
+
+- The root screen and the unknown-command screen list each registered command after the built-in
+  rows, in declaration order: the workflow ordering of the built-ins holds, and additions extend
+  the list rather than reshuffle it.
+- `aura <word> --help` renders the same bones as the built-in screens: Everyday use (the
+  definition's examples, or the bare word with its summary), Options (one row per declared flag,
+  with its placeholder), Advanced, then the definition's footer lines. Advanced carries
+  `--no-color` alone — a distribution command takes `--home` or `--path` only if it declares them
+  itself.
+- A misspelled word still gets the redirect screen; a bad flag on a registered command keeps
+  clipanion's message, exactly as for the built-ins.
+
+A registered command runs against the same injected `Environment` the built-ins and every plugin
+use — `cwd`, `homeDir`, `now()`, `platform`, `pathEntries`, `readVariable()`, `exec()`, `httpGet()`
+— built from the process boundary alone, so a command reads nothing from `process` itself and
+behaves the same under the testkit and any embedder. `--home` and `--path` belong to the built-in
+commands and stay off a help screen that would not honour them; a command that needs a different
+root declares its own flag. It also gets a telemetry channel scoped to its own word: the
+CLI stamps the word, event kind, timestamp, and distribution version, so a command can neither
+send an unstamped event nor attribute one to a command it does not own, and the user's
+`DO_NOT_TRACK` or `AURA_TELEMETRY=off` still wins. A command that throws is recorded as
+`command-failed` with no error text, mirroring the built-ins; that label is reserved for the
+crash record, so an event a command records under it itself is dropped.
+
+The built-in words (`check`, `setup`, `undo`) and the framework's own (`help`, `version`) are
+reserved, `--help` and `--no-color` cannot be declared as flags, and an invalid or colliding
+definition fails the run at startup as an operational failure (exit code 3) rather than shadowing
+a built-in at parse time.
 
 ## Check report
 

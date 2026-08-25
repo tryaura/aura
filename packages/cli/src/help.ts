@@ -1,5 +1,7 @@
+import { distroCommandRows } from "./help-distro-command.js";
+import { advancedRows, NO_COLOR_ROW, renderHelpScreen, type HelpRow } from "./help-layout.js";
 import { safe } from "./safe-text.js";
-import type { CliBranding } from "./types.js";
+import type { CliBranding, CliCommandDefinition } from "./types.js";
 
 /**
  * Action-first help screens.
@@ -10,17 +12,11 @@ import type { CliBranding } from "./types.js";
  * `docs/cli-ux.md`; these renderers are its implementation.
  */
 
-interface HelpRow {
-  readonly term: string;
-  readonly text: string;
-}
-
-interface HelpSection {
-  readonly rows: readonly HelpRow[];
-  readonly title: string;
-}
-
-export function renderRootHelp(branding: CliBranding, canUpdate = false): string {
+export function renderRootHelp(
+  branding: CliBranding,
+  canUpdate = false,
+  commands: readonly CliCommandDefinition[] = [],
+): string {
   const bin = branding.command;
   return renderHelpScreen(
     headline(branding),
@@ -37,6 +33,9 @@ export function renderRootHelp(branding: CliBranding, canUpdate = false): string
           ...(canUpdate
             ? [{ term: `${bin} update`, text: "Check now, install an update, and exit" }]
             : []),
+          // Distribution commands sit after the built-ins: the workflow the contract orders the
+          // built-in rows by still holds, and additions extend it rather than reshuffle it.
+          ...distroCommandRows(bin, commands),
         ],
         title: "Everyday use",
       },
@@ -209,6 +208,7 @@ export function renderUnknownCommand(
   branding: CliBranding,
   input: string,
   canUpdate = false,
+  commands: readonly CliCommandDefinition[] = [],
 ): string {
   const bin = branding.command;
   // The input is echoed argv, which a wrapper script can fill with untrusted text; neutralize it
@@ -224,6 +224,7 @@ export function renderUnknownCommand(
           ...(canUpdate
             ? [{ term: `${bin} update`, text: "Check now, install an update, and exit" }]
             : []),
+          ...distroCommandRows(bin, commands),
         ],
         title: "Commands",
       },
@@ -231,8 +232,6 @@ export function renderUnknownCommand(
     [`Run '${bin} --help' for more`],
   );
 }
-
-const NO_COLOR_ROW: HelpRow = { term: "--no-color", text: "Disable terminal colors" };
 
 /**
  * The root screen's one paragraph: what Aura is for, in the words of someone who has not read the
@@ -244,15 +243,6 @@ const ROOT_INTRO: readonly string[] = [
   "files. Aura reads all of them, tells you where they disagree or are broken, and",
   "fixes them after you say yes - so every agent works from the same instructions.",
 ];
-
-/** Test and CI plumbing, present on every command and interesting to almost nobody. */
-function advancedRows(): readonly HelpRow[] {
-  return [
-    { term: "--home <dir>", text: "Override the home directory" },
-    NO_COLOR_ROW,
-    { term: "--path <dir>", text: "Override the executable search path" },
-  ];
-}
 
 function configurationRows(): readonly HelpRow[] {
   return [
@@ -271,30 +261,4 @@ function headline(branding: CliBranding): string {
       ? branding.displayName
       : `${branding.displayName} ${branding.version}`;
   return branding.description === undefined ? name : `${name} — ${branding.description}`;
-}
-
-/** Terms align to one shared column so the eye scans a single list, not per-section islands. */
-export function renderHelpScreen(
-  header: string,
-  sections: readonly HelpSection[],
-  footers: readonly string[],
-  intro: readonly string[] = [],
-): string {
-  const width = Math.max(
-    ...sections.flatMap((section) => section.rows.map((row) => row.term.length)),
-  );
-  const lines = [header];
-  if (intro.length > 0) {
-    lines.push("", ...intro.map((line) => `  ${line}`));
-  }
-  for (const section of sections) {
-    lines.push("", `  ${section.title}`);
-    for (const row of section.rows) {
-      lines.push(`    ${row.term.padEnd(width)}    ${row.text}`);
-    }
-  }
-  for (const footer of footers) {
-    lines.push("", `  ${footer}`);
-  }
-  return `${lines.join("\n")}\n`;
 }
