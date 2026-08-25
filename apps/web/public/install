@@ -289,6 +289,8 @@ install_binary() {
 }
 
 main() {
+  printf 'aura: preparing installer\n'
+
   require curl
   require grep
   require mktemp
@@ -314,6 +316,8 @@ main() {
     *) abort "unsupported architecture '$arch'." ;;
   esac
 
+  printf 'aura: detected %s-%s\n' "$os" "$arch"
+  printf 'aura: resolving release\n'
   version=$(resolve_version)
   archive="aura-${os}-${arch}.tar.gz"
   base="https://github.com/$REPO/releases/download/$version"
@@ -345,6 +349,7 @@ main() {
   printf 'aura: installed to %s/aura\n' "$install_dir"
 
   configure_path "$install_dir" "$os"
+  printf 'aura: ready\n'
 }
 
 main "$@"
