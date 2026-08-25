@@ -3,28 +3,25 @@ import process from "node:process";
 // Deep import on purpose: clipanion's ESM entry contains a directory import Node cannot resolve, so
 // the package root loads only under CommonJS. This is the file its `main` points at.
 import { Builtins, Cli, type Command } from "clipanion/lib/advanced/index.js";
-// Deep imports again: the internal help command `cli.process` resolves `-h` to, and the parse
-// error class, are not re-exported from the advanced entry.
+// Deep import again: the internal help command `cli.process` resolves `-h` to is not re-exported
+// from the advanced entry.
 import { HelpCommand as ClipanionHelpCommand } from "clipanion/lib/advanced/HelpCommand.js";
-import { UnknownSyntaxError } from "clipanion/lib/errors.js";
 
 import { createHttpGet, createPluginRegistry } from "@tryaura/core";
 
+import { helpScreen, knownCommandWords, unknownCommandInput } from "./command-routing.js";
 import { writeRunFailure } from "./command-support.js";
 import { CheckCommand, type AuraCliContext } from "./commands.js";
 import { DefaultCommand } from "./default-command.js";
-import {
-  renderCheckHelp,
-  renderRootHelp,
-  renderSetupHelp,
-  renderUndoHelp,
-  renderUnknownCommand,
-} from "./help.js";
+import { createDistroCommandClass } from "./distro-command-class.js";
+import { formatDistroCommandProblems } from "./distro-command-validate.js";
+import { renderUnknownCommand } from "./help.js";
 import { resolveRuntime, type ResolvedRuntime } from "./resolve-runtime.boundary.js";
 import { SetupCommand } from "./setup/command.js";
-import { setupAddKinds } from "./setup/steps/index.js";
 import { createTelemetryRecorder, telemetryEnabled, type TelemetryRecorder } from "./telemetry.js";
 import { UndoCommand } from "./undo/command.js";
+import { UpdateCommand } from "./update/command.js";
+import { reportExplicitUpdate } from "./update/explicit.js";
 import { UPDATE_HOST } from "./update/host.boundary.js";
 import { runStartupUpdate } from "./update/run.js";
 import type { CliUpdates } from "./update/types.js";
@@ -58,18 +55,19 @@ async function run(
   startupUpdate?: StartupUpdate,
 ): Promise<CliExitCode> {
   const resolved = resolveRuntime(runtime, distro.branding);
-  // The user's environment always wins over the distribution: an opted-out run gets a recorder
-  // whose sink is absent, which is indistinguishable from a distribution that sends nothing.
   const telemetry = createTelemetryRecorder({
     distroVersion: distro.branding.version,
     now: resolved.now,
     sink: telemetryEnabled(resolved.environmentVariables) ? distro.telemetry : undefined,
   });
+  const canUpdate = startupUpdate !== undefined;
+  const updateOnly = canUpdate && resolved.argv.length === 1 && resolved.argv[0] === "update";
 
   if (startupUpdate !== undefined) {
-    await runStartupUpdate({
+    const updateOutcome = await runStartupUpdate({
       argv: resolved.argv,
       branding: distro.branding,
+      bypassCache: updateOnly,
       current: startupUpdate.current,
       environmentVariables: resolved.environmentVariables,
       homeDir: resolved.homeDir,
@@ -81,30 +79,51 @@ async function run(
       stdout: resolved.stdout,
       updates: startupUpdate.updates,
     });
+    if (updateOnly) {
+      const verdict = reportExplicitUpdate({
+        branding: distro.branding,
+        manualUpdateUrl: startupUpdate.updates.manualUpdateUrl,
+        outcome: updateOutcome,
+        stderr: resolved.stderr,
+        stdout: resolved.stdout,
+      });
+      return finishRun(verdict, resolved, telemetry, runtime);
+    }
   }
 
-  const verdict = await runResolved(distro, resolved, telemetry);
+  const verdict = await runResolved(distro, resolved, telemetry, canUpdate);
+  return finishRun(verdict, resolved, telemetry, runtime);
+}
+
+async function finishRun(
+  verdict: CliExitCode,
+  resolved: ResolvedRuntime,
+  telemetry: TelemetryRecorder,
+  runtime: CliRuntime | undefined,
+): Promise<CliExitCode> {
   // Recorded events flush — bounded, never throwing — before the exit code is applied.
   await telemetry.flush();
-  // A run that could not write its own output never delivered the verdict it computed, so the
-  // operational failure outranks it. A reader closing the pipe is not that, and never lands here.
-  const exitCode = resolved.outputFailure.failed ? 3 : verdict;
+  // Output failure outranks the computed verdict; a closed reader never lands here.
+  const exitCode: CliExitCode = resolved.outputFailure.failed ? 3 : verdict;
   applyExitCode(exitCode, runtime);
   return exitCode;
 }
 
-/** The run between the resolved boundary and the exit code, with every failure path mapped. */
 async function runResolved(
   distro: CliDistro,
   resolved: ResolvedRuntime,
   telemetry: TelemetryRecorder,
+  canUpdate: boolean,
 ): Promise<CliExitCode> {
   try {
     const registry = createPluginRegistry(distro.plugins, distro.registry ?? {});
-    const cli = createCli(distro, resolved.colorDepth > 0);
+    const commands = distro.commands ?? [];
+    const cli = createCli(distro, resolved.colorDepth > 0, canUpdate);
     const context: AuraCliContext = {
       branding: distro.branding,
+      canUpdate,
       colorDepth: resolved.colorDepth,
+      commands,
       cwd: resolved.cwd,
       defaultPreset: distro.defaultPreset,
       defaults: distro.defaults,
@@ -124,12 +143,18 @@ async function runResolved(
     try {
       command = cli.process(resolved.argv, context);
     } catch (error) {
-      const unknownCommand = unknownCommandInput(error, resolved.argv);
+      const unknownCommand = unknownCommandInput(
+        error,
+        resolved.argv,
+        knownCommandWords(canUpdate, commands),
+      );
       if (unknownCommand === undefined) {
         const normalized = error instanceof Error ? error : new Error(String(error));
         resolved.stderr.write(`${cli.error(normalized, { colored: false })}\n`);
       } else {
-        resolved.stderr.write(renderUnknownCommand(distro.branding, unknownCommand));
+        resolved.stderr.write(
+          renderUnknownCommand(distro.branding, unknownCommand, canUpdate, commands),
+        );
       }
       return 2;
     }
@@ -137,7 +162,7 @@ async function runResolved(
     // `-h`/`--help` resolves to clipanion's internal help command; render the action-first screen
     // for whatever command the user was asking about instead of the framework's flag inventory.
     if (command instanceof ClipanionHelpCommand) {
-      resolved.stdout.write(helpScreen(resolved.argv, distro.branding));
+      resolved.stdout.write(helpScreen(resolved.argv, distro.branding, canUpdate, commands));
       return 0;
     }
 
@@ -161,45 +186,6 @@ function reportRunFailure(
   return 3;
 }
 
-/** First tokens of every registered command path, kept next to `createCli`'s registrations. */
-const KNOWN_COMMANDS: ReadonlySet<string> = new Set(
-  [
-    ...(CheckCommand.paths ?? []),
-    ...(SetupCommand.paths ?? []),
-    ...(UndoCommand.paths ?? []),
-  ].flatMap((path) => (path[0] === undefined ? [] : [path[0]])),
-);
-
-/**
- * The misspelled command behind a parse error, or undefined when the input's problem is elsewhere.
- *
- * A bad flag on a real command raises the same error class, and there clipanion's message — which
- * names the offending flag — is the more useful one, so only a genuinely unknown first word gets
- * the redirect screen.
- */
-function unknownCommandInput(error: unknown, argv: readonly string[]): string | undefined {
-  const first = argv[0];
-  if (!(error instanceof UnknownSyntaxError) || first === undefined || first.startsWith("-")) {
-    return undefined;
-  }
-  return KNOWN_COMMANDS.has(first) ? undefined : first;
-}
-
-/** The help screen `-h` anywhere in the input was asking for, decided by the command word. */
-function helpScreen(argv: readonly string[], branding: CliBranding): string {
-  const command = argv.find((token) => !token.startsWith("-"));
-  if (command === "check") {
-    return renderCheckHelp(branding);
-  }
-  if (command === "setup") {
-    return renderSetupHelp(branding, setupAddKinds());
-  }
-  if (command === "undo") {
-    return renderUndoHelp(branding);
-  }
-  return renderRootHelp(branding);
-}
-
 /**
  * Gives a command the streams it should run against.
  *
@@ -218,7 +204,11 @@ function executionContext(
   return context;
 }
 
-function createCli(distro: CliDistro, enableColors: boolean): Cli<AuraCliContext> {
+function createCli(
+  distro: CliDistro,
+  enableColors: boolean,
+  canUpdate: boolean,
+): Cli<AuraCliContext> {
   const { branding } = distro;
   const cli = new Cli<AuraCliContext>({
     binaryLabel:
@@ -239,6 +229,16 @@ function createCli(distro: CliDistro, enableColors: boolean): Cli<AuraCliContext
   cli.register(CheckCommand);
   cli.register(SetupCommand);
   cli.register(UndoCommand);
+  if (canUpdate) {
+    cli.register(UpdateCommand);
+  }
+  const problems = formatDistroCommandProblems(distro.commands ?? []);
+  if (problems !== undefined) {
+    throw new Error(problems);
+  }
+  for (const definition of distro.commands ?? []) {
+    cli.register(createDistroCommandClass(definition));
+  }
   // No Builtins.HelpCommand: `-h`/`--help` routes through clipanion's internal help command, which
   // `runCli` intercepts to render the action-first screens in help.ts.
   if (branding.version !== undefined) {

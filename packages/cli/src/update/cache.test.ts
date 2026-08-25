@@ -96,8 +96,8 @@ describe("update check cadence", () => {
 
   it.each([
     { elapsed: 0, expected: false, label: "a check from a moment ago", outcome: "current" },
-    { elapsed: 23 * HOUR, expected: false, label: "a check from today", outcome: "current" },
-    { elapsed: 25 * HOUR, expected: true, label: "a check from yesterday", outcome: "current" },
+    { elapsed: HOUR, expected: false, label: "an hour-old check", outcome: "current" },
+    { elapsed: 2 * HOUR, expected: true, label: "a two-hour-old check", outcome: "current" },
     {
       elapsed: 30 * 60 * 1_000,
       expected: false,

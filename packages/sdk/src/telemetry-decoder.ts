@@ -1,6 +1,7 @@
 import type {
   CheckRunEvent,
   CommandFailedEvent,
+  DistroCommandEvent,
   FixRunEvent,
   SetupRunEvent,
   TelemetryBatchV1,
@@ -9,8 +10,11 @@ import type {
 } from "./telemetry.js";
 import {
   isArrayOf,
+  isBoolean,
+  isDistroEnvelope,
   isEnvelope,
   isExactRecord,
+  isLabelledRecord,
   isNonNegativeInteger,
   isNonNegativeNumber,
   isOptional,
@@ -20,6 +24,7 @@ import {
   isTelemetryCheckFlags,
   isTelemetryCheckState,
   isTelemetryFixOutcome,
+  isTelemetryLabel,
   isTelemetrySetupActions,
   isOneOf,
 } from "./telemetry-decoder-values.js";
@@ -53,6 +58,8 @@ function isTelemetryEvent(value: unknown): value is TelemetryEvent {
       return isCheckRunEvent(value);
     case "command-failed":
       return isCommandFailedEvent(value);
+    case "distro-command":
+      return isDistroCommandEvent(value);
     case "fix-run":
       return isFixRunEvent(value);
     case "setup-run":
@@ -168,6 +175,30 @@ function isUndoRunEvent(value: unknown): value is UndoRunEvent {
     ]) &&
     isOptional(value, "restoredOperationCount", isNonNegativeInteger) &&
     isOptional(value, "skippedBackupCount", isNonNegativeInteger)
+  );
+}
+
+/**
+ * One event from a distribution-registered command.
+ *
+ * Every payload field is optional, so the exact-key check is doing most of the work: it is what
+ * stops a distribution from widening its own events with fields a receiver would then persist.
+ */
+function isDistroCommandEvent(value: unknown): value is DistroCommandEvent {
+  return (
+    isExactRecord(
+      value,
+      ["at", "command", "event", "kind"],
+      ["counts", "distroVersion", "durationMs", "exitCode", "flags", "outcome"],
+    ) &&
+    isDistroEnvelope(value) &&
+    value["kind"] === "distro-command" &&
+    isTelemetryLabel(value["event"]) &&
+    isOptional(value, "counts", (counts) => isLabelledRecord(counts, isNonNegativeNumber)) &&
+    isOptional(value, "durationMs", isNonNegativeNumber) &&
+    isOptional(value, "exitCode", isNonNegativeInteger) &&
+    isOptional(value, "flags", (flags) => isLabelledRecord(flags, isBoolean)) &&
+    isOptional(value, "outcome", isTelemetryLabel)
   );
 }
 

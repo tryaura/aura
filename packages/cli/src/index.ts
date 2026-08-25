@@ -1,4 +1,5 @@
 export { runCli, runStandaloneCli } from "./run.boundary.js";
+export { arrayFlag, booleanFlag, stringFlag } from "./distro-command-flags.js";
 export { createHttpTelemetrySink } from "./http-telemetry-sink.js";
 export type {
   HttpTelemetryDeliveryFailure,
@@ -24,6 +25,13 @@ export type {
 } from "./report-types.js";
 export type {
   CliBranding,
+  CliCommandDefinition,
+  CliCommandEvent,
+  CliCommandExample,
+  CliCommandFlag,
+  CliCommandFlagValue,
+  CliCommandInvocation,
+  CliCommandTelemetry,
   CliDistro,
   CliExitCode,
   CliRegistryOptions,

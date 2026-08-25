@@ -5,16 +5,27 @@ description: Aura commands, options, selection rules, and process exit codes.
 
 import { LinkCard } from "@astrojs/starlight/components";
 
-Aura has three commands: `setup`, `check`, and `undo`. Run `aura <command> --help` for the same
-action-oriented reference in the terminal.
+Aura has three setup-management commands: `setup`, `check`, and `undo`. The standalone binary also
+provides `update`. Run `aura <command> --help` for the same action-oriented reference in the
+terminal.
+
+A private distribution may add commands of its own beside these. They appear on the root help
+screen and answer `--help` with the same layout; see
+[Distribution commands](/docs/reference/distribution-commands/).
 
 ## Global
 
-| Command or option | Purpose                                                      |
-| ----------------- | ------------------------------------------------------------ |
-| `aura --help`     | Show the command overview.                                   |
-| `aura --version`  | Print the release version.                                   |
-| `--no-color`      | Disable terminal colors; accepted before or after a command. |
+| Command or option | Purpose                                                         |
+| ----------------- | --------------------------------------------------------------- |
+| `aura --help`     | Show the command overview.                                      |
+| `aura --version`  | Print the release version.                                      |
+| `aura update`     | Bypass the update cache, install an available update, and exit. |
+| `--no-color`      | Disable terminal colors; accepted before or after a command.    |
+
+`aura update` exits `0` when Aura is current or installed, `1` when another update is in progress,
+`2` when the current installation or environment cannot self-update, and `3` when the check or
+installation fails. Automatic startup checks remain silent and never change another command's exit
+code.
 
 ## `aura setup`
 
@@ -75,6 +86,12 @@ operational failures. Findings do not change the process exit code.
 
 Undo exits `0` when restored or when there is nothing to undo, `1` when aborted or declined, `2`
 for conflicts, and `3` for operational failures.
+
+## Distribution commands
+
+A distribution registers extra top-level commands as data — word, summary, examples, and long
+flags. `--no-color` applies to them; `--home` and `--path` do not, because they belong to the three
+built-in commands. An invalid or colliding definition fails the run at startup with exit code `3`.
 
 ## Telemetry
 

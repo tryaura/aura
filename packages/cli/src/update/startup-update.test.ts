@@ -30,8 +30,9 @@ describe("startup update", () => {
 
   it("installs a newer release and says so in two lines on stderr", async () => {
     const run = await scenario();
-    await runStartupUpdate(run.request);
+    const outcome = await runStartupUpdate(run.request);
 
+    expect(outcome).toEqual({ kind: "installed", version: "1.4.0" });
     expect(run.stderr()).toBe(
       "Updating Acme Doctor 1.3.0 -> 1.4.0...\n" +
         "Updated Acme Doctor to 1.4.0. The new version will be used on your next run.\n",
@@ -40,7 +41,7 @@ describe("startup update", () => {
     expect(await readFile(run.executablePath, "utf8")).toBe("VERSION=1.4.0\n");
   });
 
-  it("records the install so the next command does not check again the same day", async () => {
+  it("records the install so the next command does not check again within two hours", async () => {
     const run = await scenario();
     await runStartupUpdate(run.request);
 
@@ -53,14 +54,23 @@ describe("startup update", () => {
     expect(run.requests).toHaveLength(1);
   });
 
+  it("bypasses a fresh cache entry when explicitly requested", async () => {
+    const run = await scenario({ tag: "v1.3.0" });
+    await runStartupUpdate(run.request);
+    await runStartupUpdate({ ...run.request, bypassCache: true });
+
+    expect(run.requests).toHaveLength(2);
+  });
+
   /** Silence is right for the user and useless for whoever wired the distribution up. */
   it("names the gate that refused, and reaches no network", async () => {
     const run = await scenario({ environmentVariables: { ACME_UPDATE_DEBUG: "1" } });
-    await runStartupUpdate({
+    const outcome = await runStartupUpdate({
       ...run.request,
       current: { ...run.request.current, platform: "win32" },
     });
 
+    expect(outcome).toEqual({ kind: "skipped", reason: "unsupported-target" });
     expect(run.stderr()).toBe("update: skipped: unsupported-target\n");
     expect(run.requests).toEqual([]);
   });
@@ -110,8 +120,9 @@ describe("startup update", () => {
 
   it("says nothing when the release is the running one", async () => {
     const run = await scenario({ tag: "v1.3.0" });
-    await runStartupUpdate(run.request);
+    const outcome = await runStartupUpdate(run.request);
 
+    expect(outcome).toEqual({ kind: "current" });
     expect(run.stderr()).toBe("");
     expect(await readUpdateCache(run.homeDir, IDENTITY, NOW.getTime())).toMatchObject({
       outcome: "current",
@@ -132,8 +143,9 @@ describe("startup update", () => {
 
   it("says nothing when the metadata request fails, and retries within the hour", async () => {
     const run = await scenario({ httpFailure: true });
-    await runStartupUpdate(run.request);
+    const outcome = await runStartupUpdate(run.request);
 
+    expect(outcome).toEqual({ kind: "failed", reason: "network" });
     expect(run.stderr()).toBe("");
     expect(await readUpdateCache(run.homeDir, IDENTITY, NOW.getTime())).toEqual({
       checkedAt: NOW.getTime(),

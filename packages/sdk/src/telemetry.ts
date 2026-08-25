@@ -1,4 +1,9 @@
-/** The CLI subcommand a telemetry event describes. */
+/**
+ * The built-in CLI subcommand a telemetry event describes.
+ *
+ * A {@link DistroCommandEvent} carries its own registered word instead, which is why the envelope's
+ * `command` is narrowed per event rather than once for the whole union.
+ */
 export type TelemetryCommand = "check" | "setup" | "undo";
 
 /**
@@ -205,10 +210,40 @@ export interface CommandFailedEvent extends TelemetryEnvelope {
   readonly kind: "command-failed";
 }
 
+/**
+ * One event recorded by a command a distribution registered of its own.
+ *
+ * The envelope is stamped by the CLI, so a command can neither omit it nor attribute an event to
+ * another command. The payload carries the same closed vocabulary every built-in event does:
+ * distribution-owned labels, counts, booleans, and durations. `event` and `outcome` are labels the
+ * distribution chose at build time — never text read from a file, a tool, or the user.
+ */
+export interface DistroCommandEvent extends Omit<TelemetryEnvelope, "command"> {
+  /** The registered command word the event belongs to, stamped by the CLI. */
+  readonly command: string;
+  /** Distribution-owned counters, keyed by label. */
+  readonly counts?: Readonly<Record<string, number>> | undefined;
+  /** Milliseconds the measured work took. */
+  readonly durationMs?: number | undefined;
+  /**
+   * What happened, as a distribution-owned label such as `sync-run`. The CLI reserves
+   * `command-failed`, which it records itself when a command throws.
+   */
+  readonly event: string;
+  /** Exit code, present when the event describes a finished run. */
+  readonly exitCode?: number | undefined;
+  /** Distribution-owned booleans, keyed by label — typically which options the run carried. */
+  readonly flags?: Readonly<Record<string, boolean>> | undefined;
+  readonly kind: "distro-command";
+  /** Fixed-vocabulary outcome owned by the distribution, such as `applied`. */
+  readonly outcome?: string | undefined;
+}
+
 /** Everything Aura reports about a run, as a closed union a sink can switch over. */
 export type TelemetryEvent =
   | CheckRunEvent
   | CommandFailedEvent
+  | DistroCommandEvent
   | FixRunEvent
   | SetupRunEvent
   | UndoRunEvent;

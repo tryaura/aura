@@ -132,6 +132,7 @@ export type {
 export type {
   CheckRunEvent,
   CommandFailedEvent,
+  DistroCommandEvent,
   FixRunEvent,
   SetupRunEvent,
   SetupRunOutcome,

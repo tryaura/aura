@@ -121,14 +121,14 @@ Automatic installation runs only when all of the following are true:
 - the distribution version is canonical semver and is not `0.0.0`;
 - the target is one of the four supported targets;
 - the executable path identifies a regular file rather than a symlink;
-- the invocation is a real command rather than root help, explicit help, or version output;
+- the invocation is not explicit help or version output (an argument-free invocation is eligible);
 - the command-derived disable variable is not `off`, `0`, `false`, or `no`;
 - `CI` is not set; and
 - the run owns an interactive terminal, meaning all three of stdin, stdout, and stderr.
 
-The final two constraints keep CI and scripts pinned to the binary they selected. A later explicit
-`upgrade` command may support non-interactive installation, but startup mutation should remain an
-interactive behavior.
+The final two constraints keep CI and scripts pinned to the binary they selected. `aura update`
+remains subject to the eligibility policy, but bypasses cached outcomes, installs an available
+release, and exits without dispatching another command.
 
 ## Official Aura provider
 
@@ -299,7 +299,7 @@ distribution command. It includes credential variable names but never their valu
 
 Cache policy:
 
-- a successful current-version check is fresh for 24 hours;
+- a successful current-version check is fresh for two hours;
 - an update candidate is never installed from cache; only its failed version and attempt count are
   retained for backoff, and the source is re-resolved before every retry;
 - the ETag is preserved but offered with `If-None-Match` only when the cached answer was "nothing
@@ -380,9 +380,10 @@ Behavior by outcome:
 | Digest or signature failure    | Explicit security warning      | Runs normally; candidate is never installed |
 | Another updater holds the lock | None                           | Runs normally                               |
 
-Updater failures never change the requested command's exit code. Output goes to stderr so it cannot
-corrupt stdout, but startup updates are disabled for non-interactive and machine-oriented runs in
-the first version.
+Automatic updater failures never change the requested command's exit code. Output goes to stderr
+so it cannot corrupt stdout, and startup updates are disabled for non-interactive and
+machine-oriented runs. The explicit `update` command instead reports every outcome and returns a
+nonzero exit code when the check cannot complete.
 
 ### Tracing a distribution that will not update
 
