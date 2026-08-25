@@ -93,12 +93,9 @@ function blockedBy(request: EligibilityRequest): EligibilityRefusal | undefined 
   return ownsTerminal(request) ? undefined : "not-a-terminal";
 }
 
-/** Help and version output must remain immediate, including the argument-free root help screen. */
+/** Explicit help and version output must remain immediate. */
 function isInformationalRun(argv: readonly string[]): boolean {
-  return (
-    argv.length === 0 ||
-    argv.some((value) => value === "--help" || value === "-h" || value === "--version")
-  );
+  return argv.some((value) => value === "--help" || value === "-h" || value === "--version");
 }
 
 function turnedOff(request: EligibilityRequest): boolean {

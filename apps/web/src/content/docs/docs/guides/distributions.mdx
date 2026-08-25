@@ -22,7 +22,7 @@ asking every developer to assemble plugins locally.
 1. Install the public packages at one version.
 
    ```sh
-   pnpm add @tryaura/aura-cli@0.5.2 @tryaura/aura-sdk@0.5.2 @tryaura/aura-testkit@0.5.2
+   pnpm add @tryaura/aura-cli@0.5.4 @tryaura/aura-sdk@0.5.4 @tryaura/aura-testkit@0.5.4
    pnpm add --save-dev typescript @types/node
    ```
 
@@ -64,32 +64,41 @@ asking every developer to assemble plugins locally.
    + plugins: [...OFFICIAL_PLUGINS, internalPlugin],
    ```
 
-5. [Ship it](/docs/guides/ship-a-distribution/) when the source command is right: asset staging,
+5. Register a [distribution command](/docs/reference/distribution-commands/) when an internal
+   workflow belongs beside `setup`, `check`, and `undo`.
+
+   ```diff title="src/main.ts"
+   + commands: [syncCommand],
+   ```
+
+6. [Ship it](/docs/guides/ship-a-distribution/) when the source command is right: asset staging,
    binary compilation, smoke testing, and self-updating releases.
 
 </Steps>
 
 ## What just happened?
 
-`runCli` supplied the command shell, while the distribution supplied the product identity and the
-only plugins the process can load. End users install the resulting command; Aura does not discover
-runtime plugins from their machine.
+`runCli` supplied the command shell, while the distribution supplied the product identity, the only
+plugins the process can load, and any commands of its own. End users install the resulting command;
+Aura does not discover runtime plugins from their machine.
 
 Distribution defaults are the lowest configuration layer. A selected preset, repository preset,
 manifest, and command-line flags can override them in that order.
 
-:::caution[Plugins are not sandboxed]
-Every compiled plugin runs with the full privileges of the distribution. Pin and review private
-plugins like production dependencies, and keep registry credentials in build CI only.
+:::caution[Compiled code is not sandboxed]
+Every compiled plugin and registered command runs with the full privileges of the distribution.
+Pin and review private code like production dependencies, and keep registry credentials in build
+CI only.
 :::
 
 ## Common failures
 
-| Symptom                                           | Cause                                                             | Fix                                                                            |
-| ------------------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| Plugin registration fails at boot                 | IDs, versions, API version, or registry privileges conflict       | Fix the named contribution; Aura refuses ambiguous registries.                 |
-| A source build works but the binary loses content | Bun did not receive every Markdown or JSON asset as an entrypoint | Derive asset entrypoints from the content directory and smoke-test the binary. |
-| Package types disagree                            | The CLI, SDK, and testkit versions drifted                        | Pin all three public packages to the same exact release.                       |
+| Symptom                                           | Cause                                                                   | Fix                                                                            |
+| ------------------------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Plugin registration fails at boot                 | IDs, versions, API version, or registry privileges conflict             | Fix the named contribution; Aura refuses ambiguous registries.                 |
+| The run exits `3` naming a command word           | A registered command word or flag is reserved, malformed, or duplicated | Fix every listed problem; Aura reports them in one message.                    |
+| A source build works but the binary loses content | Bun did not receive every Markdown or JSON asset as an entrypoint       | Derive asset entrypoints from the content directory and smoke-test the binary. |
+| Package types disagree                            | The CLI, SDK, and testkit versions drifted                              | Pin all three public packages to the same exact release.                       |
 
 ## Next steps
 
@@ -103,6 +112,11 @@ plugins like production dependencies, and keep registry credentials in build CI 
     title="Understand plugins"
     href="/docs/reference/plugins/"
     description="Choose contribution slots and follow registry and trust rules."
+  />
+  <LinkCard
+    title="Register a command"
+    href="/docs/reference/distribution-commands/"
+    description="Add a top-level command with flags, an injected environment, and telemetry."
   />
   <LinkCard
     title="Add distribution updates"

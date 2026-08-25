@@ -102,7 +102,7 @@ describe("update installation transaction", () => {
       JSON.stringify({ pid: 1, startedAt: NOW }),
     );
 
-    expect(await install(world)).toEqual({ kind: "skipped" });
+    expect(await install(world)).toEqual({ kind: "skipped", reason: "lock-held" });
     expect(await readFile(world.executablePath, "utf8")).toBe(INSTALLED);
   });
 
@@ -114,7 +114,7 @@ describe("update installation transaction", () => {
     const world = await world1();
     await writeFile(world.executablePath, "VERSION=1.4.0\n", { mode: 0o755 });
 
-    expect(await install(world)).toEqual({ kind: "skipped" });
+    expect(await install(world)).toEqual({ kind: "skipped", reason: "already-current" });
   });
 
   it("updates a license the installation already keeps", async () => {

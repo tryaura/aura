@@ -66,6 +66,7 @@ export default defineConfig({
             { label: "Ship a distribution", slug: "docs/guides/ship-a-distribution" },
             { label: "Add distribution updates", slug: "docs/guides/distribution-updates" },
             { label: "Plugins", slug: "docs/reference/plugins" },
+            { label: "Distribution commands", slug: "docs/reference/distribution-commands" },
           ],
         },
         {

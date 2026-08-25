@@ -1,0 +1,225 @@
+---
+title: Distribution commands
+description: Register top-level commands in a distribution with parsed flags, an injected environment, and scoped telemetry.
+---
+
+import { CardGrid, LinkCard } from "@astrojs/starlight/components";
+
+A distribution can register top-level commands of its own beside `setup`, `check`, and `undo`. Use
+one when an internal workflow belongs in the same branded executable your team already trusts —
+`acmedev sync` rather than a second script nobody remembers to install.
+
+Commands are distribution-owned, not plugin-owned. A command word is global real estate on the
+help screen, and the build-time distribution list is the one place that can arbitrate it.
+
+## Declare a command
+
+A command is data, not a framework class. The same definition builds the parser and renders every
+help screen, so the two cannot drift.
+
+```ts title="src/sync-command.ts"
+import type { CliCommandDefinition } from "@tryaura/aura-cli";
+
+export const syncCommand: CliCommandDefinition = {
+  word: "sync",
+  summary: "Synchronize agent profiles with the Acme registry",
+  examples: [
+    { args: "sync", text: "Synchronize every profile" },
+    { args: "sync --tag <tag>", text: "Synchronize one tag only" },
+  ],
+  flags: [
+    { flag: "--force", kind: "boolean", description: "Sync even when nothing changed" },
+    {
+      flag: "--name",
+      kind: "string",
+      placeholder: "<name>",
+      description: "Profile to synchronize",
+    },
+    { flag: "--tag", kind: "array", placeholder: "<tag>", description: "Tag to sync; repeatable" },
+  ],
+  helpFooters: ["Exit codes: 0 synchronized · 2 invalid usage · 3 operational failures"],
+  execute: async (invocation) => {
+    invocation.stdout.write("Synchronized.\n");
+    return 0;
+  },
+};
+```
+
+Register it on the distribution beside the plugin list:
+
+```diff title="src/main.ts"
+    plugins: [...OFFICIAL_PLUGINS, internalPlugin],
+    registry: OFFICIAL_REGISTRY_OPTIONS,
++   commands: [syncCommand],
+```
+
+| Field         | Purpose                                                                          |
+| ------------- | -------------------------------------------------------------------------------- |
+| `word`        | Top-level command word, such as `sync`.                                          |
+| `summary`     | Row text on the root and unknown-command screens. No trailing period.            |
+| `examples`    | Rows under "Everyday use", most common first. Absent, the bare word is shown.    |
+| `flags`       | Long options the command accepts.                                                |
+| `helpFooters` | Footer lines on the command's help screen, such as an exit-code legend.          |
+| `execute`     | Runs the command. The returned `0`, `1`, `2`, or `3` becomes the process status. |
+
+## Flags and positionals
+
+| Kind      | Declaration               | Parsed value                            |
+| --------- | ------------------------- | --------------------------------------- |
+| `boolean` | `--force`                 | Always present; `false` when not given. |
+| `string`  | `--name <name>`           | `undefined` when not given.             |
+| `array`   | `--tag <tag>`, repeatable | Always present; empty when not given.   |
+
+Parsed values arrive on `invocation.flags`, keyed by the flag exactly as declared — `flags["--tag"]`,
+not `flags.tag`. Everything that is not a flag or its value arrives on `invocation.positionals` in
+the order given.
+
+The typed helpers narrow each value to its declared kind and throw on a flag the definition never
+declared, so a misspelled key fails loudly instead of reading as `undefined`:
+
+```ts title="src/sync-command.ts"
+import { arrayFlag, booleanFlag, stringFlag } from "@tryaura/aura-cli";
+
+const force = booleanFlag(invocation, "--force"); // boolean
+const name = stringFlag(invocation, "--name"); // string | undefined
+const tags = arrayFlag(invocation, "--tag"); // readonly string[]
+```
+
+Flags are long-form only; there are no short aliases, required flags, choices, or string defaults.
+Validate what the command needs at the top of `execute` and return `2` for invalid usage, the same
+code the built-ins use.
+
+## Reserved names
+
+- Command words: `check`, `setup`, and `undo` are Aura's; `help` and `version` are the command
+  framework's.
+- Flags: `--help` is claimed by the framework and `--no-color` is consumed before any command
+  parses.
+- A word is lowercase kebab-case, at most 24 characters, starting with a letter. A flag is
+  lowercase kebab-case after `--`, at most 32 characters.
+- Every rendered text field — the summary, flag descriptions, examples, and footers — must be one
+  non-empty line.
+
+An invalid, reserved, or duplicated definition fails the run at startup with exit code `3` and
+reports every problem in the list at once, so a distribution with several mistakes is fixed in one
+pass. Nothing shadows a built-in at parse time.
+
+## What an invocation receives
+
+| Field                       | Purpose                                                    |
+| --------------------------- | ---------------------------------------------------------- |
+| `branding`                  | The distribution's names, version, and documentation link. |
+| `colorDepth`                | Supported color depth; `0` means emit no escape sequences. |
+| `environment`               | The run's injected `Environment`.                          |
+| `flags`, `positionals`      | Parsed command line.                                       |
+| `stdin`, `stdout`, `stderr` | The run's streams, injected rather than the process's own. |
+| `telemetry`                 | Records run events against this command's word.            |
+
+## Environment
+
+`invocation.environment` is the same injected `Environment` the built-in commands and every plugin
+run against, captured once at the process boundary: `cwd`, `homeDir`, `now()`, `platform`,
+`pathEntries`, `readVariable()`, `exec()`, and `httpGet()`. A command that reads only from it never
+touches process state directly, so it behaves the same under the testkit and under any embedder.
+
+```ts title="src/sync-command.ts"
+const result = await invocation.environment.exec({
+  args: ["rev-parse", "--abbrev-ref", "HEAD"],
+  command: "git",
+});
+const token = invocation.environment.readVariable("ACME_REGISTRY_TOKEN");
+```
+
+`exec` never spawns a shell, so argument values are not word-split or glob-expanded; it strips
+loader variables such as `NODE_OPTIONS` from the child, bounds every command with a timeout, and
+truncates runaway output. `httpGet` is the same bounded TLS-only client the kernel uses. Read a
+credential from `readVariable` at the moment of use and let it leave scope with the call.
+
+:::note[`--home` and `--path` are built-in options]
+They override the environment for `setup`, `check`, and `undo` only. A registered command's
+`environment` always reflects the process boundary. Declare your own flags if the command needs a
+different root, and apply them to the paths it builds.
+:::
+
+## Help screens
+
+The definition renders the whole help surface, so it cannot describe an option that does not parse.
+
+- The root screen and the unknown-command screen list each registered command after the built-in
+  rows, in declaration order.
+- `acmedev sync --help` shows Everyday use, Options, Advanced, then the definition's footers.
+  Advanced carries `--no-color` alone.
+- A misspelled word gets the redirect screen; a bad flag on a registered command keeps the parser's
+  message, which names the offending flag.
+
+## Telemetry
+
+A registered command records events through `invocation.telemetry`, which is a no-op unless the
+distribution composed a [telemetry sink](/docs/reference/telemetry/).
+
+```ts title="src/sync-command.ts"
+invocation.telemetry.record({
+  event: "sync-run",
+  outcome: "applied",
+  durationMs: 12,
+  exitCode: 0,
+  counts: { profiles: 4 },
+  flags: { force: invocation.flags["--force"] === true },
+});
+```
+
+| Field        | Purpose                                                               |
+| ------------ | --------------------------------------------------------------------- |
+| `event`      | What happened, as a label such as `sync-run`. Required.               |
+| `outcome`    | Fixed-vocabulary result owned by the distribution, such as `applied`. |
+| `durationMs` | Milliseconds the measured work took.                                  |
+| `exitCode`   | Exit code, when the event describes a finished run.                   |
+| `counts`     | Label-keyed counters.                                                 |
+| `flags`      | Label-keyed booleans, typically which options the run carried.        |
+
+Aura stamps the envelope: the command word, the `distro-command` event kind, the timestamp from the
+run's clock, and the distribution version. A command can neither send an unstamped event nor
+attribute one to a command it does not own. A command that throws is recorded as `command-failed`
+with its exit code and no error text, the same way the built-ins report an operational failure.
+That label is reserved for the crash record: an event a command records under `command-failed`
+itself is discarded.
+
+Labels are lowercase kebab-case and bounded, and `counts` and `flags` accept at most 32 entries
+each. That is the same rule every built-in event follows: identifiers, counts, booleans, and
+durations chosen at build time — never paths, file contents, messages, or strings returned by an
+external tool. `DO_NOT_TRACK` or `AURA_TELEMETRY=off` disables the sink before it sees an event.
+
+:::caution[Distribution commands are not sandboxed]
+`execute` runs with the full privileges of the process, exactly like a compiled plugin. Review a
+command the way you review a production dependency, and keep registry credentials in build CI.
+:::
+
+## Common failures
+
+| Symptom                                            | Cause                                                       | Fix                                                                                              |
+| -------------------------------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| The run exits `3` at startup naming a command word | The word is reserved, malformed, or declared twice          | Read the listed problems; every one is reported in the same message.                             |
+| A flag reads as `undefined`                        | The key is the bare name rather than the flag as declared   | Index with `"--tag"`, not `"tag"` — or use the typed helpers, which throw on an undeclared flag. |
+| The command sees the wrong home directory          | `--home` applies to the built-in commands only              | Declare a flag of your own and apply it to the paths the command builds.                         |
+| Events never reach the sink                        | No sink is composed, or the invoking environment opted out  | Compose `telemetry` on the distribution and check `DO_NOT_TRACK`.                                |
+| An event is rejected by an ingestion endpoint      | A payload value is free text rather than a build-time label | Send identifiers, counts, and booleans; count what you cannot name.                              |
+
+## Next steps
+
+<CardGrid>
+  <LinkCard
+    title="Build a distribution"
+    href="/docs/guides/distributions/"
+    description="Compose branding, plugins, and commands into one trusted executable."
+  />
+  <LinkCard
+    title="Anonymous telemetry"
+    href="/docs/reference/telemetry/"
+    description="Review the event envelope, the privacy rules, and the opt-out controls."
+  />
+  <LinkCard
+    title="Plugins"
+    href="/docs/reference/plugins/"
+    description="Choose the contribution slot for adapters, checks, content, and presets."
+  />
+</CardGrid>

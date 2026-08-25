@@ -57,7 +57,7 @@ export const METADATA_TIMEOUT_MS = 10_000;
 export const VERSION_PROBE_TIMEOUT_MS = 30_000;
 
 /** How long a successful "already current" check stays fresh. */
-export const CHECK_FRESH_MS = 24 * 60 * 60 * 1_000;
+export const CHECK_FRESH_MS = 2 * 60 * 60 * 1_000;
 
 /** How long a failed check waits before the next one, silently. */
 export const CHECK_RETRY_MS = 60 * 60 * 1_000;

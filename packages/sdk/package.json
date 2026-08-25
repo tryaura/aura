@@ -1,6 +1,6 @@
 {
   "name": "@tryaura/aura-sdk",
-  "version": "0.5.2",
+  "version": "0.5.4",
   "description": "The public plugin API for Aura distributions.",
   "keywords": [
     "agent",

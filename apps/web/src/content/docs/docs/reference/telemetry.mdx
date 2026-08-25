@@ -51,6 +51,11 @@ The event variants add only fixed vocabulary, booleans, counts, durations, and A
 | `undo-run`       | Outcome, restored-operation count, and skipped-backup count.                                                                        |
 | `command-failed` | The command and exit code only; no error message or diagnostic detail.                                                              |
 
+The wire schema also carries a `distro-command` variant, recorded by a
+[command a private distribution registers](/docs/reference/distribution-commands/#telemetry) of its
+own. This service rejects it: the official distribution registers no such commands, so an event
+attributed to one did not come from a build it can vouch for.
+
 Custom MCP servers and externally sourced skills are counted rather than named. Catalog servers,
 bundled skills, adapters, checks, and snippets use identifiers owned by the official distribution.
 

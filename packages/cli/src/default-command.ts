@@ -13,7 +13,9 @@ export class DefaultCommand extends Command<AuraCliContext> {
 
   // fallow-ignore-next-line unused-class-member -- Clipanion invokes registered command handlers.
   async execute(): Promise<CliExitCode> {
-    this.context.stdout.write(renderRootHelp(this.context.branding));
+    this.context.stdout.write(
+      renderRootHelp(this.context.branding, this.context.canUpdate, this.context.commands),
+    );
     return 0;
   }
 }

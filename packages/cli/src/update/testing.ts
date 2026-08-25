@@ -70,8 +70,8 @@ export async function scenario(options: StartupScenarioOptions = {}): Promise<St
 
   const requests: HttpGetRequest[] = [];
   const downloads: UpdateDownloadRequest[] = [];
-  const stderr = capture();
-  const stdout = capture();
+  const stderr = captureUpdateTerminal();
+  const stdout = captureUpdateTerminal();
 
   return {
     downloads,
@@ -143,7 +143,10 @@ function terminal(): PassThrough {
   return Object.assign(new PassThrough(), { isTTY: true });
 }
 
-function capture(): { readonly stream: PassThrough; readonly text: () => string } {
+export function captureUpdateTerminal(): {
+  readonly stream: PassThrough;
+  readonly text: () => string;
+} {
   const chunks: string[] = [];
   const stream = Object.assign(new PassThrough(), { isTTY: true });
   stream.on("data", (chunk: Buffer) => chunks.push(chunk.toString("utf8")));

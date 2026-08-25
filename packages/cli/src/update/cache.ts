@@ -71,10 +71,10 @@ export async function writeUpdateCache(
 /**
  * Whether this run should ask the source for release metadata.
  *
- * The cadence is what keeps startup cheap and quiet: one successful check a day, one silent retry
- * an hour after a failure, and an exponential backoff per candidate version after an installation
- * that did not complete — so a machine that cannot write to its own install directory asks once,
- * then twice a day, rather than on every command.
+ * The cadence is what keeps startup cheap and quiet: one successful check every two hours, one
+ * silent retry an hour after a failure, and an exponential backoff per candidate version after an
+ * installation that did not complete — so a machine that cannot write to its own install
+ * directory asks once, then twice a day, rather than on every command.
  */
 export function shouldCheck(entry: UpdateCacheEntry | undefined, now: number): boolean {
   if (entry === undefined) {

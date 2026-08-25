@@ -253,6 +253,7 @@ function findingFor(
       veryLarge
         ? "This instruction set is well above the recommended context budget. Consolidate or move narrowly applicable guidance before it crowds out task context."
         : "Review the largest files first and move narrowly applicable guidance out of the always-loaded set.",
+      `Loaded files: ${effectiveFiles.map((file) => `${file.path} (cat -- ${shellQuote(file.path)})`).join("; ")}`,
       ...(omittedFiles === 0
         ? []
         : [
@@ -290,4 +291,8 @@ function conditionalSuffix(count: number): string {
 
 function measureDocument(document: InstructionDocument): Omit<BudgetFile, "share"> {
   return { bytes: Buffer.byteLength(document.content, "utf8"), path: resolve(document.path) };
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\"'\"'")}'`;
 }

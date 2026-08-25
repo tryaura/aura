@@ -119,6 +119,18 @@ describe("official telemetry policy", () => {
       "repeated instruction actions",
       batch([setup({ instructions: [{ action: "keep" }, { action: "template" }] })]),
     ],
+    [
+      "distribution command event",
+      batch([
+        {
+          at: AT,
+          command: "sync",
+          distroVersion: VERSION,
+          event: "sync-run",
+          kind: "distro-command",
+        },
+      ]),
+    ],
   ])("rejects a non-official %s", (_label, value) => {
     expect(isOfficialTelemetryBatch(value)).toBe(false);
   });
