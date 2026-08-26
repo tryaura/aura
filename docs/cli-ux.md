@@ -233,27 +233,46 @@ use, and anything else stays its own path. Only `.git` markers and git config fi
 opened — nothing of the project's own contents. A heading notes the collapse (`family_planner ·
 12 directories`) whenever a row absorbed more than one. Rendered by
 `packages/cli/src/sessions/render.ts` in the help-screen geometry, and ordered by what deserves
-action, not by inventory: a one-line header naming the source and the window, an `Overall` block,
-then `Needs attention` — only the projects showing trouble, worst first, one reason per row —
-then `Projects by agent time`, capped at five. `Overall` is one totals line (which carries token
-volume, `61.2M tokens in, 987k out`, when the transcripts reported any) plus horizontal gauges —
-time in tools as a share of wall time, tool problems as a share of all calls, cache hit as
-the share of input tokens served from the provider's cache (shown only when token data exists;
-the one gauge where high is healthy), and (only when any happened) compactions per session. Each
-gauge carries a letter grade (`A`–`D`, `F`), and the section title carries the worst of them:
-health rolls up pessimistically. When any session reported subscription rate limits, one note
-line states the window's peak (`Quota peaked at 7% of the pro plan's 7-day window`) — only the
-peak, never per-session deltas, because the counter is account-global and concurrent sessions
-would double-count. There is deliberately no dollar figure: transcripts carry no prices, and on
+action, not by inventory: a header naming the source and window; four `Session health` cards;
+`Needs attention`; short `Activity` and `Workflow and delivery` rows; command and work-item
+insights; then `Projects by agent time`, capped at five. No single overall letter flattens those
+signals into a verdict.
+
+The four fixed-width cards expose the measurements that explain health directly: tool-problem
+grade, share, and count; peak context-window grade and occupancy; compaction grade, rate, and
+count; and failed/total validation runs plus validation time. Validation is deliberately ungraded:
+a red-to-green test iteration is useful work, and no trustworthy health threshold exists for it.
+Missing inputs stay visible as `No tool calls`, `Not recorded`, or `No validation` / `runs
+recorded`, so the card positions never move. Four 18-column cards plus their gaps fit from 77
+columns upward; narrower reports use a 2×2 grid. All card sizing uses terminal display cells.
+
+The detail sections use one concept per label/value row instead of chains of unrelated values.
+`Activity` carries sessions/projects, agent time, turns, and token directions. `Workflow and
+delivery` carries median turn time, tool-time share, cache reuse, classified check/expected
+statuses, human interventions, first-green cost, initial context, inferred endings, and unreadable
+transcripts when those signals exist. Breakdowns use continuation rows. Explanatory prose appears
+only beneath unhealthy cards or flagged projects; healthy signals stay terse. Subscription
+rate-limit state is deliberately not rendered:
+the counter is account-global and shared by concurrent sessions, so no per-window attribution is
+honest; the raw quota snapshot stays available in `--json`. There is deliberately no dollar
+figure: transcripts carry no prices, and on
 a subscription plan an API-equivalent estimate would read as real money. Every graded report
 ends with the one-line legend `Grades: A great · B good · C fair · D poor · F failing`, so the
-scale never needs a manual. The bands
+scale never needs a manual. The two insight sections are each capped at five entries with a
+counted `--json` pointer for the rest and absent when empty. `Commands by tool time` gives each
+(command, subcommand) identity a primary bar/time row and an indented calls/failure row, so `git
+diff` shows up apart from `git push`. `Work items · keys seen in prompts, branches, and git/gh
+commands` gives each loose issue-key join an agent-time row followed by session count and
+first-to-last span; that span is a lower bound on real task time. The bands
 are deliberately coarse so ordinary variation between windows does not flip a grade — in tools:
 A under 10%, B under 20%, C under 35%, D under 50%; tool problems: A under 2%, B under 5%, C under 10%,
 D under 20%; compactions per session: A under 0.1, B under 0.3, C under 0.6, D under 1; cache
-hit, graded on the miss share with the same bands as in tools, so A means at least 90% reused. The projects section is a bar chart: one line
-per project, the bar scaled to the busiest project's wall time, followed by the numbers behind it
-(wall, sessions, tool-problem share and check-failure count when nonzero, cached-input share when token data exists, directory spread when more than one). Bars are drawn
+hit, graded on the miss share with the same bands as in tools, so A means at least 90% reused;
+context occupancy: A under 50%, B under 70%, C under 85%, D under 95% — an F means compaction
+was imminent when the session peaked. The projects section is a bar chart: each project gets a
+primary bar/agent-time row and an inventory continuation for sessions and directory spread.
+`--verbose` adds tool-problem, check-failure, and cache detail without packing it onto the primary
+row. Bars are drawn
 with `█` fill, `▏`–`▉` partial cells, and a `░` track, so they disambiguate without color; a
 nonzero value always shows at least a sliver of ink, and labels longer than the column truncate
 with `…`. Non-success outcomes are classified conservatively: missing executables and MCP errors
@@ -267,7 +286,8 @@ are materiality bounds, not zero: a problem count below three that is also under
 the project's calls is noise, and a single compaction is routine. The attention list itself is
 capped at eight entries. Neither cap
 is silent: each counts what it withheld and points at `--verbose`, which lists every flagged
-project and replaces the chart with every project in the window. A window with nothing to
+project, expands suppressed outcome/project detail, and replaces the chart with every project in
+the window. A window with nothing to
 flag simply has no `Needs attention` section. Recorded paths shorten under the effective home
 directory to `~`; every path and command name is neutralized before it reaches the terminal, and
 only safe command labels appear, never full command lines.
@@ -277,7 +297,16 @@ The privacy contract is the footer's one promise: the analysis is entirely local
 metrics and neutralized command labels; `--json` additionally carries local evidence metadata such
 as transcript paths, working directories, branches, and session identifiers. It emits the one
 machine-readable document — window, per-project aggregates, and per-session metrics — on stdout
-under the same seam rules as `check --json`. An empty window is a normal report (exit 0), not a
+under the same seam rules as `check --json`. Per-session metrics carry turn-level detail (start,
+end, close state, harness-reported duration and time to first token, model, per-turn tool time and
+token deltas, capped at 500 turns with a truncation flag), interventions (interrupts and
+re-prompts), context-window occupancy (window size, first-request and peak request tokens), and
+call totals folded by (tool, command, subcommand) so `git diff` and `git push` stay distinct — the
+subcommand is read only for a known set of multi-command executables, never from arbitrary
+argument text. `--detailed` additionally carries one row per recorded tool call (id, line, turn,
+start, duration, status, exit code, output size); it requires `--json`, because per-call rows are
+machine output. The JSON document only ever gains fields; existing fields keep their names and
+meanings. An empty window is a normal report (exit 0), not a
 failure. Transcripts are parsed as bounded streams with at most four reads in flight; a transcript
 larger than the read cap is counted as truncated rather than sinking the run.
 

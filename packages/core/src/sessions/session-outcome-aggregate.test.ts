@@ -18,14 +18,23 @@ function outcome(label: string, kind: OutcomeKind): ToolOutcome {
 
 function session(id: string, outcomes: readonly ToolOutcome[]): AgentSessionMetrics {
   return {
+    abortedTurns: 0,
+    commands: [],
     compactions: 0,
+    completedTurns: 0,
+    context: undefined,
     cwd: "/repo",
+    edits: undefined,
     endedAt: undefined,
     git: { branch: undefined, commitHash: undefined, repositoryUrl: undefined },
+    inferredOutcome: undefined,
     initialPromptChars: 0,
     initialPromptLines: [],
+    interventions: [],
     largestToolOutputChars: 0,
+    model: undefined,
     outcomes,
+    pullRequests: [],
     sessionId: id,
     source: "codex",
     startedAt: undefined,
@@ -35,9 +44,13 @@ function session(id: string, outcomes: readonly ToolOutcome[]): AgentSessionMetr
     tools: { shell: { calls: outcomes.length, durationMs: 0, failures: outcomes.length } },
     transcriptPath: `/sessions/${id}.jsonl`,
     truncated: false,
+    turnDetails: [],
     turns: 1,
+    turnsTruncated: false,
     userMessages: 1,
+    validation: undefined,
     wallClockMs: 1,
+    workItems: [],
   };
 }
 

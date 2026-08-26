@@ -5,13 +5,17 @@ import { parseCodexSession, parseCodexSessionLines } from "./codex-parse.js";
 import type { CodexTranscriptReader } from "./codex-transcript-reader.js";
 import { utcDayKey } from "./iso-time.js";
 import { resolveProjects } from "./project-resolve.js";
+import type { SessionDetailLevel } from "./session-detail-metrics.js";
 import type { AgentSessionMetrics, SessionAnalysis } from "./session-metrics.js";
 import { aggregateSessionsByRepo } from "./session-aggregate.js";
+import { aggregateWorkItems } from "./work-item-aggregate.js";
 
 /** What one Codex session analysis runs against. */
 export interface CodexAnalysisOptions {
   /** How many days back from `now` the window opens, in whole days. */
   readonly days: number;
+  /** Whether to retain one row per tool call on each session. Defaults to summary-only. */
+  readonly detail?: SessionDetailLevel | undefined;
   readonly homeDir: string;
   /** The run's clock, injected so the window is testable and deterministic. */
   readonly now: Date;
@@ -49,8 +53,11 @@ export async function analyzeCodexSessions(
   const files = await discoverCodexSessions(options.reader, options.homeDir, since);
 
   const limit = createLimiter(MAX_CONCURRENT_SESSION_READS);
+  const detail = options.detail ?? "summary";
   const parsed = await Promise.all(
-    files.map((file) => limit(() => readSession(options.reader, options.transcriptReader, file))),
+    files.map((file) =>
+      limit(() => readSession(options.reader, options.transcriptReader, file, detail)),
+    ),
   );
   const sessions = parsed.filter(
     (session): session is AgentSessionMetrics => session !== undefined,
@@ -67,7 +74,9 @@ export async function analyzeCodexSessions(
     scannedFiles: files.length,
     sessions,
     since,
+    sources: ["codex"],
     unreadableFiles,
+    workItems: aggregateWorkItems(sessions),
   };
 }
 
@@ -75,6 +84,7 @@ async function readSession(
   reader: FileReader,
   transcriptReader: CodexTranscriptReader | undefined,
   file: string,
+  detail: SessionDetailLevel,
 ): Promise<AgentSessionMetrics | undefined> {
   if (transcriptReader !== undefined) {
     const transcript = await transcriptReader(file, MAX_TRANSCRIPT_BYTES);
@@ -82,7 +92,7 @@ async function readSession(
       return undefined;
     }
     const truncated = transcript.size > MAX_TRANSCRIPT_BYTES;
-    const session = await parseCodexSessionLines(transcript.lines, truncated);
+    const session = await parseCodexSessionLines(transcript.lines, truncated, detail);
     return session === undefined ? undefined : { ...session, transcriptPath: file };
   }
   const contents = await reader.read(file, { maxBytes: MAX_TRANSCRIPT_BYTES });
@@ -90,6 +100,6 @@ async function readSession(
     return undefined;
   }
   const truncated = contents.size !== undefined && contents.size > MAX_TRANSCRIPT_BYTES;
-  const session = parseCodexSession(contents.content, truncated);
+  const session = parseCodexSession(contents.content, truncated, detail);
   return session === undefined ? undefined : { ...session, transcriptPath: file };
 }

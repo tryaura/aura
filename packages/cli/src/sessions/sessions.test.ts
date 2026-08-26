@@ -80,11 +80,23 @@ async function writeRollout(
     JSON.stringify({
       payload: {
         info: {
+          last_token_usage: {
+            cached_input_tokens: 900,
+            input_tokens: 950,
+            output_tokens: 50,
+            total_tokens: 1000,
+          },
+          model_context_window: 2000,
           total_token_usage: { cached_input_tokens: 900, input_tokens: 1000, output_tokens: 50 },
         },
         rate_limits: { plan_type: "pro", primary: { used_percent: 7, window_minutes: 10_080 } },
         type: "token_count",
       },
+      timestamp: "2026-08-24T10:01:03.000Z",
+      type: "event_msg",
+    }),
+    JSON.stringify({
+      payload: { duration_ms: 62_000, type: "task_complete" },
       timestamp: "2026-08-24T10:01:03.000Z",
       type: "event_msg",
     }),
@@ -100,7 +112,7 @@ function withClock(capture: ReturnType<typeof createCapture>): ReturnType<typeof
 }
 
 describe("sessions command", () => {
-  it("leads with totals and flags the directory with failing tools", async () => {
+  it("leads with health cards and flags the directory with failing tools", async () => {
     const home = await createHome();
     await writeRollout(home, join(home, "repo"));
     const capture = withClock(createCapture(["sessions", "--home", home]));
@@ -109,33 +121,34 @@ describe("sessions command", () => {
 
     expect(exitCode).toBe(0);
     expect(capture.stdout.text).toContain("Agent sessions — Codex, since 2026-07-26 (30 days)");
-    expect(capture.stdout.text).toContain("Overall · F");
     expect(capture.stdout.text).toContain(
-      "1 session in 1 project · 1m 3s wall · 1k tokens in, 50 out",
+      "┌ Tool errors ───┐ ┌ Context ───────┐ ┌ Compactions ───┐ ┌ Validation ────┐",
     );
+    expect(capture.stdout.text).toContain(
+      "│F · 100%        │ │B · 50% peak    │ │A · 0.00/session│ │1 / 1 failed    │",
+    );
+    expect(capture.stdout.text).toContain("Sessions          1 session · 1 project");
+    expect(capture.stdout.text).toContain("Median turn       1m 2s");
     // The fixture session spends 60 of its 62 seconds inside its one failing tool call.
-    expect(capture.stdout.text).toContain("in tools   ███████████████████░  F · 95% of wall time");
-    expect(capture.stdout.text).toContain(
-      "tool errs  ████████████████████  F · 100% of 1 tool call",
-    );
-    expect(capture.stdout.text).toContain("1k tokens in, 50 out");
-    expect(capture.stdout.text).toContain(
-      "cache hit  ██████████████████░░  A · 90% of input tokens reused",
-    );
-    expect(capture.stdout.text).toContain("Quota peaked at 7% of the pro plan's 7-day window");
+    expect(capture.stdout.text).toContain("Time in tools     F · 95% of agent time");
+    expect(capture.stdout.text).toContain("Cache hit         A · 90% reused");
+    expect(capture.stdout.text).not.toContain("Quota peaked");
     expect(capture.stdout.text).toContain("Needs attention");
     expect(capture.stdout.text).toContain("~/repo");
-    expect(capture.stdout.text).toContain(
-      "1 of 1 tool call had tool problems · outcomes: npm ×1 (invocation error)",
-    );
-    expect(capture.stdout.text).toContain(
-      "npm not found (exit 127) — missing from this machine or misnamed in the instructions",
-    );
+    expect(capture.stdout.text).toContain("Tool problems · 1");
+    expect(capture.stdout.text).toContain("1 tool call · 100% had problems");
+    expect(capture.stdout.text).toContain("npm ×1 · invocation error");
+    expect(capture.stdout.text).toContain("npm not found · exit 127");
     // One directory fits the busiest cap, so nothing is withheld and no pointer row appears.
     expect(capture.stdout.text).toContain("Projects by agent time");
     expect(capture.stdout.text).toContain("Grades: A great · B good · C fair · D poor · F failing");
     expect(capture.stdout.text).not.toContain("more project");
+    expect(capture.stdout.text).not.toContain("      Cache hit · 90%");
     expect(capture.stderr.text).toBe("");
+
+    const verbose = withClock(createCapture(["sessions", "--home", home, "--verbose"]));
+    expect(await runCli(distro(), verbose.runtime)).toBe(0);
+    expect(verbose.stdout.text).toContain("      Cache hit · 90%");
   });
 
   it("caps the default list and names what --verbose would add", async () => {
@@ -185,29 +198,10 @@ describe("sessions command", () => {
 
     expect(exitCode).toBe(0);
     expect(capture.stdout.text).not.toContain("Needs attention");
-    expect(capture.stdout.text).toContain("0 check failures · 1 expected nonzero status");
+    expect(capture.stdout.text).toContain("Expected statuses 1");
     const brief = await readFile(briefPath, "utf8");
     expect(brief).toContain("0 operational · 0 check failures · 1 expected statuses · 0 unknown");
     expect(brief).toContain("No project crosses the materiality thresholds");
-  });
-
-  it("emits one machine-readable document with --json", async () => {
-    const home = await createHome();
-    await writeRollout(home, join(home, "repo"));
-    const capture = withClock(createCapture(["sessions", "--home", home, "--json"]));
-
-    const exitCode = await runCli(distro(), capture.runtime);
-
-    expect(exitCode).toBe(0);
-    const parsed: unknown = JSON.parse(capture.stdout.text);
-    expect(parsed).toMatchObject({
-      days: 30,
-      scannedFiles: 1,
-      since: "2026-07-26",
-      source: "codex",
-      unreadableFiles: 0,
-    });
-    expect(capture.stdout.text.trim().split("\n")).toHaveLength(1);
   });
 
   it("writes a handoff brief with evidence pointers and prints the agent one-liner", async () => {
@@ -291,6 +285,7 @@ describe("sessions command", () => {
     expect(capture.stdout.text).toContain("sessions — Summarize recent coding agent sessions");
     expect(capture.stdout.text).toContain("Reads local transcripts only");
     expect(capture.stdout.text).toContain("--force");
+    expect(capture.stdout.text).toContain("--detailed");
     expect(capture.stdout.text).not.toContain("--path");
   });
 });

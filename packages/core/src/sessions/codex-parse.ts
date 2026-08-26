@@ -1,9 +1,21 @@
 import { readEvent } from "./codex-parse-events.js";
-import { readToolCall, readToolResult } from "./codex-parse-tools.js";
-import { sumToolTime, type ParseState } from "./codex-parse-state.js";
+import { recordInitialPrompt, recordPromptMessage } from "./codex-parse-prompt.js";
+import { finishCalls, readToolCall, readToolResult } from "./codex-parse-tools.js";
+import { finishTurns, readTurnContext } from "./codex-parse-turns.js";
+import {
+  finishCommands,
+  finishContext,
+  finishEdits,
+  finishValidation,
+  sumToolTime,
+  type ParseState,
+} from "./codex-parse-state.js";
 import { utcTimestampMs } from "./iso-time.js";
+import type { SessionDetailLevel } from "./session-detail-metrics.js";
 import type { AgentSessionMetrics } from "./session-metrics.js";
+import { inferSessionOutcome } from "./session-outcome-infer.js";
 import { asRecord, asString, parseTranscriptRecord } from "./transcript-json.js";
+import { collectWorkItems } from "./work-items.js";
 
 /**
  * Extracts {@link AgentSessionMetrics} from one Codex rollout transcript.
@@ -18,8 +30,9 @@ import { asRecord, asString, parseTranscriptRecord } from "./transcript-json.js"
 export function parseCodexSession(
   content: string,
   truncated: boolean,
+  detail: SessionDetailLevel = "summary",
 ): AgentSessionMetrics | undefined {
-  const state = initialState();
+  const state = initialState(detail);
   readLines(state, content, truncated);
   return finishSession(state, truncated);
 }
@@ -28,8 +41,9 @@ export function parseCodexSession(
 export async function parseCodexSessionLines(
   lines: AsyncIterable<string>,
   truncated: boolean,
+  detail: SessionDetailLevel = "summary",
 ): Promise<AgentSessionMetrics | undefined> {
-  const state = initialState();
+  const state = initialState(detail);
   let lineNumber = 0;
   for await (const line of lines) {
     lineNumber += 1;
@@ -38,30 +52,53 @@ export async function parseCodexSessionLines(
   return finishSession(state, truncated);
 }
 
-function initialState(): ParseState {
+function initialState(detail: SessionDetailLevel): ParseState {
   return {
+    abortedTurns: 0,
+    calls: detail === "calls" ? [] : undefined,
+    commands: new Map(),
     compactions: 0,
+    completedTurns: 0,
+    contextWindow: undefined,
     cwd: undefined,
+    editFiles: 0,
+    editsApplied: 0,
+    editsFailed: 0,
     endedAt: undefined,
     firstMs: undefined,
     git: { branch: undefined, commitHash: undefined, repositoryUrl: undefined },
+    greenIteration: undefined,
+    initialContextTokens: undefined,
     initialPromptChars: 0,
     initialPromptLines: [],
+    interventions: [],
     largestToolOutputChars: 0,
     lastMs: undefined,
+    model: undefined,
+    openTurn: undefined,
     outcomes: [],
+    peakRequestTokens: 0,
     pending: new Map(),
     promptOpen: true,
+    pullRequests: new Set(),
     quota: undefined,
     recognized: 0,
     sessionId: undefined,
     shellSessions: new Map(),
     startedAt: undefined,
     tokens: undefined,
+    tokensAtFirstGreen: undefined,
     tools: new Map(),
     toolOutputChars: 0,
+    turnById: new Map(),
+    turnList: [],
     turns: 0,
+    turnsTruncated: false,
     userMessages: 0,
+    validationAttempts: 0,
+    validationFailures: 0,
+    validationTimeMs: 0,
+    workItems: new Set(),
   };
 }
 
@@ -69,15 +106,35 @@ function finishSession(state: ParseState, truncated: boolean): AgentSessionMetri
   if (state.recognized === 0) {
     return undefined;
   }
+  const turnDetails = finishTurns(state);
+  const calls = finishCalls(state);
+  if (state.git.branch !== undefined) {
+    collectWorkItems(state.workItems, state.git.branch);
+  }
+  const pullRequests = [...state.pullRequests];
   return {
+    abortedTurns: state.abortedTurns,
+    ...(calls === undefined ? {} : { calls }),
+    commands: finishCommands(state.commands),
     compactions: state.compactions,
+    completedTurns: state.completedTurns,
+    context: finishContext(state),
     cwd: state.cwd,
+    edits: finishEdits(state),
     endedAt: state.endedAt,
     git: state.git,
+    inferredOutcome: inferSessionOutcome(
+      turnDetails,
+      state.interventions.length,
+      pullRequests.length,
+    ),
     initialPromptChars: state.initialPromptChars,
     initialPromptLines: state.initialPromptLines,
+    interventions: state.interventions,
     largestToolOutputChars: state.largestToolOutputChars,
+    model: state.model,
     outcomes: state.outcomes,
+    pullRequests,
     ...(state.quota === undefined ? {} : { quota: state.quota }),
     sessionId: state.sessionId,
     source: "codex",
@@ -89,10 +146,14 @@ function finishSession(state: ParseState, truncated: boolean): AgentSessionMetri
       [...state.tools.entries()].map(([tool, usage]) => [tool, { ...usage }]),
     ),
     truncated,
+    turnDetails,
     turns: state.turns,
+    turnsTruncated: state.turnsTruncated,
     userMessages: state.userMessages,
+    validation: finishValidation(state),
     wallClockMs:
       state.firstMs === undefined || state.lastMs === undefined ? 0 : state.lastMs - state.firstMs,
+    workItems: [...state.workItems],
   };
 }
 
@@ -127,7 +188,8 @@ function readLine(state: ParseState, line: string, lineNumber: number): void {
 }
 
 function readRecord(state: ParseState, record: Record<string, unknown>, line: number): void {
-  const at = trackRecordTime(state, record);
+  const timestamp = asString(record["timestamp"]);
+  const at = trackRecordTime(state, timestamp);
   const type = asString(record["type"]);
   if (type === "compacted") {
     state.recognized += 1;
@@ -141,15 +203,16 @@ function readRecord(state: ParseState, record: Record<string, unknown>, line: nu
   if (type === "session_meta") {
     readSessionMeta(state, payload, line);
   } else if (type === "response_item") {
-    readResponseItem(state, payload, at, line);
+    readResponseItem(state, payload, timestamp, at, line);
   } else if (type === "event_msg") {
-    readEvent(state, payload, line);
+    readEvent(state, payload, timestamp, at, line);
+  } else if (type === "turn_context") {
+    readTurnContext(state, payload);
   }
 }
 
 /** Folds the record's timestamp into the session's span and returns it as epoch milliseconds. */
-function trackRecordTime(state: ParseState, record: Record<string, unknown>): number | undefined {
-  const timestamp = asString(record["timestamp"]);
+function trackRecordTime(state: ParseState, timestamp: string | undefined): number | undefined {
   const at = timestamp === undefined ? undefined : utcTimestampMs(timestamp);
   if (at === undefined || timestamp === undefined) {
     return undefined;
@@ -189,6 +252,7 @@ function sessionGitContext(
 function readResponseItem(
   state: ParseState,
   payload: Record<string, unknown>,
+  timestamp: string | undefined,
   at: number | undefined,
   line: number,
 ): void {
@@ -196,48 +260,9 @@ function readResponseItem(
   recordPromptMessage(state, payload, kind, line);
   if (kind === "function_call" || kind === "custom_tool_call") {
     state.recognized += 1;
-    readToolCall(state, payload, at, line);
+    readToolCall(state, payload, timestamp, at, line);
   } else if (kind === "function_call_output" || kind === "custom_tool_call_output") {
     state.recognized += 1;
     readToolResult(state, payload, at, line);
   }
-}
-
-function recordPromptMessage(
-  state: ParseState,
-  payload: Record<string, unknown>,
-  kind: string | undefined,
-  line: number,
-): void {
-  if (kind !== "message" || !state.promptOpen) {
-    return;
-  }
-  const role = asString(payload["role"]);
-  if (role !== "developer" && role !== "system" && role !== "user") {
-    return;
-  }
-  recordInitialPrompt(state, messageText(payload["content"]), line);
-}
-
-function recordInitialPrompt(state: ParseState, text: string | undefined, line: number): void {
-  if (text === undefined || text === "") {
-    return;
-  }
-  state.initialPromptChars += text.length;
-  state.initialPromptLines.push(line);
-}
-
-function messageText(content: unknown): string | undefined {
-  const direct = asString(content);
-  if (direct !== undefined) {
-    return direct;
-  }
-  if (!Array.isArray(content)) {
-    return undefined;
-  }
-  const parts = content.flatMap((part) => {
-    const text = asString(asRecord(part)?.["text"]);
-    return text === undefined ? [] : [text];
-  });
-  return parts.length === 0 ? undefined : parts.join("\n");
 }

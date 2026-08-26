@@ -10,6 +10,7 @@ export function runningShellSessionId(output: string): string | undefined {
 export function shellContinuation(
   state: ParseState,
   rawArguments: unknown,
+  timestamp: string | undefined,
   at: number | undefined,
 ): PendingCall | undefined {
   const raw = asString(rawArguments);
@@ -18,5 +19,15 @@ export function shellContinuation(
   const sessionId =
     typeof rawSessionId === "number" ? String(rawSessionId) : asString(rawSessionId);
   const original = sessionId === undefined ? undefined : state.shellSessions.get(sessionId);
-  return original === undefined ? undefined : { ...original, at, shellSessionId: sessionId };
+  if (original === undefined) {
+    return undefined;
+  }
+  // The poll waits now, in the current turn, even though the identity is the original call's.
+  return {
+    ...original,
+    at,
+    shellSessionId: sessionId,
+    startedAt: timestamp,
+    turnIndex: state.openTurn?.index,
+  };
 }

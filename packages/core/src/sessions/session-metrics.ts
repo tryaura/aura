@@ -1,3 +1,16 @@
+import type {
+  SessionCommandUsage,
+  SessionContextMetrics,
+  SessionEditMetrics,
+  SessionIntervention,
+  SessionOutcomeInference,
+  SessionSource,
+  SessionToolCall,
+  SessionTurn,
+  SessionValidationMetrics,
+  WorkItemAggregate,
+} from "./session-detail-metrics.js";
+
 /**
  * Metrics extracted from one recorded agent session transcript.
  *
@@ -66,26 +79,46 @@ interface SessionToolUsage {
 
 /** What one session transcript yielded. */
 export interface AgentSessionMetrics {
+  /** Turn-abort events the transcript recorded, whether or not their turn detail was retained. */
+  readonly abortedTurns: number;
+  /** One row per recorded tool call. Present only when the caller asked for call detail. */
+  readonly calls?: readonly SessionToolCall[];
+  /** Call totals folded by (tool, command, subcommand), busiest first. */
+  readonly commands: readonly SessionCommandUsage[];
   /** Context compaction events: each one means the session outgrew its window. */
   readonly compactions: number;
+  /** Turn-completion events the transcript recorded. */
+  readonly completedTurns: number;
+  /** Context-window occupancy, when the transcript reported per-request token usage. */
+  readonly context: SessionContextMetrics | undefined;
   /** Working directory the session ran in, used to group sessions by repository. */
   readonly cwd: string | undefined;
+  /** Recorded patch-application outcomes, when the transcript carried any. */
+  readonly edits: SessionEditMetrics | undefined;
   readonly endedAt: string | undefined;
   /** Historical git state recorded by Codex when the session began. */
   readonly git: SessionGitContext;
+  /** How the session appears to have ended. Inference from turn closes, never ground truth. */
+  readonly inferredOutcome: SessionOutcomeInference | undefined;
   /** Characters in the initial system/developer/user prompt before the first tool call. */
   readonly initialPromptChars: number;
   /** Transcript lines carrying that initial prompt, so historical instructions remain inspectable. */
   readonly initialPromptLines: readonly number[];
+  /** Moments where a person interrupted or re-prompted the agent, in transcript order. */
+  readonly interventions: readonly SessionIntervention[];
   /** Largest single recorded tool output in characters. */
   readonly largestToolOutputChars: number;
+  /** The model the session last reported, when the transcript carried one. */
+  readonly model: string | undefined;
   /** Classified non-success outcomes from shell and MCP tools. */
   readonly outcomes: readonly ToolOutcome[];
+  /** GitHub pull-request URLs seen in successful `gh` outputs, deduplicated and capped. */
+  readonly pullRequests: readonly string[];
   /** The account's quota state when the session last reported usage, when it reported one. */
   readonly quota?: SessionQuota;
   readonly sessionId: string | undefined;
   /** The application that recorded the transcript. */
-  readonly source: "codex";
+  readonly source: SessionSource;
   readonly startedAt: string | undefined;
   readonly tokens: SessionTokenUsage | undefined;
   /** Wall-clock milliseconds spent waiting on tool calls, summed across all tools. */
@@ -97,11 +130,19 @@ export interface AgentSessionMetrics {
   readonly transcriptPath?: string;
   /** Whether the transcript was larger than the read limit, making every count a lower bound. */
   readonly truncated: boolean;
+  /** Per-turn detail in transcript order, capped so one runaway session stays bounded. */
+  readonly turnDetails: readonly SessionTurn[];
   /** Prompt-to-completion rounds the agent recorded. */
   readonly turns: number;
+  /** Whether the session had more turns than `turnDetails` retains. */
+  readonly turnsTruncated: boolean;
   readonly userMessages: number;
+  /** Validation spend and the first green run, when any validation command was recognized. */
+  readonly validation: SessionValidationMetrics | undefined;
   /** Milliseconds between the first and last transcript entry. */
   readonly wallClockMs: number;
+  /** Issue keys found in prompts, branch names, and git/gh commands, deduplicated and capped. */
+  readonly workItems: readonly string[];
 }
 
 /** Paired call/result evidence with the historical session context needed to interpret it. */
@@ -150,6 +191,8 @@ export interface DirectoryHotspot {
 
 /** Sessions of one project, summed across its working directories. */
 export interface RepoSessionAggregate {
+  /** Turns a person aborted across the project's sessions. */
+  readonly abortedTurns: number;
   readonly checkFailures: number;
   readonly compactionProfile: CompactionProfile;
   readonly compactions: number;
@@ -158,6 +201,8 @@ export interface RepoSessionAggregate {
   readonly failedToolCalls: number;
   /** Directories where failures or compactions concentrate, worst first. At most three. */
   readonly hotspots: readonly DirectoryHotspot[];
+  /** Interrupts, re-prompts, and approvals across the project's sessions. */
+  readonly interventions: number;
   /**
    * What to call the project: the repository name when one resolved, otherwise the shared
    * working directory path. A path label starts with a separator; a name does not.
@@ -176,7 +221,11 @@ export interface RepoSessionAggregate {
   readonly toolCalls: number;
   readonly toolTimeMs: number;
   readonly truncatedSessions: number;
+  /** Prompt-to-completion rounds across the project's sessions. */
+  readonly turns: number;
   readonly unknownOutcomes: number;
+  /** Wall-clock milliseconds spent waiting on recognized validation commands. */
+  readonly validationTimeMs: number;
   readonly wallClockMs: number;
 }
 
@@ -189,6 +238,10 @@ export interface SessionAnalysis {
   readonly sessions: readonly AgentSessionMetrics[];
   /** Start of the analysis window as a `YYYY-MM-DD` day key. */
   readonly since: string;
+  /** Every harness this analysis read transcripts from. */
+  readonly sources: readonly SessionSource[];
   /** Files that could not be read or held no parseable session. */
   readonly unreadableFiles: number;
+  /** Sessions joined by the issue keys they mentioned, most sessions first. */
+  readonly workItems: readonly WorkItemAggregate[];
 }

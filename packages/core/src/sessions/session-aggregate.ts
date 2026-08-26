@@ -57,17 +57,25 @@ function aggregateGroup(
   directories: number,
   sessions: readonly AgentSessionMetrics[],
 ): RepoSessionAggregate {
+  let abortedTurns = 0;
   let compactions = 0;
   let failedToolCalls = 0;
+  let interventions = 0;
   let toolCalls = 0;
   let toolTimeMs = 0;
   let truncatedSessions = 0;
+  let turns = 0;
+  let validationTimeMs = 0;
   let wallClockMs = 0;
   const tokens = { cachedInputTokens: 0, inputTokens: 0, outputTokens: 0 };
 
   for (const session of sessions) {
+    abortedTurns += session.abortedTurns;
     compactions += session.compactions;
+    interventions += session.interventions.length;
     toolTimeMs += session.toolTimeMs;
+    turns += session.turns;
+    validationTimeMs += session.validation?.timeMs ?? 0;
     wallClockMs += session.wallClockMs;
     if (session.truncated) {
       truncatedSessions += 1;
@@ -82,17 +90,21 @@ function aggregateGroup(
   const outcomes = summarizeOutcomes(sessions);
   return {
     ...outcomes,
+    abortedTurns,
     compactions,
     compactionProfile: compactionProfileOf(sessions),
     directories,
     failedToolCalls,
     hotspots: hotspotsOf(sessions),
+    interventions,
     project,
     sessions: sessions.length,
     tokens,
     toolCalls,
     toolTimeMs,
     truncatedSessions,
+    turns,
+    validationTimeMs,
     wallClockMs,
   };
 }

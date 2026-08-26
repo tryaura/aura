@@ -27,7 +27,10 @@ export function renderSessionsHelp(branding: CliBranding): string {
         title: "Reporting",
       },
       {
-        rows: [{ term: "--json", text: "Emit JSON instead of human output" }],
+        rows: [
+          { term: "--json", text: "Emit JSON instead of human output" },
+          { term: "--detailed", text: "Add one row per recorded tool call to the JSON document" },
+        ],
         title: "Scripting",
       },
       // No `--path`: the command reads transcripts, never executables, so advertising the shared

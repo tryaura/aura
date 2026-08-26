@@ -55,6 +55,9 @@ export class SessionsCommand extends Command<AuraCliContext> {
   days = Option.String("--days", {
     description: `Look back this many days. Default ${DEFAULT_DAYS}, at most ${MAX_DAYS}.`,
   });
+  detailed = Option.Boolean("--detailed", false, {
+    description: "Add one row per recorded tool call to the JSON document.",
+  });
   force = Option.Boolean("--force", false, {
     description: "Replace an existing --brief target.",
   });
@@ -73,7 +76,10 @@ export class SessionsCommand extends Command<AuraCliContext> {
         `--days must be a whole number between 1 and ${MAX_DAYS}.`,
       );
     }
-    const rejection = this.rejectBriefOptions() ?? rejectInvalidPathOptions(this.home, undefined);
+    const rejection =
+      this.rejectBriefOptions() ??
+      this.rejectDetailedOption() ??
+      rejectInvalidPathOptions(this.home, undefined);
     if (rejection !== undefined) {
       return writeOptionRejection(this.context, rejection);
     }
@@ -90,6 +96,7 @@ export class SessionsCommand extends Command<AuraCliContext> {
     const environment = createEnvironment(environmentOptions(this.context, this.home, undefined));
     const analysis = await analyzeCodexSessions({
       days,
+      detail: this.detailed ? "calls" : "summary",
       homeDir: environment.homeDir,
       now: environment.now(),
       reader: createFileReader(),
@@ -146,6 +153,13 @@ export class SessionsCommand extends Command<AuraCliContext> {
     this.context.stdout.write(
       `\nBrief written to ${named}\nRun: codex exec ${shellQuote(`Follow the instructions in ${shown}`)}\n`,
     );
+  }
+
+  private rejectDetailedOption(): string | undefined {
+    if (this.detailed && !this.json) {
+      return "--detailed requires --json: per-call rows are machine output.";
+    }
+    return undefined;
   }
 
   private rejectBriefOptions(): string | undefined {

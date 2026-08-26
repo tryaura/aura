@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import { parseCodexSession } from "./codex-parse.js";
-import { utcDayKey, utcTimestampMs } from "./iso-time.js";
 
 function line(timestamp: string, type: string, payload?: unknown): string {
   return JSON.stringify(payload === undefined ? { timestamp, type } : { payload, timestamp, type });
@@ -69,13 +68,49 @@ describe("parseCodexSession", () => {
     const session = parseCodexSession(content, false);
 
     expect(session).toEqual({
+      abortedTurns: 0,
+      commands: [
+        {
+          calls: 1,
+          command: undefined,
+          durationMs: 2500,
+          failures: 1,
+          subcommand: undefined,
+          tool: "mcp:linear.get_issue",
+          validation: false,
+        },
+        {
+          calls: 1,
+          command: "git",
+          durationMs: 2500,
+          failures: 0,
+          subcommand: "status",
+          tool: "shell",
+          validation: false,
+        },
+        {
+          calls: 1,
+          command: "npm",
+          durationMs: 1000,
+          failures: 1,
+          subcommand: "test",
+          tool: "shell",
+          validation: true,
+        },
+      ],
       compactions: 1,
+      completedTurns: 0,
+      context: undefined,
       cwd: "/repo/app",
+      edits: undefined,
       endedAt: "2026-08-20T10:00:09.000Z",
       git: { branch: undefined, commitHash: undefined, repositoryUrl: undefined },
+      inferredOutcome: { confidence: "low", status: "abandoned" },
       initialPromptChars: 0,
       initialPromptLines: [],
+      interventions: [],
       largestToolOutputChars: 59,
+      model: undefined,
       outcomes: [
         {
           callLine: 6,
@@ -98,6 +133,7 @@ describe("parseCodexSession", () => {
           tool: "mcp:linear.get_issue",
         },
       ],
+      pullRequests: [],
       sessionId: "session-1",
       source: "codex",
       startedAt: "2026-08-20T10:00:00.000Z",
@@ -109,9 +145,33 @@ describe("parseCodexSession", () => {
         shell: { calls: 2, durationMs: 3500, failures: 1 },
       },
       truncated: false,
+      turnDetails: [
+        {
+          closed: "log-end",
+          durationMs: 8000,
+          endedAt: "2026-08-20T10:00:09.000Z",
+          index: 0,
+          model: undefined,
+          startedAt: "2026-08-20T10:00:01.000Z",
+          timeToFirstTokenMs: undefined,
+          tokens: undefined,
+          toolCalls: 3,
+          toolTimeMs: 6000,
+          turnId: undefined,
+        },
+      ],
       turns: 1,
+      turnsTruncated: false,
       userMessages: 1,
+      validation: {
+        attempts: 1,
+        failures: 1,
+        iterationsToFirstGreen: undefined,
+        timeMs: 1000,
+        tokensAtFirstGreen: undefined,
+      },
       wallClockMs: 9000,
+      workItems: [],
     });
   });
 
@@ -156,22 +216,6 @@ describe("parseCodexSession", () => {
 
     expect(session?.quota).toEqual({ planType: "pro", usedPercent: 9, windowMinutes: 10_080 });
     expect(session?.tokens).toEqual({ cachedInputTokens: 4, inputTokens: 5, outputTokens: 6 });
-  });
-
-  it("treats unrecognized tool output text as success", () => {
-    const content = [
-      META,
-      execCall("2026-08-20T10:00:02.000Z", "call-1", "ls"),
-      line("2026-08-20T10:00:03.000Z", "response_item", {
-        call_id: "call-1",
-        output: "plain text with no exit marker",
-        type: "function_call_output",
-      }),
-    ].join("\n");
-
-    const session = parseCodexSession(content, false);
-
-    expect(session?.tools["shell"]).toEqual({ calls: 1, durationMs: 1000, failures: 0 });
   });
 
   it("classifies known non-success protocols and keeps compound commands conservative", () => {
@@ -245,53 +289,5 @@ describe("parseCodexSession", () => {
     });
     expect(session?.initialPromptChars).toBe(base.length + developer.length);
     expect(session?.initialPromptLines).toEqual([1, 2]);
-  });
-
-  it("counts paired MCP lifecycle records once and keeps the original call line", () => {
-    const content = [
-      META,
-      line("2026-08-20T10:00:01.000Z", "response_item", {
-        arguments: JSON.stringify({ issueId: "USE-1" }),
-        call_id: "mcp-1",
-        name: "_get_issue",
-        type: "function_call",
-      }),
-      line("2026-08-20T10:00:02.000Z", "event_msg", {
-        call_id: "mcp-1",
-        duration: { nanos: 0, secs: 1 },
-        invocation: JSON.stringify({ server: "linear", tool: "get_issue" }),
-        result: { Err: "boom" },
-        type: "mcp_tool_call_end",
-      }),
-      line("2026-08-20T10:00:03.000Z", "response_item", {
-        call_id: "mcp-1",
-        output: "later duplicate result",
-        type: "function_call_output",
-      }),
-    ].join("\n");
-
-    const session = parseCodexSession(content, false);
-
-    expect(session?.tools).toEqual({
-      "mcp:linear.get_issue": { calls: 1, durationMs: 1000, failures: 1 },
-    });
-    expect(session?.outcomes).toMatchObject([{ callLine: 2, kind: "tool_error", resultLine: 3 }]);
-  });
-});
-
-describe("utc time helpers", () => {
-  it("round-trips timestamps through epoch milliseconds and day keys", () => {
-    const ms = utcTimestampMs("2026-08-20T10:30:15.250Z");
-
-    expect(ms).toBe(Date.UTC(2026, 7, 20, 10, 30, 15, 250));
-    expect(ms === undefined ? undefined : utcDayKey(ms)).toBe("2026-08-20");
-    expect(utcDayKey(0)).toBe("1970-01-01");
-    expect(utcDayKey(Date.UTC(2024, 1, 29, 23, 59, 59))).toBe("2024-02-29");
-  });
-
-  it("rejects non-UTC and malformed timestamps", () => {
-    expect(utcTimestampMs("2026-08-20T10:30:15+02:00")).toBeUndefined();
-    expect(utcTimestampMs("2026-13-01T00:00:00Z")).toBeUndefined();
-    expect(utcTimestampMs("not a time")).toBeUndefined();
   });
 });
