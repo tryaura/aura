@@ -150,6 +150,17 @@ export function median(values: readonly number[]): number | undefined {
   return sorted[Math.floor(sorted.length / 2)];
 }
 
+/** The nearest-rank percentile of a sample; undefined when the sample is empty. */
+export function percentile(values: readonly number[], quantile: number): number | undefined {
+  if (values.length === 0) {
+    return undefined;
+  }
+  const sorted = [...values].sort((a, b) => a - b);
+  const boundedQuantile = Math.max(0, Math.min(quantile, 1));
+  const rank = Math.max(1, Math.ceil(boundedQuantile * sorted.length));
+  return sorted[rank - 1];
+}
+
 /** `2h 14m`, `3m 12s`, `45s` — coarse on purpose: this is a summary, not a profile. */
 export function duration(ms: number): string {
   const seconds = Math.round(ms / 1000);

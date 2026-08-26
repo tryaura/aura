@@ -103,8 +103,9 @@ describe("sessions insight sections", () => {
       "Work items · keys seen in prompts, branches, and git/gh commands",
     );
     expect(capture.stdout.text).toContain(
-      "AURA-7            51s agent time\n      1 session\n      51s first-to-last",
+      "Sessions per issue key · p50 1 · p90 1 · 1 issue key observed",
     );
+    expect(capture.stdout.text).not.toContain("AURA-7            51s agent time");
     expect(capture.stderr.text).toBe("");
   });
 });

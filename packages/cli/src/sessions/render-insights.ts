@@ -1,7 +1,17 @@
 import type { SessionAnalysis } from "@tryaura/core";
 
 import { wrapWords } from "../text-width.js";
-import { bar, chartLabel, compactCount, count, duration, median, percent, ratio } from "./chart.js";
+import {
+  bar,
+  chartLabel,
+  compactCount,
+  count,
+  duration,
+  median,
+  percent,
+  percentile,
+  ratio,
+} from "./chart.js";
 import { safe } from "../safe-text.js";
 
 /**
@@ -10,9 +20,8 @@ import { safe } from "../safe-text.js";
  * is one surface with the rest of the report.
  */
 
-/** How many command identities and work items the report shows; `--json` carries every one. */
+/** How many command identities the report shows; `--json` carries every one. */
 const COMMAND_LIMIT = 5;
-const WORK_ITEM_LIMIT = 5;
 
 export interface DeliveryNote {
   readonly label: string;
@@ -169,37 +178,27 @@ function commandLabel(command: {
     : `${command.command} ${command.subcommand}`;
 }
 
-/** The loose work-item join: sessions that named the same issue key, busiest first. */
+/** Session-count distribution across issue keys found by the loose work-item join. */
 export function workItemSection(analysis: SessionAnalysis, columns: number): readonly string[] {
-  const shown = analysis.workItems.slice(0, WORK_ITEM_LIMIT);
-  if (shown.length === 0) {
+  const sessionsPerKey = analysis.workItems.map((item) => item.sessions);
+  const p50 = percentile(sessionsPerKey, 0.5);
+  const p90 = percentile(sessionsPerKey, 0.9);
+  if (p50 === undefined || p90 === undefined) {
     return [];
   }
-  const lines = [
+  return [
     "",
     ...wrappedRow(
       "Work items · keys seen in prompts, branches, and git/gh commands",
       "  ",
       columns,
     ),
+    ...wrappedRow(
+      `Sessions per issue key · p50 ${p50} · p90 ${p90} · ${count(analysis.workItems.length, "issue key")} observed`,
+      "    ",
+      columns,
+    ),
   ];
-  for (const item of shown) {
-    lines.push(
-      `    ${chartLabel(safe(item.key))}  ${duration(item.wallClockMs)} agent time`,
-      ...wrappedRow(count(item.sessions, "session"), "      ", columns),
-      ...wrappedRow(`${duration(item.spanMs)} first-to-last`, "      ", columns),
-    );
-  }
-  if (analysis.workItems.length > shown.length) {
-    lines.push(
-      ...wrappedRow(
-        `and ${count(analysis.workItems.length - shown.length, "more work item")} · --json lists every one`,
-        "    ",
-        columns,
-      ),
-    );
-  }
-  return lines;
 }
 
 function wrappedRow(text: string, indent: string, columns: number): readonly string[] {

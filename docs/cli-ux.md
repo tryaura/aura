@@ -258,12 +258,12 @@ honest; the raw quota snapshot stays available in `--json`. There is deliberatel
 figure: transcripts carry no prices, and on
 a subscription plan an API-equivalent estimate would read as real money. Every graded report
 ends with the one-line legend `Grades: A great · B good · C fair · D poor · F failing`, so the
-scale never needs a manual. The two insight sections are each capped at five entries with a
-counted `--json` pointer for the rest and absent when empty. `Commands by tool time` gives each
-(command, subcommand) identity a primary bar/time row and an indented calls/failure row, so `git
-diff` shows up apart from `git push`. `Work items · keys seen in prompts, branches, and git/gh
-commands` gives each loose issue-key join an agent-time row followed by session count and
-first-to-last span; that span is a lower bound on real task time. The bands
+scale never needs a manual. `Commands by tool time` is capped at five entries with a counted
+`--json` pointer for the rest and is absent when empty. It gives each (command, subcommand)
+identity a primary bar/time row and an indented calls/failure row, so `git diff` shows up apart
+from `git push`. `Work items · keys seen in prompts, branches, and git/gh commands` summarizes
+the loose issue-key joins as p50 and p90 sessions per issue key, together with the sample size;
+the full per-key aggregates remain available in `--json`. The bands
 are deliberately coarse so ordinary variation between windows does not flip a grade — in tools:
 A under 10%, B under 20%, C under 35%, D under 50%; tool problems: A under 2%, B under 5%, C under 10%,
 D under 20%; compactions per session: A under 0.1, B under 0.3, C under 0.6, D under 1; cache
