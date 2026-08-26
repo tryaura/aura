@@ -18,6 +18,7 @@ function outcome(label: string, kind: OutcomeKind): ToolOutcome {
 
 function session(id: string, outcomes: readonly ToolOutcome[]): AgentSessionMetrics {
   return {
+    agentTimeMs: 1,
     abortedTurns: 0,
     commands: [],
     compactions: 0,

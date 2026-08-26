@@ -17,6 +17,11 @@ import { inferSessionOutcome } from "./session-outcome-infer.js";
 import { asRecord, asString, parseTranscriptRecord } from "./transcript-json.js";
 import { collectWorkItems } from "./work-items.js";
 
+export type CodexSessionParseResult =
+  | { readonly kind: "excluded" }
+  | { readonly kind: "session"; readonly session: AgentSessionMetrics }
+  | { readonly kind: "unrecognized" };
+
 /**
  * Extracts {@link AgentSessionMetrics} from one Codex rollout transcript.
  *
@@ -26,7 +31,6 @@ import { collectWorkItems } from "./work-items.js";
  * carries and lower bounds for what it does not.
  */
 
-/** Metrics for the transcript, or undefined when no line looked like a Codex session record. */
 export function parseCodexSession(
   content: string,
   truncated: boolean,
@@ -34,15 +38,25 @@ export function parseCodexSession(
 ): AgentSessionMetrics | undefined {
   const state = initialState(detail);
   readLines(state, content, truncated);
+  const result = finishSession(state, truncated);
+  return result.kind === "session" ? result.session : undefined;
+}
+
+export function parseCodexSessionResult(
+  content: string,
+  truncated: boolean,
+  detail: SessionDetailLevel = "summary",
+): CodexSessionParseResult {
+  const state = initialState(detail);
+  readLines(state, content, truncated);
   return finishSession(state, truncated);
 }
 
-/** Streaming counterpart used by the production filesystem boundary. */
-export async function parseCodexSessionLines(
+export async function parseCodexSessionLinesResult(
   lines: AsyncIterable<string>,
   truncated: boolean,
   detail: SessionDetailLevel = "summary",
-): Promise<AgentSessionMetrics | undefined> {
+): Promise<CodexSessionParseResult> {
   const state = initialState(detail);
   let lineNumber = 0;
   for await (const line of lines) {
@@ -71,6 +85,7 @@ function initialState(detail: SessionDetailLevel): ParseState {
     initialContextTokens: undefined,
     initialPromptChars: 0,
     initialPromptLines: [],
+    internalApprovalReview: false,
     interventions: [],
     largestToolOutputChars: 0,
     lastMs: undefined,
@@ -102,9 +117,12 @@ function initialState(detail: SessionDetailLevel): ParseState {
   };
 }
 
-function finishSession(state: ParseState, truncated: boolean): AgentSessionMetrics | undefined {
+function finishSession(state: ParseState, truncated: boolean): CodexSessionParseResult {
+  if (state.internalApprovalReview) {
+    return { kind: "excluded" };
+  }
   if (state.recognized === 0) {
-    return undefined;
+    return { kind: "unrecognized" };
   }
   const turnDetails = finishTurns(state);
   const calls = finishCalls(state);
@@ -113,47 +131,53 @@ function finishSession(state: ParseState, truncated: boolean): AgentSessionMetri
   }
   const pullRequests = [...state.pullRequests];
   return {
-    abortedTurns: state.abortedTurns,
-    ...(calls === undefined ? {} : { calls }),
-    commands: finishCommands(state.commands),
-    compactions: state.compactions,
-    completedTurns: state.completedTurns,
-    context: finishContext(state),
-    cwd: state.cwd,
-    edits: finishEdits(state),
-    endedAt: state.endedAt,
-    git: state.git,
-    inferredOutcome: inferSessionOutcome(
+    kind: "session",
+    session: {
+      agentTimeMs: turnDetails.reduce((sum, turn) => sum + turn.durationMs, 0),
+      abortedTurns: state.abortedTurns,
+      ...(calls === undefined ? {} : { calls }),
+      commands: finishCommands(state.commands),
+      compactions: state.compactions,
+      completedTurns: state.completedTurns,
+      context: finishContext(state),
+      cwd: state.cwd,
+      edits: finishEdits(state),
+      endedAt: state.endedAt,
+      git: state.git,
+      inferredOutcome: inferSessionOutcome(
+        turnDetails,
+        state.interventions.length,
+        pullRequests.length,
+      ),
+      initialPromptChars: state.initialPromptChars,
+      initialPromptLines: state.initialPromptLines,
+      interventions: state.interventions,
+      largestToolOutputChars: state.largestToolOutputChars,
+      model: state.model,
+      outcomes: state.outcomes,
+      pullRequests,
+      ...(state.quota === undefined ? {} : { quota: state.quota }),
+      sessionId: state.sessionId,
+      source: "codex",
+      startedAt: state.startedAt,
+      tokens: state.tokens,
+      toolTimeMs: sumToolTime(state.tools),
+      toolOutputChars: state.toolOutputChars,
+      tools: Object.fromEntries(
+        [...state.tools.entries()].map(([tool, usage]) => [tool, { ...usage }]),
+      ),
+      truncated,
       turnDetails,
-      state.interventions.length,
-      pullRequests.length,
-    ),
-    initialPromptChars: state.initialPromptChars,
-    initialPromptLines: state.initialPromptLines,
-    interventions: state.interventions,
-    largestToolOutputChars: state.largestToolOutputChars,
-    model: state.model,
-    outcomes: state.outcomes,
-    pullRequests,
-    ...(state.quota === undefined ? {} : { quota: state.quota }),
-    sessionId: state.sessionId,
-    source: "codex",
-    startedAt: state.startedAt,
-    tokens: state.tokens,
-    toolTimeMs: sumToolTime(state.tools),
-    toolOutputChars: state.toolOutputChars,
-    tools: Object.fromEntries(
-      [...state.tools.entries()].map(([tool, usage]) => [tool, { ...usage }]),
-    ),
-    truncated,
-    turnDetails,
-    turns: state.turns,
-    turnsTruncated: state.turnsTruncated,
-    userMessages: state.userMessages,
-    validation: finishValidation(state),
-    wallClockMs:
-      state.firstMs === undefined || state.lastMs === undefined ? 0 : state.lastMs - state.firstMs,
-    workItems: [...state.workItems],
+      turns: state.turns,
+      turnsTruncated: state.turnsTruncated,
+      userMessages: state.userMessages,
+      validation: finishValidation(state),
+      wallClockMs:
+        state.firstMs === undefined || state.lastMs === undefined
+          ? 0
+          : state.lastMs - state.firstMs,
+      workItems: [...state.workItems],
+    },
   };
 }
 
@@ -230,6 +254,14 @@ function trackRecordTime(state: ParseState, timestamp: string | undefined): numb
 
 function readSessionMeta(state: ParseState, payload: Record<string, unknown>, line: number): void {
   state.recognized += 1;
+  const source = asRecord(payload["source"]);
+  const subagent = asRecord(source?.["subagent"]);
+  if (
+    asString(payload["thread_source"]) === "subagent" &&
+    asString(subagent?.["other"]) === "guardian"
+  ) {
+    state.internalApprovalReview = true;
+  }
   state.sessionId = asString(payload["id"]) ?? state.sessionId;
   state.cwd = asString(payload["cwd"]) ?? state.cwd;
   state.git = sessionGitContext(payload, state.git);

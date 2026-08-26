@@ -32,6 +32,7 @@ const CACHE_MISS_BANDS: GradeBands = [0.1, 0.2, 0.35, 0.5];
 const CONTEXT_BANDS: GradeBands = [0.5, 0.7, 0.85, 0.95];
 
 interface OverallTotals {
+  agentTimeMs: number;
   cachedInputTokens: number;
   checkFailures: number;
   compactions: number;
@@ -42,7 +43,6 @@ interface OverallTotals {
   toolProblems: number;
   toolTimeMs: number;
   turns: number;
-  wallClockMs: number;
 }
 
 export interface SessionSummarySections {
@@ -125,7 +125,7 @@ function activityRows(
       `${count(analysis.sessions.length, "session")} · ${count(analysis.repos.length, "project")}`,
       columns,
     ),
-    ...summaryRow("Agent time", duration(totals.wallClockMs), columns),
+    ...summaryRow("Agent time", duration(totals.agentTimeMs), columns),
     ...summaryRow("Turns", count(totals.turns, "turn"), columns),
   );
   if (totals.inputTokens > 0) {
@@ -147,7 +147,7 @@ function workflowRows(
   if (turn !== undefined) {
     rows.push(...summaryRow("Median turn", duration(turn), columns));
   }
-  const toolShare = ratio(totals.toolTimeMs, totals.wallClockMs);
+  const toolShare = ratio(totals.toolTimeMs, totals.agentTimeMs);
   rows.push(
     ...summaryRow(
       "Time in tools",
@@ -195,6 +195,7 @@ function summaryRow(label: string, value: string, columns: number): readonly str
 
 function sumRepoTotals(analysis: SessionAnalysis): OverallTotals {
   const totals: OverallTotals = {
+    agentTimeMs: 0,
     cachedInputTokens: 0,
     checkFailures: 0,
     compactions: 0,
@@ -205,9 +206,9 @@ function sumRepoTotals(analysis: SessionAnalysis): OverallTotals {
     toolProblems: 0,
     toolTimeMs: 0,
     turns: 0,
-    wallClockMs: 0,
   };
   for (const repo of analysis.repos) {
+    totals.agentTimeMs += repo.agentTimeMs;
     totals.cachedInputTokens += repo.tokens.cachedInputTokens;
     totals.checkFailures += repo.checkFailures;
     totals.compactions += repo.compactions;
@@ -218,7 +219,6 @@ function sumRepoTotals(analysis: SessionAnalysis): OverallTotals {
     totals.toolProblems += repo.operationalFailures + repo.unknownOutcomes;
     totals.toolTimeMs += repo.toolTimeMs;
     totals.turns += repo.turns;
-    totals.wallClockMs += repo.wallClockMs;
   }
   return totals;
 }

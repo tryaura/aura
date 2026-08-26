@@ -4,6 +4,7 @@ import type {
   RepoSessionAggregate,
   SessionTokenUsage,
 } from "./session-metrics.js";
+import { projectNameFromRepositoryUrl } from "./project-resolve.js";
 import { compactionProfileOf, summarizeOutcomes } from "./session-outcome-aggregate.js";
 
 /** How many trouble-concentrating directories a project names. */
@@ -22,10 +23,11 @@ export function aggregateSessionsByRepo(
 ): readonly RepoSessionAggregate[] {
   const groups = new Map<string, { directories: Set<string>; sessions: AgentSessionMetrics[] }>();
   for (const session of sessions) {
-    const label =
-      session.cwd === undefined
-        ? "(no recorded directory)"
-        : (projectLabels.get(session.cwd) ?? session.cwd);
+    const recordedProject =
+      session.git.repositoryUrl === undefined
+        ? undefined
+        : projectNameFromRepositoryUrl(session.git.repositoryUrl);
+    const label = recordedProject ?? fallbackProject(session.cwd, projectLabels);
     const group = groups.get(label);
     if (group === undefined) {
       groups.set(label, {
@@ -47,9 +49,16 @@ export function aggregateSessionsByRepo(
     .sort(
       (left, right) =>
         right.sessions - left.sessions ||
-        right.wallClockMs - left.wallClockMs ||
+        right.agentTimeMs - left.agentTimeMs ||
         left.project.localeCompare(right.project),
     );
+}
+
+function fallbackProject(
+  cwd: string | undefined,
+  projectLabels: ReadonlyMap<string, string>,
+): string {
+  return cwd === undefined ? "(no recorded directory)" : (projectLabels.get(cwd) ?? cwd);
 }
 
 function aggregateGroup(
@@ -57,6 +66,7 @@ function aggregateGroup(
   directories: number,
   sessions: readonly AgentSessionMetrics[],
 ): RepoSessionAggregate {
+  let agentTimeMs = 0;
   let abortedTurns = 0;
   let compactions = 0;
   let failedToolCalls = 0;
@@ -70,6 +80,7 @@ function aggregateGroup(
   const tokens = { cachedInputTokens: 0, inputTokens: 0, outputTokens: 0 };
 
   for (const session of sessions) {
+    agentTimeMs += session.agentTimeMs;
     abortedTurns += session.abortedTurns;
     compactions += session.compactions;
     interventions += session.interventions.length;
@@ -90,6 +101,7 @@ function aggregateGroup(
   const outcomes = summarizeOutcomes(sessions);
   return {
     ...outcomes,
+    agentTimeMs,
     abortedTurns,
     compactions,
     compactionProfile: compactionProfileOf(sessions),

@@ -47,6 +47,7 @@ export interface ParseState {
   initialContextTokens: number | undefined;
   initialPromptChars: number;
   readonly initialPromptLines: number[];
+  internalApprovalReview: boolean;
   readonly interventions: SessionIntervention[];
   largestToolOutputChars: number;
   lastMs: number | undefined;

@@ -225,12 +225,13 @@ is what says which findings remain.
 ## Sessions report
 
 `aura sessions` reads the transcripts Codex keeps under `~/.codex/sessions` and summarizes, per
-project, how much agent time they held and where tool calls failed. A project collapses every
-working directory that resolves to the same repository: a directory that still exists is named
-after its git `origin` remote (following a linked worktree's `.git` file to the main checkout),
-a deleted one falls back to the `<...>/workspaces/<project>/<leaf>` shape parallel-worktree tools
-use, and anything else stays its own path. Only `.git` markers and git config files are ever
-opened — nothing of the project's own contents. A heading notes the collapse (`family_planner ·
+project, how much agent time they held and where tool calls failed. Internal `guardian` approval
+reviews are excluded. A project collapses every working directory that resolves to the same
+repository. The Git remote recorded when the session started is used first. When it is missing, a
+directory that still exists is named after its current git `origin` remote (following a linked
+worktree's `.git` file to the main checkout), a deleted one falls back to the
+`<...>/workspaces/<project>/<leaf>` shape parallel-worktree tools use, and anything else stays its
+own path. Only `.git` markers and git config files are ever opened. A heading notes the collapse (`family_planner ·
 12 directories`) whenever a row absorbed more than one. Rendered by
 `packages/cli/src/sessions/render.ts` in the help-screen geometry, and ordered by what deserves
 action, not by inventory: a header naming the source and window; four `Session health` cards;
@@ -247,8 +248,9 @@ recorded`, so the card positions never move. Four 18-column cards plus their gap
 columns upward; narrower reports use a 2×2 grid. All card sizing uses terminal display cells.
 
 The detail sections use one concept per label/value row instead of chains of unrelated values.
-`Activity` carries sessions/projects, agent time, turns, and token directions. `Workflow and
-delivery` carries median turn time, tool-time share, cache reuse, classified check/expected
+`Activity` carries sessions/projects, agent time summed from recorded turn durations, turns, and
+token directions. `Workflow and delivery` carries median turn time, tool-time share, cache reuse,
+classified check/expected
 statuses, human interventions, first-green cost, initial context, inferred endings, and unreadable
 transcripts when those signals exist. Breakdowns use continuation rows. Explanatory prose appears
 only beneath unhealthy cards or flagged projects; healthy signals stay terse. Subscription

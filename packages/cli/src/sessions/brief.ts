@@ -38,6 +38,7 @@ function overallSection(analysis: SessionAnalysis): readonly string[] {
   }
   const totals = analysis.repos.reduce(
     (sum, repo) => ({
+      agentTimeMs: sum.agentTimeMs + repo.agentTimeMs,
       abortedTurns: sum.abortedTurns + repo.abortedTurns,
       checks: sum.checks + repo.checkFailures,
       expected: sum.expected + repo.expectedStatuses,
@@ -49,9 +50,9 @@ function overallSection(analysis: SessionAnalysis): readonly string[] {
       turns: sum.turns + repo.turns,
       unknown: sum.unknown + repo.unknownOutcomes,
       validationTimeMs: sum.validationTimeMs + repo.validationTimeMs,
-      wallClockMs: sum.wallClockMs + repo.wallClockMs,
     }),
     {
+      agentTimeMs: 0,
       abortedTurns: 0,
       checks: 0,
       expected: 0,
@@ -63,13 +64,12 @@ function overallSection(analysis: SessionAnalysis): readonly string[] {
       turns: 0,
       unknown: 0,
       validationTimeMs: 0,
-      wallClockMs: 0,
     },
   );
   return [
     "## Overall",
     "",
-    `- ${count(analysis.sessions.length, "session")} in ${count(analysis.repos.length, "project")} · ${duration(totals.wallClockMs)} wall · ${duration(totals.toolTimeMs)} waiting on tools`,
+    `- ${count(analysis.sessions.length, "session")} in ${count(analysis.repos.length, "project")} · ${duration(totals.agentTimeMs)} agent time · ${duration(totals.toolTimeMs)} waiting on tools`,
     `- ${count(totals.turns, "turn")} (${totals.abortedTurns} aborted) · ${count(totals.interventions, "human intervention")} · ${duration(totals.validationTimeMs)} waiting on validation commands`,
     `- ${count(totals.toolCalls, "tool call")} · ${count(totals.raw, "raw non-success outcome")} (${percent(ratio(totals.raw, totals.toolCalls))})`,
     `- Classified: ${totals.operational} operational · ${totals.checks} check failures · ${totals.expected} expected statuses · ${totals.unknown} unknown`,
@@ -94,7 +94,7 @@ function projectSection(repo: RepoSessionAggregate): readonly string[] {
   const lines = [
     `## Project: ${dossierValue(repo.project)}`,
     "",
-    `- ${count(repo.sessions, "session")} across ${count(repo.directories, "directory", "directories")} · ${duration(repo.wallClockMs)} wall · ${duration(repo.toolTimeMs)} in tools`,
+    `- ${count(repo.sessions, "session")} across ${count(repo.directories, "directory", "directories")} · ${duration(repo.agentTimeMs)} agent time · ${duration(repo.toolTimeMs)} in tools`,
     `- ${count(repo.toolCalls, "tool call")} · ${count(repo.failedToolCalls, "raw non-success outcome")} · ${count(repo.compactions, "compaction")}${repo.truncatedSessions > 0 ? ` · ${count(repo.truncatedSessions, "transcript")} truncated` : ""}`,
     `- Classified: ${repo.operationalFailures} operational · ${repo.checkFailures} check failures · ${repo.expectedStatuses} expected statuses · ${repo.unknownOutcomes} unknown`,
     `- Classification coverage: ${repo.failedToolCalls}/${repo.failedToolCalls} outcomes; ${repo.unknownOutcomes} remain unknown.`,

@@ -1,12 +1,16 @@
 import type { FileReader } from "../workspace/reader.js";
 import { createLimiter } from "../workspace/concurrency.js";
 import { discoverCodexSessions } from "./codex-discover.js";
-import { parseCodexSession, parseCodexSessionLines } from "./codex-parse.js";
+import {
+  parseCodexSessionLinesResult,
+  parseCodexSessionResult,
+  type CodexSessionParseResult,
+} from "./codex-parse.js";
 import type { CodexTranscriptReader } from "./codex-transcript-reader.js";
 import { utcDayKey } from "./iso-time.js";
 import { resolveProjects } from "./project-resolve.js";
 import type { SessionDetailLevel } from "./session-detail-metrics.js";
-import type { AgentSessionMetrics, SessionAnalysis } from "./session-metrics.js";
+import type { SessionAnalysis } from "./session-metrics.js";
 import { aggregateSessionsByRepo } from "./session-aggregate.js";
 import { aggregateWorkItems } from "./work-item-aggregate.js";
 
@@ -59,10 +63,8 @@ export async function analyzeCodexSessions(
       limit(() => readSession(options.reader, options.transcriptReader, file, detail)),
     ),
   );
-  const sessions = parsed.filter(
-    (session): session is AgentSessionMetrics => session !== undefined,
-  );
-  const unreadableFiles = parsed.length - sessions.length;
+  const sessions = parsed.flatMap((result) => (result.kind === "session" ? [result.session] : []));
+  const unreadableFiles = parsed.filter((result) => result.kind === "unrecognized").length;
 
   const directories = sessions.flatMap((session) =>
     session.cwd === undefined ? [] : [session.cwd],
@@ -85,21 +87,30 @@ async function readSession(
   transcriptReader: CodexTranscriptReader | undefined,
   file: string,
   detail: SessionDetailLevel,
-): Promise<AgentSessionMetrics | undefined> {
+): Promise<CodexSessionParseResult> {
   if (transcriptReader !== undefined) {
     const transcript = await transcriptReader(file, MAX_TRANSCRIPT_BYTES);
     if (transcript === undefined) {
-      return undefined;
+      return { kind: "unrecognized" };
     }
     const truncated = transcript.size > MAX_TRANSCRIPT_BYTES;
-    const session = await parseCodexSessionLines(transcript.lines, truncated, detail);
-    return session === undefined ? undefined : { ...session, transcriptPath: file };
+    const result = await parseCodexSessionLinesResult(transcript.lines, truncated, detail);
+    return withTranscriptPath(result, file);
   }
   const contents = await reader.read(file, { maxBytes: MAX_TRANSCRIPT_BYTES });
   if (contents.content === undefined) {
-    return undefined;
+    return { kind: "unrecognized" };
   }
   const truncated = contents.size !== undefined && contents.size > MAX_TRANSCRIPT_BYTES;
-  const session = parseCodexSession(contents.content, truncated, detail);
-  return session === undefined ? undefined : { ...session, transcriptPath: file };
+  return withTranscriptPath(parseCodexSessionResult(contents.content, truncated, detail), file);
+}
+
+function withTranscriptPath(
+  result: CodexSessionParseResult,
+  file: string,
+): CodexSessionParseResult {
+  if (result.kind !== "session") {
+    return result;
+  }
+  return { kind: "session", session: { ...result.session, transcriptPath: file } };
 }

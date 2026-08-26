@@ -68,6 +68,7 @@ describe("parseCodexSession", () => {
     const session = parseCodexSession(content, false);
 
     expect(session).toEqual({
+      agentTimeMs: 8000,
       abortedTurns: 0,
       commands: [
         {

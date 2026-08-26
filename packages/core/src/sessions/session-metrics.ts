@@ -79,6 +79,7 @@ interface SessionToolUsage {
 
 /** What one session transcript yielded. */
 export interface AgentSessionMetrics {
+  readonly agentTimeMs: number;
   /** Turn-abort events the transcript recorded, whether or not their turn detail was retained. */
   readonly abortedTurns: number;
   /** One row per recorded tool call. Present only when the caller asked for call detail. */
@@ -191,6 +192,7 @@ export interface DirectoryHotspot {
 
 /** Sessions of one project, summed across its working directories. */
 export interface RepoSessionAggregate {
+  readonly agentTimeMs: number;
   /** Turns a person aborted across the project's sessions. */
   readonly abortedTurns: number;
   readonly checkFailures: number;

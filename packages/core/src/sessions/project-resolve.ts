@@ -83,7 +83,7 @@ async function configProjectName(
   const config = await reader.read(configPath, { maxBytes: MAX_GIT_CONFIG_BYTES });
   const url = config.content === undefined ? undefined : originUrl(config.content);
   if (url !== undefined) {
-    return repositoryName(url) ?? basename(checkoutDir);
+    return projectNameFromRepositoryUrl(url) ?? basename(checkoutDir);
   }
   return config.exists ? basename(checkoutDir) : undefined;
 }
@@ -108,7 +108,7 @@ function originUrl(config: string): string | undefined {
 }
 
 /** The final path segment of a remote URL, without `.git`: the name clones share. */
-function repositoryName(url: string): string | undefined {
+export function projectNameFromRepositoryUrl(url: string): string | undefined {
   const tail = url.replace(/\/+$/u, "").split(/[/:]/u).pop();
   const name = tail?.endsWith(".git") ? tail.slice(0, -4) : tail;
   return name === undefined || name === "" ? undefined : name;

@@ -45,7 +45,6 @@ async function writeRollout(
         git: {
           branch: "feature/session-health",
           commit_hash: "abc123",
-          repository_url: "https://example.com/repo.git",
         },
         id: "s1",
       },
@@ -100,6 +99,11 @@ async function writeRollout(
       timestamp: "2026-08-24T10:01:03.000Z",
       type: "event_msg",
     }),
+    JSON.stringify({
+      payload: { model: "gpt-5.4" },
+      timestamp: "2026-08-24T12:00:00.000Z",
+      type: "turn_context",
+    }),
   ];
   await writeFile(join(directory, name), `${lines.join("\n")}\n`);
 }
@@ -128,9 +132,9 @@ describe("sessions command", () => {
       "│F · 100%        │ │B · 50% peak    │ │A · 0.00/session│ │1 / 1 failed    │",
     );
     expect(capture.stdout.text).toContain("Sessions          1 session · 1 project");
+    expect(capture.stdout.text).toContain("Agent time        1m 2s");
     expect(capture.stdout.text).toContain("Median turn       1m 2s");
-    // The fixture session spends 60 of its 62 seconds inside its one failing tool call.
-    expect(capture.stdout.text).toContain("Time in tools     F · 95% of agent time");
+    expect(capture.stdout.text).toContain("Time in tools     F · 97% of agent time");
     expect(capture.stdout.text).toContain("Cache hit         A · 90% reused");
     expect(capture.stdout.text).not.toContain("Quota peaked");
     expect(capture.stdout.text).toContain("Needs attention");

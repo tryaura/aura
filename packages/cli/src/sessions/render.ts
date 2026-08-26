@@ -66,7 +66,7 @@ export function renderSessionsReport(
   if (options.verbose) {
     lines.push(...projectChart("All projects", analysis.repos, options.homeDir, columns, true));
   } else {
-    const busiest = [...analysis.repos].sort((a, b) => b.wallClockMs - a.wallClockMs);
+    const busiest = [...analysis.repos].sort((a, b) => b.agentTimeMs - a.agentTimeMs);
     lines.push(
       ...projectChart(
         "Projects by agent time",
@@ -195,12 +195,12 @@ function projectChart(
   verbose: boolean,
 ): readonly string[] {
   const lines = ["", `  ${title}`];
-  const widest = Math.max(...repos.map((repo) => repo.wallClockMs), 1);
+  const widest = Math.max(...repos.map((repo) => repo.agentTimeMs), 1);
   const barWidth = columns >= 60 ? 20 : 8;
   for (const repo of repos) {
     const label = chartLabel(displayProject(repo.project, homeDir));
     lines.push(
-      `    ${label}  ${bar(repo.wallClockMs / widest, barWidth)}  ${duration(repo.wallClockMs)}`,
+      `    ${label}  ${bar(repo.agentTimeMs / widest, barWidth)}  ${duration(repo.agentTimeMs)}`,
     );
     lines.push(...projectDetailRows(repo, columns, verbose));
   }
