@@ -1,5 +1,6 @@
 # Agent workspace scratch directory
 .context/
+/aura-session-brief.md
 
 # Dependencies
 node_modules/

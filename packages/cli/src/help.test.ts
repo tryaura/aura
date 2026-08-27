@@ -26,6 +26,7 @@ describe("help screens", () => {
         Everyday use
           acme check               Inspect the current AI agent setup
           acme check --fix         Preview fixes and apply them after confirming
+          acme sessions            Summarize recent coding agent sessions
           acme undo                Restore the most recent Aura backup
 
         Help
@@ -176,9 +177,10 @@ describe("help screens", () => {
       "acme: unknown command 'chekc'
 
         Commands
-          acme setup    Set up this machine interactively and converge it
-          acme check    Inspect the current AI agent setup
-          acme undo     Restore the most recent Aura backup
+          acme setup       Set up this machine interactively and converge it
+          acme check       Inspect the current AI agent setup
+          acme sessions    Summarize recent coding agent sessions
+          acme undo        Restore the most recent Aura backup
 
         Run 'acme --help' for more
       "

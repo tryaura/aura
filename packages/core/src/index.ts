@@ -144,3 +144,11 @@ export type {
   FileReadOptions,
   PathContents,
 } from "./workspace/reader.js";
+export { analyzeCodexSessions } from "./sessions/codex-analyze.js";
+export { createCodexTranscriptReader } from "./sessions/codex-transcript-reader.js";
+export type {
+  OutcomeCount,
+  OutcomeEvidence,
+  RepoSessionAggregate,
+  SessionAnalysis,
+} from "./sessions/session-metrics.js";

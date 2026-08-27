@@ -4,6 +4,8 @@ import { UnknownSyntaxError } from "clipanion/lib/errors.js";
 import { CheckCommand } from "./commands.js";
 import { renderCheckHelp, renderRootHelp, renderSetupHelp, renderUndoHelp } from "./help.js";
 import { renderDistroCommandHelp } from "./help-distro-command.js";
+import { SessionsCommand } from "./sessions/command.js";
+import { renderSessionsHelp } from "./sessions/help.js";
 import { SetupCommand } from "./setup/command.js";
 import { setupAddKinds } from "./setup/steps/index.js";
 import { UndoCommand } from "./undo/command.js";
@@ -14,6 +16,7 @@ import type { CliBranding, CliCommandDefinition } from "./types.js";
 const STATIC_COMMAND_WORDS: ReadonlySet<string> = new Set(
   [
     ...(CheckCommand.paths ?? []),
+    ...(SessionsCommand.paths ?? []),
     ...(SetupCommand.paths ?? []),
     ...(UndoCommand.paths ?? []),
   ].flatMap((path) => (path[0] === undefined ? [] : [path[0]])),
@@ -65,6 +68,9 @@ export function helpScreen(
   const word = argv.find((token) => !token.startsWith("-"));
   if (word === "check") {
     return renderCheckHelp(branding);
+  }
+  if (word === "sessions") {
+    return renderSessionsHelp(branding);
   }
   if (word === "setup") {
     return renderSetupHelp(branding, setupAddKinds());

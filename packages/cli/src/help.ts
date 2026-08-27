@@ -29,6 +29,7 @@ export function renderRootHelp(
         rows: [
           { term: `${bin} check`, text: "Inspect the current AI agent setup" },
           { term: `${bin} check --fix`, text: "Preview fixes and apply them after confirming" },
+          { term: `${bin} sessions`, text: "Summarize recent coding agent sessions" },
           { term: `${bin} undo`, text: "Restore the most recent Aura backup" },
           ...(canUpdate
             ? [{ term: `${bin} update`, text: "Check now, install an update, and exit" }]
@@ -220,6 +221,7 @@ export function renderUnknownCommand(
         rows: [
           { term: `${bin} setup`, text: "Set up this machine interactively and converge it" },
           { term: `${bin} check`, text: "Inspect the current AI agent setup" },
+          { term: `${bin} sessions`, text: "Summarize recent coding agent sessions" },
           { term: `${bin} undo`, text: "Restore the most recent Aura backup" },
           ...(canUpdate
             ? [{ term: `${bin} update`, text: "Check now, install an update, and exit" }]
