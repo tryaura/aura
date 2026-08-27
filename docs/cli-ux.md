@@ -227,12 +227,15 @@ is what says which findings remain.
 `aura sessions` reads the transcripts Codex keeps under `~/.codex/sessions` and summarizes, per
 project, how much agent time they held and where tool calls failed. Internal `guardian` approval
 reviews are excluded. A project collapses every working directory that resolves to the same
-repository. The Git remote recorded when the session started is used first. When it is missing, a
-directory that still exists is named after its current git `origin` remote (following a linked
+repository. The Git remote recorded when the session started is sanitized and used first. Its
+credential-free host/owner/repository identity is the grouping key; the short repository name is
+shown unless unrelated remotes share it, in which case their qualified names are used. When the
+remote is missing, a directory that still exists is named after its current git `origin` remote
+(following a linked
 worktree's `.git` file to the main checkout), a deleted one falls back to the
 `<...>/workspaces/<project>/<leaf>` shape parallel-worktree tools use, and anything else stays its
-own path. Only `.git` markers and git config files are ever opened. A heading notes the collapse (`family_planner ·
-12 directories`) whenever a row absorbed more than one. Rendered by
+own path. Only `.git` markers and git config files are ever opened. A heading notes the collapse
+(`family_planner · 12 directories`) whenever a row absorbed more than one. Rendered by
 `packages/cli/src/sessions/render.ts` in the help-screen geometry, and ordered by what deserves
 action, not by inventory: a header naming the source and window; four `Session health` cards;
 `Needs attention`; short `Activity` and `Workflow and delivery` rows; command and work-item
@@ -252,7 +255,9 @@ The detail sections use one concept per label/value row instead of chains of unr
 token directions. `Workflow and delivery` carries median turn time, tool-time share, cache reuse,
 classified check/expected
 statuses, human interventions, first-green cost, initial context, inferred endings, and unreadable
-transcripts when those signals exist. Breakdowns use continuation rows. Explanatory prose appears
+or incomplete transcripts when those signals exist. Incomplete coverage names size truncation,
+malformed records, rejected numeric values, and interrupted reads separately. Breakdowns use
+continuation rows. Explanatory prose appears
 only beneath unhealthy cards or flagged projects; healthy signals stay terse. Subscription
 rate-limit state is deliberately not rendered:
 the counter is account-global and shared by concurrent sessions, so no per-window attribution is
@@ -283,7 +288,7 @@ checks and simple search no-matches are expected statuses; everything else is un
 shell input is named `shell batch`, never attributed to its first command. Only operational and
 unknown outcomes affect the tool-problem grade; check failures receive their own count, while
 expected statuses do not make a project unhealthy. An exit-127 pattern gets its own remediation
-row. The other reasons are compaction pressure and truncated transcripts. Attention thresholds
+row. The other reasons are compaction pressure and incomplete transcripts. Attention thresholds
 are materiality bounds, not zero: a problem count below three that is also under five percent of
 the project's calls is noise, and a single compaction is routine. The attention list itself is
 capped at eight entries. Neither cap
@@ -297,7 +302,8 @@ only safe command labels appear, never full command lines.
 The privacy contract is the footer's one promise: the analysis is entirely local, and neither
 `--json` nor the human report carries transcript content. The human report exposes only aggregate
 metrics and neutralized command labels; `--json` additionally carries local evidence metadata such
-as transcript paths, working directories, branches, and session identifiers. It emits the one
+as transcript paths, working directories, branches, sanitized repository remotes, and session
+identifiers. URL userinfo is removed before repository metadata reaches any result. It emits the one
 machine-readable document — window, per-project aggregates, and per-session metrics — on stdout
 under the same seam rules as `check --json`. Per-session metrics carry turn-level detail (start,
 end, close state, harness-reported duration and time to first token, model, per-turn tool time and
@@ -310,7 +316,10 @@ start, duration, status, exit code, output size); it requires `--json`, because 
 machine output. The JSON document only ever gains fields; existing fields keep their names and
 meanings. An empty window is a normal report (exit 0), not a
 failure. Transcripts are parsed as bounded streams with at most four reads in flight; a transcript
-larger than the read cap is counted as truncated rather than sinking the run.
+larger than the read cap is counted as truncated rather than sinking the run. Malformed records,
+out-of-range numeric fields, and interrupted prefix reads mark a recognized session as partial and
+are counted in human and JSON output. Transcript numeric values use field-specific bounds and
+overflow-safe aggregation.
 
 `--brief` (or `--brief=<path>`) additionally writes an owner-readable agent handoff brief (default
 `aura-session-brief.md` in the working directory) and prints the one shell-quoted `codex exec`

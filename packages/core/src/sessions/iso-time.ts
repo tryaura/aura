@@ -34,15 +34,18 @@ export function utcTimestampMs(value: string): number | undefined {
     return undefined;
   }
   const days = daysFromCivil(Number(year), Number(month), Number(day));
-  if (days === undefined) {
+  const hourValue = Number(hour);
+  const minuteValue = Number(minute);
+  const secondValue = Number(second);
+  if (days === undefined || hourValue > 23 || minuteValue > 59 || secondValue > 59) {
     return undefined;
   }
   const milliseconds = fraction === undefined ? 0 : Number(fraction.padEnd(3, "0"));
   return (
     days * MS_PER_DAY +
-    Number(hour) * 3_600_000 +
-    Number(minute) * 60_000 +
-    Number(second) * 1000 +
+    hourValue * 3_600_000 +
+    minuteValue * 60_000 +
+    secondValue * 1000 +
     milliseconds
   );
 }
@@ -56,7 +59,7 @@ export function utcDayKey(epochMs: number): string {
 
 /** Days since 1970-01-01 for a proleptic-Gregorian civil date. Undefined when out of range. */
 function daysFromCivil(year: number, month: number, day: number): number | undefined {
-  if (month < 1 || month > 12 || day < 1 || day > 31) {
+  if (month < 1 || month > 12 || day < 1 || day > daysInMonth(year, month)) {
     return undefined;
   }
   const shiftedYear = year - (month <= 2 ? 1 : 0);
@@ -66,6 +69,14 @@ function daysFromCivil(year: number, month: number, day: number): number | undef
   const dayOfEra =
     yearOfEra * 365 + Math.floor(yearOfEra / 4) - Math.floor(yearOfEra / 100) + dayOfYear;
   return era * 146_097 + dayOfEra - 719_468;
+}
+
+function daysInMonth(year: number, month: number): number {
+  if (month === 2) {
+    const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+    return leap ? 29 : 28;
+  }
+  return month === 4 || month === 6 || month === 9 || month === 11 ? 30 : 31;
 }
 
 /** The civil date holding a days-since-epoch count. Inverse of {@link daysFromCivil}. */

@@ -33,7 +33,7 @@ export function needsAttention(repo: RepoSessionAggregate): boolean {
     hasMaterialToolProblems(repo) ||
     hasMaterialCheckFailures(repo) ||
     hasCompactionPressure(repo) ||
-    repo.truncatedSessions > 0
+    repo.partialSessions > 0
   );
 }
 
@@ -45,7 +45,7 @@ export function compareAttention(left: RepoSessionAggregate, right: RepoSessionA
     right.checkFailures - left.checkFailures ||
     right.compactions / Math.max(right.sessions, 1) -
       left.compactions / Math.max(left.sessions, 1) ||
-    right.truncatedSessions - left.truncatedSessions ||
+    right.partialSessions - left.partialSessions ||
     left.project.localeCompare(right.project)
   );
 }

@@ -1,4 +1,5 @@
 import { readEvent } from "./codex-parse-events.js";
+import { createParseState } from "./codex-parse-initialize.js";
 import { recordInitialPrompt, recordPromptMessage } from "./codex-parse-prompt.js";
 import { finishCalls, readToolCall, readToolResult } from "./codex-parse-tools.js";
 import { finishTurns, readTurnContext } from "./codex-parse-turns.js";
@@ -13,7 +14,9 @@ import {
 import { utcTimestampMs } from "./iso-time.js";
 import type { SessionDetailLevel } from "./session-detail-metrics.js";
 import type { AgentSessionMetrics } from "./session-metrics.js";
+import { boundedAdd, boundedSum, MAX_DURATION_MS } from "./session-numbers.js";
 import { inferSessionOutcome } from "./session-outcome-infer.js";
+import { sanitizeRepositoryUrl } from "./project-resolve.js";
 import { asRecord, asString, parseTranscriptRecord } from "./transcript-json.js";
 import { collectWorkItems } from "./work-items.js";
 
@@ -27,8 +30,8 @@ export type CodexSessionParseResult =
  *
  * A rollout file is a line-delimited JSON log of `{timestamp, type, payload}` records. The format
  * is Codex's private state, so every read here is defensive: a line that fails to parse or a
- * record missing an expected field is skipped, never fatal. Counts are exact for what the file
- * carries and lower bounds for what it does not.
+ * record missing an expected field is skipped, never fatal. Malformed records and rejected numeric
+ * values are counted so consumers can distinguish exact metrics from lower bounds.
  */
 
 export function parseCodexSession(
@@ -36,7 +39,7 @@ export function parseCodexSession(
   truncated: boolean,
   detail: SessionDetailLevel = "summary",
 ): AgentSessionMetrics | undefined {
-  const state = initialState(detail);
+  const state = createParseState(detail);
   readLines(state, content, truncated);
   const result = finishSession(state, truncated);
   return result.kind === "session" ? result.session : undefined;
@@ -46,78 +49,33 @@ export function parseCodexSessionResult(
   content: string,
   truncated: boolean,
   detail: SessionDetailLevel = "summary",
+  readError = false,
 ): CodexSessionParseResult {
-  const state = initialState(detail);
+  const state = createParseState(detail);
   readLines(state, content, truncated);
-  return finishSession(state, truncated);
+  return finishSession(state, truncated, readError);
 }
 
 export async function parseCodexSessionLinesResult(
   lines: AsyncIterable<string>,
   truncated: boolean,
   detail: SessionDetailLevel = "summary",
+  completed?: (() => boolean) | undefined,
 ): Promise<CodexSessionParseResult> {
-  const state = initialState(detail);
+  const state = createParseState(detail);
   let lineNumber = 0;
   for await (const line of lines) {
     lineNumber += 1;
     readLine(state, line, lineNumber);
   }
-  return finishSession(state, truncated);
+  return finishSession(state, truncated, completed?.() === false);
 }
 
-function initialState(detail: SessionDetailLevel): ParseState {
-  return {
-    abortedTurns: 0,
-    calls: detail === "calls" ? [] : undefined,
-    commands: new Map(),
-    compactions: 0,
-    completedTurns: 0,
-    contextWindow: undefined,
-    cwd: undefined,
-    editFiles: 0,
-    editsApplied: 0,
-    editsFailed: 0,
-    endedAt: undefined,
-    firstMs: undefined,
-    git: { branch: undefined, commitHash: undefined, repositoryUrl: undefined },
-    greenIteration: undefined,
-    initialContextTokens: undefined,
-    initialPromptChars: 0,
-    initialPromptLines: [],
-    internalApprovalReview: false,
-    interventions: [],
-    largestToolOutputChars: 0,
-    lastMs: undefined,
-    model: undefined,
-    openTurn: undefined,
-    outcomes: [],
-    peakRequestTokens: 0,
-    pending: new Map(),
-    promptOpen: true,
-    pullRequests: new Set(),
-    quota: undefined,
-    recognized: 0,
-    sessionId: undefined,
-    shellSessions: new Map(),
-    startedAt: undefined,
-    tokens: undefined,
-    tokensAtFirstGreen: undefined,
-    tools: new Map(),
-    toolOutputChars: 0,
-    turnById: new Map(),
-    turnList: [],
-    turns: 0,
-    turnsTruncated: false,
-    userMessages: 0,
-    validationAttempts: 0,
-    validationFailures: 0,
-    validationTimeMs: 0,
-    workItems: new Set(),
-  };
-}
-
-function finishSession(state: ParseState, truncated: boolean): CodexSessionParseResult {
+function finishSession(
+  state: ParseState,
+  truncated: boolean,
+  readError = false,
+): CodexSessionParseResult {
   if (state.internalApprovalReview) {
     return { kind: "excluded" };
   }
@@ -130,10 +88,11 @@ function finishSession(state: ParseState, truncated: boolean): CodexSessionParse
     collectWorkItems(state.workItems, state.git.branch);
   }
   const pullRequests = [...state.pullRequests];
+  const wallClockMs = sessionWallClock(state);
   return {
     kind: "session",
     session: {
-      agentTimeMs: turnDetails.reduce((sum, turn) => sum + turn.durationMs, 0),
+      agentTimeMs: boundedSum(turnDetails.map((turn) => turn.durationMs)),
       abortedTurns: state.abortedTurns,
       ...(calls === undefined ? {} : { calls }),
       commands: finishCommands(state.commands),
@@ -151,9 +110,11 @@ function finishSession(state: ParseState, truncated: boolean): CodexSessionParse
       ),
       initialPromptChars: state.initialPromptChars,
       initialPromptLines: state.initialPromptLines,
+      invalidValues: state.invalidValues,
       interventions: state.interventions,
       largestToolOutputChars: state.largestToolOutputChars,
       model: state.model,
+      malformedLines: state.malformedLines,
       outcomes: state.outcomes,
       pullRequests,
       ...(state.quota === undefined ? {} : { quota: state.quota }),
@@ -166,19 +127,30 @@ function finishSession(state: ParseState, truncated: boolean): CodexSessionParse
       tools: Object.fromEntries(
         [...state.tools.entries()].map(([tool, usage]) => [tool, { ...usage }]),
       ),
+      partial: truncated || readError || state.invalidValues > 0 || state.malformedLines > 0,
+      readError,
       truncated,
       turnDetails,
       turns: state.turns,
       turnsTruncated: state.turnsTruncated,
       userMessages: state.userMessages,
       validation: finishValidation(state),
-      wallClockMs:
-        state.firstMs === undefined || state.lastMs === undefined
-          ? 0
-          : state.lastMs - state.firstMs,
+      wallClockMs,
       workItems: [...state.workItems],
     },
   };
+}
+
+function sessionWallClock(state: ParseState): number {
+  if (state.firstMs === undefined || state.lastMs === undefined || state.lastMs < state.firstMs) {
+    return 0;
+  }
+  const elapsed = state.lastMs - state.firstMs;
+  if (!Number.isSafeInteger(elapsed) || elapsed > MAX_DURATION_MS) {
+    state.invalidValues += 1;
+    return 0;
+  }
+  return elapsed;
 }
 
 /** Parses one line at a time without allocating an array proportional to the transcript. */
@@ -208,6 +180,8 @@ function readLine(state: ParseState, line: string, lineNumber: number): void {
   const record = parseTranscriptRecord(line);
   if (record !== undefined) {
     readRecord(state, record, lineNumber);
+  } else {
+    state.malformedLines += 1;
   }
 }
 
@@ -217,7 +191,7 @@ function readRecord(state: ParseState, record: Record<string, unknown>, line: nu
   const type = asString(record["type"]);
   if (type === "compacted") {
     state.recognized += 1;
-    state.compactions += 1;
+    state.compactions = boundedAdd(state.compactions, 1);
     return;
   }
   const payload = asRecord(record["payload"]);
@@ -277,7 +251,8 @@ function sessionGitContext(
   return {
     branch: asString(git?.["branch"]) ?? fallback.branch,
     commitHash: asString(git?.["commit_hash"]) ?? fallback.commitHash,
-    repositoryUrl: asString(git?.["repository_url"]) ?? fallback.repositoryUrl,
+    repositoryUrl:
+      sanitizeRepositoryUrl(asString(git?.["repository_url"]) ?? "") ?? fallback.repositoryUrl,
   };
 }
 

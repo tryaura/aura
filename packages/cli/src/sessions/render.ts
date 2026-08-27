@@ -177,13 +177,30 @@ function attentionReasons(
       summary: `Compactions · ${repo.compactions} / ${repo.sessions} sessions`,
     });
   }
-  if (repo.truncatedSessions > 0) {
-    reasons.push({
-      details: ["Counts are lower bounds"],
-      summary: `Truncated transcripts · ${repo.truncatedSessions}`,
-    });
-  }
+  reasons.push(...incompleteTranscriptReasons(repo));
   return reasons;
+}
+
+function incompleteTranscriptReasons(repo: RepoSessionAggregate): readonly AttentionReason[] {
+  if (repo.partialSessions === 0) {
+    return [];
+  }
+  const causes = [
+    ...(repo.truncatedSessions > 0
+      ? [count(repo.truncatedSessions, "size-truncated transcript")]
+      : []),
+    ...(repo.malformedLines > 0 ? [count(repo.malformedLines, "malformed line")] : []),
+    ...(repo.invalidValues > 0 ? [count(repo.invalidValues, "invalid numeric value")] : []),
+    ...(repo.readErrorSessions > 0
+      ? [count(repo.readErrorSessions, "transcript read failure")]
+      : []),
+  ];
+  return [
+    {
+      details: ["Counts are lower bounds", ...causes],
+      summary: `Incomplete transcripts · ${repo.partialSessions}`,
+    },
+  ];
 }
 
 /** One bar line per project: wall time relative to the busiest, then the numbers behind it. */

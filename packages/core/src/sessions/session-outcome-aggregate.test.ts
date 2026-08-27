@@ -31,11 +31,15 @@ function session(id: string, outcomes: readonly ToolOutcome[]): AgentSessionMetr
     inferredOutcome: undefined,
     initialPromptChars: 0,
     initialPromptLines: [],
+    invalidValues: 0,
     interventions: [],
     largestToolOutputChars: 0,
+    malformedLines: 0,
     model: undefined,
     outcomes,
+    partial: false,
     pullRequests: [],
+    readError: false,
     sessionId: id,
     source: "codex",
     startedAt: undefined,
@@ -68,7 +72,7 @@ describe("outcome group selection", () => {
 
     const repo = aggregateSessionsByRepo(
       [session("s1", outcomes)],
-      new Map([["/repo", "repo"]]),
+      new Map([["/repo", { key: "path:/repo", label: "repo", qualifiedLabel: "/repo" }]]),
     )[0];
 
     expect(repo?.outcomeGroupCount).toBe(6);

@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createFileReader } from "../workspace/reader.js";
+import { createFileReader, type FileReader } from "../workspace/reader.js";
 import { analyzeCodexSessions } from "./codex-analyze.js";
 
 const temporaryDirectories: string[] = [];
@@ -77,5 +77,57 @@ describe("session analysis regressions", () => {
     expect(analysis.repos).toHaveLength(1);
     expect(analysis.repos[0]?.project).toBe("family_planner");
     expect(analysis.repos[0]?.directories).toBe(2);
+  });
+
+  it("keeps same-named remotes separate and removes recorded credentials", async () => {
+    const home = await createHome();
+    await writeSession(home, "a.jsonl", {
+      cwd: "/deleted/acme-api",
+      git: { repository_url: "https://user:secret@github.com/acme/api.git" },
+      id: "s1",
+    });
+    await writeSession(home, "b.jsonl", {
+      cwd: "/deleted/other-api",
+      git: { repository_url: "https://github.com/other/api.git" },
+      id: "s2",
+    });
+
+    const analysis = await analyze(home);
+
+    expect(analysis.repos.map((repo) => repo.project)).toEqual([
+      "github.com/acme/api",
+      "github.com/other/api",
+    ]);
+    expect(analysis.sessions[0]?.git.repositoryUrl).toBe("https://github.com/acme/api.git");
+    expect(JSON.stringify(analysis)).not.toContain("secret");
+  });
+
+  it("does not probe Git metadata when a recorded remote already identifies the project", async () => {
+    const home = await createHome();
+    await writeSession(home, "a.jsonl", {
+      cwd: "/deleted/worktree",
+      git: { repository_url: "https://github.com/acme/api.git" },
+      id: "s1",
+    });
+    const base = createFileReader();
+    let gitReads = 0;
+    const reader: FileReader = {
+      ...base,
+      read: async (path, options) => {
+        if (path.endsWith("/.git") || path.includes("/.git/")) {
+          gitReads += 1;
+        }
+        return base.read(path, options);
+      },
+    };
+
+    await analyzeCodexSessions({
+      days: 7,
+      homeDir: home,
+      now: new Date("2026-08-25T12:00:00.000Z"),
+      reader,
+    });
+
+    expect(gitReads).toBe(0);
   });
 });

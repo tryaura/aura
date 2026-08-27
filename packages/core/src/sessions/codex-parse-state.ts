@@ -15,6 +15,7 @@ import type {
   SessionTokenUsage,
   ToolOutcome,
 } from "./session-metrics.js";
+import { boundedAdd } from "./session-numbers.js";
 
 /**
  * The accumulator one Codex transcript parse folds its records into.
@@ -47,11 +48,15 @@ export interface ParseState {
   initialContextTokens: number | undefined;
   initialPromptChars: number;
   readonly initialPromptLines: number[];
+  /** Present numeric fields rejected because they were outside their semantic bounds. */
+  invalidValues: number;
   internalApprovalReview: boolean;
   readonly interventions: SessionIntervention[];
   largestToolOutputChars: number;
   lastMs: number | undefined;
   model: string | undefined;
+  /** Non-empty JSONL records that were not valid JSON objects. */
+  malformedLines: number;
   openTurn: MutableTurn | undefined;
   readonly outcomes: ToolOutcome[];
   /** Largest single recorded request, prompt plus output tokens. */
@@ -150,7 +155,7 @@ export function usage(tools: Map<string, MutableToolUsage>, tool: string): Mutab
 export function sumToolTime(tools: ReadonlyMap<string, MutableToolUsage>): number {
   let total = 0;
   for (const used of tools.values()) {
-    total += used.durationMs;
+    total = boundedAdd(total, used.durationMs);
   }
   return total;
 }

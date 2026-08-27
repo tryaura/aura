@@ -27,6 +27,8 @@ function repo(): RepoSessionAggregate {
     failedToolCalls: 3,
     hotspots: [{ compactions: 0, cwd: HOSTILE, failedToolCalls: 3, sessions: 1 }],
     interventions: 0,
+    invalidValues: 0,
+    malformedLines: 0,
     operationalFailures: 3,
     outcomeCounts: [
       {
@@ -52,7 +54,9 @@ function repo(): RepoSessionAggregate {
       },
     ],
     outcomeGroupCount: 1,
+    partialSessions: 0,
     project: HOSTILE,
+    readErrorSessions: 0,
     sessions: 1,
     tokens: { cachedInputTokens: 0, inputTokens: 0, outputTokens: 0 },
     toolCalls: 3,
@@ -68,6 +72,10 @@ function repo(): RepoSessionAggregate {
 describe("session brief data boundaries", () => {
   it("keeps transcript-derived strings inside one JSON literal", () => {
     const analysis: SessionAnalysis = {
+      invalidValues: 0,
+      malformedLines: 0,
+      partialFiles: 0,
+      readErrorFiles: 0,
       repos: [repo()],
       scannedFiles: 1,
       sessions: [],

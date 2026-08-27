@@ -14,9 +14,6 @@ import {
   type MetricCard,
 } from "./chart.js";
 import { deliveryNoteRows, validationTotals } from "./render-insights.js";
-
-/** The headline cards and the two compact detail sections that follow project attention. */
-
 /**
  * Grade bands, read as the upper bound each grade stays below; at or past the last is an F.
  *
@@ -28,7 +25,6 @@ const FAILURE_BANDS: GradeBands = [0.02, 0.05, 0.1, 0.2];
 const COMPACTION_BANDS: GradeBands = [0.1, 0.3, 0.6, 1];
 /** Graded on the miss share, so A means at least 90% of input tokens came from cache. */
 const CACHE_MISS_BANDS: GradeBands = [0.1, 0.2, 0.35, 0.5];
-/** Peak window occupancy: an F means compaction was imminent when the session peaked. */
 const CONTEXT_BANDS: GradeBands = [0.5, 0.7, 0.85, 0.95];
 
 interface OverallTotals {
@@ -175,10 +171,30 @@ function workflowRows(
   for (const note of deliveryNoteRows(analysis)) {
     rows.push(...summaryRow(note.label, note.value, columns));
   }
+  rows.push(...coverageRows(analysis, columns));
+  return rows;
+}
+
+function coverageRows(analysis: SessionAnalysis, columns: number): readonly string[] {
+  const rows: string[] = [];
   if (analysis.unreadableFiles > 0) {
     rows.push(
       ...summaryRow("Unreadable", count(analysis.unreadableFiles, "transcript file"), columns),
     );
+  }
+  if (analysis.partialFiles > 0) {
+    rows.push(
+      ...summaryRow("Incomplete", count(analysis.partialFiles, "transcript file"), columns),
+    );
+  }
+  if (analysis.malformedLines > 0) {
+    rows.push(...summaryRow("Malformed lines", String(analysis.malformedLines), columns));
+  }
+  if (analysis.invalidValues > 0) {
+    rows.push(...summaryRow("Invalid values", String(analysis.invalidValues), columns));
+  }
+  if (analysis.readErrorFiles > 0) {
+    rows.push(...summaryRow("Read failures", String(analysis.readErrorFiles), columns));
   }
   return rows;
 }

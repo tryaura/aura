@@ -109,8 +109,10 @@ describe("parseCodexSession", () => {
       inferredOutcome: { confidence: "low", status: "abandoned" },
       initialPromptChars: 0,
       initialPromptLines: [],
+      invalidValues: 0,
       interventions: [],
       largestToolOutputChars: 59,
+      malformedLines: 0,
       model: undefined,
       outcomes: [
         {
@@ -134,7 +136,9 @@ describe("parseCodexSession", () => {
           tool: "mcp:linear.get_issue",
         },
       ],
+      partial: false,
       pullRequests: [],
+      readError: false,
       sessionId: "session-1",
       source: "codex",
       startedAt: "2026-08-20T10:00:00.000Z",
@@ -174,13 +178,6 @@ describe("parseCodexSession", () => {
       wallClockMs: 9000,
       workItems: [],
     });
-  });
-
-  it("skips malformed lines instead of failing the transcript", () => {
-    const content = ["{not json", META, '"a string"', "[]"].join("\n");
-
-    const session = parseCodexSession(content, false);
-    expect(session?.sessionId).toBe("session-1");
   });
 
   it("returns undefined when nothing looks like a codex record", () => {

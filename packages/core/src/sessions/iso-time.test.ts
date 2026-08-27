@@ -15,6 +15,9 @@ describe("utc time helpers", () => {
   it("rejects non-UTC and malformed timestamps", () => {
     expect(utcTimestampMs("2026-08-20T10:30:15+02:00")).toBeUndefined();
     expect(utcTimestampMs("2026-13-01T00:00:00Z")).toBeUndefined();
+    expect(utcTimestampMs("2026-02-31T10:30:15Z")).toBeUndefined();
+    expect(utcTimestampMs("2026-08-20T24:00:00Z")).toBeUndefined();
+    expect(utcTimestampMs("2026-08-20T10:60:00Z")).toBeUndefined();
     expect(utcTimestampMs("not a time")).toBeUndefined();
   });
 });

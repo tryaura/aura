@@ -7,6 +7,7 @@ import type { SessionToolCall } from "./session-detail-metrics.js";
 import { asString } from "./transcript-json.js";
 import { isValidationIdentity } from "./validation-classify.js";
 import { collectPullRequests, collectWorkItems } from "./work-items.js";
+import { boundedAdd, MAX_DURATION_MS, readBoundedInteger } from "./session-numbers.js";
 
 const EXIT_CODE = /exited with code (\d+)/u;
 
@@ -22,12 +23,14 @@ export function readToolCall(
   const provisionalTool = name === "exec_command" ? "shell" : name;
   const pending = pendingCall(state, payload, timestamp, at, line, name, provisionalTool);
   const tool = pending?.tool ?? provisionalTool;
-  usage(state.tools, tool).calls += 1;
+  const toolUsage = usage(state.tools, tool);
+  toolUsage.calls = boundedAdd(toolUsage.calls, 1);
   const identity =
     pending === undefined
       ? { command: undefined, subcommand: undefined, tool }
       : callCommandIdentity(pending);
-  commandUsage(state.commands, identity).calls += 1;
+  const command = commandUsage(state.commands, identity);
+  command.calls = boundedAdd(command.calls, 1);
   addTurnToolCall(state, pending?.turnIndex ?? state.openTurn?.index);
   collectCommandWorkItems(state, pending);
   const callId = asString(payload["call_id"]);
@@ -111,10 +114,10 @@ function recordValidationAttempt(
   if (!isValidationIdentity(identity.command, identity.subcommand)) {
     return;
   }
-  state.validationAttempts += 1;
-  state.validationTimeMs += durationMs ?? 0;
+  state.validationAttempts = boundedAdd(state.validationAttempts, 1);
+  state.validationTimeMs = boundedAdd(state.validationTimeMs, durationMs ?? 0);
   if (exitCode !== undefined) {
-    state.validationFailures += 1;
+    state.validationFailures = boundedAdd(state.validationFailures, 1);
     return;
   }
   if (state.greenIteration === undefined) {
@@ -144,16 +147,21 @@ function recordDuration(
   if (call.at === undefined || at === undefined || at < call.at) {
     return undefined;
   }
-  const elapsed = at - call.at;
-  usage(state.tools, call.tool).durationMs += elapsed;
-  commandUsage(state.commands, callCommandIdentity(call)).durationMs += elapsed;
+  const elapsed = readBoundedInteger(state, at - call.at, MAX_DURATION_MS);
+  if (elapsed === undefined) {
+    return undefined;
+  }
+  const tool = usage(state.tools, call.tool);
+  tool.durationMs = boundedAdd(tool.durationMs, elapsed);
+  const command = commandUsage(state.commands, callCommandIdentity(call));
+  command.durationMs = boundedAdd(command.durationMs, elapsed);
   addTurnToolTime(state, call.turnIndex, elapsed);
   return elapsed;
 }
 
 function recordOutputSize(state: ParseState, payload: Record<string, unknown>): string {
   const output = asString(payload["output"]) ?? "";
-  state.toolOutputChars += output.length;
+  state.toolOutputChars = boundedAdd(state.toolOutputChars, output.length);
   state.largestToolOutputChars = Math.max(state.largestToolOutputChars, output.length);
   return output;
 }
@@ -233,8 +241,10 @@ function recordNonzeroOutcome(
   if (exitCode === undefined) {
     return;
   }
-  usage(state.tools, call.tool).failures += 1;
-  commandUsage(state.commands, callCommandIdentity(call)).failures += 1;
+  const tool = usage(state.tools, call.tool);
+  tool.failures = boundedAdd(tool.failures, 1);
+  const command = commandUsage(state.commands, callCommandIdentity(call));
+  command.failures = boundedAdd(command.failures, 1);
   const classification = classifyShellOutcome(
     { command: call.command, label: call.label },
     exitCode,

@@ -4,7 +4,8 @@ import type {
   RepoSessionAggregate,
   SessionTokenUsage,
 } from "./session-metrics.js";
-import { projectNameFromRepositoryUrl } from "./project-resolve.js";
+import { repositoryIdentityFromUrl, type ProjectIdentity } from "./project-resolve.js";
+import { boundedAdd } from "./session-numbers.js";
 import { compactionProfileOf, summarizeOutcomes } from "./session-outcome-aggregate.js";
 
 /** How many trouble-concentrating directories a project names. */
@@ -13,25 +14,32 @@ const TOP_HOTSPOTS = 3;
 /**
  * Sums session metrics per project.
  *
- * Grouping is by resolved project label (`project-resolve.ts`), so parallel worktrees and
+ * Grouping is by resolved project identity (`project-resolve.ts`), so parallel worktrees and
  * repeated clones of one repository land in one row while unrelated directories stay their own.
  * Sessions with no recorded directory share one unnamed group so their volume stays visible.
  */
 export function aggregateSessionsByRepo(
   sessions: readonly AgentSessionMetrics[],
-  projectLabels: ReadonlyMap<string, string>,
+  projectLabels: ReadonlyMap<string, ProjectIdentity>,
 ): readonly RepoSessionAggregate[] {
-  const groups = new Map<string, { directories: Set<string>; sessions: AgentSessionMetrics[] }>();
+  const recordedByLabel = recordedIdentitiesByLabel(sessions);
+  const groups = new Map<
+    string,
+    { directories: Set<string>; identity: ProjectIdentity; sessions: AgentSessionMetrics[] }
+  >();
   for (const session of sessions) {
-    const recordedProject =
+    const recordedIdentity =
       session.git.repositoryUrl === undefined
         ? undefined
-        : projectNameFromRepositoryUrl(session.git.repositoryUrl);
-    const label = recordedProject ?? fallbackProject(session.cwd, projectLabels);
-    const group = groups.get(label);
+        : repositoryIdentityFromUrl(session.git.repositoryUrl);
+    const fallback = fallbackProject(session.cwd, projectLabels);
+    const identity =
+      recordedIdentity ?? uniqueRecordedIdentity(recordedByLabel, fallback) ?? fallback;
+    const group = groups.get(identity.key);
     if (group === undefined) {
-      groups.set(label, {
+      groups.set(identity.key, {
         directories: new Set(session.cwd === undefined ? [] : [session.cwd]),
+        identity,
         sessions: [session],
       });
     } else {
@@ -42,10 +50,18 @@ export function aggregateSessionsByRepo(
     }
   }
 
+  const labelCounts = new Map<string, number>();
+  for (const group of groups.values()) {
+    labelCounts.set(group.identity.label, (labelCounts.get(group.identity.label) ?? 0) + 1);
+  }
   return [...groups.entries()]
-    .map(([project, group]) =>
-      aggregateGroup(project, Math.max(group.directories.size, 1), group.sessions),
-    )
+    .map(([, group]) => {
+      const project =
+        (labelCounts.get(group.identity.label) ?? 0) > 1
+          ? group.identity.qualifiedLabel
+          : group.identity.label;
+      return aggregateGroup(project, Math.max(group.directories.size, 1), group.sessions);
+    })
     .sort(
       (left, right) =>
         right.sessions - left.sessions ||
@@ -54,11 +70,48 @@ export function aggregateSessionsByRepo(
     );
 }
 
+function recordedIdentitiesByLabel(
+  sessions: readonly AgentSessionMetrics[],
+): ReadonlyMap<string, ReadonlyMap<string, ProjectIdentity>> {
+  const byLabel = new Map<string, Map<string, ProjectIdentity>>();
+  for (const session of sessions) {
+    const identity =
+      session.git.repositoryUrl === undefined
+        ? undefined
+        : repositoryIdentityFromUrl(session.git.repositoryUrl);
+    if (identity === undefined) {
+      continue;
+    }
+    const identities = byLabel.get(identity.label) ?? new Map<string, ProjectIdentity>();
+    identities.set(identity.key, identity);
+    byLabel.set(identity.label, identities);
+  }
+  return byLabel;
+}
+
+function uniqueRecordedIdentity(
+  recordedByLabel: ReadonlyMap<string, ReadonlyMap<string, ProjectIdentity>>,
+  fallback: ProjectIdentity,
+): ProjectIdentity | undefined {
+  const candidates = recordedByLabel.get(fallback.label);
+  if (candidates === undefined || candidates.size !== 1) {
+    return undefined;
+  }
+  return candidates.values().next().value;
+}
+
 function fallbackProject(
   cwd: string | undefined,
-  projectLabels: ReadonlyMap<string, string>,
-): string {
-  return cwd === undefined ? "(no recorded directory)" : (projectLabels.get(cwd) ?? cwd);
+  projectLabels: ReadonlyMap<string, ProjectIdentity>,
+): ProjectIdentity {
+  if (cwd === undefined) {
+    return {
+      key: "missing-directory",
+      label: "(no recorded directory)",
+      qualifiedLabel: "(no recorded directory)",
+    };
+  }
+  return projectLabels.get(cwd) ?? { key: `path:${cwd}`, label: cwd, qualifiedLabel: cwd };
 }
 
 function aggregateGroup(
@@ -71,6 +124,10 @@ function aggregateGroup(
   let compactions = 0;
   let failedToolCalls = 0;
   let interventions = 0;
+  let invalidValues = 0;
+  let malformedLines = 0;
+  let partialSessions = 0;
+  let readErrorSessions = 0;
   let toolCalls = 0;
   let toolTimeMs = 0;
   let truncatedSessions = 0;
@@ -80,20 +137,28 @@ function aggregateGroup(
   const tokens = { cachedInputTokens: 0, inputTokens: 0, outputTokens: 0 };
 
   for (const session of sessions) {
-    agentTimeMs += session.agentTimeMs;
-    abortedTurns += session.abortedTurns;
-    compactions += session.compactions;
-    interventions += session.interventions.length;
-    toolTimeMs += session.toolTimeMs;
-    turns += session.turns;
-    validationTimeMs += session.validation?.timeMs ?? 0;
-    wallClockMs += session.wallClockMs;
+    agentTimeMs = boundedAdd(agentTimeMs, session.agentTimeMs);
+    abortedTurns = boundedAdd(abortedTurns, session.abortedTurns);
+    compactions = boundedAdd(compactions, session.compactions);
+    interventions = boundedAdd(interventions, session.interventions.length);
+    invalidValues = boundedAdd(invalidValues, session.invalidValues);
+    malformedLines = boundedAdd(malformedLines, session.malformedLines);
+    toolTimeMs = boundedAdd(toolTimeMs, session.toolTimeMs);
+    turns = boundedAdd(turns, session.turns);
+    validationTimeMs = boundedAdd(validationTimeMs, session.validation?.timeMs ?? 0);
+    wallClockMs = boundedAdd(wallClockMs, session.wallClockMs);
+    if (session.partial) {
+      partialSessions += 1;
+    }
+    if (session.readError) {
+      readErrorSessions += 1;
+    }
     if (session.truncated) {
       truncatedSessions += 1;
     }
     for (const usage of Object.values(session.tools)) {
-      toolCalls += usage.calls;
-      failedToolCalls += usage.failures;
+      toolCalls = boundedAdd(toolCalls, usage.calls);
+      failedToolCalls = boundedAdd(failedToolCalls, usage.failures);
     }
     addTokens(tokens, session.tokens);
   }
@@ -109,6 +174,10 @@ function aggregateGroup(
     failedToolCalls,
     hotspots: hotspotsOf(sessions),
     interventions,
+    invalidValues,
+    malformedLines,
+    partialSessions,
+    readErrorSessions,
     project,
     sessions: sessions.length,
     tokens,
@@ -132,10 +201,10 @@ function hotspotsOf(sessions: readonly AgentSessionMetrics[]): readonly Director
       continue;
     }
     const spot = byCwd.get(session.cwd) ?? { compactions: 0, failedToolCalls: 0, sessions: 0 };
-    spot.compactions += session.compactions;
-    spot.failedToolCalls += Object.values(session.tools).reduce(
-      (sum, usage) => sum + usage.failures,
-      0,
+    spot.compactions = boundedAdd(spot.compactions, session.compactions);
+    spot.failedToolCalls = Object.values(session.tools).reduce(
+      (sum, usage) => boundedAdd(sum, usage.failures),
+      spot.failedToolCalls,
     );
     spot.sessions += 1;
     byCwd.set(session.cwd, spot);
@@ -158,7 +227,7 @@ function addTokens(
   if (tokens === undefined) {
     return;
   }
-  totals.cachedInputTokens += tokens.cachedInputTokens;
-  totals.inputTokens += tokens.inputTokens;
-  totals.outputTokens += tokens.outputTokens;
+  totals.cachedInputTokens = boundedAdd(totals.cachedInputTokens, tokens.cachedInputTokens);
+  totals.inputTokens = boundedAdd(totals.inputTokens, tokens.inputTokens);
+  totals.outputTokens = boundedAdd(totals.outputTokens, tokens.outputTokens);
 }

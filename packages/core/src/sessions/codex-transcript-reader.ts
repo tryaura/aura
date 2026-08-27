@@ -4,6 +4,8 @@ import type { FileHandle } from "node:fs/promises";
 
 /** A bounded transcript stream plus the file size observed when it was opened. */
 interface CodexTranscriptLines {
+  /** Whether the requested prefix was read without an I/O race or stream failure. */
+  readonly completed?: (() => boolean) | undefined;
   readonly lines: AsyncIterable<string>;
   readonly size: number;
 }
@@ -31,8 +33,15 @@ export function createCodexTranscriptReader(): CodexTranscriptReader {
         await file.close();
         return undefined;
       }
+      const status = { complete: false };
       return {
-        lines: transcriptLines(file, Math.min(maxBytes, stats.size), stats.size <= maxBytes),
+        completed: () => status.complete,
+        lines: transcriptLines(
+          file,
+          Math.min(maxBytes, stats.size),
+          stats.size <= maxBytes,
+          status,
+        ),
         size: stats.size,
       };
     } catch {
@@ -46,6 +55,7 @@ async function* transcriptLines(
   file: FileHandle,
   bytesToRead: number,
   complete: boolean,
+  status: { complete: boolean },
 ): AsyncIterable<string> {
   const decoder = new TextDecoder();
   let remaining = bytesToRead;
@@ -72,6 +82,7 @@ async function* transcriptLines(
     if (complete && pending !== "") {
       yield pending;
     }
+    status.complete = remaining === 0;
   } catch {
     return;
   } finally {

@@ -1,6 +1,7 @@
 import type { ParseState } from "./codex-parse-state.js";
 import { asRecord, asString } from "./transcript-json.js";
 import { collectWorkItems } from "./work-items.js";
+import { boundedAdd } from "./session-numbers.js";
 
 /**
  * Initial-prompt accumulation for a Codex rollout. Split from `codex-parse.ts` only to keep each
@@ -32,7 +33,7 @@ export function recordInitialPrompt(
   if (text === undefined || text === "") {
     return;
   }
-  state.initialPromptChars += text.length;
+  state.initialPromptChars = boundedAdd(state.initialPromptChars, text.length);
   state.initialPromptLines.push(line);
   // Scanned while the text is in hand; only extracted keys are retained, never the prompt.
   collectWorkItems(state.workItems, text);

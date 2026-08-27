@@ -95,11 +95,16 @@ function projectSection(repo: RepoSessionAggregate): readonly string[] {
     `## Project: ${dossierValue(repo.project)}`,
     "",
     `- ${count(repo.sessions, "session")} across ${count(repo.directories, "directory", "directories")} · ${duration(repo.agentTimeMs)} agent time · ${duration(repo.toolTimeMs)} in tools`,
-    `- ${count(repo.toolCalls, "tool call")} · ${count(repo.failedToolCalls, "raw non-success outcome")} · ${count(repo.compactions, "compaction")}${repo.truncatedSessions > 0 ? ` · ${count(repo.truncatedSessions, "transcript")} truncated` : ""}`,
+    `- ${count(repo.toolCalls, "tool call")} · ${count(repo.failedToolCalls, "raw non-success outcome")} · ${count(repo.compactions, "compaction")}${repo.partialSessions > 0 ? ` · ${count(repo.partialSessions, "transcript")} incomplete` : ""}`,
     `- Classified: ${repo.operationalFailures} operational · ${repo.checkFailures} check failures · ${repo.expectedStatuses} expected statuses · ${repo.unknownOutcomes} unknown`,
     `- Classification coverage: ${repo.failedToolCalls}/${repo.failedToolCalls} outcomes; ${repo.unknownOutcomes} remain unknown.`,
     `- Evidence below samples ${represented} outcomes in ${repo.outcomeCounts.length} leading groups${omittedGroups > 0 ? `; ${omittedGroups} smaller groups are available in JSON` : ""}.`,
   ];
+  if (repo.partialSessions > 0) {
+    lines.push(
+      `- Coverage gaps: ${count(repo.truncatedSessions, "size-truncated transcript")} · ${count(repo.malformedLines, "malformed line")} · ${count(repo.invalidValues, "invalid numeric value")} · ${count(repo.readErrorSessions, "read failure")}`,
+    );
+  }
   for (const outcome of repo.outcomeCounts) {
     lines.push(...outcomeLines(outcome));
   }

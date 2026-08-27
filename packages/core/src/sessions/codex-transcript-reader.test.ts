@@ -33,6 +33,7 @@ describe("Codex transcript reader", () => {
     }
 
     expect(transcript?.size).toBe(18);
+    expect(transcript?.completed?.()).toBe(true);
     expect(lines).toEqual(["first"]);
   });
 
@@ -52,6 +53,7 @@ describe("Codex transcript reader", () => {
     }
 
     expect(lines).toEqual(["first", "second"]);
+    expect(transcript?.completed?.()).toBe(true);
   });
 
   it("finds a newline after a record spans multiple read buffers", async () => {

@@ -1,6 +1,7 @@
 import type { MutableTokenUsage, MutableTurn, ParseState } from "./codex-parse-state.js";
 import type { SessionTurn } from "./session-detail-metrics.js";
-import { asNumber, asRecord, asString } from "./transcript-json.js";
+import { boundedAdd, MAX_DURATION_MS, readBoundedInteger } from "./session-numbers.js";
+import { asRecord, asString } from "./transcript-json.js";
 import { collectWorkItems } from "./work-items.js";
 
 /**
@@ -20,7 +21,7 @@ export function readTaskStarted(
 ): void {
   closeOpenTurn(state);
   const index = state.turns;
-  state.turns += 1;
+  state.turns = boundedAdd(state.turns, 1);
   if (index >= MAX_TURN_DETAILS) {
     state.turnsTruncated = true;
     return;
@@ -53,7 +54,7 @@ export function readTaskComplete(
   timestamp: string | undefined,
   at: number | undefined,
 ): void {
-  state.completedTurns += 1;
+  state.completedTurns = boundedAdd(state.completedTurns, 1);
   const turn = matchTurn(state, payload);
   if (turn === undefined) {
     return;
@@ -61,8 +62,11 @@ export function readTaskComplete(
   turn.closed = "completed";
   turn.endMs = at;
   turn.endedAt = timestamp;
-  turn.durationMs = asNumber(payload["duration_ms"]) ?? turn.durationMs;
-  turn.timeToFirstTokenMs = asNumber(payload["time_to_first_token_ms"]) ?? turn.timeToFirstTokenMs;
+  turn.durationMs =
+    readBoundedInteger(state, payload["duration_ms"], MAX_DURATION_MS) ?? turn.durationMs;
+  turn.timeToFirstTokenMs =
+    readBoundedInteger(state, payload["time_to_first_token_ms"], MAX_DURATION_MS) ??
+    turn.timeToFirstTokenMs;
   if (state.openTurn === turn) {
     state.openTurn = undefined;
   }
@@ -75,13 +79,14 @@ export function readTurnAborted(
   at: number | undefined,
   line: number,
 ): void {
-  state.abortedTurns += 1;
+  state.abortedTurns = boundedAdd(state.abortedTurns, 1);
   const turn = matchTurn(state, payload);
   if (turn !== undefined) {
     turn.closed = "aborted";
     turn.endMs = at;
     turn.endedAt = timestamp;
-    turn.durationMs = asNumber(payload["duration_ms"]) ?? turn.durationMs;
+    turn.durationMs =
+      readBoundedInteger(state, payload["duration_ms"], MAX_DURATION_MS) ?? turn.durationMs;
     if (state.openTurn === turn) {
       state.openTurn = undefined;
     }
@@ -109,13 +114,13 @@ export function readTurnContext(state: ParseState, payload: Record<string, unkno
 /** Folds one recorded patch application into the edit counters. */
 export function readPatchApply(state: ParseState, payload: Record<string, unknown>): void {
   if (payload["success"] === false) {
-    state.editsFailed += 1;
+    state.editsFailed = boundedAdd(state.editsFailed, 1);
   } else {
-    state.editsApplied += 1;
+    state.editsApplied = boundedAdd(state.editsApplied, 1);
   }
   const changes = asRecord(payload["changes"]);
   if (changes !== undefined) {
-    state.editFiles += Object.keys(changes).length;
+    state.editFiles = boundedAdd(state.editFiles, Object.keys(changes).length);
   }
 }
 
@@ -125,7 +130,7 @@ export function readUserMessage(
   payload: Record<string, unknown>,
   line: number,
 ): void {
-  state.userMessages += 1;
+  state.userMessages = boundedAdd(state.userMessages, 1);
   recordReprompt(state, line);
   const message = asString(payload["message"]);
   if (message !== undefined) {
@@ -148,7 +153,7 @@ function recordReprompt(state: ParseState, line: number): void {
 export function addTurnToolCall(state: ParseState, turnIndex: number | undefined): void {
   const turn = turnIndex === undefined ? undefined : state.turnList[turnIndex];
   if (turn !== undefined) {
-    turn.toolCalls += 1;
+    turn.toolCalls = boundedAdd(turn.toolCalls, 1);
   }
 }
 
@@ -159,7 +164,7 @@ export function addTurnToolTime(
 ): void {
   const turn = turnIndex === undefined ? undefined : state.turnList[turnIndex];
   if (turn !== undefined) {
-    turn.toolTimeMs += durationMs;
+    turn.toolTimeMs = boundedAdd(turn.toolTimeMs, durationMs);
   }
 }
 
@@ -174,9 +179,12 @@ export function addTurnTokens(
   if (turn.tokens === undefined) {
     turn.tokens = { cachedInputTokens: 0, inputTokens: 0, outputTokens: 0 };
   }
-  turn.tokens.cachedInputTokens += delta.cachedInputTokens;
-  turn.tokens.inputTokens += delta.inputTokens;
-  turn.tokens.outputTokens += delta.outputTokens;
+  turn.tokens.cachedInputTokens = boundedAdd(
+    turn.tokens.cachedInputTokens,
+    delta.cachedInputTokens,
+  );
+  turn.tokens.inputTokens = boundedAdd(turn.tokens.inputTokens, delta.inputTokens);
+  turn.tokens.outputTokens = boundedAdd(turn.tokens.outputTokens, delta.outputTokens);
 }
 
 /** Copies the turn accumulators into their public shape, closing a still-open final turn. */
@@ -184,7 +192,7 @@ export function finishTurns(state: ParseState): readonly SessionTurn[] {
   closeOpenTurn(state);
   return state.turnList.map((turn) => ({
     closed: turn.closed ?? "log-end",
-    durationMs: turn.durationMs ?? spanMs(turn),
+    durationMs: turn.durationMs ?? spanMs(state, turn),
     endedAt: turn.endedAt,
     index: turn.index,
     model: turn.model,
@@ -216,9 +224,9 @@ function matchTurn(state: ParseState, payload: Record<string, unknown>): Mutable
   return byId ?? state.openTurn;
 }
 
-function spanMs(turn: MutableTurn): number {
+function spanMs(state: ParseState, turn: MutableTurn): number {
   if (turn.startMs === undefined || turn.endMs === undefined || turn.endMs < turn.startMs) {
     return 0;
   }
-  return turn.endMs - turn.startMs;
+  return readBoundedInteger(state, turn.endMs - turn.startMs, MAX_DURATION_MS) ?? 0;
 }

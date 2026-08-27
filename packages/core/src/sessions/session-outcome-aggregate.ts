@@ -6,6 +6,7 @@ import type {
   OutcomeKind,
   ToolOutcome,
 } from "./session-metrics.js";
+import { boundedAdd, boundedSum } from "./session-numbers.js";
 
 const OUTCOME_GROUP_LIMIT = 5;
 const EXEMPLARS_PER_OUTCOME = 2;
@@ -30,7 +31,7 @@ export function summarizeOutcomes(sessions: readonly AgentSessionMetrics[]): Out
   const counts = new Map<OutcomeKind, number>();
   for (const session of sessions) {
     for (const outcome of session.outcomes) {
-      counts.set(outcome.kind, (counts.get(outcome.kind) ?? 0) + 1);
+      counts.set(outcome.kind, boundedAdd(counts.get(outcome.kind) ?? 0, 1));
       addOutcome(groups, session, outcome);
     }
   }
@@ -52,7 +53,7 @@ function addOutcome(
 ): void {
   const key = `${outcome.kind}\u0000${outcome.label}\u0000${outcome.exitCode ?? "none"}`;
   const group = groups.get(key) ?? { count: 0, exemplars: [], outcome };
-  group.count += 1;
+  group.count = boundedAdd(group.count, 1);
   const evidence = evidenceOf(session, outcome);
   if (evidence !== undefined) {
     recordDiverseExemplar(group.exemplars, evidence);
@@ -164,5 +165,5 @@ function average(
   if (sessions.length === 0) {
     return 0;
   }
-  return Math.round(sessions.reduce((sum, session) => sum + session[field], 0) / sessions.length);
+  return Math.round(boundedSum(sessions.map((session) => session[field])) / sessions.length);
 }

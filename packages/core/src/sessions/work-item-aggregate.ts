@@ -1,6 +1,7 @@
 import { utcTimestampMs } from "./iso-time.js";
 import type { WorkItemAggregate } from "./session-detail-metrics.js";
 import type { AgentSessionMetrics } from "./session-metrics.js";
+import { boundedAdd } from "./session-numbers.js";
 
 /**
  * Joins sessions by the issue keys they mentioned: the loose work-item association.
@@ -29,8 +30,8 @@ export function aggregateWorkItems(
         sessions: 0,
         wallClockMs: 0,
       };
-      entry.sessions += 1;
-      entry.wallClockMs += session.wallClockMs;
+      entry.sessions = boundedAdd(entry.sessions, 1);
+      entry.wallClockMs = boundedAdd(entry.wallClockMs, session.wallClockMs);
       entry.firstSeen = earlier(entry.firstSeen, session.startedAt);
       entry.lastSeen = later(entry.lastSeen, session.endedAt);
       byKey.set(key, entry);

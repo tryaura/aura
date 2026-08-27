@@ -53,6 +53,7 @@ export type OutcomeConfidence = "high" | "medium" | "low";
 export interface SessionGitContext {
   readonly branch: string | undefined;
   readonly commitHash: string | undefined;
+  /** Credential-free repository remote metadata. URL userinfo is removed during parsing. */
   readonly repositoryUrl: string | undefined;
 }
 
@@ -105,10 +106,14 @@ export interface AgentSessionMetrics {
   readonly initialPromptChars: number;
   /** Transcript lines carrying that initial prompt, so historical instructions remain inspectable. */
   readonly initialPromptLines: readonly number[];
+  /** Present numeric fields discarded because they were outside their semantic bounds. */
+  readonly invalidValues: number;
   /** Moments where a person interrupted or re-prompted the agent, in transcript order. */
   readonly interventions: readonly SessionIntervention[];
   /** Largest single recorded tool output in characters. */
   readonly largestToolOutputChars: number;
+  /** Non-empty JSONL records that were not valid JSON objects. */
+  readonly malformedLines: number;
   /** The model the session last reported, when the transcript carried one. */
   readonly model: string | undefined;
   /** Classified non-success outcomes from shell and MCP tools. */
@@ -129,6 +134,10 @@ export interface AgentSessionMetrics {
   readonly tools: Readonly<Record<string, SessionToolUsage>>;
   /** Absolute path of the transcript this came from. Set by the analyzer, not the parser. */
   readonly transcriptPath?: string;
+  /** Whether truncation, malformed input, invalid values, or an I/O failure made counts incomplete. */
+  readonly partial: boolean;
+  /** Whether the requested transcript prefix could not be read to completion. */
+  readonly readError: boolean;
   /** Whether the transcript was larger than the read limit, making every count a lower bound. */
   readonly truncated: boolean;
   /** Per-turn detail in transcript order, capped so one runaway session stays bounded. */
@@ -205,9 +214,14 @@ export interface RepoSessionAggregate {
   readonly hotspots: readonly DirectoryHotspot[];
   /** Interrupts, re-prompts, and approvals across the project's sessions. */
   readonly interventions: number;
+  readonly invalidValues: number;
+  readonly malformedLines: number;
+  /** Sessions whose metrics are known lower bounds for any reason. */
+  readonly partialSessions: number;
+  readonly readErrorSessions: number;
   /**
-   * What to call the project: the repository name when one resolved, otherwise the shared
-   * working directory path. A path label starts with a separator; a name does not.
+   * What to call the project: a repository name (qualified on collisions) when one resolved,
+   * otherwise the shared working directory path. A path label starts with a separator.
    */
   readonly project: string;
   /** Expected protocol statuses such as pending CI or a no-match search. */
@@ -233,6 +247,14 @@ export interface RepoSessionAggregate {
 
 /** The result of scanning every discovered transcript in the window. */
 export interface SessionAnalysis {
+  /** Present numeric fields discarded across recognized sessions. */
+  readonly invalidValues: number;
+  /** Malformed non-empty records across recognized sessions. */
+  readonly malformedLines: number;
+  /** Recognized transcripts whose metrics are known lower bounds. */
+  readonly partialFiles: number;
+  /** Recognized transcripts whose requested prefix could not be read to completion. */
+  readonly readErrorFiles: number;
   /** Per-project sums, most sessions first. */
   readonly repos: readonly RepoSessionAggregate[];
   /** Transcript files that existed in the window, readable or not. */
