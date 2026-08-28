@@ -5,16 +5,15 @@ import {
   usage,
   type ParseState,
   type PendingCall,
-} from "./codex-parse-state.js";
+} from "./session-parse-state.js";
 import {
-  addTurnToolCall,
-  addTurnToolTime,
   readPatchApply,
   readTaskComplete,
   readTaskStarted,
   readTurnAborted,
   readUserMessage,
 } from "./codex-parse-turns.js";
+import { addTurnToolCall, addTurnToolTime } from "./session-turn-fold.js";
 import { readTokenUsageEvent } from "./codex-parse-usage.js";
 import {
   boundedAdd,

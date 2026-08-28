@@ -3,22 +3,22 @@ import { open } from "node:fs/promises";
 import type { FileHandle } from "node:fs/promises";
 
 /** A bounded transcript stream plus the file size observed when it was opened. */
-interface CodexTranscriptLines {
+interface TranscriptLines {
   /** Whether the requested prefix was read without an I/O race or stream failure. */
   readonly completed?: (() => boolean) | undefined;
   readonly lines: AsyncIterable<string>;
   readonly size: number;
 }
 
-export type CodexTranscriptReader = (
+export type TranscriptReader = (
   path: string,
   maxBytes: number,
-) => Promise<CodexTranscriptLines | undefined>;
+) => Promise<TranscriptLines | undefined>;
 
 const READ_BUFFER_BYTES = 65_536;
 
 /** Creates a filesystem reader that never buffers more than one JSONL record plus one chunk. */
-export function createCodexTranscriptReader(): CodexTranscriptReader {
+export function createTranscriptReader(): TranscriptReader {
   return async (path, maxBytes) => {
     let file: FileHandle;
     try {

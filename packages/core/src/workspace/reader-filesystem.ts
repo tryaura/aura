@@ -77,6 +77,7 @@ function inspectedContents(
       exists: true,
       isDirectory: false,
       mode: fileMode(stats),
+      mtimeMs: stats.mtimeMs,
       size: stats.size,
     };
   }
@@ -177,9 +178,9 @@ export function resolvedMetadata(
   pathKind: AdapterPathKind,
   symlinkTarget?: string,
   options?: FileReadOptions,
-): Pick<PathContents, "mode" | "pathKind" | "size" | "symlinkTarget"> {
+): Pick<PathContents, "mode" | "mtimeMs" | "pathKind" | "size" | "symlinkTarget"> {
   return {
-    ...(stats.isFile() ? { mode: fileMode(stats) } : {}),
+    ...(stats.isFile() ? { mode: fileMode(stats), mtimeMs: stats.mtimeMs } : {}),
     pathKind,
     ...(options?.maxBytes === undefined || !stats.isFile() ? {} : { size: stats.size }),
     ...(symlinkTarget === undefined ? {} : { symlinkTarget }),
@@ -194,7 +195,7 @@ function fileMode(stats: Stats): number {
 async function readRegularFile(
   path: string,
   stats: Stats,
-  metadata: Pick<PathContents, "mode" | "pathKind" | "size" | "symlinkTarget">,
+  metadata: Pick<PathContents, "mode" | "mtimeMs" | "pathKind" | "size" | "symlinkTarget">,
   options?: FileReadOptions,
 ): Promise<PathContents> {
   const maxBytes = options?.maxBytes;

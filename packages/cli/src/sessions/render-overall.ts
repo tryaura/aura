@@ -1,6 +1,6 @@
 import type { SessionAnalysis } from "@tryaura/core";
 
-import { wrapWords } from "../text-width.js";
+import { coverageRows, interventionRows, summaryRow } from "./render-summary-rows.js";
 import {
   compactCount,
   count,
@@ -39,6 +39,7 @@ interface OverallTotals {
   toolProblems: number;
   toolTimeMs: number;
   turns: number;
+  unknownOutcomes: number;
 }
 
 export interface SessionSummarySections {
@@ -167,46 +168,21 @@ function workflowRows(
   if (totals.expectedStatuses > 0) {
     rows.push(...summaryRow("Expected statuses", String(totals.expectedStatuses), columns));
   }
+  if (totals.unknownOutcomes > 0) {
+    rows.push(
+      ...summaryRow(
+        "Unclassified",
+        `${count(totals.unknownOutcomes, "nonzero exit")} without a recognized outcome protocol`,
+        columns,
+      ),
+    );
+  }
   rows.push(...interventionRows(analysis, columns));
   for (const note of deliveryNoteRows(analysis)) {
     rows.push(...summaryRow(note.label, note.value, columns));
   }
   rows.push(...coverageRows(analysis, columns));
   return rows;
-}
-
-function coverageRows(analysis: SessionAnalysis, columns: number): readonly string[] {
-  const rows: string[] = [];
-  if (analysis.unreadableFiles > 0) {
-    rows.push(
-      ...summaryRow("Unreadable", count(analysis.unreadableFiles, "transcript file"), columns),
-    );
-  }
-  if (analysis.partialFiles > 0) {
-    rows.push(
-      ...summaryRow("Incomplete", count(analysis.partialFiles, "transcript file"), columns),
-    );
-  }
-  if (analysis.malformedLines > 0) {
-    rows.push(...summaryRow("Malformed lines", String(analysis.malformedLines), columns));
-  }
-  if (analysis.invalidValues > 0) {
-    rows.push(...summaryRow("Invalid values", String(analysis.invalidValues), columns));
-  }
-  if (analysis.readErrorFiles > 0) {
-    rows.push(...summaryRow("Read failures", String(analysis.readErrorFiles), columns));
-  }
-  return rows;
-}
-
-function summaryRow(label: string, value: string, columns: number): readonly string[] {
-  const indent = "    ";
-  const labelWidth = 18;
-  const prefix = `${indent}${label.padEnd(labelWidth)}`;
-  const continuation = " ".repeat(prefix.length);
-  return wrapWords(value, Math.max(16, columns - prefix.length)).map(
-    (line, index) => `${index === 0 ? prefix : continuation}${line}`,
-  );
 }
 
 function sumRepoTotals(analysis: SessionAnalysis): OverallTotals {
@@ -222,6 +198,7 @@ function sumRepoTotals(analysis: SessionAnalysis): OverallTotals {
     toolProblems: 0,
     toolTimeMs: 0,
     turns: 0,
+    unknownOutcomes: 0,
   };
   for (const repo of analysis.repos) {
     totals.agentTimeMs += repo.agentTimeMs;
@@ -235,6 +212,7 @@ function sumRepoTotals(analysis: SessionAnalysis): OverallTotals {
     totals.toolProblems += repo.operationalFailures + repo.unknownOutcomes;
     totals.toolTimeMs += repo.toolTimeMs;
     totals.turns += repo.turns;
+    totals.unknownOutcomes += repo.unknownOutcomes;
   }
   return totals;
 }
@@ -247,34 +225,6 @@ function medianTurn(analysis: SessionAnalysis): number | undefined {
       .map((turn) => turn.durationMs),
   );
   return median(durations);
-}
-
-/** Human steering, one short row per kind instead of one packed sentence. */
-function interventionRows(analysis: SessionAnalysis, columns: number): readonly string[] {
-  const byKind = new Map<string, number>();
-  let total = 0;
-  for (const session of analysis.sessions) {
-    for (const intervention of session.interventions) {
-      byKind.set(intervention.kind, (byKind.get(intervention.kind) ?? 0) + 1);
-      total += 1;
-    }
-  }
-  const rows: string[] = [];
-  if (total > 0) {
-    rows.push(...summaryRow("Interventions", String(total), columns));
-  }
-  for (const [kind, label] of [
-    ["interrupt", "Interrupts"],
-    ["reprompt", "Re-prompts"],
-    ["approval", "Approvals"],
-    ["denial", "Denials"],
-  ] as const) {
-    const value = byKind.get(kind) ?? 0;
-    if (value > 0) {
-      rows.push(...summaryRow(label, String(value), columns));
-    }
-  }
-  return rows;
 }
 
 /** The busiest single request against its window, across every session that reported one. */

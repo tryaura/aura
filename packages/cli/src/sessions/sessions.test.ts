@@ -124,7 +124,9 @@ describe("sessions command", () => {
     const exitCode = await runCli(distro(), capture.runtime);
 
     expect(exitCode).toBe(0);
-    expect(capture.stdout.text).toContain("Agent sessions — Codex, since 2026-07-26 (30 days)");
+    expect(capture.stdout.text).toContain(
+      "Agent sessions — Codex + Claude Code, since 2026-07-26 (30 days)",
+    );
     expect(capture.stdout.text).toContain(
       "┌ Tool errors ───┐ ┌ Context ───────┐ ┌ Compactions ───┐ ┌ Validation ────┐",
     );
@@ -137,15 +139,14 @@ describe("sessions command", () => {
     expect(capture.stdout.text).toContain("Time in tools     F · 97% of agent time");
     expect(capture.stdout.text).toContain("Cache hit         A · 90% reused");
     expect(capture.stdout.text).not.toContain("Quota peaked");
-    expect(capture.stdout.text).toContain("Needs attention");
     expect(capture.stdout.text).toContain("~/repo");
-    expect(capture.stdout.text).toContain("Tool problems · 1");
-    expect(capture.stdout.text).toContain("1 tool call · 100% had problems");
-    expect(capture.stdout.text).toContain("npm ×1 · invocation error");
-    expect(capture.stdout.text).toContain("npm not found · exit 127");
+    expect(capture.stdout.text).toContain("npm not found (exit 127) — 1 failing call in ~/repo");
+    // A lone confirmed failure yields exactly one actionable line, not a per-project dossier.
+    expect(capture.stdout.text).not.toContain("Tool problems ·");
     // One directory fits the busiest cap, so nothing is withheld and no pointer row appears.
-    expect(capture.stdout.text).toContain("Projects by agent time");
-    expect(capture.stdout.text).toContain("Grades: A great · B good · C fair · D poor · F failing");
+    expect(capture.stdout.text).toMatch(
+      /Projects by agent time[\s\S]*Needs attention[\s\S]*Grades: A great · B good · C fair · D poor · F failing/u,
+    );
     expect(capture.stdout.text).not.toContain("more project");
     expect(capture.stdout.text).not.toContain("      Cache hit · 90%");
     expect(capture.stderr.text).toBe("");
@@ -185,7 +186,9 @@ describe("sessions command", () => {
     const exitCode = await runCli(distro(), capture.runtime);
 
     expect(exitCode).toBe(0);
-    expect(capture.stdout.text).toContain("No Codex sessions recorded since 2026-07-26");
+    expect(capture.stdout.text).toContain(
+      "No Codex + Claude Code sessions recorded since 2026-07-26",
+    );
   });
 
   it("does not flag a pending GitHub check as a tool problem", async () => {

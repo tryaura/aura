@@ -16,7 +16,17 @@ function outcome(label: string, kind: OutcomeKind): ToolOutcome {
   };
 }
 
-function session(id: string, outcomes: readonly ToolOutcome[]): AgentSessionMetrics {
+interface SessionOptions {
+  readonly cwd?: string | undefined;
+  readonly repositoryUrl?: string | undefined;
+  readonly source?: AgentSessionMetrics["source"] | undefined;
+}
+
+function session(
+  id: string,
+  outcomes: readonly ToolOutcome[],
+  options: SessionOptions = {},
+): AgentSessionMetrics {
   return {
     agentTimeMs: 1,
     abortedTurns: 0,
@@ -24,10 +34,14 @@ function session(id: string, outcomes: readonly ToolOutcome[]): AgentSessionMetr
     compactions: 0,
     completedTurns: 0,
     context: undefined,
-    cwd: "/repo",
+    cwd: options.cwd ?? "/repo",
     edits: undefined,
     endedAt: undefined,
-    git: { branch: undefined, commitHash: undefined, repositoryUrl: undefined },
+    git: {
+      branch: undefined,
+      commitHash: undefined,
+      repositoryUrl: options.repositoryUrl,
+    },
     inferredOutcome: undefined,
     initialPromptChars: 0,
     initialPromptLines: [],
@@ -41,7 +55,7 @@ function session(id: string, outcomes: readonly ToolOutcome[]): AgentSessionMetr
     pullRequests: [],
     readError: false,
     sessionId: id,
-    source: "codex",
+    source: options.source ?? "codex",
     startedAt: undefined,
     tokens: undefined,
     toolOutputChars: 0,
@@ -82,6 +96,87 @@ describe("outcome group selection", () => {
       "unknown-c",
       "unknown-d",
       "mcp:linear.get_issue",
+    ]);
+  });
+
+  it("aggregates the component identities contained by failed shell batches", () => {
+    const first = {
+      ...outcome("shell batch", "unknown_nonzero"),
+      batchComponents: [
+        { command: "pnpm", subcommand: "test" },
+        { command: "git", subcommand: "diff" },
+      ],
+    };
+    const second = {
+      ...outcome("shell batch", "unknown_nonzero"),
+      batchComponents: [
+        { command: "pnpm", subcommand: "test" },
+        { command: "rg", subcommand: undefined },
+      ],
+    };
+
+    const repo = aggregateSessionsByRepo(
+      [session("s1", [first, second])],
+      new Map([["/repo", { key: "path:/repo", label: "repo", qualifiedLabel: "/repo" }]]),
+    )[0];
+
+    expect(repo?.outcomeCounts[0]).toMatchObject({
+      batchComponentCount: 3,
+      batchComponents: [
+        { command: "pnpm", count: 2, subcommand: "test" },
+        { command: "git", count: 1, subcommand: "diff" },
+        { command: "rg", count: 1, subcommand: undefined },
+      ],
+      count: 2,
+      label: "shell batch",
+    });
+  });
+
+  it("retains every missing executable outside the presentation cap", () => {
+    const outcomes = [
+      ...["a", "b", "c", "d", "e"].flatMap((label) => [
+        outcome(label, "tool_error"),
+        outcome(label, "tool_error"),
+      ]),
+      { ...outcome("missing-bin", "invocation_error"), exitCode: 127 },
+    ];
+
+    const repo = aggregateSessionsByRepo(
+      [session("s1", outcomes)],
+      new Map([["/repo", { key: "path:/repo", label: "repo", qualifiedLabel: "/repo" }]]),
+    )[0];
+
+    expect(repo?.outcomeCounts.map((group) => group.label)).not.toContain("missing-bin");
+    expect(repo?.invocationErrorCounts).toEqual([{ count: 1, label: "missing-bin" }]);
+  });
+
+  it("keeps live same-named remotes separate across session sources", () => {
+    const repos = aggregateSessionsByRepo(
+      [
+        session("codex", [], {
+          cwd: "/work/acme/api",
+          repositoryUrl: "https://github.com/acme/api.git",
+        }),
+        session("claude", [], {
+          cwd: "/work/other/api",
+          source: "claude-code",
+        }),
+      ],
+      new Map([
+        [
+          "/work/other/api",
+          {
+            key: "remote:github.com/other/api",
+            label: "api",
+            qualifiedLabel: "github.com/other/api",
+          },
+        ],
+      ]),
+    );
+
+    expect(repos.map((repo) => repo.project)).toEqual([
+      "github.com/acme/api",
+      "github.com/other/api",
     ]);
   });
 });

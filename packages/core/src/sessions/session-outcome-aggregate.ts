@@ -1,17 +1,21 @@
 import type {
   AgentSessionMetrics,
   CompactionProfile,
+  InvocationErrorCount,
   OutcomeCount,
   OutcomeEvidence,
   OutcomeKind,
+  ShellBatchComponentCount,
   ToolOutcome,
 } from "./session-metrics.js";
 import { boundedAdd, boundedSum } from "./session-numbers.js";
 
 const OUTCOME_GROUP_LIMIT = 5;
 const EXEMPLARS_PER_OUTCOME = 2;
+const BATCH_COMPONENT_GROUP_LIMIT = 5;
 
 interface MutableOutcomeGroup {
+  readonly batchComponents: Map<string, ShellBatchComponentCount>;
   readonly outcome: ToolOutcome;
   count: number;
   readonly exemplars: OutcomeEvidence[];
@@ -20,6 +24,9 @@ interface MutableOutcomeGroup {
 export interface OutcomeSummary {
   readonly checkFailures: number;
   readonly expectedStatuses: number;
+  /** The exit-127 subset of `operationalFailures`. */
+  readonly invocationErrors: number;
+  readonly invocationErrorCounts: readonly InvocationErrorCount[];
   readonly operationalFailures: number;
   readonly outcomeCounts: readonly OutcomeCount[];
   readonly outcomeGroupCount: number;
@@ -39,11 +46,25 @@ export function summarizeOutcomes(sessions: readonly AgentSessionMetrics[]): Out
   return {
     checkFailures: counts.get("check_failure") ?? 0,
     expectedStatuses: (counts.get("pending_status") ?? 0) + (counts.get("no_match") ?? 0),
+    invocationErrors: counts.get("invocation_error") ?? 0,
+    invocationErrorCounts: invocationErrorCounts(outcomeGroups),
     operationalFailures: (counts.get("invocation_error") ?? 0) + (counts.get("tool_error") ?? 0),
     outcomeCounts: selectOutcomeGroups(outcomeGroups),
     outcomeGroupCount: outcomeGroups.length,
     unknownOutcomes: counts.get("unknown_nonzero") ?? 0,
   };
+}
+
+function invocationErrorCounts(groups: readonly OutcomeCount[]): readonly InvocationErrorCount[] {
+  const counts = new Map<string, number>();
+  for (const group of groups) {
+    if (group.kind === "invocation_error") {
+      counts.set(group.label, boundedAdd(counts.get(group.label) ?? 0, group.count));
+    }
+  }
+  return [...counts.entries()]
+    .map(([label, count]) => ({ count, label }))
+    .sort((left, right) => right.count - left.count || left.label.localeCompare(right.label));
 }
 
 function addOutcome(
@@ -52,13 +73,33 @@ function addOutcome(
   outcome: ToolOutcome,
 ): void {
   const key = `${outcome.kind}\u0000${outcome.label}\u0000${outcome.exitCode ?? "none"}`;
-  const group = groups.get(key) ?? { count: 0, exemplars: [], outcome };
+  const group = groups.get(key) ?? {
+    batchComponents: new Map<string, ShellBatchComponentCount>(),
+    count: 0,
+    exemplars: [],
+    outcome,
+  };
   group.count = boundedAdd(group.count, 1);
+  addBatchComponents(group.batchComponents, outcome);
   const evidence = evidenceOf(session, outcome);
   if (evidence !== undefined) {
     recordDiverseExemplar(group.exemplars, evidence);
   }
   groups.set(key, group);
+}
+
+function addBatchComponents(
+  counts: Map<string, ShellBatchComponentCount>,
+  outcome: ToolOutcome,
+): void {
+  for (const component of outcome.batchComponents ?? []) {
+    const key = `${component.command}\u0000${component.subcommand ?? ""}`;
+    const current = counts.get(key);
+    counts.set(key, {
+      ...component,
+      count: boundedAdd(current?.count ?? 0, 1),
+    });
+  }
 }
 
 function evidenceOf(
@@ -99,7 +140,21 @@ function recordDiverseExemplar(exemplars: OutcomeEvidence[], candidate: OutcomeE
 }
 
 function toOutcomeCount(group: MutableOutcomeGroup): OutcomeCount {
+  const batchComponents = [...group.batchComponents.values()]
+    .sort(
+      (left, right) =>
+        right.count - left.count ||
+        left.command.localeCompare(right.command) ||
+        (left.subcommand ?? "").localeCompare(right.subcommand ?? ""),
+    )
+    .slice(0, BATCH_COMPONENT_GROUP_LIMIT);
   return {
+    ...(batchComponents.length === 0
+      ? {}
+      : {
+          batchComponentCount: group.batchComponents.size,
+          batchComponents,
+        }),
     confidence: group.outcome.confidence,
     count: group.count,
     exemplars: group.exemplars,

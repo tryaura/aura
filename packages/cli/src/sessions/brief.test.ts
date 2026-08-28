@@ -28,7 +28,10 @@ function repo(): RepoSessionAggregate {
     hotspots: [{ compactions: 0, cwd: HOSTILE, failedToolCalls: 3, sessions: 1 }],
     interventions: 0,
     invalidValues: 0,
+    invocationErrorCounts: [],
+    invocationErrors: 0,
     malformedLines: 0,
+    neverGreenSessions: 0,
     operationalFailures: 3,
     outcomeCounts: [
       {

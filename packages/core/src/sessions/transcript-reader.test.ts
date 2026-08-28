@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createCodexTranscriptReader } from "./codex-transcript-reader.js";
+import { createTranscriptReader } from "./transcript-reader.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -22,7 +22,7 @@ describe("Codex transcript reader", () => {
     temporaryDirectories.push(directory);
     const path = join(directory, "rollout.jsonl");
     await writeFile(path, "first\nsecond\nthird");
-    const reader = createCodexTranscriptReader();
+    const reader = createTranscriptReader();
 
     const transcript = await reader(path, 9);
     const lines: string[] = [];
@@ -42,7 +42,7 @@ describe("Codex transcript reader", () => {
     temporaryDirectories.push(directory);
     const path = join(directory, "rollout.jsonl");
     await writeFile(path, "first\nsecond");
-    const reader = createCodexTranscriptReader();
+    const reader = createTranscriptReader();
 
     const transcript = await reader(path, 100);
     const lines: string[] = [];
@@ -62,7 +62,7 @@ describe("Codex transcript reader", () => {
     const path = join(directory, "rollout.jsonl");
     const first = "x".repeat(70_000);
     await writeFile(path, `${first}\nsecond`);
-    const reader = createCodexTranscriptReader();
+    const reader = createTranscriptReader();
 
     const transcript = await reader(path, 100_000);
     const lines: string[] = [];

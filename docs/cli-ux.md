@@ -224,8 +224,16 @@ is what says which findings remain.
 
 ## Sessions report
 
-`aura sessions` reads the transcripts Codex keeps under `~/.codex/sessions` and summarizes, per
-project, how much agent time they held and where tool calls failed. Internal `guardian` approval
+`aura sessions` reads the transcripts Codex keeps under `~/.codex/sessions` and the ones Claude
+Code keeps under `~/.claude/projects`, and summarizes, per project, how much agent time they held
+and where tool calls failed. Both sources fold into one report; `--source codex` or `--source
+claude-code` (the `claude` and `claude_code` aliases resolve too) narrows the run to one of them,
+and an unknown selector is invalid usage. A session belongs to the window when it started inside
+it. Codex transcripts are pruned by their calendar directories; Claude Code transcripts, which
+have no date layout, are pruned by file modification time — a file last written before the window
+is never opened — and a session that started before the window but was touched inside it is
+excluded after parsing. Claude Code subagent transcripts and sidechain records are not analyzed:
+a session's metrics cover its main thread only. Internal `guardian` approval
 reviews are excluded. A project collapses every working directory that resolves to the same
 repository. The Git remote recorded when the session started is sanitized and used first. Its
 credential-free host/owner/repository identity is the grouping key; the short repository name is
@@ -237,10 +245,11 @@ worktree's `.git` file to the main checkout), a deleted one falls back to the
 own path. Only `.git` markers and git config files are ever opened. A heading notes the collapse
 (`family_planner · 12 directories`) whenever a row absorbed more than one. Rendered by
 `packages/cli/src/sessions/render.ts` in the help-screen geometry, and ordered by what deserves
-action, not by inventory: a header naming the source and window; four `Session health` cards;
-`Needs attention`; short `Activity` and `Workflow and delivery` rows; command and work-item
-insights; then `Projects by agent time`, capped at five. No single overall letter flattens those
-signals into a verdict.
+action, not by inventory: a header naming the scanned sources (`Codex + Claude Code` on a default
+run) and window; four `Session health` cards;
+short `Activity` and `Workflow and delivery` rows; command and work-item insights; `Projects by
+agent time`, capped at five; then `Needs attention` as the final content section before the grade
+legend. No single overall letter flattens those signals into a verdict.
 
 The four fixed-width cards expose the measurements that explain health directly: tool-problem
 grade, share, and count; peak context-window grade and occupancy; compaction grade, rate, and
@@ -254,7 +263,8 @@ The detail sections use one concept per label/value row instead of chains of unr
 `Activity` carries sessions/projects, agent time summed from recorded turn durations, turns, and
 token directions. `Workflow and delivery` carries median turn time, tool-time share, cache reuse,
 classified check/expected
-statuses, human interventions, first-green cost, initial context, inferred endings, and unreadable
+statuses, a count of unclassified nonzero exits (`Unclassified`), human interventions, first-green
+cost, initial context, inferred endings, and unreadable
 or incomplete transcripts when those signals exist. Incomplete coverage names size truncation,
 malformed records, rejected numeric values, and interrupted reads separately. Breakdowns use
 continuation rows. Explanatory prose appears
@@ -285,15 +295,27 @@ nonzero value always shows at least a sliver of ink, and labels longer than the 
 with `…`. Non-success outcomes are classified conservatively: missing executables and MCP errors
 are operational failures; recognized test-runner summaries are check failures; pending GitHub
 checks and simple search no-matches are expected statuses; everything else is unknown. Compound
-shell input is named `shell batch`, never attributed to its first command. Only operational and
-unknown outcomes affect the tool-problem grade; check failures receive their own count, while
-expected statuses do not make a project unhealthy. An exit-127 pattern gets its own remediation
-row. The other reasons are compaction pressure and incomplete transcripts. Attention thresholds
-are materiality bounds, not zero: a problem count below three that is also under five percent of
-the project's calls is noise, and a single compaction is routine. The attention list itself is
-capped at eight entries. Neither cap
-is silent: each counts what it withheld and points at `--verbose`, which lists every flagged
-project, expands suppressed outcome/project detail, and replaces the chart with every project in
+shell input is named `shell batch`, never attributed to its first command. For failed batches,
+Aura extracts up to twelve top-level executable/subcommand identities from the input, aggregates
+the five most frequent identities in JSON, and shows up to three after `contains:` in an attention
+finding. These are components observed in the failed batch, not a claim about which segment
+failed. Quoted text, comments, nested commands, and heredoc bodies never become component
+identities. Operational and unknown outcomes together set the tool-problem grade; check failures receive their own count,
+while expected statuses do not make a project unhealthy. `Needs attention` is a list of findings,
+one line each, not a per-project dossier: most non-success outcomes are ordinary agent work, so a
+raw count never makes a finding on its own. The findings, in order: a missing executable
+(exit 127) grouped by name across the whole window with its remediation attached, because it is
+fixed once, not per project; a project whose failure rate stands out — at least three confirmed
+environment failures that are also at least one percent of its calls, or ten-plus problem
+outcomes at a rate above five percent and double the
+rest of the window — named with its rate, the fleet rate, and its worst outcome signature; a
+project where two or more sessions ran validation and never saw it pass; and compaction pressure,
+where a single compaction stays routine. Low-confidence unknown exits count only toward the rate
+comparison, never as findings themselves, and their total stays visible in the `Unclassified`
+workflow row. Incomplete transcripts are coverage, not trouble: they stay in the workflow rows
+and never flag attention. The findings list is capped at eight entries. Neither this cap nor the
+project-chart cap is silent: each counts what it withheld and points at `--verbose`, which lists
+every finding and replaces the chart with every project in
 the window. A window with nothing to
 flag simply has no `Needs attention` section. Recorded paths shorten under the effective home
 directory to `~`; every path and command name is neutralized before it reaches the terminal, and
@@ -311,10 +333,17 @@ token deltas, capped at 500 turns with a truncation flag), interventions (interr
 re-prompts), context-window occupancy (window size, first-request and peak request tokens), and
 call totals folded by (tool, command, subcommand) so `git diff` and `git push` stay distinct — the
 subcommand is read only for a known set of multi-command executables, never from arbitrary
-argument text. `--detailed` additionally carries one row per recorded tool call (id, line, turn,
+argument text. Failed shell-batch outcomes also carry the bounded component identities and their
+aggregate occurrence counts; they do not carry command arguments or identify the failing
+segment. `--detailed` additionally carries one row per recorded tool call (id, line, turn,
 start, duration, status, exit code, output size); it requires `--json`, because per-call rows are
 machine output. The JSON document only ever gains fields; existing fields keep their names and
-meanings. An empty window is a normal report (exit 0), not a
+meanings. The top-level `source` field predates multi-source analysis and stays frozen at
+`"codex"` whenever Codex was in scope, so a default run's value never changed; the `sources` array
+is the authoritative list of what the run scanned for, and each session carries its own `source`.
+Claude Code sessions record failure structurally rather than via exit codes, so their outcome and
+per-call rows carry no exit code, and their tool output totals undercount results Claude Code
+offloaded to sidecar files. An empty window is a normal report (exit 0), not a
 failure. Transcripts are parsed as bounded streams with at most four reads in flight; a transcript
 larger than the read cap is counted as truncated rather than sinking the run. Malformed records,
 out-of-range numeric fields, and interrupted prefix reads mark a recognized session as partial and
@@ -322,8 +351,9 @@ are counted in human and JSON output. Transcript numeric values use field-specif
 overflow-safe aggregation.
 
 `--brief` (or `--brief=<path>`) additionally writes an owner-readable agent handoff brief (default
-`aura-session-brief.md` in the working directory) and prints the one shell-quoted `codex exec`
-command that hands it to a coding agent. It refuses to replace an existing target unless the user
+`aura-session-brief.md` in the working directory) and prints the one shell-quoted command that
+hands it to a coding agent — `codex exec` whenever Codex was in scope, `claude` for a Claude-only
+run. It refuses to replace an existing target unless the user
 also passes `--force`.
 The brief is a self-contained markdown prompt built on the same premise that agent context is
 scarce: every aggregate is precomputed, and raw evidence stays on disk. Each outcome group carries

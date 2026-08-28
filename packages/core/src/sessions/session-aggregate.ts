@@ -93,6 +93,11 @@ function uniqueRecordedIdentity(
   recordedByLabel: ReadonlyMap<string, ReadonlyMap<string, ProjectIdentity>>,
   fallback: ProjectIdentity,
 ): ProjectIdentity | undefined {
+  // A live checkout's remote is already authoritative. Only unresolved path/worktree labels may
+  // borrow the sole historical identity with the same human-readable repository name.
+  if (fallback.key.startsWith("remote:")) {
+    return undefined;
+  }
   const candidates = recordedByLabel.get(fallback.label);
   if (candidates === undefined || candidates.size !== 1) {
     return undefined;
@@ -176,6 +181,7 @@ function aggregateGroup(
     interventions,
     invalidValues,
     malformedLines,
+    neverGreenSessions: sessions.filter(ranValidationWithoutGreen).length,
     partialSessions,
     readErrorSessions,
     project,
@@ -188,6 +194,15 @@ function aggregateGroup(
     validationTimeMs,
     wallClockMs,
   };
+}
+
+/** Whether the session ran recognized validation and never recorded a passing run. */
+function ranValidationWithoutGreen(session: AgentSessionMetrics): boolean {
+  return (
+    session.validation !== undefined &&
+    session.validation.attempts > 0 &&
+    session.validation.iterationsToFirstGreen === undefined
+  );
 }
 
 /** The directories where failures or compactions concentrate, worst first. */

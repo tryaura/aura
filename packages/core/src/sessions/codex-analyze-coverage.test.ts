@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { createFileReader } from "../workspace/reader.js";
 import { analyzeCodexSessions } from "./codex-analyze.js";
-import type { CodexTranscriptReader } from "./codex-transcript-reader.js";
+import type { TranscriptReader } from "./transcript-reader.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -30,7 +30,7 @@ describe("Codex analysis coverage", () => {
       type: "session_meta",
     });
     await writeFile(join(directory, "a.jsonl"), `${record}\n`);
-    const transcriptReader: CodexTranscriptReader = async () => ({
+    const transcriptReader: TranscriptReader = async () => ({
       completed: () => false,
       lines: streamLines([record]),
       size: 100,

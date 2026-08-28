@@ -1,13 +1,17 @@
 import { classifyShellOutcome, shellIdentity } from "./outcome-classify.js";
 import { callCommandIdentity, shellSubcommand } from "./command-identity.js";
-import { commandUsage, usage, type ParseState, type PendingCall } from "./codex-parse-state.js";
-import { addTurnToolCall, addTurnToolTime } from "./codex-parse-turns.js";
+import { commandUsage, usage, type ParseState, type PendingCall } from "./session-parse-state.js";
+import {
+  recordCallDuration,
+  recordCallOutput,
+  recordFailureOutcome,
+  recordValidationResult,
+} from "./session-call-fold.js";
+import { addTurnToolCall } from "./session-turn-fold.js";
 import { runningShellSessionId, shellContinuation } from "./shell-session.js";
-import type { SessionToolCall } from "./session-detail-metrics.js";
 import { asString } from "./transcript-json.js";
-import { isValidationIdentity } from "./validation-classify.js";
 import { collectPullRequests, collectWorkItems } from "./work-items.js";
-import { boundedAdd, MAX_DURATION_MS, readBoundedInteger } from "./session-numbers.js";
+import { boundedAdd } from "./session-numbers.js";
 
 const EXIT_CODE = /exited with code (\d+)/u;
 
@@ -65,6 +69,7 @@ function pendingCall(
   const label = identity?.label ?? tool;
   return {
     at,
+    batchComponents: identity?.batchComponents,
     callId: undefined,
     callLine: line,
     command: identity?.command,
@@ -87,7 +92,7 @@ export function readToolResult(
   if (call === undefined) {
     return;
   }
-  const durationMs = recordDuration(state, call, at);
+  const durationMs = recordCallDuration(state, call, at);
   const output = recordOutputSize(state, payload);
   if (keepRunningShellSession(state, call, output)) {
     recordCallRow(state, call, durationMs, output.length, undefined);
@@ -98,32 +103,9 @@ export function readToolResult(
   if (call.label === "gh" && exitCode === undefined) {
     collectPullRequests(state.pullRequests, output);
   }
-  recordValidationAttempt(state, call, durationMs, exitCode);
+  recordValidationResult(state, call, durationMs, exitCode !== undefined);
   recordCallRow(state, call, durationMs, output.length, exitCode);
   recordNonzeroOutcome(state, call, output, line, exitCode);
-}
-
-/** Tracks validation spend and the first green run. The identity gate keeps this conservative. */
-function recordValidationAttempt(
-  state: ParseState,
-  call: PendingCall,
-  durationMs: number | undefined,
-  exitCode: number | undefined,
-): void {
-  const identity = callCommandIdentity(call);
-  if (!isValidationIdentity(identity.command, identity.subcommand)) {
-    return;
-  }
-  state.validationAttempts = boundedAdd(state.validationAttempts, 1);
-  state.validationTimeMs = boundedAdd(state.validationTimeMs, durationMs ?? 0);
-  if (exitCode !== undefined) {
-    state.validationFailures = boundedAdd(state.validationFailures, 1);
-    return;
-  }
-  if (state.greenIteration === undefined) {
-    state.greenIteration = state.validationAttempts;
-    state.tokensAtFirstGreen = state.tokens;
-  }
 }
 
 function takePendingCall(
@@ -139,30 +121,9 @@ function takePendingCall(
   return call;
 }
 
-function recordDuration(
-  state: ParseState,
-  call: PendingCall,
-  at: number | undefined,
-): number | undefined {
-  if (call.at === undefined || at === undefined || at < call.at) {
-    return undefined;
-  }
-  const elapsed = readBoundedInteger(state, at - call.at, MAX_DURATION_MS);
-  if (elapsed === undefined) {
-    return undefined;
-  }
-  const tool = usage(state.tools, call.tool);
-  tool.durationMs = boundedAdd(tool.durationMs, elapsed);
-  const command = commandUsage(state.commands, callCommandIdentity(call));
-  command.durationMs = boundedAdd(command.durationMs, elapsed);
-  addTurnToolTime(state, call.turnIndex, elapsed);
-  return elapsed;
-}
-
 function recordOutputSize(state: ParseState, payload: Record<string, unknown>): string {
   const output = asString(payload["output"]) ?? "";
-  state.toolOutputChars = boundedAdd(state.toolOutputChars, output.length);
-  state.largestToolOutputChars = Math.max(state.largestToolOutputChars, output.length);
+  recordCallOutput(state, output);
   return output;
 }
 
@@ -207,30 +168,6 @@ function recordCallRow(
   });
 }
 
-/** Flushes calls whose results never arrived, then returns every row in transcript order. */
-export function finishCalls(state: ParseState): readonly SessionToolCall[] | undefined {
-  if (state.calls === undefined) {
-    return undefined;
-  }
-  for (const call of state.pending.values()) {
-    const identity = callCommandIdentity(call);
-    state.calls.push({
-      callId: call.callId,
-      callLine: call.callLine,
-      command: identity.command,
-      durationMs: undefined,
-      exitCode: undefined,
-      outputChars: 0,
-      startedAt: call.startedAt,
-      status: "unpaired",
-      subcommand: identity.subcommand,
-      tool: call.tool,
-      turnIndex: call.turnIndex,
-    });
-  }
-  return [...state.calls].sort((a, b) => a.callLine - b.callLine);
-}
-
 function recordNonzeroOutcome(
   state: ParseState,
   call: PendingCall,
@@ -241,23 +178,12 @@ function recordNonzeroOutcome(
   if (exitCode === undefined) {
     return;
   }
-  const tool = usage(state.tools, call.tool);
-  tool.failures = boundedAdd(tool.failures, 1);
-  const command = commandUsage(state.commands, callCommandIdentity(call));
-  command.failures = boundedAdd(command.failures, 1);
   const classification = classifyShellOutcome(
     { command: call.command, label: call.label },
     exitCode,
     output,
   );
-  state.outcomes.push({
-    callLine: call.callLine,
-    ...classification,
-    exitCode,
-    label: call.label,
-    resultLine: line,
-    tool: call.tool,
-  });
+  recordFailureOutcome(state, call, classification, exitCode, line);
 }
 
 function failureExitCode(output: string): number | undefined {
