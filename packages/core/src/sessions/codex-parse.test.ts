@@ -241,6 +241,10 @@ describe("parseCodexSession", () => {
       { callLine: 4, confidence: "high", kind: "pending_status", label: "gh", resultLine: 5 },
       { callLine: 6, confidence: "medium", kind: "no_match", label: "rg", resultLine: 7 },
       {
+        batchComponents: [
+          { command: "sed", subcommand: undefined },
+          { command: "rg", subcommand: undefined },
+        ],
         callLine: 8,
         confidence: "low",
         kind: "unknown_nonzero",

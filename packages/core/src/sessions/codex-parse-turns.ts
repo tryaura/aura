@@ -1,5 +1,5 @@
-import type { MutableTokenUsage, MutableTurn, ParseState } from "./codex-parse-state.js";
-import type { SessionTurn } from "./session-detail-metrics.js";
+import type { MutableTurn, ParseState } from "./session-parse-state.js";
+import { closeOpenTurn, MAX_TURN_DETAILS } from "./session-turn-fold.js";
 import { boundedAdd, MAX_DURATION_MS, readBoundedInteger } from "./session-numbers.js";
 import { asRecord, asString } from "./transcript-json.js";
 import { collectWorkItems } from "./work-items.js";
@@ -9,9 +9,6 @@ import { collectWorkItems } from "./work-items.js";
  * and the `turn_context` record. Split from `codex-parse-events.ts` only to keep each file
  * within the size cap; the state they fold into is the same parse accumulator.
  */
-
-/** Turn records retained per session; beyond this the counts stay exact but detail is dropped. */
-const MAX_TURN_DETAILS = 500;
 
 export function readTaskStarted(
   state: ParseState,
@@ -150,83 +147,9 @@ function recordReprompt(state: ParseState, line: number): void {
   });
 }
 
-export function addTurnToolCall(state: ParseState, turnIndex: number | undefined): void {
-  const turn = turnIndex === undefined ? undefined : state.turnList[turnIndex];
-  if (turn !== undefined) {
-    turn.toolCalls = boundedAdd(turn.toolCalls, 1);
-  }
-}
-
-export function addTurnToolTime(
-  state: ParseState,
-  turnIndex: number | undefined,
-  durationMs: number,
-): void {
-  const turn = turnIndex === undefined ? undefined : state.turnList[turnIndex];
-  if (turn !== undefined) {
-    turn.toolTimeMs = boundedAdd(turn.toolTimeMs, durationMs);
-  }
-}
-
-/** Adds one request's token delta to the turn the request was recorded in. */
-export function addTurnTokens(
-  turn: MutableTurn | undefined,
-  delta: Readonly<MutableTokenUsage>,
-): void {
-  if (turn === undefined) {
-    return;
-  }
-  if (turn.tokens === undefined) {
-    turn.tokens = { cachedInputTokens: 0, inputTokens: 0, outputTokens: 0 };
-  }
-  turn.tokens.cachedInputTokens = boundedAdd(
-    turn.tokens.cachedInputTokens,
-    delta.cachedInputTokens,
-  );
-  turn.tokens.inputTokens = boundedAdd(turn.tokens.inputTokens, delta.inputTokens);
-  turn.tokens.outputTokens = boundedAdd(turn.tokens.outputTokens, delta.outputTokens);
-}
-
-/** Copies the turn accumulators into their public shape, closing a still-open final turn. */
-export function finishTurns(state: ParseState): readonly SessionTurn[] {
-  closeOpenTurn(state);
-  return state.turnList.map((turn) => ({
-    closed: turn.closed ?? "log-end",
-    durationMs: turn.durationMs ?? spanMs(state, turn),
-    endedAt: turn.endedAt,
-    index: turn.index,
-    model: turn.model,
-    startedAt: turn.startedAt,
-    timeToFirstTokenMs: turn.timeToFirstTokenMs,
-    tokens: turn.tokens === undefined ? undefined : { ...turn.tokens },
-    toolCalls: turn.toolCalls,
-    toolTimeMs: turn.toolTimeMs,
-    turnId: turn.turnId,
-  }));
-}
-
-/** A crash or cut log leaves a turn open; its span ends at the last record seen. */
-function closeOpenTurn(state: ParseState): void {
-  const turn = state.openTurn;
-  if (turn === undefined) {
-    return;
-  }
-  turn.closed = "log-end";
-  turn.endMs = state.lastMs;
-  turn.endedAt = state.endedAt;
-  state.openTurn = undefined;
-}
-
 /** Codex turns do not overlap, so the open turn is the safe fallback when ids are absent. */
 function matchTurn(state: ParseState, payload: Record<string, unknown>): MutableTurn | undefined {
   const turnId = asString(payload["turn_id"]);
   const byId = turnId === undefined ? undefined : state.turnById.get(turnId);
   return byId ?? state.openTurn;
-}
-
-function spanMs(state: ParseState, turn: MutableTurn): number {
-  if (turn.startMs === undefined || turn.endMs === undefined || turn.endMs < turn.startMs) {
-    return 0;
-  }
-  return readBoundedInteger(state, turn.endMs - turn.startMs, MAX_DURATION_MS) ?? 0;
 }

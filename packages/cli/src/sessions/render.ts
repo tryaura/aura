@@ -3,26 +3,20 @@ import type { Writable } from "node:stream";
 import type { RepoSessionAggregate, SessionAnalysis } from "@tryaura/core";
 
 import { reportColumns } from "../render-human-layout.js";
+import { attentionFindings } from "./attention.js";
 import { bar, chartLabel, count, duration, percent, ratio } from "./chart.js";
-import {
-  compareAttention,
-  hasCompactionPressure,
-  hasMaterialCheckFailures,
-  hasMaterialToolProblems,
-  needsAttention,
-  toolProblemCount,
-} from "./health.js";
+import { toolProblemCount } from "./health.js";
 import { commandChart, workItemSection } from "./render-insights.js";
 import { sessionSummarySections } from "./render-overall.js";
-import { safe } from "../safe-text.js";
+import { displayProject, wrappedRow } from "./render-row.js";
+import { sourcesLabel } from "./source-label.js";
 import { wrapWords } from "../text-width.js";
 
 /**
  * The human sessions report.
  *
- * Leads with what the user should do something about, not with inventory: the window's totals,
- * then only the directories showing trouble (failing tools, truncated transcripts, sessions that
- * keep outgrowing the context window), then the few busiest directories for orientation. The full
+ * Leads with the window's health and activity, then the few busiest directories for orientation,
+ * and closes with one attention finding per actionable signal (`attention.ts`). The full
  * per-directory list exists but sits behind `--verbose`; the default report names how much it
  * withheld. Shared geometry with the help screens: titles indented two spaces, rows four, no
  * boxes, no trailing periods. Recorded paths and command names are neutralized before printing.
@@ -46,13 +40,14 @@ export function renderSessionsReport(
 ): void {
   const window = options.days === 1 ? "1 day" : `${options.days} days`;
   const columns = reportColumns(options.stdout);
+  const label = sourcesLabel(analysis.sources);
   const lines: string[] = [
-    ...wrapWords(`Agent sessions — Codex, since ${analysis.since} (${window})`, columns),
+    ...wrapWords(`Agent sessions — ${label}, since ${analysis.since} (${window})`, columns),
   ];
   if (analysis.sessions.length === 0) {
     lines.push(
       "",
-      ...wrappedRow(`No Codex sessions recorded since ${analysis.since}`, "  ", columns),
+      ...wrappedRow(`No ${label} sessions recorded since ${analysis.since}`, "  ", columns),
     );
     options.stdout.write(`${lines.join("\n")}\n`);
     return;
@@ -60,7 +55,6 @@ export function renderSessionsReport(
 
   const summary = sessionSummarySections(analysis, columns);
   lines.push("", ...summary.health);
-  lines.push(...attentionSection(analysis, options.homeDir, options.verbose, columns));
   lines.push(...summary.activity, ...summary.workflow);
   lines.push(...commandChart(analysis, columns), ...workItemSection(analysis, columns));
   if (options.verbose) {
@@ -78,6 +72,7 @@ export function renderSessionsReport(
       ...withheldRows(analysis.repos.length - BUSIEST_LIMIT, columns),
     );
   }
+  lines.push(...attentionSection(analysis, options.homeDir, options.verbose, columns));
   lines.push("", ...wrappedRow(GRADE_LEGEND, "  ", columns));
   options.stdout.write(`${lines.join("\n")}\n`);
 }
@@ -85,122 +80,32 @@ export function renderSessionsReport(
 /** What the letters mean, printed with every graded report so the scale needs no manual. */
 const GRADE_LEGEND = "Grades: A great · B good · C fair · D poor · F failing";
 
-/** Directories with something to act on, worst first. Empty when the window ran clean. */
+/** One line per thing worth acting on, worst first. Empty when the window ran clean. */
 function attentionSection(
   analysis: SessionAnalysis,
   homeDir: string,
   verbose: boolean,
   columns: number,
 ): readonly string[] {
-  const flagged = analysis.repos.filter(needsAttention).sort(compareAttention);
-  if (flagged.length === 0) {
+  const findings = attentionFindings(analysis, homeDir);
+  if (findings.length === 0) {
     return [];
   }
-  const shown = verbose ? flagged : flagged.slice(0, ATTENTION_LIMIT);
+  const shown = verbose ? findings : findings.slice(0, ATTENTION_LIMIT);
   const lines = ["", "  Needs attention"];
-  for (const repo of shown) {
-    lines.push(...wrappedRow(projectHeading(repo, homeDir), "    ", columns));
-    for (const reason of attentionReasons(repo, verbose)) {
-      lines.push(...wrappedRow(reason.summary, "      ", columns));
-      for (const detail of reason.details) {
-        lines.push(...wrappedRow(detail, "        ", columns));
-      }
-    }
+  for (const finding of shown) {
+    lines.push(...wrappedRow(finding, "    ", columns));
   }
-  if (flagged.length > shown.length) {
+  if (findings.length > shown.length) {
     lines.push(
       ...wrappedRow(
-        `and ${count(flagged.length - shown.length, "more project")} · --verbose lists every one`,
+        `and ${count(findings.length - shown.length, "more finding")} · --verbose lists every one`,
         "    ",
         columns,
       ),
     );
   }
   return lines;
-}
-
-interface AttentionReason {
-  readonly details: readonly string[];
-  readonly summary: string;
-}
-
-function attentionReasons(
-  repo: RepoSessionAggregate,
-  verbose: boolean,
-): readonly AttentionReason[] {
-  const reasons: AttentionReason[] = [];
-  if (hasMaterialToolProblems(repo)) {
-    const problemCount = toolProblemCount(repo);
-    const failing = repo.outcomeCounts.filter(
-      (entry) =>
-        entry.kind === "invocation_error" ||
-        entry.kind === "tool_error" ||
-        entry.kind === "unknown_nonzero",
-    );
-    const shown = verbose ? failing : failing.slice(0, 3);
-    const details = [
-      `${count(repo.toolCalls, "tool call")} · ${percent(ratio(problemCount, repo.toolCalls))} had problems`,
-      ...shown.map(
-        (entry) => `${safe(entry.label)} ×${entry.count} · ${entry.kind.replaceAll("_", " ")}`,
-      ),
-    ];
-    if (shown.length < failing.length) {
-      details.push(
-        `and ${count(failing.length - shown.length, "more outcome")} · --verbose lists every one`,
-      );
-    }
-    reasons.push({
-      details,
-      summary: `Tool problems · ${problemCount}`,
-    });
-    const missing = repo.outcomeCounts
-      .filter((entry) => entry.kind === "invocation_error")
-      .map((entry) =>
-        entry.label === "shell batch" ? "a command in a shell batch" : safe(entry.label),
-      );
-    if (missing.length > 0) {
-      reasons.push({
-        details: ["Missing from this machine or misnamed in the instructions"],
-        summary: `${missing.join(", ")} not found · exit 127`,
-      });
-    }
-  }
-  if (hasMaterialCheckFailures(repo)) {
-    reasons.push({
-      details: ["Verification found code or test problems"],
-      summary: `Check failures · ${repo.checkFailures}`,
-    });
-  }
-  if (hasCompactionPressure(repo)) {
-    reasons.push({
-      details: ["Sessions outgrew the context window"],
-      summary: `Compactions · ${repo.compactions} / ${repo.sessions} sessions`,
-    });
-  }
-  reasons.push(...incompleteTranscriptReasons(repo));
-  return reasons;
-}
-
-function incompleteTranscriptReasons(repo: RepoSessionAggregate): readonly AttentionReason[] {
-  if (repo.partialSessions === 0) {
-    return [];
-  }
-  const causes = [
-    ...(repo.truncatedSessions > 0
-      ? [count(repo.truncatedSessions, "size-truncated transcript")]
-      : []),
-    ...(repo.malformedLines > 0 ? [count(repo.malformedLines, "malformed line")] : []),
-    ...(repo.invalidValues > 0 ? [count(repo.invalidValues, "invalid numeric value")] : []),
-    ...(repo.readErrorSessions > 0
-      ? [count(repo.readErrorSessions, "transcript read failure")]
-      : []),
-  ];
-  return [
-    {
-      details: ["Counts are lower bounds", ...causes],
-      summary: `Incomplete transcripts · ${repo.partialSessions}`,
-    },
-  ];
 }
 
 /** One bar line per project: wall time relative to the busiest, then the numbers behind it. */
@@ -261,14 +166,6 @@ function projectDetailRows(
   return rows;
 }
 
-/** The project's display name, with its worktree spread when it collapsed more than one. */
-function projectHeading(repo: RepoSessionAggregate, homeDir: string): string {
-  const name = displayProject(repo.project, homeDir);
-  return repo.directories > 1
-    ? `${name} · ${count(repo.directories, "directory", "directories")}`
-    : name;
-}
-
 function withheldRows(hidden: number, columns: number): readonly string[] {
   if (hidden <= 0) {
     return [];
@@ -281,16 +178,4 @@ function withheldRows(hidden: number, columns: number): readonly string[] {
       columns,
     ),
   ];
-}
-
-function wrappedRow(text: string, indent: string, columns: number): readonly string[] {
-  return wrapWords(text, Math.max(1, columns - indent.length)).map((line) => `${indent}${line}`);
-}
-
-/** A resolved repository name prints as-is; a path label shortens under home like any other. */
-function displayProject(project: string, homeDir: string): string {
-  const shortened = project.startsWith(`${homeDir}/`)
-    ? `~${project.slice(homeDir.length)}`
-    : project;
-  return safe(shortened);
 }

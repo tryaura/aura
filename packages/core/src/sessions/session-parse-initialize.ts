@@ -1,4 +1,4 @@
-import type { ParseState } from "./codex-parse-state.js";
+import type { ParseState } from "./session-parse-state.js";
 import type { SessionDetailLevel } from "./session-detail-metrics.js";
 
 /** Fresh mutable state for one bounded transcript fold. */

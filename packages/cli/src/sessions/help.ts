@@ -9,7 +9,10 @@ export function renderSessionsHelp(branding: CliBranding): string {
     [
       {
         rows: [
-          { term: `${bin} sessions`, text: "Summarize the last 30 days of Codex sessions" },
+          {
+            term: `${bin} sessions`,
+            text: "Summarize the last 30 days of Codex and Claude Code sessions",
+          },
           { term: `${bin} sessions --days 90`, text: "Widen the look-back window" },
           {
             term: `${bin} sessions --brief`,
@@ -20,6 +23,7 @@ export function renderSessionsHelp(branding: CliBranding): string {
       },
       {
         rows: [
+          { term: "--source <app>", text: "Analyze one source only: codex or claude-code" },
           { term: "--verbose", text: "List every directory instead of only the busiest" },
           { term: "--brief[=<path>]", text: "Write an agent handoff brief" },
           { term: "--force", text: "Replace an existing brief target" },

@@ -57,8 +57,21 @@ export interface SessionGitContext {
   readonly repositoryUrl: string | undefined;
 }
 
+/** One privacy-safe executable identity found inside a compound shell call. */
+export interface ShellBatchComponent {
+  readonly command: string;
+  readonly subcommand: string | undefined;
+}
+
+/** How often one executable identity appeared across a group of compound shell calls. */
+export interface ShellBatchComponentCount extends ShellBatchComponent {
+  readonly count: number;
+}
+
 /** One non-success tool result, paired with the call that produced it. */
 export interface ToolOutcome {
+  /** Executable identities observed in a shell batch; this does not identify the failing segment. */
+  readonly batchComponents?: readonly ShellBatchComponent[];
   readonly callLine: number;
   readonly confidence: OutcomeConfidence;
   readonly exitCode: number | undefined;
@@ -170,6 +183,10 @@ export interface OutcomeEvidence {
 
 /** One recurring classified outcome and representative evidence for it. */
 export interface OutcomeCount {
+  /** Distinct component identities before the presentation cap. */
+  readonly batchComponentCount?: number;
+  /** Most frequent executable identities contained by this shell-batch outcome group. */
+  readonly batchComponents?: readonly ShellBatchComponentCount[];
   readonly confidence: OutcomeConfidence;
   readonly count: number;
   readonly exemplars: readonly OutcomeEvidence[];
@@ -177,6 +194,12 @@ export interface OutcomeCount {
   readonly kind: OutcomeKind;
   readonly label: string;
   readonly reason: string;
+}
+
+/** One executable the shell could not find, retained outside presentation caps. */
+export interface InvocationErrorCount {
+  readonly count: number;
+  readonly label: string;
 }
 
 /** Session-level signals that can support, but never prove, a compaction hypothesis. */
@@ -215,7 +238,13 @@ export interface RepoSessionAggregate {
   /** Interrupts, re-prompts, and approvals across the project's sessions. */
   readonly interventions: number;
   readonly invalidValues: number;
+  /** Exit-127 outcomes: calls to executables the shell could not find. */
+  readonly invocationErrors: number;
+  /** Exit-127 outcomes grouped by executable, uncapped for actionable remediation. */
+  readonly invocationErrorCounts: readonly InvocationErrorCount[];
   readonly malformedLines: number;
+  /** Sessions that ran recognized validation commands and never recorded a passing run. */
+  readonly neverGreenSessions: number;
   /** Sessions whose metrics are known lower bounds for any reason. */
   readonly partialSessions: number;
   readonly readErrorSessions: number;

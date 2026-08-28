@@ -1,5 +1,5 @@
 /** Runs at most `limit` tasks concurrently, queueing the rest in call order. */
-interface Limiter {
+export interface Limiter {
   <T>(task: () => Promise<T>): Promise<T>;
 }
 

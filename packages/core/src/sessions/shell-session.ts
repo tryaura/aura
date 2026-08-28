@@ -1,4 +1,4 @@
-import type { ParseState, PendingCall } from "./codex-parse-state.js";
+import type { ParseState, PendingCall } from "./session-parse-state.js";
 import { asString, parseTranscriptRecord } from "./transcript-json.js";
 
 const RUNNING_SESSION = /(?:Process running with session ID |SESSION_ID=)(\d+)/u;

@@ -12,16 +12,18 @@ import type {
 import type {
   SessionGitContext,
   SessionQuota,
+  ShellBatchComponent,
   SessionTokenUsage,
   ToolOutcome,
 } from "./session-metrics.js";
 import { boundedAdd } from "./session-numbers.js";
+import { utcTimestampMs } from "./iso-time.js";
 
 /**
- * The accumulator one Codex transcript parse folds its records into.
+ * The accumulator one transcript parse folds its records into, shared by every source parser.
  *
- * Mutable on purpose: the parser walks a line-delimited log once, and the public result is copied
- * out of this state at the end (`codex-parse.ts`), so nothing mutable escapes.
+ * Mutable on purpose: a parser walks a line-delimited log once, and the public result is copied
+ * out of this state at the end (`codex-parse.ts`, `claude-parse.ts`), so nothing mutable escapes.
  */
 export interface ParseState {
   /** Turn-abort events seen, counted even when the turn's detail record was not retained. */
@@ -66,7 +68,7 @@ export interface ParseState {
   /** GitHub pull-request URLs seen in successful `gh` outputs. */
   readonly pullRequests: Set<string>;
   quota: SessionQuota | undefined;
-  /** Records that looked like Codex's; zero means the file was not a session transcript. */
+  /** Records that looked like the source's; zero means the file was not a session transcript. */
   recognized: number;
   sessionId: string | undefined;
   /** Original shell calls whose process is still running and will be polled by `write_stdin`. */
@@ -92,6 +94,7 @@ export interface ParseState {
 /** A tool call whose result record has not been seen yet. */
 export interface PendingCall {
   readonly at: number | undefined;
+  readonly batchComponents: readonly ShellBatchComponent[] | undefined;
   readonly callId: string | undefined;
   readonly callLine: number;
   readonly command: string | undefined;
@@ -139,6 +142,26 @@ interface MutableCommandUsage {
   failures: number;
   readonly subcommand: string | undefined;
   readonly tool: string;
+}
+
+/** Folds the record's timestamp into the session's span and returns it as epoch milliseconds. */
+export function trackRecordTime(
+  state: ParseState,
+  timestamp: string | undefined,
+): number | undefined {
+  const at = timestamp === undefined ? undefined : utcTimestampMs(timestamp);
+  if (at === undefined || timestamp === undefined) {
+    return undefined;
+  }
+  if (state.firstMs === undefined || at < state.firstMs) {
+    state.firstMs = at;
+    state.startedAt = timestamp;
+  }
+  if (state.lastMs === undefined || at > state.lastMs) {
+    state.lastMs = at;
+    state.endedAt = timestamp;
+  }
+  return at;
 }
 
 /** The usage bucket for one tool, created on first sight. */

@@ -31,6 +31,7 @@ describe("createFileReader", () => {
       exists: true,
       isDirectory: false,
       mode: 0o644,
+      mtimeMs: expect.any(Number),
       pathKind: "file",
     });
   });
@@ -49,6 +50,7 @@ describe("createFileReader", () => {
       exists: true,
       isDirectory: false,
       mode: 0o600,
+      mtimeMs: expect.any(Number),
       pathKind: "file",
       size: 15,
     });
@@ -65,6 +67,7 @@ describe("createFileReader", () => {
       exists: true,
       isDirectory: false,
       mode: 0o644,
+      mtimeMs: expect.any(Number),
       pathKind: "file",
       size: 6,
     });
@@ -134,6 +137,7 @@ describe("createFileReader", () => {
       exists: true,
       isDirectory: false,
       mode: 0o644,
+      mtimeMs: expect.any(Number),
       pathKind: "file",
       problem: "too-large",
     });
@@ -153,6 +157,7 @@ describe("createFileReader", () => {
         exists: true,
         isDirectory: false,
         mode: 0o000,
+        mtimeMs: expect.any(Number),
         pathKind: "file",
         problem: "denied",
       });
@@ -173,6 +178,7 @@ describe("createFileReader", () => {
       exists: true,
       isDirectory: false,
       mode: 0o644,
+      mtimeMs: expect.any(Number),
       pathKind: "symlink",
       symlinkTarget: target,
     });

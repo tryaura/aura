@@ -144,8 +144,9 @@ export type {
   FileReadOptions,
   PathContents,
 } from "./workspace/reader.js";
-export { analyzeCodexSessions } from "./sessions/codex-analyze.js";
-export { createCodexTranscriptReader } from "./sessions/codex-transcript-reader.js";
+export { analyzeAgentSessions } from "./sessions/analyze.js";
+export { createTranscriptReader } from "./sessions/transcript-reader.js";
+export type { SessionSource } from "./sessions/session-detail-metrics.js";
 export type {
   OutcomeCount,
   OutcomeEvidence,

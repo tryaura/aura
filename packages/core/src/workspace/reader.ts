@@ -28,6 +28,13 @@ export interface PathContents {
    * reading permission bits off a path it merely declared.
    */
   readonly mode?: number | undefined;
+  /**
+   * Last content write of a regular file, in epoch milliseconds; absent for everything else.
+   *
+   * Session discovery prunes transcripts by this before opening them: a file whose last write
+   * predates the analysis window cannot hold a session that started inside it.
+   */
+  readonly mtimeMs?: number | undefined;
   /** Kind of the final path entry without following a symbolic link. */
   readonly pathKind?: AdapterPathKind | undefined;
   /** Why no contents were captured, when the reason was something other than absence. */

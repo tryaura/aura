@@ -1,6 +1,6 @@
 import type { SessionAnalysis } from "@tryaura/core";
 
-import { wrapWords } from "../text-width.js";
+import { wrappedRow } from "./render-row.js";
 import {
   bar,
   chartLabel,
@@ -199,8 +199,4 @@ export function workItemSection(analysis: SessionAnalysis, columns: number): rea
       columns,
     ),
   ];
-}
-
-function wrappedRow(text: string, indent: string, columns: number): readonly string[] {
-  return wrapWords(text, Math.max(1, columns - indent.length)).map((line) => `${indent}${line}`);
 }
