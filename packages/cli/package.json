@@ -68,7 +68,7 @@
     "string-width": "4.2.3",
     "toml-eslint-parser": "^1.0.3",
     "typanion": "3.14.0",
-    "undici": "7.29.0"
+    "undici": "8.10.0"
   },
   "devDependencies": {
     "@tryaura/adapter-claude-code": "workspace:*",
