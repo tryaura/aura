@@ -15,13 +15,13 @@
     "typecheck": "astro check && tsc --noEmit"
   },
   "dependencies": {
-    "@astrojs/starlight": "0.41.7",
+    "@astrojs/starlight": "0.41.9",
     "@tryaura/aura-sdk": "workspace:*",
-    "astro": "7.2.4"
+    "astro": "7.2.9"
   },
   "devDependencies": {
     "@astrojs/check": "0.9.10",
     "typescript": "6.0.3",
-    "wrangler": "4.125.0"
+    "wrangler": "4.127.0"
   }
 }
