@@ -62,7 +62,7 @@
     "@tryaura/aura-sdk": "workspace:*",
     "clipanion": "3.2.1",
     "diff": "9.0.0",
-    "ignore": "7.0.6",
+    "ignore": "7.0.8",
     "semver": "7.8.5",
     "smol-toml": "1.8.0",
     "string-width": "4.2.3",
