@@ -18,7 +18,7 @@
   },
   "dependencies": {
     "@tryaura/aura-sdk": "workspace:*",
-    "smol-toml": "^1.8.0",
+    "smol-toml": "^1.9.0",
     "toml-eslint-parser": "^1.0.3"
   },
   "devDependencies": {
